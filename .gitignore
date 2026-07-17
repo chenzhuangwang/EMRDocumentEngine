@@ -1,0 +1,37 @@
+# ===== Node.js / Frontend =====
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+
+# ===== Java / Maven =====
+target/
+*.class
+*.jar
+*.war
+*.log
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ===== Environment =====
+.env
+.env.local
+.env.*.local
+
+# ===== Build artifacts =====
+*.tsbuildinfo
+
+# ===== Super Dev internal (keep output docs) =====
+.super-dev/pipeline-state.json
+.super-dev/changes/
