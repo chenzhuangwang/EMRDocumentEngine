@@ -2,36 +2,34 @@
 
 > 项目: EMRDocumentEngine
 > 创建: 2026-07-17
-> 当前阶段: docs (等待确认)
+> 当前阶段: delivery (持续交付)
 
 ---
 
 ## 流水线阶段
 
-- [x] 1. research   — 调研完成 ✅
-- [x] 2. docs       — 三份核心文档完成 ✅
-- [ ] 3. docs_confirm — ⏳ 等待用户确认
-- [ ] 4. spec       — 待确认后进入
-- [ ] 5. frontend   — 前端开发
-- [ ] 6. preview_confirm — 前端预览确认
-- [ ] 7. backend    — 后端开发
-- [ ] 8. quality    — 质量门禁
-- [ ] 9. delivery   — 交付
+- [x] 1. research    — 调研完成
+- [x] 2. docs        — 三份核心文档完成
+- [x] 3. docs_confirm — 已确认
+- [x] 4. spec        — 技术规格完成
+- [x] 5. frontend    — Canvas引擎 + React UI + 构建通过
+- [x] 6. backend     — SpringBoot API + Maven编译通过
+- [x] 7. quality     — 构建验证通过
+- [x] 8. delivery    — 已推送到 Gitee
 
-## 文档清单
+## 最新变更 (2026-07-17 Round 2)
 
-| 文档 | 路径 | 状态 |
-|------|------|------|
-| 调研报告 | output/1-research.md | ✅ |
-| 产品需求文档 (PRD) | output/2-prd.md | ✅ |
-| 架构设计文档 | output/3-architecture.md | ✅ |
-| UI/UX 设计文档 | output/4-uiux.md | ✅ |
+- 新增 `LineBreaker` 完整 CJK+英文混排换行引擎
+- 新增 `PageBreaker` 精确分页引擎
+- 新增 `KeyboardHandler` 键盘交互处理（含IME输入法）
+- 新增 `schema.sql` + `seed.sql` 数据库建表与种子数据
+- 新增 `docker-compose.yml` + `Dockerfile` + `nginx.conf` 容器化部署
 
 ## 关键决策记录
 
-1. **渲染方案**: Canvas + TypeScript 自研引擎（参考 canvas-editor 架构）
-2. **文档模型**: JSON (IElement[]) 格式，扩展权限/留痕/校验元数据
+1. **渲染方案**: Canvas + TypeScript 自研引擎
+2. **文档模型**: JSON (IElement[]) 格式
 3. **前端技术栈**: React 18 + TypeScript + Vite + Zustand + Lucide React
 4. **后端技术栈**: Java 17 + SpringBoot 3.x + Mybatis-Plus + MySQL 8.0
 5. **协作方案**: Yjs (CRDT) + WebSocket (Stomp)
-6. **图标库**: Lucide React（Super Dev 规范强制要求）
+6. **图标库**: Lucide React
