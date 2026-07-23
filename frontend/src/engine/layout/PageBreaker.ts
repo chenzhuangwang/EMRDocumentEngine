@@ -39,7 +39,7 @@ export class PageBreaker {
         pages.push({
           pageIndex,
           lines: currentPageLines,
-          headerLines: pageIndex === 0 ? headerLines : headerLines,
+          headerLines,
           footerLines,
           totalHeight: currentPageHeight,
         })
@@ -55,7 +55,7 @@ export class PageBreaker {
         pages.push({
           pageIndex,
           lines: currentPageLines,
-          headerLines: pageIndex === 0 ? headerLines : headerLines,
+          headerLines,
           footerLines,
           totalHeight: currentPageHeight,
         })

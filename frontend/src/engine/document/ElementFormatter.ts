@@ -8,12 +8,18 @@ import { generateElementId } from '../document/DocumentModel'
 
 /**
  * 格式化元素列表：
- * 1. 将多字符元素拆分为单字符元素（便于精确光标定位）
- * 2. 为没有 ID 的元素生成 ID
- * 3. 注入零宽字符用于光标锚定
+ * 1. 为没有 ID 的元素生成 ID
+ * 2. 注入零宽字符用于光标锚定
+ * 3. 确保文档至少有一个元素
  */
 export function formatElementList(elements: IElement[]): IElement[] {
-  return elements
+  if (elements.length === 0) {
+    return [{ id: generateElementId(), type: ElementType.TEXT, value: '' }]
+  }
+  return elements.map(el => ({
+    ...el,
+    id: el.id || generateElementId(),
+  }))
 }
 
 /**

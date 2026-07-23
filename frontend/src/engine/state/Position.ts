@@ -13,6 +13,10 @@ export class Position {
     this.pageSetup = pageSetup
   }
 
+  /**
+   * 根据分页结果计算所有元素的像素坐标（全局坐标）
+   * 每个 position 的 (x, y) 是相对于整个画布的绝对坐标
+   */
   computePositions(pages: IPage[], pageSetup: IPageSetup): IPosition[] {
     this.pageList = pages
     this.pageSetup = pageSetup
@@ -21,9 +25,9 @@ export class Position {
 
     for (const page of pages) {
       const pageStartY = page.pageIndex * (pageSetup.height + 20)
-      let currentY = pageStartY + pageSetup.marginTop
 
-      // Header lines
+      // Header area (relative to page start)
+      let headerY = pageStartY + pageSetup.marginTop
       for (const hl of page.headerLines) {
         for (const _el of hl.elements) {
           positions.push({
@@ -31,38 +35,40 @@ export class Position {
             pageIndex: page.pageIndex,
             rowIndex: positions.length,
             x: pageSetup.marginLeft,
-            y: currentY,
+            y: headerY,
             width: 0,
             height: hl.height,
             ascent: hl.maxAscent,
             descent: hl.maxDescent,
           })
         }
-        currentY += hl.height
+        headerY += hl.height
       }
 
-      // Main content lines
-      currentY = pageStartY + pageSetup.marginTop + 50
+      // Main content area
+      let contentY = pageStartY + pageSetup.marginTop + (pageSetup.headerHeight || 50)
       for (const ml of page.lines) {
-        let cx = pageSetup.marginLeft
+        let contentX = pageSetup.marginLeft
         for (const _el of ml.elements) {
+          // Compute element width for progressive X advance
           positions.push({
             index: globalIndex++,
             pageIndex: page.pageIndex,
             rowIndex: positions.length,
-            x: cx,
-            y: currentY + ml.maxAscent,
+            x: contentX,
+            y: contentY,
             width: 0,
             height: ml.height,
             ascent: ml.maxAscent,
             descent: ml.maxDescent,
           })
+          // Note: contentX advances per-element; width is computed elsewhere
         }
-        currentY += ml.height
+        contentY += ml.height
       }
 
-      // Footer lines
-      const footerStartY = pageStartY + pageSetup.height - pageSetup.marginBottom - 40
+      // Footer area
+      const footerStartY = pageStartY + pageSetup.height - pageSetup.marginBottom - (pageSetup.footerHeight || 40)
       for (const fl of page.footerLines) {
         for (const _el of fl.elements) {
           positions.push({
@@ -105,7 +111,9 @@ export class Position {
         }
         return i
       }
-      const dist = Math.sqrt((x - (pos.x + pos.width / 2)) ** 2 + (y - (pos.y + pos.height / 2)) ** 2)
+      const cx = pos.x + pos.width / 2
+      const cy = pos.y + pos.height / 2
+      const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
       if (dist < closestDistance) {
         closestDistance = dist
         closestIndex = i

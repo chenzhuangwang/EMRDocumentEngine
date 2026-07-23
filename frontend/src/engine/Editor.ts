@@ -68,6 +68,7 @@ export class Editor {
 
   getDocument(title: string, author: string): IDocument {
     const value = this.draw.getValue()
+    const pageSetup = this.draw.getPageSetup()
     const now = new Date().toISOString()
     return {
       id: `doc_${Date.now()}`,
@@ -75,15 +76,7 @@ export class Editor {
       header: value.header,
       main: value.main,
       footer: value.footer,
-      pageSetup: {
-        width: 794,
-        height: 1123,
-        marginTop: 72,
-        marginBottom: 72,
-        marginLeft: 90,
-        marginRight: 90,
-        orientation: 'portrait',
-      },
+      pageSetup,
       metadata: {
         author,
         createdAt: now,

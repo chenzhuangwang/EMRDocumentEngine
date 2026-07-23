@@ -1,131 +1,187 @@
 // ============================================================
 // Canvas 渲染器核心 - Draw 类
-// 中心渲染编排器，协调所有子系统
+// 渲染管线: unzip → LineBreaker → PageBreaker → Position → Canvas
 // ============================================================
 
 import {
   type IElement,
   type IEditorOption,
-  type IDrawPayload,
   type IPageOffset,
+  type IPosition,
+  type IPage,
   EditorMode,
   PageMode,
-  ElementType,
   ZoneType,
   DEFAULT_EDITOR_OPTIONS,
   DEFAULT_PAGE_SETUP,
 } from '../document/DocumentModel'
 import { unzipElementList } from '../document/ElementFormatter'
 import { TextMeasurer } from '../layout/TextMeasurer'
+import { LineBreaker } from '../layout/LineBreaker'
+import { PageBreaker } from '../layout/PageBreaker'
 import { HistoryManager } from '../state/HistoryManager'
 import { Position } from '../state/Position'
 import { EventBus } from '../EventBus'
+import {
+  KeyboardHandler,
+  type KeyboardContext,
+} from '../interaction/KeyboardHandler'
 
-export class Draw {
-  // Canvas 相关
+export class Draw implements KeyboardContext {
+  // Canvas
+  private container: HTMLElement
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
   private dpr: number
 
-  // 子系统
+  // Subsystems
   private measurer: TextMeasurer
+  private lineBreaker: LineBreaker
+  private pageBreaker: PageBreaker
   private historyManager: HistoryManager
   private position: Position
   private eventBus: EventBus
+  private keyboardHandler: KeyboardHandler
 
-  // 配置与状态
+  // Config
   public options: IEditorOption
   private mode: EditorMode
 
-  // 数据
+  // Data
   private headerElements: IElement[] = []
   private mainElements: IElement[] = []
   private footerElements: IElement[] = []
-  private computeElements: IElement[] = []
+  private positionList: IPosition[] = []
+  private pages: IPage[] = []
 
-  // 渲染状态
+  // State
   private scrollTop: number = 0
   private pageCount: number = 1
-  private cursorIndex: number = 0
+  cursorIndex: number = 0
+
+  // Event cleanup references
+  private boundResize: () => void
+  private boundWheel: (e: WheelEvent) => void
+  private boundKeyDown: (e: KeyboardEvent) => void
+  private boundCompositionStart: (e: CompositionEvent) => void
+  private boundCompositionUpdate: (e: CompositionEvent) => void
+  private boundCompositionEnd: (e: CompositionEvent) => void
 
   constructor(container: HTMLElement, options?: Partial<IEditorOption>) {
+    this.container = container
     this.options = { ...DEFAULT_EDITOR_OPTIONS, ...options }
     this.mode = this.options.mode || EditorMode.EDIT
 
-    // 创建 Canvas
+    // Canvas
     this.canvas = document.createElement('canvas')
     this.canvas.className = 'emr-editor-canvas'
     this.canvas.style.display = 'block'
     this.canvas.style.position = 'absolute'
     this.canvas.style.top = '0'
     this.canvas.style.left = '0'
+    this.canvas.tabIndex = 0  // Make canvas focusable for keyboard events
     container.appendChild(this.canvas)
 
-    this.ctx = this.canvas.getContext('2d')!
+    const ctx = this.canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas 2D context not available')
+    this.ctx = ctx
     this.dpr = window.devicePixelRatio || 1
 
-    // 初始化子系统
+    // Subsystems
     this.measurer = new TextMeasurer()
+    this.lineBreaker = new LineBreaker(this.measurer)
+    this.pageBreaker = new PageBreaker()
     this.historyManager = new HistoryManager(this.options.historyMaxRecordCount)
     this.position = new Position(DEFAULT_PAGE_SETUP)
     this.eventBus = new EventBus()
+    this.keyboardHandler = new KeyboardHandler(this)
 
-    // 绑定事件
+    // Event listeners (save bound refs for cleanup)
+    this.boundResize = this.onResize.bind(this)
+    this.boundWheel = this.onWheel.bind(this)
+    this.boundKeyDown = this.onKeyDown.bind(this)
+    this.boundCompositionStart = this.onCompositionStart.bind(this)
+    this.boundCompositionUpdate = this.onCompositionUpdate.bind(this)
+    this.boundCompositionEnd = this.onCompositionEnd.bind(this)
+
     this.bindEvents()
     this.resize()
   }
 
-  // ==================== 公共方法 ====================
+  // ---- KeyboardContext implementation ----
 
-  render(payload: IDrawPayload = {}): void {
-    const {
-      isCompute = true,
-      isSetCursor = false,
-      isSubmitHistory = true,
-    } = payload
+  get elements(): IElement[] {
+    return this.mainElements
+  }
 
-    try {
-      if (isCompute) {
-        this.computeLayout()
-      }
-      this.drawPages()
-
-      if (isSetCursor) {
-        this.setCursor()
-      }
-
-      if (isSubmitHistory) {
-        this.historyManager.saveState(this.mainElements)
-      }
-    } catch (err) {
-      console.error('[Draw.render] render error:', err)
+  onElementsChange(
+    newElements: IElement[],
+    newCursorIndex: number,
+    addHistory: boolean
+  ): void {
+    if (addHistory) {
+      this.historyManager.saveState(this.mainElements)
     }
+    this.mainElements = newElements
+    this.cursorIndex = newCursorIndex
+    this.recomputeLayout()
+    this.render()
+    this.eventBus.emit('contentChange', { type: 'contentChange', elements: newElements })
   }
 
-  private computeLayout(): void {
-    this.computeElements = [
-      ...unzipElementList(this.headerElements),
-      ...unzipElementList(this.mainElements),
-      ...unzipElementList(this.footerElements),
-    ]
-    this.pageCount = Math.max(1, Math.ceil(this.computeElements.length / 50))
+  // ---- Layout ----
+
+  private recomputeLayout(): void {
+    const pageSetup = DEFAULT_PAGE_SETUP
+    const contentWidth = pageSetup.width - pageSetup.marginLeft - pageSetup.marginRight
+
+    // 1. Unzip elements
+    const headerUnzipped = unzipElementList(this.headerElements)
+    const mainUnzipped = unzipElementList(this.mainElements)
+    const footerUnzipped = unzipElementList(this.footerElements)
+
+    // 2. Line breaking
+    const breakOptions = {
+      maxWidth: contentWidth,
+      wordBreak: this.options.wordBreak || 'break-all' as const,
+      defaultFont: this.options.defaultFont || 'SimSun',
+      defaultSize: this.options.defaultSize || 16,
+    }
+
+    const headerLines = this.lineBreaker.breakLines(headerUnzipped, breakOptions)
+    const mainLines = this.lineBreaker.breakLines(mainUnzipped, breakOptions)
+    const footerLines = this.lineBreaker.breakLines(footerUnzipped, breakOptions)
+
+    // 3. Page breaking
+    this.pages = this.pageBreaker.breakPages(mainLines, headerLines, footerLines, pageSetup)
+    this.pageCount = this.pages.length
+
+    // 4. Position computation
+    this.positionList = this.position.computePositions(this.pages, pageSetup)
   }
 
-  private drawPages(): void {
+  // ---- Render ----
+
+  render(): void {
     const pageSetup = DEFAULT_PAGE_SETUP
     const scale = this.options.scale || 1
 
     const totalHeight = this.pageCount * (pageSetup.height + 20)
-    this.canvas.width = pageSetup.width * scale * this.dpr
-    this.canvas.height = totalHeight * scale * this.dpr
+    const canvasW = Math.ceil(pageSetup.width * scale * this.dpr)
+    const canvasH = Math.ceil(totalHeight * scale * this.dpr)
+
+    if (this.canvas.width !== canvasW) this.canvas.width = canvasW
+    if (this.canvas.height !== canvasH) this.canvas.height = canvasH
     this.canvas.style.width = `${pageSetup.width * scale}px`
     this.canvas.style.height = `${totalHeight * scale}px`
 
     this.ctx.setTransform(this.dpr * scale, 0, 0, this.dpr * scale, 0, -this.scrollTop * scale)
 
+    // Background
     this.ctx.fillStyle = '#E5E7EB'
     this.ctx.fillRect(0, this.scrollTop, pageSetup.width, totalHeight)
 
+    // Draw pages
     for (let i = 0; i < this.pageCount; i++) {
       const pageOffset: IPageOffset = {
         x: 0,
@@ -135,6 +191,7 @@ export class Draw {
       this.drawPage(i, pageOffset)
     }
 
+    // Cursor overlay
     this.drawCursor()
   }
 
@@ -142,97 +199,89 @@ export class Draw {
     const pageSetup = DEFAULT_PAGE_SETUP
     const { x, y } = offset
 
-    // 页面阴影
+    // Background with shadow
+    this.ctx.save()
     this.ctx.shadowColor = 'rgba(0, 0, 0, 0.1)'
     this.ctx.shadowBlur = 8
     this.ctx.shadowOffsetX = 0
     this.ctx.shadowOffsetY = 2
-
     this.ctx.fillStyle = '#FFFFFF'
     this.ctx.fillRect(x, y, pageSetup.width, pageSetup.height)
+    this.ctx.restore()
 
-    this.ctx.shadowColor = 'transparent'
-    this.ctx.shadowBlur = 0
-    this.ctx.shadowOffsetY = 0
-
+    // Margin lines in edit/design mode
     if (this.mode === EditorMode.EDIT || this.mode === EditorMode.DESIGN) {
-      this.drawMarginLines(x, y)
+      this.drawMarginLines(x, y, pageSetup)
     }
 
-    this.drawContentArea(pageIndex, x, y)
-    this.drawHeaderFooter(x, y, ZoneType.HEADER)
-    this.drawHeaderFooter(x, y, ZoneType.FOOTER)
-    this.drawPageNumber(pageIndex, x, y)
+    // Content using pre-computed positions
+    this.drawContentFromPositions(pageIndex, x, y, pageSetup)
+
+    // Header/footer dividers
+    this.drawHeaderFooter(x, y, ZoneType.HEADER, pageSetup)
+    this.drawHeaderFooter(x, y, ZoneType.FOOTER, pageSetup)
+
+    // Page number
+    this.drawPageNumber(pageIndex, x, y, pageSetup)
   }
 
-  private drawMarginLines(pageX: number, pageY: number): void {
-    const setup = DEFAULT_PAGE_SETUP
+  private drawMarginLines(
+    px: number, py: number, setup: typeof DEFAULT_PAGE_SETUP
+  ): void {
     this.ctx.strokeStyle = '#E5E7EB'
     this.ctx.lineWidth = 1
     this.ctx.setLineDash([4, 4])
 
-    // Top
-    this.ctx.beginPath()
-    this.ctx.moveTo(pageX, pageY + setup.marginTop)
-    this.ctx.lineTo(pageX + setup.width, pageY + setup.marginTop)
-    this.ctx.stroke()
-    // Bottom
-    this.ctx.beginPath()
-    this.ctx.moveTo(pageX, pageY + setup.height - setup.marginBottom)
-    this.ctx.lineTo(pageX + setup.width, pageY + setup.height - setup.marginBottom)
-    this.ctx.stroke()
-    // Left
-    this.ctx.beginPath()
-    this.ctx.moveTo(pageX + setup.marginLeft, pageY)
-    this.ctx.lineTo(pageX + setup.marginLeft, pageY + setup.height)
-    this.ctx.stroke()
-    // Right
-    this.ctx.beginPath()
-    this.ctx.moveTo(pageX + setup.width - setup.marginRight, pageY)
-    this.ctx.lineTo(pageX + setup.width - setup.marginRight, pageY + setup.height)
-    this.ctx.stroke()
-
+    const margins = [
+      [px, py + setup.marginTop, px + setup.width, py + setup.marginTop],
+      [px, py + setup.height - setup.marginBottom, px + setup.width, py + setup.height - setup.marginBottom],
+      [px + setup.marginLeft, py, px + setup.marginLeft, py + setup.height],
+      [px + setup.width - setup.marginRight, py, px + setup.width - setup.marginRight, py + setup.height],
+    ]
+    for (const [x1, y1, x2, y2] of margins) {
+      this.ctx.beginPath()
+      this.ctx.moveTo(x1, y1)
+      this.ctx.lineTo(x2, y2)
+      this.ctx.stroke()
+    }
     this.ctx.setLineDash([])
   }
 
-  private drawContentArea(pageIndex: number, pageX: number, pageY: number): void {
-    const setup = DEFAULT_PAGE_SETUP
-    const startX = pageX + setup.marginLeft
-    const startY = pageY + setup.marginTop + 50 // header height
-    const maxWidth = setup.width - setup.marginLeft - setup.marginRight
+  /**
+   * Render content using pre-computed position list (main pipeline output).
+   * Falls back to inline rendering when positions are stale.
+   */
+  private drawContentFromPositions(
+    pageIndex: number,
+    pageX: number,
+    pageY: number,
+    _setup: typeof DEFAULT_PAGE_SETUP
+  ): void {
+    // Filter positions for current page
+    const pagePositions = this.positionList.filter(p => p.pageIndex === pageIndex)
+    const mainUnzipped = unzipElementList(this.mainElements)
 
-    let currentX = startX
-    let currentY = startY
-    let currentLineHeight = 20
-    const elementsPerPage = 50
-
-    const startIndex = pageIndex * elementsPerPage
-    const endIndex = Math.min(startIndex + elementsPerPage, this.computeElements.length)
-
-    for (let i = startIndex; i < endIndex; i++) {
-      const el = this.computeElements[i]
-      if (!el) continue
-
-      if (el.type === ElementType.PAGE_BREAK) {
-        currentY += currentLineHeight
-        continue
+    if (pagePositions.length === 0 && mainUnzipped.length > 0) {
+      // Fallback: no precomputed positions — compute inline from pages
+      const page = this.pages[pageIndex]
+      if (!page) return
+      let cy = pageY + _setup.marginTop + 50
+      for (const line of page.lines) {
+        const cx = pageX + _setup.marginLeft
+        for (const el of line.elements) {
+          this.drawElement(el, cx, cy)
+        }
+        cy += line.height
       }
+      return
+    }
 
-      const charWidth = this.measurer.measureWidth(el.value || ' ', {
-        font: el.font || 'SimSun',
-        size: el.size || 16,
-        bold: el.bold,
-        italic: el.italic,
-      })
-
-      if (currentX + charWidth > startX + maxWidth && el.value !== '​') {
-        currentX = startX
-        currentY += currentLineHeight
+    // Draw using precomputed positions
+    for (const pos of pagePositions) {
+      const el = mainUnzipped[pos.index]
+      if (el && el.value !== '​') {
+        this.drawElement(el, pageX + pos.x, pageY + pos.y)
       }
-
-      this.drawElement(el, currentX, currentY)
-      currentX += charWidth
-      currentLineHeight = (el.lineHeight || 1.5) * (el.size || 16)
     }
   }
 
@@ -247,106 +296,159 @@ export class Draw {
     fontParts.push(`"${fontFamily}"`)
     this.ctx.font = fontParts.join(' ')
 
+    // Color (revisions take priority)
     if (el.revision) {
-      switch (el.revision.type) {
-        case 'insert': this.ctx.fillStyle = '#16A34A'; break
-        case 'delete': this.ctx.fillStyle = '#DC2626'; break
-        case 'modify': this.ctx.fillStyle = '#2563EB'; break
+      const revColors: Record<string, string> = {
+        insert: '#16A34A', delete: '#DC2626', modify: '#2563EB',
       }
+      this.ctx.fillStyle = revColors[el.revision.type] || '#000000'
     } else {
-      this.ctx.fillStyle = el.color || '#000000'
+      this.ctx.fillStyle = el.color || this.options.defaultColor || '#000000'
     }
 
+    // Highlight background
     if (el.highlight) {
-      const textWidth = this.ctx.measureText(el.value).width
+      const tw = this.ctx.measureText(el.value).width
       this.ctx.fillStyle = el.highlight
-      this.ctx.fillRect(x, y - fontSize * 0.8, textWidth, fontSize * 1.2)
+      this.ctx.fillRect(x, y - fontSize * 0.8, tw, fontSize * 1.2)
       this.ctx.fillStyle = el.color || '#000000'
     }
 
+    // Draw text (skip zero-width joiner)
     if (el.value && el.value !== '​') {
       this.ctx.fillText(el.value, x, y + fontSize * 0.8)
     }
 
+    // Underline
     if (el.underline) {
       this.ctx.strokeStyle = el.color || '#000000'
       this.ctx.lineWidth = 1
-      const underlineY = y + fontSize * 0.9
-      const textWidth = this.ctx.measureText(el.value).width
+      const uy = y + fontSize * 0.9
+      const tw = this.ctx.measureText(el.value).width
       this.ctx.beginPath()
-      this.ctx.moveTo(x, underlineY)
-      this.ctx.lineTo(x + textWidth, underlineY)
-      if (el.underlineStyle === 'wave') {
-        this.ctx.setLineDash([2, 2])
-      }
+      this.ctx.moveTo(x, uy)
+      this.ctx.lineTo(x + tw, uy)
+      if (el.underlineStyle === 'wave') this.ctx.setLineDash([2, 2])
       this.ctx.stroke()
       this.ctx.setLineDash([])
     }
 
+    // Strikethrough
     if (el.strikeout) {
       this.ctx.strokeStyle = el.color || '#000000'
       this.ctx.lineWidth = 1
-      const strikeY = y + fontSize * 0.4
-      const textWidth = this.ctx.measureText(el.value).width
+      const sy = y + fontSize * 0.4
+      const tw = this.ctx.measureText(el.value).width
       this.ctx.beginPath()
-      this.ctx.moveTo(x, strikeY)
-      this.ctx.lineTo(x + textWidth, strikeY)
+      this.ctx.moveTo(x, sy)
+      this.ctx.lineTo(x + tw, sy)
       this.ctx.stroke()
     }
   }
 
-  private drawHeaderFooter(pageX: number, pageY: number, zone: ZoneType): void {
-    const setup = DEFAULT_PAGE_SETUP
+  private drawHeaderFooter(
+    px: number, py: number, zone: ZoneType, setup: typeof DEFAULT_PAGE_SETUP
+  ): void {
     this.ctx.strokeStyle = '#E5E7EB'
     this.ctx.lineWidth = 1
 
     if (zone === ZoneType.HEADER) {
-      const headerBottom = pageY + setup.marginTop + 50
+      const bottom = py + setup.marginTop + 50
       this.ctx.beginPath()
-      this.ctx.moveTo(pageX + setup.marginLeft, headerBottom)
-      this.ctx.lineTo(pageX + setup.width - setup.marginRight, headerBottom)
+      this.ctx.moveTo(px + setup.marginLeft, bottom)
+      this.ctx.lineTo(px + setup.width - setup.marginRight, bottom)
       this.ctx.stroke()
     }
-
     if (zone === ZoneType.FOOTER) {
-      const footerTop = pageY + setup.height - setup.marginBottom - 40
+      const top = py + setup.height - setup.marginBottom - 40
       this.ctx.beginPath()
-      this.ctx.moveTo(pageX + setup.marginLeft, footerTop)
-      this.ctx.lineTo(pageX + setup.width - setup.marginRight, footerTop)
+      this.ctx.moveTo(px + setup.marginLeft, top)
+      this.ctx.lineTo(px + setup.width - setup.marginRight, top)
       this.ctx.stroke()
     }
   }
 
-  private drawPageNumber(pageIndex: number, pageX: number, pageY: number): void {
-    const setup = DEFAULT_PAGE_SETUP
-    const pageNum = `${pageIndex + 1} / ${this.pageCount}`
+  private drawPageNumber(
+    pageIndex: number, px: number, py: number, setup: typeof DEFAULT_PAGE_SETUP
+  ): void {
+    this.ctx.save()
     this.ctx.font = '12px Inter, sans-serif'
     this.ctx.fillStyle = '#9CA3AF'
     this.ctx.textAlign = 'center'
-    const numY = pageY + setup.height - setup.marginBottom + 24
-    this.ctx.fillText(pageNum, pageX + setup.width / 2, numY)
-    this.ctx.textAlign = 'left'
+    const ny = py + setup.height - setup.marginBottom + 24
+    this.ctx.fillText(`${pageIndex + 1} / ${this.pageCount}`, px + setup.width / 2, ny)
+    this.ctx.restore()
   }
 
   private drawCursor(): void {
     if (this.mode === EditorMode.READONLY || this.mode === EditorMode.PRINT) return
 
-    const cursorPos = this.position.getPositionByIndex(this.cursorIndex)
-    if (!cursorPos) return
+    const pos = this.positionList[this.cursorIndex]
+    if (!pos) {
+      // Fallback: cursor at start
+      const setup = DEFAULT_PAGE_SETUP
+      this.ctx.strokeStyle = '#3B82F6'
+      this.ctx.lineWidth = 2
+      this.ctx.beginPath()
+      this.ctx.moveTo(setup.marginLeft, setup.marginTop + 50)
+      this.ctx.lineTo(setup.marginLeft, setup.marginTop + 50 + 20)
+      this.ctx.stroke()
+      return
+    }
 
     this.ctx.strokeStyle = '#3B82F6'
     this.ctx.lineWidth = 2
     this.ctx.beginPath()
-    this.ctx.moveTo(cursorPos.x, cursorPos.y)
-    this.ctx.lineTo(cursorPos.x, cursorPos.y + (cursorPos.height || 20))
+    this.ctx.moveTo(pos.x, pos.y - pos.ascent)
+    this.ctx.lineTo(pos.x, pos.y + pos.descent)
     this.ctx.stroke()
   }
 
-  private setCursor(): void {
-    // TODO: Update cursor position based on current edit operation
+  // ---- Events ----
+
+  private bindEvents(): void {
+    window.addEventListener('resize', this.boundResize)
+    this.canvas.addEventListener('wheel', this.boundWheel, { passive: false })
+    this.canvas.addEventListener('keydown', this.boundKeyDown)
+    this.canvas.addEventListener('compositionstart', this.boundCompositionStart)
+    this.canvas.addEventListener('compositionupdate', this.boundCompositionUpdate)
+    this.canvas.addEventListener('compositionend', this.boundCompositionEnd)
   }
 
-  // ==================== 公共 API ====================
+  private onResize(): void {
+    const cw = this.container.clientWidth
+    this.options.scale = cw > 0 ? Math.min(1, (cw - 40) / DEFAULT_PAGE_SETUP.width) : 1
+    this.render()
+  }
+
+  private onWheel(e: WheelEvent): void {
+    e.preventDefault()
+    this.scrollTop = Math.max(0, this.scrollTop + e.deltaY)
+    this.render()
+  }
+
+  private onKeyDown(e: KeyboardEvent): void {
+    const handled = this.keyboardHandler.handleKeyDown(e)
+    if (handled) {
+      e.preventDefault()
+      return
+    }
+    // Not handled by engine → pass through (e.g. Ctrl+S for save)
+  }
+
+  private onCompositionStart(_e: CompositionEvent): void {
+    this.keyboardHandler.handleCompositionStart()
+  }
+
+  private onCompositionUpdate(e: CompositionEvent): void {
+    this.keyboardHandler.handleCompositionUpdate(e.data)
+  }
+
+  private onCompositionEnd(e: CompositionEvent): void {
+    this.keyboardHandler.handleCompositionEnd(e.data)
+  }
+
+  // ---- Public API ----
 
   getValue(): { header: IElement[]; main: IElement[]; footer: IElement[] } {
     return {
@@ -360,72 +462,62 @@ export class Draw {
     this.headerElements = header
     this.mainElements = main
     this.footerElements = footer
-    this.render({ isCompute: true, isSubmitHistory: false })
+    this.recomputeLayout()
+    this.render()
   }
 
   setMode(mode: EditorMode): void {
     this.mode = mode
-    this.render({ isCompute: false, isSubmitHistory: false })
+    this.render()
     this.eventBus.emit('modeChange', { mode })
   }
 
   setPageMode(_mode: PageMode): void {
-    this.render({ isCompute: false, isSubmitHistory: false })
+    this.render()
   }
 
-  getEventBus(): EventBus {
-    return this.eventBus
-  }
+  getEventBus(): EventBus { return this.eventBus }
 
   undo(): void {
-    const elements = this.historyManager.undo()
-    if (elements) {
-      this.mainElements = elements
-      this.render({ isCompute: true, isSubmitHistory: false })
+    const elems = this.historyManager.undo()
+    if (elems) {
+      this.mainElements = elems
+      this.recomputeLayout()
+      this.render()
     }
   }
 
   redo(): void {
-    const elements = this.historyManager.redo()
-    if (elements) {
-      this.mainElements = elements
-      this.render({ isCompute: true, isSubmitHistory: false })
+    const elems = this.historyManager.redo()
+    if (elems) {
+      this.mainElements = elems
+      this.recomputeLayout()
+      this.render()
     }
   }
 
-  canUndo(): boolean {
-    return this.historyManager.canUndo()
+  canUndo(): boolean { return this.historyManager.canUndo() }
+  canRedo(): boolean { return this.historyManager.canRedo() }
+
+  getPageSetup() {
+    return { ...DEFAULT_PAGE_SETUP }
   }
 
-  canRedo(): boolean {
-    return this.historyManager.canRedo()
-  }
+  getScale(): number { return this.options.scale || 1 }
 
-  // ==================== 窗口事件 ====================
+  // ---- Lifecycle ----
 
-  private bindEvents(): void {
-    window.addEventListener('resize', this.resize.bind(this))
-    this.canvas.addEventListener('wheel', this.onWheel.bind(this))
-  }
+  resize(): void { this.onResize() }
 
-  private resize(): void {
-    const containerWidth = (this.canvas.parentElement as HTMLElement)?.clientWidth || 1200
-    if (containerWidth > 0) {
-      this.options.scale = 1
-      this.render({ isCompute: false, isSubmitHistory: false })
-    }
-  }
-
-  private onWheel(e: WheelEvent): void {
-    e.preventDefault()
-    this.scrollTop = Math.max(0, this.scrollTop + e.deltaY)
-    this.render({ isCompute: false, isSubmitHistory: false })
-  }
-
-  // ==================== 生命周期 ====================
+  focus(): void { this.canvas.focus() }
 
   destroy(): void {
-    window.removeEventListener('resize', this.resize.bind(this))
+    window.removeEventListener('resize', this.boundResize)
+    this.canvas.removeEventListener('wheel', this.boundWheel)
+    this.canvas.removeEventListener('keydown', this.boundKeyDown)
+    this.canvas.removeEventListener('compositionstart', this.boundCompositionStart)
+    this.canvas.removeEventListener('compositionupdate', this.boundCompositionUpdate)
+    this.canvas.removeEventListener('compositionend', this.boundCompositionEnd)
     this.measurer.destroy()
     this.eventBus.removeAll()
     if (this.canvas.parentElement) {

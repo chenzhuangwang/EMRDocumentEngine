@@ -8,6 +8,8 @@ export class TextMeasurer {
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
   private cache: Map<string, TextMetrics>
+  private cacheKeys: string[] = []  // LRU queue
+  private static readonly MAX_CACHE_SIZE = 2000
 
   constructor() {
     this.canvas = document.createElement('canvas')
@@ -31,12 +33,23 @@ export class TextMeasurer {
   measure(text: string, config: IFontConfig): TextMetrics {
     const key = this.getCacheKey(text, config)
     if (this.cache.has(key)) {
+      // Move to end (most recently used)
+      this.cacheKeys = this.cacheKeys.filter(k => k !== key)
+      this.cacheKeys.push(key)
       return this.cache.get(key)!
     }
 
     this.ctx.font = this.buildFontString(config)
     const metrics = this.ctx.measureText(text)
+
+    // LRU eviction
+    if (this.cacheKeys.length >= TextMeasurer.MAX_CACHE_SIZE) {
+      const oldest = this.cacheKeys.shift()!
+      this.cache.delete(oldest)
+    }
+
     this.cache.set(key, metrics)
+    this.cacheKeys.push(key)
     return metrics
   }
 
@@ -120,6 +133,7 @@ export class TextMeasurer {
 
   clearCache(): void {
     this.cache.clear()
+    this.cacheKeys = []
   }
 
   destroy(): void {

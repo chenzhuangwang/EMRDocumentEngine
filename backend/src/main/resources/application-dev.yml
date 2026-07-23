@@ -1,0 +1,24 @@
+# 开发环境配置 - 使用 H2 内存数据库，无需 MySQL/Redis
+spring:
+  datasource:
+    url: jdbc:h2:mem:emr_editor;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  sql:
+    init:
+      mode: always
+      continue-on-error: true
+      schema-locations: classpath:db/schema-h2.sql
+      data-locations: classpath:db/seed-h2.sql
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+
+logging:
+  level:
+    com.emr: DEBUG
