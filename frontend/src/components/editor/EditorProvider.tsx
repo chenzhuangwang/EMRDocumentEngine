@@ -24,10 +24,15 @@ export function EditorProvider({ children, containerRef, data, options }: Editor
   useEffect(() => {
     if (!containerRef.current) return
 
-    editorRef.current = new Editor(containerRef.current, data, options)
+    const editor = new Editor(containerRef.current, data, options)
+    editorRef.current = editor
+
+    // Auto-focus the canvas so it can receive keyboard events
+    const timer = setTimeout(() => editor.focus(), 100)
 
     return () => {
-      editorRef.current?.destroy()
+      clearTimeout(timer)
+      editor.destroy()
       editorRef.current = null
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

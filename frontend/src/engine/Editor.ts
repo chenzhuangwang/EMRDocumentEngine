@@ -140,7 +140,7 @@ export class Editor {
   // ==================== 生命周期 ====================
 
   focus(): void {
-    // TODO: 使编辑器获得焦点
+    this.draw.focus()
   }
 
   destroy(): void {

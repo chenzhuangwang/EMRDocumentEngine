@@ -91,11 +91,17 @@ export class KeyboardHandler {
         return false
     }
 
+    // Fallback: printable single characters (letters, digits, symbols)
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      this.insertText(e.key)
+      return true
+    }
+
     return false
   }
 
   handleTextInput(char: string): void {
-    if (char && char.length === 1 && !char.match(/[\x00-\x1F]/)) {
+    if (char && char.length >= 1) {
       this.insertText(char)
     }
   }
@@ -115,6 +121,10 @@ export class KeyboardHandler {
     if (text) {
       this.insertText(text)
     }
+  }
+
+  isComposing(): boolean {
+    return this.compositionActive
   }
 
   // ---- 光标移动 ----

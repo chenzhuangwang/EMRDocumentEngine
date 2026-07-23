@@ -63,6 +63,7 @@ export class Draw implements KeyboardContext {
   private boundResize: () => void
   private boundWheel: (e: WheelEvent) => void
   private boundKeyDown: (e: KeyboardEvent) => void
+  private boundBeforeInput: (e: InputEvent) => void
   private boundCompositionStart: (e: CompositionEvent) => void
   private boundCompositionUpdate: (e: CompositionEvent) => void
   private boundCompositionEnd: (e: CompositionEvent) => void
@@ -100,6 +101,7 @@ export class Draw implements KeyboardContext {
     this.boundResize = this.onResize.bind(this)
     this.boundWheel = this.onWheel.bind(this)
     this.boundKeyDown = this.onKeyDown.bind(this)
+    this.boundBeforeInput = this.onBeforeInput.bind(this)
     this.boundCompositionStart = this.onCompositionStart.bind(this)
     this.boundCompositionUpdate = this.onCompositionUpdate.bind(this)
     this.boundCompositionEnd = this.onCompositionEnd.bind(this)
@@ -410,6 +412,7 @@ export class Draw implements KeyboardContext {
     window.addEventListener('resize', this.boundResize)
     this.canvas.addEventListener('wheel', this.boundWheel, { passive: false })
     this.canvas.addEventListener('keydown', this.boundKeyDown)
+    this.canvas.addEventListener('beforeinput', this.boundBeforeInput)
     this.canvas.addEventListener('compositionstart', this.boundCompositionStart)
     this.canvas.addEventListener('compositionupdate', this.boundCompositionUpdate)
     this.canvas.addEventListener('compositionend', this.boundCompositionEnd)
@@ -433,7 +436,14 @@ export class Draw implements KeyboardContext {
       e.preventDefault()
       return
     }
-    // Not handled by engine → pass through (e.g. Ctrl+S for save)
+  }
+
+  private onBeforeInput(e: InputEvent): void {
+    // Capture direct text input (handles CJK + Latin via OS input method)
+    if (e.data && !this.keyboardHandler.isComposing()) {
+      e.preventDefault()
+      this.keyboardHandler.handleTextInput(e.data)
+    }
   }
 
   private onCompositionStart(_e: CompositionEvent): void {
@@ -515,6 +525,7 @@ export class Draw implements KeyboardContext {
     window.removeEventListener('resize', this.boundResize)
     this.canvas.removeEventListener('wheel', this.boundWheel)
     this.canvas.removeEventListener('keydown', this.boundKeyDown)
+    this.canvas.removeEventListener('beforeinput', this.boundBeforeInput)
     this.canvas.removeEventListener('compositionstart', this.boundCompositionStart)
     this.canvas.removeEventListener('compositionupdate', this.boundCompositionUpdate)
     this.canvas.removeEventListener('compositionend', this.boundCompositionEnd)
