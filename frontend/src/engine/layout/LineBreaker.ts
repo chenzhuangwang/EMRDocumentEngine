@@ -66,6 +66,20 @@ export class LineBreaker {
       const ascent = el.size ? el.size * 0.8 : options.defaultSize * 0.8
       const descent = el.size ? el.size * 0.2 : options.defaultSize * 0.2
 
+      // Newline character forces a line break (keep it in line for position tracking)
+      if (el.type === ElementType.TEXT && el.value === '\n') {
+        currentLineElements.push(el)
+        // Use default line metrics when current line has no visible content (consecutive \n)
+        const lineAscent = maxAscent > 0 ? maxAscent : options.defaultSize * 0.8
+        const lineDescent = maxDescent > 0 ? maxDescent : options.defaultSize * 0.2
+        lines.push(this.createLine(currentLineElements, currentLineWidth, lineAscent, lineDescent))
+        currentLineElements = []
+        currentLineWidth = 0
+        maxAscent = 0
+        maxDescent = 0
+        continue
+      }
+
       if (currentLineWidth + elWidth > options.maxWidth && currentLineElements.length > 0) {
         lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
         currentLineElements = []
@@ -74,8 +88,11 @@ export class LineBreaker {
         maxDescent = 0
       }
 
-      // 跳过零宽字符（占位用）
-      if (el.value === '​') continue
+      // 零宽字符（占位用）— 保留在行中用于光标位置跟踪，但不占宽度
+      if (el.value === '​') {
+        currentLineElements.push(el)
+        continue
+      }
 
       currentLineElements.push(el)
       currentLineWidth += elWidth

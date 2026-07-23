@@ -35,7 +35,7 @@ export class HistoryManager {
 
     // 清空 redo 栈（新操作使之前的 redo 无效）
     this.redoStack = []
-    this.currentElements = elements
+    this.currentElements = JSON.parse(JSON.stringify(elements))
   }
 
   /**

@@ -143,7 +143,7 @@ export default function EditorPage() {
         {/* Canvas 编辑器容器 */}
         <div
           ref={containerRef}
-          className="flex-1 overflow-auto bg-[#E5E7EB] flex justify-center"
+          className="flex-1 overflow-hidden bg-[#E5E7EB] relative"
           style={{ minHeight: 0 }}
         />
       </EditorLayout>

@@ -4,11 +4,13 @@
 
 import type { IElement } from '../document/DocumentModel'
 import { ElementType, generateElementId } from '../document/DocumentModel'
+import type { RangeManager } from '../state/RangeManager'
 
 export interface KeyboardContext {
   elements: IElement[]
   cursorIndex: number
   onElementsChange: (elements: IElement[], cursorIndex: number, addHistory: boolean) => void
+  rangeManager: RangeManager
 }
 
 export class KeyboardHandler {
@@ -136,11 +138,15 @@ export class KeyboardHandler {
     ))
 
     if (extendSelection) {
-      // 扩展选区模式
-      this.context.onElementsChange(this.context.elements, newIndex, false)
+      if (!this.context.rangeManager.hasRange) {
+        this.context.rangeManager.startDrag(this.context.cursorIndex)
+      }
+      this.context.rangeManager.extendTo(newIndex)
     } else {
-      this.context.onElementsChange(this.context.elements, newIndex, false)
+      this.context.rangeManager.clear()
     }
+
+    this.context.onElementsChange(this.context.elements, newIndex, false)
   }
 
   private moveCursorLine(delta: number): void {
@@ -175,6 +181,8 @@ export class KeyboardHandler {
   // ---- 文本操作 ----
 
   private insertText(text: string): void {
+    this.context.rangeManager.clear()
+
     const elements = [...this.context.elements]
     const insertIndex = this.context.cursorIndex
 
@@ -210,9 +218,17 @@ export class KeyboardHandler {
 
   private deleteBeforeCursor(): void {
     const elements = this.context.elements
-    const idx = this.context.cursorIndex
+    if (elements.length === 0) return
 
-    if (idx <= 0 || elements.length === 0) return
+    // 有选区 → 删除选区内容
+    if (this.context.rangeManager.hasRange) {
+      this.deleteSelectedRange()
+      return
+    }
+
+    this.context.rangeManager.clear()
+    const idx = this.context.cursorIndex
+    if (idx <= 0) return
 
     const before = elements.slice(0, idx - 1)
     const after = elements.slice(idx)
@@ -221,13 +237,35 @@ export class KeyboardHandler {
 
   private deleteAfterCursor(): void {
     const elements = this.context.elements
-    const idx = this.context.cursorIndex
+    if (elements.length === 0) return
 
-    if (idx >= elements.length || elements.length === 0) return
+    // 有选区 → 删除选区内容
+    if (this.context.rangeManager.hasRange) {
+      this.deleteSelectedRange()
+      return
+    }
+
+    this.context.rangeManager.clear()
+    const idx = this.context.cursorIndex
+    if (idx >= elements.length) return
 
     const before = elements.slice(0, idx)
     const after = elements.slice(idx + 1)
     this.context.onElementsChange([...before, ...after], idx, true)
+  }
+
+  /** 删除当前选中的内容 */
+  private deleteSelectedRange(): void {
+    const elements = this.context.elements
+    const start = this.context.rangeManager.start
+    const end = this.context.rangeManager.end
+
+    // 先清除选区再触发渲染，否则渲染时会画出已删除内容的蓝色高亮
+    this.context.rangeManager.clear()
+
+    const before = elements.slice(0, start)
+    const after = elements.slice(end)
+    this.context.onElementsChange([...before, ...after], start, true)
   }
 
   // ---- 格式化 ----

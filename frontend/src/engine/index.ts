@@ -10,6 +10,7 @@ export { LineBreaker } from './layout/LineBreaker'
 export { PageBreaker } from './layout/PageBreaker'
 export { Position } from './state/Position'
 export { HistoryManager } from './state/HistoryManager'
+export { RangeManager } from './state/RangeManager'
 export { KeyboardHandler } from './interaction/KeyboardHandler'
 export {
   ElementType,

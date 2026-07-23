@@ -11,8 +11,10 @@ import {
   ChevronDown,
   User,
   FileText,
+  PanelLeftClose,
+  PanelLeft,
 } from 'lucide-react'
-import { useEditorStore, useUserStore } from '@/store'
+import { useEditorStore, useUserStore, useUIStore } from '@/store'
 
 interface HeaderBarProps {
   documentTitle: string
@@ -26,11 +28,22 @@ export function HeaderBar({ documentTitle, onTitleChange, onSave, onShare }: Hea
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
   const user = useUserStore((s) => s.user)
   const isDirty = useEditorStore((s) => s.isDirty)
+  const sidebarOpen = useUIStore((s) => s.sidebarOpen)
+  const toggleSidebar = useUIStore((s) => s.toggleSidebar)
 
   return (
     <header className="h-header bg-white border-b border-gray-200 flex items-center justify-between px-4 flex-shrink-0 select-none">
       {/* 左侧：Logo + 标题 */}
       <div className="flex items-center gap-3">
+        {/* Sidebar toggle */}
+        <button
+          className="toolbar-btn"
+          onClick={toggleSidebar}
+          title={sidebarOpen ? '关闭侧边栏' : '打开侧边栏'}
+        >
+          {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
+        </button>
+
         <div className="flex items-center gap-2 text-primary-600">
           <FileText size={22} />
           <span className="font-semibold text-base hidden sm:inline">EMR Editor</span>

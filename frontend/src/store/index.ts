@@ -86,7 +86,7 @@ interface UIState {
 }
 
 export const useUIStore = create<UIState>((set) => ({
-  sidebarOpen: true,
+  sidebarOpen: false,
   propertiesPanelOpen: false,
   sidebarTab: 'templates',
 

@@ -3,14 +3,17 @@
 // ============================================================
 
 import type { IPosition, IPageSetup, IPage, IPageOffset } from '../document/DocumentModel'
+import type { TextMeasurer } from '../layout/TextMeasurer'
 
 export class Position {
   private positionList: IPosition[] = []
   private pageList: IPage[] = []
   private pageSetup: IPageSetup
+  private measurer: TextMeasurer
 
-  constructor(pageSetup: IPageSetup) {
+  constructor(pageSetup: IPageSetup, measurer: TextMeasurer) {
     this.pageSetup = pageSetup
+    this.measurer = measurer
   }
 
   /**
@@ -49,20 +52,25 @@ export class Position {
       let contentY = pageStartY + pageSetup.marginTop + (pageSetup.headerHeight || 50)
       for (const ml of page.lines) {
         let contentX = pageSetup.marginLeft
-        for (const _el of ml.elements) {
-          // Compute element width for progressive X advance
+        for (const el of ml.elements) {
+          const elWidth = (el.value === '​' || el.value === '\n') ? 0 : this.measurer.measureWidth(el.value || '', {
+            font: el.font || 'SimSun',
+            size: el.size || 16,
+            bold: el.bold,
+            italic: el.italic,
+          })
           positions.push({
             index: globalIndex++,
             pageIndex: page.pageIndex,
             rowIndex: positions.length,
             x: contentX,
             y: contentY,
-            width: 0,
+            width: elWidth,
             height: ml.height,
             ascent: ml.maxAscent,
             descent: ml.maxDescent,
           })
-          // Note: contentX advances per-element; width is computed elsewhere
+          contentX += elWidth
         }
         contentY += ml.height
       }
@@ -106,7 +114,8 @@ export class Position {
         y >= pos.y &&
         y <= pos.y + pos.height
       ) {
-        if (x > pos.x + pos.width / 2 && i < this.positionList.length - 1) {
+        // Click in right half → cursor goes after this character
+        if (x > pos.x + pos.width / 2) {
           return i + 1
         }
         return i
@@ -119,6 +128,15 @@ export class Position {
         closestIndex = i
       }
     }
+
+    // If click is to the right of the last position on its line, place cursor at end
+    if (this.positionList.length > 0) {
+      const last = this.positionList[this.positionList.length - 1]
+      if (y >= last.y && y <= last.y + last.height && x > last.x + last.width) {
+        return this.positionList.length
+      }
+    }
+
     return closestIndex
   }
 

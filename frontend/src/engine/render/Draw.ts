@@ -21,6 +21,7 @@ import { LineBreaker } from '../layout/LineBreaker'
 import { PageBreaker } from '../layout/PageBreaker'
 import { HistoryManager } from '../state/HistoryManager'
 import { Position } from '../state/Position'
+import { RangeManager } from '../state/RangeManager'
 import { EventBus } from '../EventBus'
 import {
   KeyboardHandler,
@@ -40,6 +41,7 @@ export class Draw implements KeyboardContext {
   private pageBreaker: PageBreaker
   private historyManager: HistoryManager
   private position: Position
+  public rangeManager: RangeManager
   private eventBus: EventBus
   private keyboardHandler: KeyboardHandler
 
@@ -63,10 +65,9 @@ export class Draw implements KeyboardContext {
   private boundResize: () => void
   private boundWheel: (e: WheelEvent) => void
   private boundKeyDown: (e: KeyboardEvent) => void
-  private boundBeforeInput: (e: InputEvent) => void
-  private boundCompositionStart: (e: CompositionEvent) => void
-  private boundCompositionUpdate: (e: CompositionEvent) => void
-  private boundCompositionEnd: (e: CompositionEvent) => void
+  private boundMouseDown: (e: MouseEvent) => void
+  private boundMouseMove: (e: MouseEvent) => void
+  private boundMouseUp: (e: MouseEvent) => void
 
   constructor(container: HTMLElement, options?: Partial<IEditorOption>) {
     this.container = container
@@ -79,8 +80,9 @@ export class Draw implements KeyboardContext {
     this.canvas.style.display = 'block'
     this.canvas.style.position = 'absolute'
     this.canvas.style.top = '0'
-    this.canvas.style.left = '0'
-    this.canvas.tabIndex = 0  // Make canvas focusable for keyboard events
+    this.canvas.style.left = '50%'
+    this.canvas.style.transform = 'translateX(-50%)'
+    this.canvas.tabIndex = 0
     container.appendChild(this.canvas)
 
     const ctx = this.canvas.getContext('2d')
@@ -93,7 +95,8 @@ export class Draw implements KeyboardContext {
     this.lineBreaker = new LineBreaker(this.measurer)
     this.pageBreaker = new PageBreaker()
     this.historyManager = new HistoryManager(this.options.historyMaxRecordCount)
-    this.position = new Position(DEFAULT_PAGE_SETUP)
+    this.position = new Position(DEFAULT_PAGE_SETUP, this.measurer)
+    this.rangeManager = new RangeManager()
     this.eventBus = new EventBus()
     this.keyboardHandler = new KeyboardHandler(this)
 
@@ -101,10 +104,9 @@ export class Draw implements KeyboardContext {
     this.boundResize = this.onResize.bind(this)
     this.boundWheel = this.onWheel.bind(this)
     this.boundKeyDown = this.onKeyDown.bind(this)
-    this.boundBeforeInput = this.onBeforeInput.bind(this)
-    this.boundCompositionStart = this.onCompositionStart.bind(this)
-    this.boundCompositionUpdate = this.onCompositionUpdate.bind(this)
-    this.boundCompositionEnd = this.onCompositionEnd.bind(this)
+    this.boundMouseDown = this.onMouseDown.bind(this)
+    this.boundMouseMove = this.onMouseMove.bind(this)
+    this.boundMouseUp = this.onMouseUp.bind(this)
 
     this.bindEvents()
     this.resize()
@@ -269,21 +271,38 @@ export class Draw implements KeyboardContext {
       if (!page) return
       let cy = pageY + _setup.marginTop + 50
       for (const line of page.lines) {
-        const cx = pageX + _setup.marginLeft
+        let cx = pageX + _setup.marginLeft
         for (const el of line.elements) {
           this.drawElement(el, cx, cy)
+          cx += this.measurer.measureWidth(el.value || '', {
+            font: el.font || this.options.defaultFont || 'SimSun',
+            size: el.size || this.options.defaultSize || 16,
+            bold: el.bold,
+            italic: el.italic,
+          })
         }
         cy += line.height
       }
       return
     }
 
-    // Draw using precomputed positions
+    // Draw using precomputed positions (global coordinates — pos.x / pos.y
+    // already include page offsets, do NOT add pageX / pageY).
+    const selStart = this.rangeManager.start
+    const selEnd = this.rangeManager.end
+    const hasSelection = this.rangeManager.hasRange
+
     for (const pos of pagePositions) {
       const el = mainUnzipped[pos.index]
-      if (el && el.value !== '​') {
-        this.drawElement(el, pageX + pos.x, pageY + pos.y)
+      if (!el || el.value === '\n' || el.value === '​') continue
+
+      // Selection highlight
+      if (hasSelection && pos.index >= selStart && pos.index < selEnd) {
+        this.ctx.fillStyle = 'rgba(59, 130, 246, 0.25)'
+        this.ctx.fillRect(pos.x, pos.y, pos.width, pos.height)
       }
+
+      this.drawElement(el, pos.x, pos.y)
     }
   }
 
@@ -316,8 +335,8 @@ export class Draw implements KeyboardContext {
       this.ctx.fillStyle = el.color || '#000000'
     }
 
-    // Draw text (skip zero-width joiner)
-    if (el.value && el.value !== '​') {
+    // Draw text (skip zero-width joiner and newline)
+    if (el.value && el.value !== '​' && el.value !== '\n') {
       this.ctx.fillText(el.value, x, y + fontSize * 0.8)
     }
 
@@ -385,9 +404,14 @@ export class Draw implements KeyboardContext {
   private drawCursor(): void {
     if (this.mode === EditorMode.READONLY || this.mode === EditorMode.PRINT) return
 
-    const pos = this.positionList[this.cursorIndex]
+    let pos = this.positionList[this.cursorIndex]
+
+    if (!pos && this.positionList.length > 0 && this.cursorIndex >= this.positionList.length) {
+      const last = this.positionList[this.positionList.length - 1]
+      pos = { ...last, x: last.x + last.width }
+    }
+
     if (!pos) {
-      // Fallback: cursor at start
       const setup = DEFAULT_PAGE_SETUP
       this.ctx.strokeStyle = '#3B82F6'
       this.ctx.lineWidth = 2
@@ -401,8 +425,8 @@ export class Draw implements KeyboardContext {
     this.ctx.strokeStyle = '#3B82F6'
     this.ctx.lineWidth = 2
     this.ctx.beginPath()
-    this.ctx.moveTo(pos.x, pos.y - pos.ascent)
-    this.ctx.lineTo(pos.x, pos.y + pos.descent)
+    this.ctx.moveTo(pos.x, pos.y)
+    this.ctx.lineTo(pos.x, pos.y + pos.height)
     this.ctx.stroke()
   }
 
@@ -411,11 +435,11 @@ export class Draw implements KeyboardContext {
   private bindEvents(): void {
     window.addEventListener('resize', this.boundResize)
     this.canvas.addEventListener('wheel', this.boundWheel, { passive: false })
+    this.container.addEventListener('wheel', this.boundWheel, { passive: false })
     this.canvas.addEventListener('keydown', this.boundKeyDown)
-    this.canvas.addEventListener('beforeinput', this.boundBeforeInput)
-    this.canvas.addEventListener('compositionstart', this.boundCompositionStart)
-    this.canvas.addEventListener('compositionupdate', this.boundCompositionUpdate)
-    this.canvas.addEventListener('compositionend', this.boundCompositionEnd)
+    this.canvas.addEventListener('mousedown', this.boundMouseDown)
+    window.addEventListener('mousemove', this.boundMouseMove)
+    window.addEventListener('mouseup', this.boundMouseUp)
   }
 
   private onResize(): void {
@@ -434,28 +458,58 @@ export class Draw implements KeyboardContext {
     const handled = this.keyboardHandler.handleKeyDown(e)
     if (handled) {
       e.preventDefault()
-      return
     }
   }
 
-  private onBeforeInput(e: InputEvent): void {
-    // Capture direct text input (handles CJK + Latin via OS input method)
-    if (e.data && !this.keyboardHandler.isComposing()) {
-      e.preventDefault()
-      this.keyboardHandler.handleTextInput(e.data)
+  // ---- Mouse Events ----
+
+  private clientToDoc(clientX: number, clientY: number): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect()
+    const scale = this.options.scale || 1
+
+    const cssX = clientX - rect.left
+    const cssY = clientY - rect.top
+
+    const bufToCssX = rect.width > 0 ? this.canvas.width / rect.width : 1
+    const bufToCssY = rect.height > 0 ? this.canvas.height / rect.height : 1
+
+    const bufX = cssX * bufToCssX
+    const bufY = cssY * bufToCssY
+
+    const docX = bufX / (this.dpr * scale)
+    const docY = bufY / (this.dpr * scale) + this.scrollTop
+
+    return { x: docX, y: docY }
+  }
+
+  private onMouseDown(e: MouseEvent): void {
+    if (this.mode === EditorMode.READONLY || this.mode === EditorMode.PRINT) return
+
+    const { x, y } = this.clientToDoc(e.clientX, e.clientY)
+    const index = this.position.getIndexByCoord(x, y)
+
+    this.rangeManager.startDrag(index)
+    this.cursorIndex = index
+    this.render()
+  }
+
+  private onMouseMove(e: MouseEvent): void {
+    if (!this.rangeManager.isSelecting) return
+
+    const { x, y } = this.clientToDoc(e.clientX, e.clientY)
+    const index = this.position.getIndexByCoord(x, y)
+
+    if (index !== this.cursorIndex) {
+      this.rangeManager.extendTo(index)
+      this.cursorIndex = index
+      this.render()
     }
   }
 
-  private onCompositionStart(_e: CompositionEvent): void {
-    this.keyboardHandler.handleCompositionStart()
-  }
-
-  private onCompositionUpdate(e: CompositionEvent): void {
-    this.keyboardHandler.handleCompositionUpdate(e.data)
-  }
-
-  private onCompositionEnd(e: CompositionEvent): void {
-    this.keyboardHandler.handleCompositionEnd(e.data)
+  private onMouseUp(_e: MouseEvent): void {
+    if (!this.rangeManager.isSelecting) return
+    this.rangeManager.endDrag()
+    this.render()
   }
 
   // ---- Public API ----
@@ -524,11 +578,11 @@ export class Draw implements KeyboardContext {
   destroy(): void {
     window.removeEventListener('resize', this.boundResize)
     this.canvas.removeEventListener('wheel', this.boundWheel)
+    this.container.removeEventListener('wheel', this.boundWheel)
     this.canvas.removeEventListener('keydown', this.boundKeyDown)
-    this.canvas.removeEventListener('beforeinput', this.boundBeforeInput)
-    this.canvas.removeEventListener('compositionstart', this.boundCompositionStart)
-    this.canvas.removeEventListener('compositionupdate', this.boundCompositionUpdate)
-    this.canvas.removeEventListener('compositionend', this.boundCompositionEnd)
+    this.canvas.removeEventListener('mousedown', this.boundMouseDown)
+    window.removeEventListener('mousemove', this.boundMouseMove)
+    window.removeEventListener('mouseup', this.boundMouseUp)
     this.measurer.destroy()
     this.eventBus.removeAll()
     if (this.canvas.parentElement) {
