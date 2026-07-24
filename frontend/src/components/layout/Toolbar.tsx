@@ -212,17 +212,40 @@ function FontSizeSelector() {
   )
 }
 
-function InsertControlDropdown({ onInsert: _onInsert }: { onInsert?: (type: string) => void }) {
+function InsertControlDropdown({ onInsert }: { onInsert?: (type: string) => void }) {
   return (
-    <button
-      className="flex items-center gap-1 px-2 py-1 text-sm text-gray-600
-                 hover:bg-gray-100 rounded-md h-8"
-      title="插入控件"
-    >
-      <ChevronsUpDown size={14} />
-      <span className="hidden lg:inline text-xs">控件</span>
-      <ChevronDown size={10} />
-    </button>
+    <div className="relative group">
+      <button
+        className="flex items-center gap-1 px-2 py-1 text-sm text-gray-600
+                   hover:bg-gray-100 rounded-md h-8"
+        title="插入控件"
+      >
+        <ChevronsUpDown size={14} />
+        <span className="hidden lg:inline text-xs">控件</span>
+        <ChevronDown size={10} />
+      </button>
+      <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200
+                      rounded-md shadow-lg py-1 min-w-[120px] z-50
+                      hidden group-hover:block">
+        {[
+          { type: 'input', label: '文本输入' },
+          { type: 'select', label: '下拉选择' },
+          { type: 'date', label: '日期选择' },
+          { type: 'checkbox', label: '复选框' },
+          { type: 'number', label: '数字输入' },
+          { type: 'textarea', label: '文本域' },
+        ].map(({ type, label }) => (
+          <button
+            key={type}
+            className="block w-full text-left px-3 py-1.5 text-sm text-gray-700
+                       hover:bg-gray-50"
+            onClick={() => onInsert?.(type)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 

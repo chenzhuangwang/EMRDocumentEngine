@@ -5,6 +5,8 @@
 
 import {
   type IElement,
+  type ITr,
+  type ITd,
   type IEditorOption,
   type IPageOffset,
   type IPosition,
@@ -16,6 +18,8 @@ import {
   DEFAULT_EDITOR_OPTIONS,
   DEFAULT_PAGE_SETUP,
   generateElementId,
+  createControlElement,
+  ControlType,
 } from '../document/DocumentModel'
 import { unzipElementList } from '../document/ElementFormatter'
 import { TextMeasurer } from '../layout/TextMeasurer'
@@ -68,6 +72,12 @@ export class Draw implements KeyboardContext, IMEContext {
 
   // IME composition preview text
   private composingText: string = ''
+
+  // Focused form control (null = no control focused)
+  private focusedControl: IElement | null = null
+
+  // Focused table cell (null = no cell focused)
+  private focusedCell: { tableEl: IElement; td: ITd } | null = null
 
   // Event cleanup references
   private boundResize: () => void
@@ -512,6 +522,21 @@ export class Draw implements KeyboardContext, IMEContext {
   }
 
   private drawElement(el: IElement, x: number, y: number): void {
+    // Dispatch to specialized renderers
+    if (el.type === ElementType.TABLE) {
+      this.drawTable(el, x, y)
+      return
+    }
+    if (el.type === ElementType.IMAGE) {
+      this.drawImageElement(el, x, y)
+      return
+    }
+    if (el.type === ElementType.CONTROL) {
+      this.drawControl(el, x, y)
+      return
+    }
+
+    // ---- Text / Hyperlink / LaTeX ----
     const fontSize = el.size || 16
     const fontFamily = el.font || 'SimSun'
 
@@ -615,6 +640,9 @@ export class Draw implements KeyboardContext, IMEContext {
 
   private drawCursor(): void {
     if (this.mode === EditorMode.READONLY || this.mode === EditorMode.PRINT) return
+    // Don't draw document cursor when a table cell or control is focused —
+    // the focused element renders its own cursor
+    if (this.focusedCell || this.focusedControl) return
 
     const globalIdx = this.cursorToGlobalIndex(this.cursorIndex)
     let pos = this.positionList[globalIdx]
@@ -750,6 +778,401 @@ export class Draw implements KeyboardContext, IMEContext {
     this.ctx.setLineDash([])
   }
 
+  // ---- Table / Image / Control renderers ----
+
+  private drawTable(el: IElement, x: number, y: number): void {
+    const trList = el.trList
+    if (!trList || trList.length === 0) return
+
+    this.ctx.save()
+
+    // ---- Pass 1: compute column widths (stretch to fill content area) ----
+    let maxCols = 0
+    for (const tr of trList) {
+      let colCount = 0
+      for (const td of tr.tdList) {
+        colCount += td.colspan || 1
+      }
+      if (colCount > maxCols) maxCols = colCount
+    }
+
+    const contentW = DEFAULT_PAGE_SETUP.width - DEFAULT_PAGE_SETUP.marginLeft - DEFAULT_PAGE_SETUP.marginRight
+    const defaultColW = Math.round(contentW / maxCols)
+    const colWidths: number[] = new Array(maxCols).fill(defaultColW)
+
+    // ---- Pass 2: build cell layout grid ----
+    interface CellSlot { td: ITd; cx: number; cy: number; cw: number; ch: number }
+    const grid: (CellSlot | null)[][] = trList.map(() => new Array(maxCols).fill(null))
+
+    let rowY = y
+    for (let ri = 0; ri < trList.length; ri++) {
+      const tr = trList[ri]
+      const rowHeight = tr.height || 30
+      let ci = 0
+
+      for (const td of tr.tdList) {
+        // Skip columns covered by rowspan from previous rows
+        while (ci < maxCols && grid[ri][ci] !== null) {
+          ci++
+        }
+        if (ci >= maxCols) break
+
+        // Compute cellX from current column position
+        let cellX = x
+        for (let c = 0; c < ci; c++) {
+          cellX += colWidths[c]
+        }
+
+        const colspan = td.colspan || 1
+        const rowspan = td.rowspan || 1
+
+        // Compute cell width: sum of spanned columns
+        let cellW = 0
+        for (let s = 0; s < colspan && ci + s < maxCols; s++) {
+          cellW += colWidths[ci + s]
+        }
+        // Compute cell height: sum of spanned rows
+        let cellH = 0
+        for (let s = 0; s < rowspan && ri + s < trList.length; s++) {
+          cellH += trList[ri + s]?.height || 30
+        }
+
+        const slot: CellSlot = { td, cx: cellX, cy: rowY, cw: cellW, ch: cellH }
+
+        // Mark all grid positions covered by this cell
+        for (let rs = 0; rs < rowspan && ri + rs < trList.length; rs++) {
+          for (let cs = 0; cs < colspan && ci + cs < maxCols; cs++) {
+            grid[ri + rs][ci + cs] = slot
+          }
+        }
+
+        cellX += cellW
+        ci += colspan
+      }
+
+      rowY += rowHeight
+    }
+
+    // ---- Pass 3: render unique cells (dedupe by reference) ----
+    const rendered = new Set<CellSlot>()
+    const totalTableW = colWidths.reduce((a, b) => a + b, 0)
+    const totalTableH = trList.reduce((h, tr) => h + (tr.height || 30), 0)
+
+    // Outer border
+    this.ctx.strokeStyle = '#9CA3AF'
+    this.ctx.lineWidth = 1
+    this.ctx.strokeRect(x, y, totalTableW, totalTableH)
+
+    for (let ri = 0; ri < grid.length; ri++) {
+      for (let ci = 0; ci < maxCols; ci++) {
+        const slot = grid[ri][ci]
+        if (!slot || rendered.has(slot)) continue
+        rendered.add(slot)
+
+        const { td, cx, cy, cw, ch } = slot
+
+        // Cell background
+        if (td.backgroundColor) {
+          this.ctx.fillStyle = td.backgroundColor
+        } else if (td.isHeader) {
+          this.ctx.fillStyle = '#F3F4F6'
+        } else {
+          this.ctx.fillStyle = '#FFFFFF'
+        }
+        this.ctx.fillRect(cx, cy, cw, ch)
+
+        // Cell border
+        const isFocused = this.focusedCell && this.focusedCell.tableEl.id === el.id && this.focusedCell.td === td
+        this.ctx.strokeStyle = isFocused ? '#3B82F6' : (td.borderColor || '#D1D5DB')
+        this.ctx.lineWidth = isFocused ? 2 : 0.5
+        this.ctx.strokeRect(cx, cy, cw, ch)
+
+        // Cell content
+        const paddingX = 4
+        const paddingY = 4
+        let contentX = cx + paddingX
+        const cellFontSize = el.size || 14
+        for (const childEl of td.value) {
+          const childFontSize = childEl.size || cellFontSize
+          const childFontFamily = childEl.font || el.font || 'SimSun'
+
+          this.ctx.save()
+          const fontParts: string[] = []
+          if (childEl.bold || td.isHeader) fontParts.push('bold')
+          if (childEl.italic) fontParts.push('italic')
+          fontParts.push(`${childFontSize}px`)
+          fontParts.push(`"${childFontFamily}"`)
+          this.ctx.font = fontParts.join(' ')
+          this.ctx.fillStyle = childEl.color || '#000000'
+
+          const textY = td.verticalAlign === 'middle'
+            ? cy + ch / 2 + childFontSize * 0.3
+            : td.verticalAlign === 'bottom'
+              ? cy + ch - paddingY
+              : cy + paddingY + childFontSize * 0.8
+
+          if (childEl.value && childEl.value !== '​' && childEl.value !== '\n') {
+            this.ctx.fillText(childEl.value, contentX, textY)
+            contentX += this.ctx.measureText(childEl.value).width
+          }
+          this.ctx.restore()
+        }
+
+        // Draw cursor in focused cell
+        if (isFocused) {
+          const curFontSize = el.size || 14
+          let curBaseY: number
+          if (td.verticalAlign === 'middle') {
+            curBaseY = cy + ch / 2 + curFontSize * 0.3
+          } else if (td.verticalAlign === 'bottom') {
+            curBaseY = cy + ch - paddingY - curFontSize * 0.2
+          } else {
+            curBaseY = cy + paddingY + curFontSize * 0.8
+          }
+          this.ctx.strokeStyle = '#3B82F6'
+          this.ctx.lineWidth = 1.5
+          this.ctx.beginPath()
+          this.ctx.moveTo(contentX, curBaseY - curFontSize * 0.8)
+          this.ctx.lineTo(contentX, curBaseY + curFontSize * 0.2)
+          this.ctx.stroke()
+        }
+      }
+    }
+
+    this.ctx.restore()
+  }
+
+  private drawImageElement(el: IElement, x: number, y: number): void {
+    const img = el.imageData
+    if (!img) return
+
+    const w = img.width || 100
+    const h = img.height || 100
+
+    this.ctx.save()
+
+    // Placeholder rectangle while image loads
+    this.ctx.fillStyle = '#F3F4F6'
+    this.ctx.fillRect(x, y, w, h)
+    this.ctx.strokeStyle = '#D1D5DB'
+    this.ctx.lineWidth = 1
+    this.ctx.setLineDash([4, 4])
+    this.ctx.strokeRect(x, y, w, h)
+    this.ctx.setLineDash([])
+
+    // Image icon placeholder
+    this.ctx.font = '12px Inter, sans-serif'
+    this.ctx.fillStyle = '#9CA3AF'
+    this.ctx.textAlign = 'center'
+    this.ctx.fillText('[图片]', x + w / 2, y + h / 2 + 4)
+    this.ctx.textAlign = 'start'
+
+    // If src is available, attempt to load and render
+    if (img.src) {
+      const image = new Image()
+      image.onload = () => {
+        this.ctx.drawImage(image, x, y, w, h)
+        // Re-render the full canvas to make it visible
+        this.render()
+      }
+      image.src = img.src
+    }
+
+    this.ctx.restore()
+  }
+
+  private drawControl(el: IElement, x: number, y: number): void {
+    const ctrl = el.control
+    if (!ctrl) return
+
+    const fontSize = el.size || 16
+    const ctrlWidth = ctrl.width || 120
+    // Match control height to text line height so it doesn't overflow
+    const ctrlHeight = Math.round(fontSize * 1.15)
+
+    this.ctx.save()
+
+    // Checkbox / Radio — compact inline rendering
+    if (ctrl.controlType === 'checkbox' || ctrl.controlType === 'radio') {
+      const boxSize = Math.min(14, ctrlHeight - 2)
+      const boxY = y + (ctrlHeight - boxSize) / 2
+      this.ctx.fillStyle = '#FFFFFF'
+      this.ctx.fillRect(x + 2, boxY, boxSize, boxSize)
+      this.ctx.strokeStyle = '#6B7280'
+      this.ctx.lineWidth = 1.5
+      this.ctx.setLineDash([])
+      this.ctx.strokeRect(x + 2, boxY, boxSize, boxSize)
+      if (ctrl.checked) {
+        this.ctx.strokeStyle = '#2563EB'
+        this.ctx.lineWidth = 2
+        this.ctx.beginPath()
+        this.ctx.moveTo(x + 4, boxY + boxSize / 2)
+        this.ctx.lineTo(x + boxSize / 2 + 2, boxY + boxSize - 3)
+        this.ctx.lineTo(x + boxSize + 2, boxY + 2)
+        this.ctx.stroke()
+      }
+      // Label sits next to checkbox, aligned with text baseline
+      const labelX = x + boxSize + 8
+      this.ctx.font = `${fontSize}px "${el.font || 'SimSun'}"`
+      this.ctx.fillStyle = '#374151'
+      const textBaseY = y + fontSize * 0.8
+      this.ctx.fillText(ctrl.placeholder || '', labelX, textBaseY)
+      this.ctx.restore()
+      return
+    }
+
+    // Input-like controls — inline with text
+    const isFocused = this.focusedControl === el
+    this.ctx.fillStyle = isFocused ? '#EFF6FF' : '#FFFFFF'
+    this.ctx.fillRect(x, y, ctrlWidth, ctrlHeight)
+    this.ctx.strokeStyle = isFocused ? '#3B82F6' : '#9CA3AF'
+    this.ctx.lineWidth = isFocused ? 2 : 1
+    this.ctx.setLineDash([])
+    this.ctx.strokeRect(x, y, ctrlWidth, ctrlHeight)
+
+    // Text inside control — align baseline with surrounding text
+    const textBaseY = y + fontSize * 0.8
+    const displayValue = ctrl.value || ctrl.placeholder || ctrl.controlType || ''
+    this.ctx.font = `${fontSize}px "${el.font || 'SimSun'}"`
+    this.ctx.fillStyle = ctrl.value ? '#374151' : '#9CA3AF'
+    this.ctx.fillText(displayValue, x + 4, textBaseY)
+
+    this.ctx.restore()
+  }
+
+  /** Handle click on a form control element. */
+  private handleControlClick(el: IElement): void {
+    const ctrl = el.control
+    if (!ctrl) return
+
+    if (ctrl.controlType === 'checkbox') {
+      this.historyManager.saveState(this.takeSnapshot())
+      ctrl.checked = !ctrl.checked
+      this.updateElementInZone(el)
+      this.render()
+      this.eventBus.emit('contentChange', {
+        type: 'contentChange',
+        elements: this.zoneElements(),
+      })
+      return
+    }
+
+    // Focusable controls: input, textarea, number, date, select
+    const focusable = ['input', 'textarea', 'number', 'date', 'select']
+    if (focusable.includes(ctrl.controlType)) {
+      this.focusedControl = el
+      this.imeHandler.positionProxy()
+      this.render()
+      setTimeout(() => this.imeHandler.focus(), 0)
+      return
+    }
+  }
+
+  /** Find and update an element by reference in the current zone array. */
+  private updateElementInZone(el: IElement): void {
+    const zone = this.activeZone === ZoneType.HEADER
+      ? this.headerElements : this.activeZone === ZoneType.FOOTER
+        ? this.footerElements : this.mainElements
+    const idx = zone.indexOf(el)
+    if (idx >= 0) {
+      zone[idx] = el
+    }
+  }
+
+  /** Handle keyboard input when a form control is focused. */
+  private handleControlKeyDown(e: KeyboardEvent): boolean {
+    const ctrl = this.focusedControl!.control!
+    const ctrlKey = e.ctrlKey || e.metaKey
+
+    // Ctrl+Z/Y — global undo/redo, always work
+    if (ctrlKey && e.key === 'z') { this.undo(); return true }
+    if (ctrlKey && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { this.redo(); return true }
+
+    switch (e.key) {
+      case 'Escape':
+        this.focusedControl = null
+        this.render()
+        return true
+      case 'Enter':
+      case 'Tab':
+        this.focusedControl = null
+        this.render()
+        // Tab/Enter moves to next element
+        return true
+      case 'Backspace':
+        if (ctrl.value) {
+          this.historyManager.saveState(this.takeSnapshot())
+          ctrl.value = ctrl.value.slice(0, -1)
+          this.updateElementInZone(this.focusedControl!)
+          this.render()
+          this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+        }
+        return true
+      default: {
+        // Printable characters
+        if (e.key.length === 1 && !ctrlKey && !e.altKey) {
+          this.historyManager.saveState(this.takeSnapshot())
+          ctrl.value = (ctrl.value || '') + e.key
+          this.updateElementInZone(this.focusedControl!)
+          this.render()
+          this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+          return true
+        }
+        return false
+      }
+    }
+  }
+
+  /** Handle keyboard input when a table cell is focused. */
+  private handleCellKeyDown(e: KeyboardEvent): boolean {
+    const td = this.focusedCell!.td
+    const ctrlKey = e.ctrlKey || e.metaKey
+
+    if (ctrlKey && e.key === 'z') { this.undo(); return true }
+    if (ctrlKey && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { this.redo(); return true }
+
+    switch (e.key) {
+      case 'Escape':
+      case 'Tab':
+        this.focusedCell = null
+        this.render()
+        return true
+      case 'Backspace': {
+        const lastEl = td.value[td.value.length - 1]
+        if (lastEl && lastEl.value && lastEl.value.length > 0) {
+          this.historyManager.saveState(this.takeSnapshot())
+          lastEl.value = lastEl.value.slice(0, -1)
+          if (lastEl.value === '') td.value.pop()
+          this.recomputeLayout()
+          this.render()
+          this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+        }
+        return true
+      }
+      default: {
+        if (e.key.length === 1 && !ctrlKey && !e.altKey) {
+          this.historyManager.saveState(this.takeSnapshot())
+          const lastEl = td.value[td.value.length - 1]
+          if (lastEl && lastEl.type === 'text' && !lastEl.bold && !lastEl.italic) {
+            lastEl.value += e.key
+          } else {
+            td.value.push({
+              id: generateElementId(),
+              type: ElementType.TEXT,
+              value: e.key,
+              size: 14,
+            })
+          }
+          this.recomputeLayout()
+          this.render()
+          this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+          return true
+        }
+        return false
+      }
+    }
+  }
+
   // ---- Events ----
 
   private bindEvents(): void {
@@ -830,6 +1253,43 @@ export class Draw implements KeyboardContext, IMEContext {
 
   // insertText is called by IMEHandler on compositionend
   insertText(text: string, addHistory: boolean): void {
+    // Route IME text to focused control
+    if (this.focusedControl && this.focusedControl.control) {
+      if (addHistory) {
+        this.historyManager.saveState(this.takeSnapshot())
+      }
+      const ctrl = this.focusedControl.control
+      ctrl.value = (ctrl.value || '') + text
+      this.updateElementInZone(this.focusedControl)
+      this.recomputeLayout()
+      this.render()
+      this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+      return
+    }
+
+    // Route IME text to focused table cell
+    if (this.focusedCell) {
+      if (addHistory) {
+        this.historyManager.saveState(this.takeSnapshot())
+      }
+      const td = this.focusedCell.td
+      const lastEl = td.value[td.value.length - 1]
+      if (lastEl && lastEl.type === 'text' && !lastEl.bold && !lastEl.italic) {
+        lastEl.value += text
+      } else {
+        td.value.push({
+          id: generateElementId(),
+          type: ElementType.TEXT,
+          value: text,
+          size: 14,
+        })
+      }
+      this.recomputeLayout()
+      this.render()
+      this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+      return
+    }
+
     if (this.rangeManager.hasRange) {
       // Delete selected range first, then insert
       const elements = this.zoneElements()
@@ -949,6 +1409,16 @@ export class Draw implements KeyboardContext, IMEContext {
     // Skip normal keyboard handling during IME composition
     if (this.imeHandler.isComposing) return false
 
+    // Route input to focused form control
+    if (this.focusedControl && this.focusedControl.control) {
+      return this.handleControlKeyDown(e)
+    }
+
+    // Route input to focused table cell
+    if (this.focusedCell) {
+      return this.handleCellKeyDown(e)
+    }
+
     const handled = this.keyboardHandler.handleKeyDown(e)
     if (handled) {
       // Cursor may have moved — reposition the hidden textarea for IME
@@ -978,6 +1448,44 @@ export class Draw implements KeyboardContext, IMEContext {
     return { x: docX, y: docY }
   }
 
+  /** Find which table cell was clicked. Returns the td and its bounding box. */
+  private hitTestTable(tableEl: IElement, clickX: number, clickY: number): { td: ITd; cx: number; cy: number; cw: number; ch: number } | null {
+    const trList = tableEl.trList
+    if (!trList) return null
+
+    let maxCols = 0
+    for (const tr of trList) {
+      let colCount = 0
+      for (const td of tr.tdList) colCount += td.colspan || 1
+      if (colCount > maxCols) maxCols = colCount
+    }
+
+    const contentW = DEFAULT_PAGE_SETUP.width - DEFAULT_PAGE_SETUP.marginLeft - DEFAULT_PAGE_SETUP.marginRight
+    const colWidths = new Array(maxCols).fill(Math.round(contentW / maxCols))
+
+    // Walk table cells and test bounding boxes
+    let ry = 0
+    for (const tr of trList) {
+      const rowH = tr.height || 30
+      let cxAcc = 0
+      let ci = 0
+      for (const td of tr.tdList) {
+        const colspan = td.colspan || 1
+        let cw = 0
+        for (let s = 0; s < colspan && ci + s < maxCols; s++) cw += colWidths[ci + s]
+        const ch = rowH * (td.rowspan || 1)
+
+        if (clickX >= cxAcc && clickX < cxAcc + cw && clickY >= ry && clickY < ry + ch) {
+          return { td, cx: cxAcc, cy: ry, cw, ch }
+        }
+        cxAcc += cw
+        ci += colspan
+      }
+      ry += rowH
+    }
+    return null
+  }
+
   private onMouseDown(e: MouseEvent): void {
     if (this.mode === EditorMode.READONLY || this.mode === EditorMode.PRINT) return
 
@@ -991,6 +1499,37 @@ export class Draw implements KeyboardContext, IMEContext {
     }
 
     const globalIdx = this.position.getIndexByCoord(x, y)
+    const clickedEl = globalIdx < this.positionList.length
+      ? this.elementAtGlobal(globalIdx)
+      : undefined
+
+    // Table cell hit-testing: handle clicks on table cells
+    if (clickedEl && clickedEl.type === ElementType.TABLE && clickedEl.trList) {
+      const tablePos = this.positionList[globalIdx]
+      if (tablePos) {
+        const cell = this.hitTestTable(clickedEl, x - tablePos.x, y - tablePos.y)
+        if (cell) {
+          this.focusedCell = { tableEl: clickedEl, td: cell.td }
+          this.focusedControl = null
+          this.imeHandler.positionProxy()
+          this.render()
+          // Defer focus — browser's click handling may steal it back synchronously
+          setTimeout(() => this.imeHandler.focus(), 0)
+          return
+        }
+      }
+    }
+
+    // Control hit-testing: handle clicks on form controls
+    if (clickedEl && clickedEl.type === ElementType.CONTROL && clickedEl.control) {
+      this.handleControlClick(clickedEl)
+      return
+    }
+
+    // Clicked outside any control/table cell — unfocus
+    this.focusedControl = null
+    this.focusedCell = null
+
     const index = this.globalToCursorIndex(globalIdx)
 
     // Clamp to valid range for the current active zone
@@ -1317,6 +1856,72 @@ export class Draw implements KeyboardContext, IMEContext {
     }
     this.recomputeLayout()
     this.render()
+    this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
+  }
+
+  /** Insert a table at the current cursor position. */
+  insertTable(rows: number, cols: number): void {
+    const trList: ITr[] = []
+    for (let r = 0; r < rows; r++) {
+      const tdList: ITd[] = []
+      for (let c = 0; c < cols; c++) {
+        tdList.push({
+          width: 120,
+          value: [{ id: generateElementId(), type: ElementType.TEXT, value: '', size: 14 }],
+          isHeader: false,
+        })
+      }
+      trList.push({ height: 30, tdList })
+    }
+
+    const tableEl: IElement = {
+      id: generateElementId(),
+      type: ElementType.TABLE,
+      value: '',
+      trList,
+    }
+
+    this._insertElement(tableEl)
+  }
+
+  /** Insert a form control at the current cursor position. */
+  insertControl(controlType: string): void {
+    const ctrlEl = createControlElement(
+      controlType as ControlType,
+      { size: 16, font: 'SimSun' }
+    )
+    this._insertElement(ctrlEl)
+  }
+
+  /** Insert an image at the current cursor position. */
+  insertImage(src: string, width: number, height: number): void {
+    const imgEl: IElement = {
+      id: generateElementId(),
+      type: ElementType.IMAGE,
+      value: '',
+      imageData: { src, width, height, originalWidth: width, originalHeight: height },
+    }
+    this._insertElement(imgEl)
+  }
+
+  /** Shared logic for inserting an element at cursor. */
+  private _insertElement(el: IElement): void {
+    this.historyManager.saveState(this.takeSnapshot())
+    const elements = [...this.zoneElements()]
+    const idx = this.cursorIndex
+    const updated = [...elements.slice(0, idx), el, ...elements.slice(idx)]
+
+    if (this.activeZone === ZoneType.HEADER) {
+      this.headerElements = updated
+    } else if (this.activeZone === ZoneType.FOOTER) {
+      this.footerElements = updated
+    } else {
+      this.mainElements = updated
+    }
+    this.cursorIndex = idx + 1
+    this.recomputeLayout()
+    this.render()
+    this.imeHandler.positionProxy()
     this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
   }
 

@@ -13,6 +13,29 @@ import {
   PageMode,
   createBlankDocument,
 } from '@/engine'
+import type { Editor } from '@/engine'
+
+/** Helper: open file picker and insert selected image into the document. */
+function pickAndInsertImage(editor: Editor, onDirty: (d: boolean) => void): void {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.onchange = () => {
+    const file = input.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const src = reader.result as string
+      // Insert at a reasonable display size — cap to 400px wide, maintain aspect ratio
+      const displayWidth = 400
+      const displayHeight = 300
+      editor.insertImage(src, displayWidth, displayHeight)
+      onDirty(true)
+    }
+    reader.readAsDataURL(file)
+  }
+  input.click()
+}
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -178,15 +201,25 @@ function EditorPageInner({
 
     switch (elementType) {
       case 'table':
+        editor.insertTable(3, 3)
+        onDirty(true)
+        break
+      case 'input':
+      case 'select':
+      case 'date':
+      case 'checkbox':
+      case 'number':
+      case 'textarea':
+        editor.insertControl(elementType)
+        onDirty(true)
+        break
       case 'image':
-      case 'control':
-        console.log(`[EditorPage] Insert ${elementType} — not yet implemented in engine`)
-        return
+        pickAndInsertImage(editor, onDirty)
+        break
       default:
         console.warn('[EditorPage] Unknown insert type:', elementType)
-        return
     }
-  }, [editorRef])
+  }, [editorRef, onDirty])
 
   return (
     <EditorLayout

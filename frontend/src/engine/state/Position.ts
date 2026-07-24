@@ -96,6 +96,21 @@ export class Position {
       for (const ml of page.lines) {
         // Compute element widths and alignment offset for this line
         const lineLayout = this.computeLineLayout(ml.elements, contentWidth)
+
+        // Determine effective line height: table/image elements need their actual height
+        let effectiveHeight = ml.height
+        for (const el of ml.elements) {
+          if (el.type === 'table' && el.trList) {
+            const tableH = el.trList.reduce((h, tr) => h + (tr.height || 30), 0) + 2
+            effectiveHeight = Math.max(effectiveHeight, tableH)
+            break
+          }
+          if (el.type === 'image' && el.imageData) {
+            effectiveHeight = Math.max(effectiveHeight, el.imageData.height || 100)
+            break
+          }
+        }
+
         for (const entry of lineLayout.entries) {
           positions.push({
             index: globalIndex++,
@@ -104,12 +119,12 @@ export class Position {
             x: entry.x,
             y: contentY,
             width: entry.width,
-            height: ml.height,
+            height: effectiveHeight,
             ascent: ml.maxAscent,
             descent: ml.maxDescent,
           })
         }
-        contentY += ml.height
+        contentY += effectiveHeight
       }
 
       // Footer area — positioned from the bottom, growing upward

@@ -111,6 +111,9 @@ export class Editor {
   toggleSuperscript(): void { this.draw.toggleSuperscript() }
   toggleSubscript(): void { this.draw.toggleSubscript() }
   setAlignment(alignment: string): void { this.draw.setAlignment(alignment) }
+  insertTable(rows: number, cols: number): void { this.draw.insertTable(rows, cols) }
+  insertControl(controlType: string): void { this.draw.insertControl(controlType) }
+  insertImage(src: string, width: number, height: number): void { this.draw.insertImage(src, width, height) }
 
   // ==================== 历史操作 ====================
 
