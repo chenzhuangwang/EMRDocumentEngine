@@ -2,8 +2,14 @@
 // 编辑位置/坐标计算器
 // ============================================================
 
-import type { IPosition, IPageSetup, IPage, IPageOffset } from '../document/DocumentModel'
+import type { IPosition, IPageSetup, IPage, IPageOffset, IElement } from '../document/DocumentModel'
+import { RowFlex } from '../document/DocumentModel'
 import type { TextMeasurer } from '../layout/TextMeasurer'
+
+interface LineLayoutEntry {
+  x: number
+  width: number
+}
 
 export class Position {
   private positionList: IPosition[] = []
@@ -36,27 +42,21 @@ export class Position {
       // Header area
       let headerY = pageStartY + pageSetup.marginTop
       let actualHeaderHeight = (pageSetup.headerHeight || 50)
+      const headerContentWidth = pageSetup.width - pageSetup.marginLeft - pageSetup.marginRight
       for (const hl of page.headerLines) {
-        let contentX = pageSetup.marginLeft
-        for (const el of hl.elements) {
-          const elWidth = (el.value === '​' || el.value === '\n') ? 0 : this.measurer.measureWidth(el.value || '', {
-            font: el.font || 'SimSun',
-            size: el.size || 16,
-            bold: el.bold,
-            italic: el.italic,
-          })
+        const lineLayout = this.computeLineLayout(hl.elements, headerContentWidth)
+        for (const entry of lineLayout.entries) {
           positions.push({
             index: globalIndex++,
             pageIndex: page.pageIndex,
             rowIndex: positions.length,
-            x: contentX,
+            x: entry.x,
             y: headerY,
-            width: elWidth,
+            width: entry.width,
             height: hl.height,
             ascent: hl.maxAscent,
             descent: hl.maxDescent,
           })
-          contentX += elWidth
         }
         headerY += hl.height
       }
@@ -92,27 +92,22 @@ export class Position {
 
       // Main content area — starts right after the actual header content
       let contentY = pageStartY + pageSetup.marginTop + actualHeaderHeight
+      const contentWidth = pageSetup.width - pageSetup.marginLeft - pageSetup.marginRight
       for (const ml of page.lines) {
-        let contentX = pageSetup.marginLeft
-        for (const el of ml.elements) {
-          const elWidth = (el.value === '​' || el.value === '\n') ? 0 : this.measurer.measureWidth(el.value || '', {
-            font: el.font || 'SimSun',
-            size: el.size || 16,
-            bold: el.bold,
-            italic: el.italic,
-          })
+        // Compute element widths and alignment offset for this line
+        const lineLayout = this.computeLineLayout(ml.elements, contentWidth)
+        for (const entry of lineLayout.entries) {
           positions.push({
             index: globalIndex++,
             pageIndex: page.pageIndex,
             rowIndex: positions.length,
-            x: contentX,
+            x: entry.x,
             y: contentY,
-            width: elWidth,
+            width: entry.width,
             height: ml.height,
             ascent: ml.maxAscent,
             descent: ml.maxDescent,
           })
-          contentX += elWidth
         }
         contentY += ml.height
       }
@@ -120,6 +115,7 @@ export class Position {
       // Footer area — positioned from the bottom, growing upward
       const configFooterH = pageSetup.footerHeight || 40
       let totalFooterH = configFooterH
+      const footerContentWidth = pageSetup.width - pageSetup.marginLeft - pageSetup.marginRight
       for (const fl of page.footerLines) {
         totalFooterH += fl.height
       }
@@ -127,26 +123,19 @@ export class Position {
       // last footer line sits at the bottom margin edge
       let footerY = pageStartY + pageSetup.height - pageSetup.marginBottom - totalFooterH
       for (const fl of page.footerLines) {
-        let contentX = pageSetup.marginLeft
-        for (const el of fl.elements) {
-          const elWidth = (el.value === '​' || el.value === '\n') ? 0 : this.measurer.measureWidth(el.value || '', {
-            font: el.font || 'SimSun',
-            size: el.size || 16,
-            bold: el.bold,
-            italic: el.italic,
-          })
+        const lineLayout = this.computeLineLayout(fl.elements, footerContentWidth)
+        for (const entry of lineLayout.entries) {
           positions.push({
             index: globalIndex++,
             pageIndex: page.pageIndex,
             rowIndex: positions.length,
-            x: contentX,
+            x: entry.x,
             y: footerY,
-            width: elWidth,
+            width: entry.width,
             height: fl.height,
             ascent: fl.maxAscent,
             descent: fl.maxDescent,
           })
-          contentX += elWidth
         }
         footerY += fl.height
       }
@@ -178,6 +167,105 @@ export class Position {
 
   getPositionByIndex(index: number): IPosition | undefined {
     return this.positionList[index]
+  }
+
+  /**
+   * Compute X positions for elements in a single line, applying alignment.
+   * Reads rowFlex from the first element in the line.
+   */
+  private computeLineLayout(
+    elements: IElement[],
+    contentWidth: number
+  ): { entries: LineLayoutEntry[] } {
+    // Measure all element widths
+    const visibleElements: { el: IElement; width: number }[] = []
+    let totalWidth = 0
+    for (const el of elements) {
+      if (el.value === '​' || el.value === '\n') {  // eslint-disable-line
+        visibleElements.push({ el, width: 0 })
+        continue
+      }
+      const w = this.measurer.measureWidth(el.value || '', {
+        font: el.font || 'SimSun',
+        size: el.size || 16,
+        bold: el.bold,
+        italic: el.italic,
+      })
+      visibleElements.push({ el, width: w })
+      totalWidth += w
+    }
+
+    // Determine alignment from the first element with explicit rowFlex
+    let rowFlex: RowFlex = RowFlex.LEFT
+    for (const { el } of visibleElements) {
+      if (el.rowFlex) { rowFlex = el.rowFlex; break }
+    }
+
+    // Calculate per-element X positions
+    const entries: LineLayoutEntry[] = []
+    const marginLeft = this.pageSetup.marginLeft
+
+    if (rowFlex === RowFlex.CENTER) {
+      const xOffset = marginLeft + (contentWidth - totalWidth) / 2
+      let cx = xOffset
+      for (const { width } of visibleElements) {
+        entries.push({ x: cx, width })
+        cx += width
+      }
+    } else if (rowFlex === RowFlex.RIGHT) {
+      const xOffset = marginLeft + contentWidth - totalWidth
+      let cx = xOffset
+      for (const { width } of visibleElements) {
+        entries.push({ x: cx, width })
+        cx += width
+      }
+    } else if (rowFlex === RowFlex.JUSTIFY) {
+      // Standard word-processor behavior: the last line of a paragraph
+      // (ending with \n) should NOT be justified — fallback to LEFT.
+      const lastEl = visibleElements[visibleElements.length - 1]?.el
+      const isLastLine = lastEl?.value === '\n'
+
+      // Only distribute gaps between elements that have positive width
+      const visibleIdxs = visibleElements.reduce<number[]>((acc, v, i) => {
+        if (v.width > 0) acc.push(i)
+        return acc
+      }, [])
+
+      if (isLastLine || visibleIdxs.length <= 1) {
+        // Fallback to LEFT alignment
+        let cx = marginLeft
+        for (const { width } of visibleElements) {
+          entries.push({ x: cx, width })
+          cx += width
+        }
+      } else {
+        const gaps = visibleIdxs.length - 1
+        const extraPerGap = Math.max(0, contentWidth - totalWidth) / gaps
+        // Build a set of element indices after which to insert extra space
+        const gapAfter = new Set<number>()
+        for (let g = 0; g < gaps; g++) {
+          gapAfter.add(visibleIdxs[g])
+        }
+        let cx = marginLeft
+        for (let i = 0; i < visibleElements.length; i++) {
+          const { width } = visibleElements[i]
+          entries.push({ x: cx, width })
+          cx += width
+          if (gapAfter.has(i)) {
+            cx += extraPerGap
+          }
+        }
+      }
+    } else {
+      // LEFT (default)
+      let cx = marginLeft
+      for (const { width } of visibleElements) {
+        entries.push({ x: cx, width })
+        cx += width
+      }
+    }
+
+    return { entries }
   }
 
   getIndexByCoord(x: number, y: number): number {

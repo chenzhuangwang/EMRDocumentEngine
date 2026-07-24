@@ -1206,6 +1206,28 @@ export class Draw implements KeyboardContext, IMEContext {
   toggleSuperscript(): void { this.toggleElementProperty('superscript') }
   toggleSubscript(): void { this.toggleElementProperty('subscript') }
 
+  /**
+   * Get the start/end indices of the paragraph containing the cursor.
+   * A paragraph is delimited by \n elements (or zone boundaries).
+   */
+  private getParagraphRange(): { start: number; end: number } {
+    const elements = this.zoneElements()
+    const len = elements.length
+    let start = 0
+    let end = len
+
+    // Search backwards for the nearest \n before the cursor
+    for (let i = this.cursorIndex - 1; i >= 0; i--) {
+      if (elements[i]?.value === '\n') { start = i + 1; break }
+    }
+    // Search forwards for the nearest \n at or after the cursor
+    for (let i = this.cursorIndex; i < len; i++) {
+      if (elements[i]?.value === '\n') { end = i; break }
+    }
+
+    return { start, end }
+  }
+
   setAlignment(alignment: string): void {
     const elements = [...this.zoneElements()]
     if (elements.length === 0) return
@@ -1217,9 +1239,17 @@ export class Draw implements KeyboardContext, IMEContext {
     const rowFlex = rowFlexMap[alignment]
     if (!rowFlex) return
 
+    // Scope to the paragraph containing the cursor (delimited by \n)
+    const { start, end } = this.getParagraphRange()
+
     this.historyManager.saveState(this.takeSnapshot())
 
-    const updated = elements.map(el => ({ ...el, rowFlex: rowFlex as IElement['rowFlex'] }))
+    // Only mutate elements in the current paragraph
+    const before = elements.slice(0, start)
+    const paragraph = elements.slice(start, end)
+    const after = elements.slice(end)
+    const formatted = paragraph.map(el => ({ ...el, rowFlex: rowFlex as IElement['rowFlex'] }))
+    const updated = [...before, ...formatted, ...after]
     if (this.activeZone === ZoneType.HEADER) {
       this.headerElements = updated
     } else if (this.activeZone === ZoneType.FOOTER) {
