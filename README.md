@@ -2,11 +2,11 @@
 
 # EMR 文档编辑器引擎
 
-## 📋 项目简介
+## 项目简介
 
 EMR 文档编辑器引擎是一个专业的电子病历文档编辑系统，提供完整的文档创建、编辑、模板管理和协作功能。系统采用前后端分离架构，前端基于 Canvas 渲染技术实现高性能文档编辑，后端采用 Spring Boot + MyBatis-Plus 构建，提供 RESTful API 和 WebSocket 实时协作支持。
 
-## ✨ 核心特性
+## 核心特性
 
 - **专业文档编辑**：支持富文本编辑、结构化元素、公式录入、表格处理等专业功能
 - **模板系统**：提供灵活的模板分类管理，支持公共模板和私有模板
@@ -17,7 +17,7 @@ EMR 文档编辑器引擎是一个专业的电子病历文档编辑系统，提�
 - **数据校验**：支持表单元素的数据校验和必填项检查
 - **审计追踪**：详细记录文档操作日志，满足合规要求
 
-## 🛠 技术栈
+## 技术栈
 
 ### 前端技术
 - **框架**：React 18 + TypeScript
@@ -36,7 +36,7 @@ EMR 文档编辑器引擎是一个专业的电子病历文档编辑系统，提�
 - **实时通信**：WebSocket (Spring Boot)
 - **数据库**：MySQL 8.0+
 
-## 📁 项目结构
+## 项目结构
 
 ```
 emr-document-engine/
@@ -89,10 +89,15 @@ emr-document-engine/
 │   │   │   ├── render/                # 渲染模块
 │   │   │   │   └── Draw.ts
 │   │   │   ├── layout/                # 布局引擎
+│   │   │   │   ├── LineBreaker.ts
+│   │   │   │   ├── PageBreaker.ts
 │   │   │   │   └── TextMeasurer.ts
-│   │   │   └── state/                 # 状态管理
-│   │   │       ├── HistoryManager.ts
-│   │   │       └── Position.ts
+│   │   │   ├── state/                 # 状态管理
+│   │   │   │   ├── HistoryManager.ts
+│   │   │   │   ├── Position.ts
+│   │   │   │   └── RangeManager.ts
+│   │   │   └── interaction/           # 交互处理
+│   │   │       └── KeyboardHandler.ts
 │   │   ├── pages/             # 页面组件
 │   │   │   ├── EditorPage.tsx
 │   │   │   └── HomePage.tsx
@@ -114,12 +119,16 @@ emr-document-engine/
 │   ├── 4-uiux.md              # UI/UX 设计文档
 │   └── 5-spec.md              # 技术规格说明书
 │
-└── .super-dev/                # 开发配置
-    ├── SESSION_BRIEF.md
-    └── WORKFLOW.md
+├── .super-dev/                # 开发配置
+│   ├── SESSION_BRIEF.md
+│   └── WORKFLOW.md
+│
+├── docker-compose.yml         # Docker 编排配置
+├── nginx.conf                 # Nginx 配置
+└── README.md                  # 项目说明文档
 ```
 
-## 🚀 快速开始
+## 快速开始
 
 ### 环境要求
 
@@ -179,7 +188,13 @@ npm run dev
 npm run build
 ```
 
-## 📡 API 接口
+### Docker 部署
+
+```bash
+docker-compose up -d
+```
+
+## API 接口
 
 ### 认证接口
 
@@ -209,7 +224,7 @@ npm run build
 | PUT | `/api/v1/templates/{id}` | 更新模板 |
 | DELETE | `/api/v1/templates/{id}` | 删除模板 |
 
-## 🧩 核心模块
+## 核心模块
 
 ### 前端编辑器引擎
 
@@ -220,14 +235,17 @@ npm run build
 - **TextMeasurer**：文本测量器，计算文字宽高
 - **HistoryManager**：历史管理器，支持撤销/重做
 - **EventBus**：事件总线，处理组件间通信
+- **KeyboardHandler**：键盘事件处理器
+- **RangeManager**：选区管理器
 
 ### 后端服务层
 
 - **DocumentService**：文档业务逻辑处理
 - **TemplateService**：模板业务逻辑处理
 - **AuthService**：认证授权服务
+- **AuditLogRepository**：审计日志数据访问
 
-## 📊 数据库表结构
+## 数据库表结构
 
 | 表名 | 说明 |
 |------|------|
@@ -238,7 +256,7 @@ npm run build
 | `t_audit_log` | 审计日志表 |
 | `t_document_version` | 文档版本表 |
 
-## 📝 开发说明
+## 开发说明
 
 ### 前端开发
 
@@ -254,11 +272,35 @@ npm run build
 3. 数据访问通过 `repository/` 接口
 4. 实体类定义在 `entity/` 目录
 
-## 📄 许可证
+### 代码规范
+
+- 前端使用 ESLint + Prettier 进行代码格式化
+- 后端遵循阿里巴巴 Java 开发手册规范
+- 提交代码前请运行 lint 检查
+
+## 项目文档
+
+项目包含以下详细文档：
+
+- [调研报告](/output/1-research.md) - 技术选型与竞品分析
+- [产品需求文档](/output/2-prd.md) - 功能需求与用户故事
+- [架构设计文档](/output/3-architecture.md) - 系统架构与技术方案
+- [UI/UX 设计文档](/output/4-uiux.md) - 界面设计与交互规范
+- [技术规格说明书](/output/5-spec.md) - 详细技术规格与任务分解
+
+## 许可证
 
 本项目基于 [MIT License](LICENSE) 开源协议。
 
-## 📞 联系方式
+## 贡献指南
+
+1. Fork 本仓库
+2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 提交 Pull Request
+
+## 联系方式
 
 如有问题或建议，请通过项目 Issues 页面反馈。
 
