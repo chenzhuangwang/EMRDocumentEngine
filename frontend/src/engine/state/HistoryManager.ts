@@ -4,8 +4,14 @@
 
 import type { IElement } from '../document/DocumentModel'
 
+export interface ZoneSnapshot {
+  header: IElement[]
+  main: IElement[]
+  footer: IElement[]
+}
+
 interface HistorySnapshot {
-  elements: IElement[]
+  zones: ZoneSnapshot
   timestamp: number
 }
 
@@ -13,63 +19,70 @@ export class HistoryManager {
   private undoStack: HistorySnapshot[] = []
   private redoStack: HistorySnapshot[] = []
   private maxRecords: number
-  private currentElements: IElement[] = []
+  private currentZones: ZoneSnapshot
 
   constructor(maxRecords: number = 100) {
     this.maxRecords = maxRecords
+    this.currentZones = { header: [], main: [], footer: [] }
+  }
+
+  /** Deep-clone a zone snapshot. */
+  private clone(zones: ZoneSnapshot): ZoneSnapshot {
+    return {
+      header: JSON.parse(JSON.stringify(zones.header)),
+      main: JSON.parse(JSON.stringify(zones.main)),
+      footer: JSON.parse(JSON.stringify(zones.footer)),
+    }
   }
 
   /**
-   * 在执行操作前保存当前状态
+   * Save all three zones before an operation.
    */
-  saveState(elements: IElement[]): void {
+  saveState(zones: ZoneSnapshot): void {
     this.undoStack.push({
-      elements: JSON.parse(JSON.stringify(elements)),
+      zones: this.clone(zones),
       timestamp: Date.now(),
     })
 
-    // 限制栈大小
     if (this.undoStack.length > this.maxRecords) {
       this.undoStack.shift()
     }
 
-    // 清空 redo 栈（新操作使之前的 redo 无效）
+    // New action invalidates the redo stack
     this.redoStack = []
-    this.currentElements = JSON.parse(JSON.stringify(elements))
+    this.currentZones = this.clone(zones)
   }
 
   /**
-   * 撤销：回到上一个状态
+   * Undo: return the previous snapshot of all three zones.
    */
-  undo(): IElement[] | null {
+  undo(): ZoneSnapshot | null {
     if (this.undoStack.length === 0) return null
 
-    // 保存当前状态到 redo 栈
     this.redoStack.push({
-      elements: JSON.parse(JSON.stringify(this.currentElements)),
+      zones: this.clone(this.currentZones),
       timestamp: Date.now(),
     })
 
     const snapshot = this.undoStack.pop()!
-    this.currentElements = snapshot.elements
-    return snapshot.elements
+    this.currentZones = snapshot.zones
+    return snapshot.zones
   }
 
   /**
-   * 重做：恢复到撤销前的状态
+   * Redo: restore the next snapshot of all three zones.
    */
-  redo(): IElement[] | null {
+  redo(): ZoneSnapshot | null {
     if (this.redoStack.length === 0) return null
 
-    // 保存当前状态到 undo 栈
     this.undoStack.push({
-      elements: JSON.parse(JSON.stringify(this.currentElements)),
+      zones: this.clone(this.currentZones),
       timestamp: Date.now(),
     })
 
     const snapshot = this.redoStack.pop()!
-    this.currentElements = snapshot.elements
-    return snapshot.elements
+    this.currentZones = snapshot.zones
+    return snapshot.zones
   }
 
   canUndo(): boolean {
@@ -91,9 +104,5 @@ export class HistoryManager {
   clearHistory(): void {
     this.undoStack = []
     this.redoStack = []
-  }
-
-  setCurrentElements(elements: IElement[]): void {
-    this.currentElements = elements
   }
 }

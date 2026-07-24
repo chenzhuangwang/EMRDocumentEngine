@@ -18,12 +18,16 @@ export class PageBreaker {
   ): IPage[] {
     const pages: IPage[] = []
 
+    // Compute actual header/footer heights from the lines, with configured minimums
+    const actualHeaderH = headerLines.reduce((h, l) => h + l.height, 0) || (pageSetup.headerHeight || 50)
+    const actualFooterH = footerLines.reduce((h, l) => h + l.height, 0) || (pageSetup.footerHeight || 40)
+
     const pageContentHeight =
       pageSetup.height -
       pageSetup.marginTop -
       pageSetup.marginBottom -
-      (pageSetup.headerHeight || 50) -
-      (pageSetup.footerHeight || 40)
+      actualHeaderH -
+      actualFooterH
 
     let pageIndex = 0
     let currentPageLines: ILine[] = []

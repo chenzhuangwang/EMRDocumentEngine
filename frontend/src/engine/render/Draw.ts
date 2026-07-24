@@ -12,8 +12,10 @@ import {
   EditorMode,
   PageMode,
   ZoneType,
+  ElementType,
   DEFAULT_EDITOR_OPTIONS,
   DEFAULT_PAGE_SETUP,
+  generateElementId,
 } from '../document/DocumentModel'
 import { unzipElementList } from '../document/ElementFormatter'
 import { TextMeasurer } from '../layout/TextMeasurer'
@@ -60,14 +62,22 @@ export class Draw implements KeyboardContext {
   private scrollTop: number = 0
   private pageCount: number = 1
   cursorIndex: number = 0
+  private activeZone: ZoneType = ZoneType.MAIN
 
   // Event cleanup references
   private boundResize: () => void
   private boundWheel: (e: WheelEvent) => void
   private boundKeyDown: (e: KeyboardEvent) => void
+  private boundBeforeInput: (e: InputEvent) => void
+  private boundCompositionStart: (e: CompositionEvent) => void
+  private boundCompositionEnd: (e: CompositionEvent) => void
   private boundMouseDown: (e: MouseEvent) => void
   private boundMouseMove: (e: MouseEvent) => void
   private boundMouseUp: (e: MouseEvent) => void
+  private boundDoubleClick: (e: MouseEvent) => void
+  private boundCopy: (e: ClipboardEvent) => void
+  private boundCut: (e: ClipboardEvent) => void
+  private boundPaste: (e: ClipboardEvent) => void
 
   constructor(container: HTMLElement, options?: Partial<IEditorOption>) {
     this.container = container
@@ -104,9 +114,16 @@ export class Draw implements KeyboardContext {
     this.boundResize = this.onResize.bind(this)
     this.boundWheel = this.onWheel.bind(this)
     this.boundKeyDown = this.onKeyDown.bind(this)
+    this.boundBeforeInput = this.onBeforeInput.bind(this)
+    this.boundCompositionStart = this.onCompositionStart.bind(this)
+    this.boundCompositionEnd = this.onCompositionEnd.bind(this)
     this.boundMouseDown = this.onMouseDown.bind(this)
     this.boundMouseMove = this.onMouseMove.bind(this)
     this.boundMouseUp = this.onMouseUp.bind(this)
+    this.boundDoubleClick = this.onDoubleClick.bind(this)
+    this.boundCopy = this.onCopy.bind(this)
+    this.boundCut = this.onCut.bind(this)
+    this.boundPaste = this.onPaste.bind(this)
 
     this.bindEvents()
     this.resize()
@@ -114,8 +131,14 @@ export class Draw implements KeyboardContext {
 
   // ---- KeyboardContext implementation ----
 
-  get elements(): IElement[] {
+  private zoneElements(): IElement[] {
+    if (this.activeZone === ZoneType.HEADER) return this.headerElements
+    if (this.activeZone === ZoneType.FOOTER) return this.footerElements
     return this.mainElements
+  }
+
+  get elements(): IElement[] {
+    return this.zoneElements()
   }
 
   onElementsChange(
@@ -124,13 +147,148 @@ export class Draw implements KeyboardContext {
     addHistory: boolean
   ): void {
     if (addHistory) {
-      this.historyManager.saveState(this.mainElements)
+      this.historyManager.saveState({
+        header: this.headerElements,
+        main: this.mainElements,
+        footer: this.footerElements,
+      })
     }
-    this.mainElements = newElements
+    if (this.activeZone === ZoneType.HEADER) {
+      this.headerElements = newElements
+    } else if (this.activeZone === ZoneType.FOOTER) {
+      this.footerElements = newElements
+    } else {
+      this.mainElements = newElements
+    }
     this.cursorIndex = newCursorIndex
     this.recomputeLayout()
     this.render()
     this.eventBus.emit('contentChange', { type: 'contentChange', elements: newElements })
+  }
+
+  /** Build a combined flat list of all unzipped elements matching positionList order. */
+  private allUnzipped(): IElement[] {
+    return [
+      ...unzipElementList(this.headerElements),
+      ...unzipElementList(this.mainElements),
+      ...unzipElementList(this.footerElements),
+    ]
+  }
+
+  /**
+   * Safe element lookup by global position index. For multi-page documents,
+   * header/footer positions repeat per page and may exceed the combined
+   * unzipped list length — in that case we wrap back to the original element.
+   */
+  private elementAtGlobal(globalIdx: number): IElement | undefined {
+    const all = this.allUnzipped()
+    if (globalIdx < all.length) return all[globalIdx]
+    // Multi-page wrap: find the position and map back to the zone element
+    const pos = this.positionList[globalIdx]
+    if (!pos) return undefined
+    const pZone = this.zoneFromY(pos.y)
+    if (pZone === ZoneType.HEADER) {
+      const hEls = unzipElementList(this.headerElements)
+      if (hEls.length === 0) return undefined
+      return hEls[(globalIdx - 0) % hEls.length]
+    }
+    if (pZone === ZoneType.FOOTER) {
+      const fEls = unzipElementList(this.footerElements)
+      if (fEls.length === 0) return undefined
+      return fEls[(globalIdx - unzipElementList(this.headerElements).length - unzipElementList(this.mainElements).length) % fEls.length]
+    }
+    // MAIN zone — shouldn't repeat, fall back to direct lookup
+    return all[globalIdx % all.length]
+  }
+
+  /** Determine zone from the element at a given global position index. */
+  private zoneFromPosition(pos: IPosition): ZoneType {
+    const hLen = unzipElementList(this.headerElements).length
+    const mLen = unzipElementList(this.mainElements).length
+    const total = hLen + mLen + unzipElementList(this.footerElements).length
+    // Synthetic positions (e.g. trailing \n line) have indices beyond the
+    // element range — fall back to Y-based zone detection.
+    if (pos.index >= total) {
+      return this.zoneFromY(pos.y)
+    }
+    if (pos.index < hLen) return ZoneType.HEADER
+    if (pos.index < hLen + mLen) return ZoneType.MAIN
+    return ZoneType.FOOTER
+  }
+
+  /** Determine zone from a document Y coordinate using actual content heights. */
+  private zoneFromY(y: number): ZoneType {
+    const setup = DEFAULT_PAGE_SETUP
+    const pageHeight = setup.height + 20
+    const pageIdx = Math.max(0, Math.floor(y / pageHeight))
+    const pageY = pageIdx * pageHeight
+
+    // Use the authoritative heights computed by Position (includes min + trailing \n)
+    const headerBottom = pageY + setup.marginTop + this.position.headerHeight
+    const footerTop = pageY + setup.height - setup.marginBottom - this.position.footerHeight
+
+    if (y >= headerBottom && y < footerTop) return ZoneType.MAIN
+    if (y >= footerTop) return ZoneType.FOOTER
+    return ZoneType.HEADER
+  }
+
+  getNeighborIndex(currentIndex: number, lineDelta: number): number {
+    const globalIdx = this.cursorToGlobalIndex(currentIndex)
+    const neighborGlobal = this.position.getNeighborIndex(globalIdx, lineDelta)
+    return this.globalToCursorIndex(neighborGlobal)
+  }
+
+  /**
+   * Convert a global position-list index (from getIndexByCoord) to a
+   * zone-relative cursor index. Returns the zone's element count when
+   * the click is past the last position (cursor at end of zone).
+   */
+  private globalToCursorIndex(globalIdx: number): number {
+    const hLen = unzipElementList(this.headerElements).length
+    const mLen = unzipElementList(this.mainElements).length
+    const fLen = unzipElementList(this.footerElements).length
+    const total = hLen + mLen + fLen
+
+    // Click past the end of all content → cursor at end of active zone
+    if (globalIdx >= total) {
+      if (this.activeZone === ZoneType.HEADER) return hLen
+      if (this.activeZone === ZoneType.FOOTER) return fLen
+      return mLen
+    }
+
+    if (this.activeZone === ZoneType.HEADER) {
+      if (hLen === 0) return 0
+      // Clicking past the last header element (globalIdx == hLen) → cursor at end
+      if (globalIdx === hLen) return hLen
+      return globalIdx % hLen
+    }
+    if (this.activeZone === ZoneType.FOOTER) {
+      if (fLen === 0) return 0
+      if (globalIdx === hLen + mLen + fLen) return fLen
+      return globalIdx % fLen
+    }
+    return globalIdx - hLen
+  }
+
+  /**
+   * Convert a zone-relative cursor index back to a global position-list index.
+   * When zoneIdx equals the zone's element count (cursor at end), returns
+   * the total position count so drawCursor can use the trailing-edge fallback.
+   */
+  private cursorToGlobalIndex(zoneIdx: number): number {
+    const hLen = unzipElementList(this.headerElements).length
+    const mLen = unzipElementList(this.mainElements).length
+    const total = hLen + mLen + unzipElementList(this.footerElements).length
+
+    if (this.activeZone === ZoneType.HEADER) {
+      return zoneIdx >= hLen ? total : zoneIdx
+    }
+    if (this.activeZone === ZoneType.FOOTER) {
+      const fLen = unzipElementList(this.footerElements).length
+      return zoneIdx >= fLen ? total : hLen + mLen + zoneIdx
+    }
+    // MAIN
+    return zoneIdx >= mLen ? total : hLen + zoneIdx
   }
 
   // ---- Layout ----
@@ -263,14 +421,42 @@ export class Draw implements KeyboardContext {
   ): void {
     // Filter positions for current page
     const pagePositions = this.positionList.filter(p => p.pageIndex === pageIndex)
-    const mainUnzipped = unzipElementList(this.mainElements)
+    const allUnzipped = this.allUnzipped()
 
-    if (pagePositions.length === 0 && mainUnzipped.length > 0) {
+    if (pagePositions.length === 0 && allUnzipped.length > 0) {
       // Fallback: no precomputed positions — compute inline from pages
       const page = this.pages[pageIndex]
       if (!page) return
-      let cy = pageY + _setup.marginTop + 50
+      let cy = pageY + _setup.marginTop
+      for (const line of page.headerLines) {
+        let cx = pageX + _setup.marginLeft
+        for (const el of line.elements) {
+          this.drawElement(el, cx, cy)
+          cx += this.measurer.measureWidth(el.value || '', {
+            font: el.font || this.options.defaultFont || 'SimSun',
+            size: el.size || this.options.defaultSize || 16,
+            bold: el.bold,
+            italic: el.italic,
+          })
+        }
+        cy += line.height
+      }
+      cy = pageY + _setup.marginTop + 50
       for (const line of page.lines) {
+        let cx = pageX + _setup.marginLeft
+        for (const el of line.elements) {
+          this.drawElement(el, cx, cy)
+          cx += this.measurer.measureWidth(el.value || '', {
+            font: el.font || this.options.defaultFont || 'SimSun',
+            size: el.size || this.options.defaultSize || 16,
+            bold: el.bold,
+            italic: el.italic,
+          })
+        }
+        cy += line.height
+      }
+      cy = pageY + _setup.height - _setup.marginBottom - 40
+      for (const line of page.footerLines) {
         let cx = pageX + _setup.marginLeft
         for (const el of line.elements) {
           this.drawElement(el, cx, cy)
@@ -291,15 +477,26 @@ export class Draw implements KeyboardContext {
     const selStart = this.rangeManager.start
     const selEnd = this.rangeManager.end
     const hasSelection = this.rangeManager.hasRange
+    const hLen = unzipElementList(this.headerElements).length
+    const mLen = unzipElementList(this.mainElements).length
 
     for (const pos of pagePositions) {
-      const el = mainUnzipped[pos.index]
+      const el = this.elementAtGlobal(pos.index)
       if (!el || el.value === '\n' || el.value === '​') continue
 
-      // Selection highlight
-      if (hasSelection && pos.index >= selStart && pos.index < selEnd) {
-        this.ctx.fillStyle = 'rgba(59, 130, 246, 0.25)'
-        this.ctx.fillRect(pos.x, pos.y, pos.width, pos.height)
+      // Selection highlight — convert global pos.index to zone-relative,
+      // then compare only when the position's zone matches activeZone.
+      if (hasSelection) {
+        const pZone = this.zoneFromPosition(pos)
+        if (pZone === this.activeZone) {
+          let zoneIdx = pos.index
+          if (pZone === ZoneType.MAIN) zoneIdx = pos.index - hLen
+          else if (pZone === ZoneType.FOOTER) zoneIdx = pos.index - hLen - mLen
+          if (zoneIdx >= selStart && zoneIdx < selEnd) {
+            this.ctx.fillStyle = 'rgba(59, 130, 246, 0.25)'
+            this.ctx.fillRect(pos.x, pos.y, pos.width, pos.height)
+          }
+        }
       }
 
       this.drawElement(el, pos.x, pos.y)
@@ -370,18 +567,18 @@ export class Draw implements KeyboardContext {
   private drawHeaderFooter(
     px: number, py: number, zone: ZoneType, setup: typeof DEFAULT_PAGE_SETUP
   ): void {
-    this.ctx.strokeStyle = '#E5E7EB'
+    this.ctx.strokeStyle = '#CBD5E1'
     this.ctx.lineWidth = 1
 
     if (zone === ZoneType.HEADER) {
-      const bottom = py + setup.marginTop + 50
+      const bottom = py + setup.marginTop + this.position.headerHeight
       this.ctx.beginPath()
       this.ctx.moveTo(px + setup.marginLeft, bottom)
       this.ctx.lineTo(px + setup.width - setup.marginRight, bottom)
       this.ctx.stroke()
     }
     if (zone === ZoneType.FOOTER) {
-      const top = py + setup.height - setup.marginBottom - 40
+      const top = py + setup.height - setup.marginBottom - this.position.footerHeight
       this.ctx.beginPath()
       this.ctx.moveTo(px + setup.marginLeft, top)
       this.ctx.lineTo(px + setup.width - setup.marginRight, top)
@@ -404,20 +601,62 @@ export class Draw implements KeyboardContext {
   private drawCursor(): void {
     if (this.mode === EditorMode.READONLY || this.mode === EditorMode.PRINT) return
 
-    let pos = this.positionList[this.cursorIndex]
+    const globalIdx = this.cursorToGlobalIndex(this.cursorIndex)
+    let pos = this.positionList[globalIdx]
 
-    if (!pos && this.positionList.length > 0 && this.cursorIndex >= this.positionList.length) {
-      const last = this.positionList[this.positionList.length - 1]
-      pos = { ...last, x: last.x + last.width }
+    // Cursor past the last element in the active zone
+    const zoneEls = this.zoneElements()
+    if (!pos && this.positionList.length > 0 && this.cursorIndex >= zoneEls.length) {
+      // Find the last position belonging to the active zone
+      let last: IPosition | null = null
+      for (let i = this.positionList.length - 1; i >= 0; i--) {
+        const p = this.positionList[i]
+        const el = this.elementAtGlobal(p.index)
+        if (el && this.zoneFromPosition(p) === this.activeZone) {
+          last = p
+          break
+        }
+      }
+
+      // Only compute pos when we actually found a position in the zone.
+      // Otherwise fall through to the empty-zone cursor below.
+      if (last) {
+        const lastEl = this.elementAtGlobal(last.index)
+        if (lastEl && lastEl.value === '\n') {
+          pos = {
+            ...last,
+            x: DEFAULT_PAGE_SETUP.marginLeft,
+            y: last.y + last.height,
+          }
+        } else {
+          pos = { ...last, x: last.x + last.width }
+        }
+      }
     }
 
     if (!pos) {
       const setup = DEFAULT_PAGE_SETUP
+      const minFooter = setup.footerHeight || 40
+      let cy = setup.marginTop
+      if (this.activeZone === ZoneType.HEADER) {
+        cy = setup.marginTop
+      } else if (this.activeZone === ZoneType.FOOTER) {
+        cy = setup.height - setup.marginBottom - minFooter
+      } else {
+        // MAIN: start at the header's actual bottom (dynamic, follows content)
+        cy = setup.marginTop + (setup.headerHeight || 50)
+        for (const p of this.positionList) {
+          if (this.zoneFromPosition(p) === ZoneType.HEADER) {
+            const bottom = p.y + p.height
+            if (bottom > cy) cy = bottom
+          }
+        }
+      }
       this.ctx.strokeStyle = '#3B82F6'
       this.ctx.lineWidth = 2
       this.ctx.beginPath()
-      this.ctx.moveTo(setup.marginLeft, setup.marginTop + 50)
-      this.ctx.lineTo(setup.marginLeft, setup.marginTop + 50 + 20)
+      this.ctx.moveTo(setup.marginLeft, cy)
+      this.ctx.lineTo(setup.marginLeft, cy + 20)
       this.ctx.stroke()
       return
     }
@@ -437,9 +676,16 @@ export class Draw implements KeyboardContext {
     this.canvas.addEventListener('wheel', this.boundWheel, { passive: false })
     this.container.addEventListener('wheel', this.boundWheel, { passive: false })
     this.canvas.addEventListener('keydown', this.boundKeyDown)
+    this.canvas.addEventListener('beforeinput', this.boundBeforeInput)
+    this.canvas.addEventListener('compositionstart', this.boundCompositionStart)
+    this.canvas.addEventListener('compositionend', this.boundCompositionEnd)
     this.canvas.addEventListener('mousedown', this.boundMouseDown)
+    this.canvas.addEventListener('dblclick', this.boundDoubleClick)
     window.addEventListener('mousemove', this.boundMouseMove)
     window.addEventListener('mouseup', this.boundMouseUp)
+    this.canvas.addEventListener('copy', this.boundCopy)
+    this.canvas.addEventListener('cut', this.boundCut)
+    this.canvas.addEventListener('paste', this.boundPaste)
   }
 
   private onResize(): void {
@@ -455,10 +701,41 @@ export class Draw implements KeyboardContext {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
+    // Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z → undo/redo (handled here so they
+    // work regardless of the KeyboardHandler routing).
+    const ctrl = e.ctrlKey || e.metaKey
+    if (ctrl && !e.shiftKey && e.key === 'z') {
+      e.preventDefault()
+      this.undo()
+      return
+    }
+    if (ctrl && ((e.shiftKey && e.key === 'z') || e.key === 'y')) {
+      e.preventDefault()
+      this.redo()
+      return
+    }
+
     const handled = this.keyboardHandler.handleKeyDown(e)
     if (handled) {
       e.preventDefault()
     }
+  }
+
+  private onBeforeInput(e: InputEvent): void {
+    // Catch text input that bypasses keydown (dead keys, some IME edge cases).
+    // Skip during IME composition — compositionend handles that.
+    if (e.data && !this.keyboardHandler.isComposing() && !e.isComposing) {
+      e.preventDefault()
+      this.keyboardHandler.handleTextInput(e.data)
+    }
+  }
+
+  private onCompositionStart(_e: CompositionEvent): void {
+    this.keyboardHandler.handleCompositionStart()
+  }
+
+  private onCompositionEnd(e: CompositionEvent): void {
+    this.keyboardHandler.handleCompositionEnd(e.data)
   }
 
   // ---- Mouse Events ----
@@ -486,10 +763,23 @@ export class Draw implements KeyboardContext {
     if (this.mode === EditorMode.READONLY || this.mode === EditorMode.PRINT) return
 
     const { x, y } = this.clientToDoc(e.clientX, e.clientY)
-    const index = this.position.getIndexByCoord(x, y)
+    const yZone = this.zoneFromY(y)
 
-    this.rangeManager.startDrag(index)
-    this.cursorIndex = index
+    // Single-click in MAIN always switches back to MAIN zone.
+    // Single-click in HEADER/FOOTER does NOT switch (needs double-click).
+    if (yZone === ZoneType.MAIN) {
+      this.activeZone = ZoneType.MAIN
+    }
+
+    const globalIdx = this.position.getIndexByCoord(x, y)
+    const index = this.globalToCursorIndex(globalIdx)
+
+    // Clamp to valid range for the current active zone
+    const zoneMax = this.zoneElements().length
+    const clamped = index < 0 ? 0 : index > zoneMax ? zoneMax : index
+
+    this.rangeManager.startDrag(clamped)
+    this.cursorIndex = clamped
     this.render()
   }
 
@@ -497,7 +787,11 @@ export class Draw implements KeyboardContext {
     if (!this.rangeManager.isSelecting) return
 
     const { x, y } = this.clientToDoc(e.clientX, e.clientY)
-    const index = this.position.getIndexByCoord(x, y)
+    let index = this.globalToCursorIndex(this.position.getIndexByCoord(x, y))
+    // Clamp to active zone bounds (cursor can't leave its zone during drag)
+    const zoneMax = this.zoneElements().length
+    if (index < 0) index = 0
+    if (index > zoneMax) index = zoneMax
 
     if (index !== this.cursorIndex) {
       this.rangeManager.extendTo(index)
@@ -510,6 +804,135 @@ export class Draw implements KeyboardContext {
     if (!this.rangeManager.isSelecting) return
     this.rangeManager.endDrag()
     this.render()
+  }
+
+  private onDoubleClick(e: MouseEvent): void {
+    if (this.mode === EditorMode.READONLY || this.mode === EditorMode.PRINT) return
+    const { x, y } = this.clientToDoc(e.clientX, e.clientY)
+    this.activeZone = this.zoneFromY(y)
+    // Position cursor at the double-click point within the new zone
+    const globalIdx = this.position.getIndexByCoord(x, y)
+    this.cursorIndex = this.globalToCursorIndex(globalIdx)
+    this.rangeManager.clear()
+    this.render()
+  }
+
+  // ---- Clipboard ----
+
+  private getSelectedText(): string {
+    if (!this.rangeManager.hasRange) return ''
+    const elements = this.zoneElements()
+    const start = this.rangeManager.start
+    const end = this.rangeManager.end
+    let text = ''
+    for (let i = start; i < end && i < elements.length; i++) {
+      const el = elements[i]
+      if (el.value && el.value !== '​') {
+        text += el.value
+      }
+    }
+    return text
+  }
+
+  private onCopy(e: ClipboardEvent): void {
+    const text = this.getSelectedText()
+    if (text) {
+      e.preventDefault()
+      e.clipboardData?.setData('text/plain', text)
+    }
+  }
+
+  private onCut(e: ClipboardEvent): void {
+    if (!this.rangeManager.hasRange) return
+    const text = this.getSelectedText()
+    if (text) {
+      e.preventDefault()
+      e.clipboardData?.setData('text/plain', text)
+
+      const start = this.rangeManager.start
+      const end = this.rangeManager.end
+      this.rangeManager.clear()
+      this.historyManager.saveState({
+        header: this.headerElements,
+        main: this.mainElements,
+        footer: this.footerElements,
+      })
+
+      const elements = this.zoneElements()
+      const before = elements.slice(0, start)
+      const after = elements.slice(end)
+      const updated = [...before, ...after]
+      if (this.activeZone === ZoneType.HEADER) {
+        this.headerElements = updated
+      } else if (this.activeZone === ZoneType.FOOTER) {
+        this.footerElements = updated
+      } else {
+        this.mainElements = updated
+      }
+      this.cursorIndex = start
+      this.recomputeLayout()
+      this.render()
+    }
+  }
+
+  private onPaste(e: ClipboardEvent): void {
+    const text = e.clipboardData?.getData('text/plain')
+    if (!text) return
+
+    e.preventDefault()
+
+    const elements = [...this.zoneElements()]
+    this.historyManager.saveState({
+      header: this.headerElements,
+      main: this.mainElements,
+      footer: this.footerElements,
+    })
+
+    let insertIdx = this.cursorIndex
+    if (this.rangeManager.hasRange) {
+      const start = this.rangeManager.start
+      const end = this.rangeManager.end
+      const before = elements.slice(0, start)
+      const after = elements.slice(end)
+      elements.length = 0
+      elements.push(...before, ...after)
+      insertIdx = start
+      this.rangeManager.clear()
+    }
+
+    // Inherit style from cursor position in the active zone
+    const zoneEls = this.zoneElements()
+    const styleEl = insertIdx > 0 && insertIdx <= zoneEls.length
+      ? zoneEls[insertIdx - 1]
+      : zoneEls[0]
+
+    const newElements: IElement[] = []
+    for (const char of [...text]) {
+      newElements.push({
+        id: generateElementId(),
+        type: ElementType.TEXT,
+        value: char,
+        font: styleEl?.font,
+        size: styleEl?.size,
+        bold: styleEl?.bold,
+        italic: styleEl?.italic,
+        underline: styleEl?.underline,
+        color: styleEl?.color,
+      })
+    }
+
+    const updated = [...elements.slice(0, insertIdx), ...newElements, ...elements.slice(insertIdx)]
+    if (this.activeZone === ZoneType.HEADER) {
+      this.headerElements = updated
+    } else if (this.activeZone === ZoneType.FOOTER) {
+      this.footerElements = updated
+    } else {
+      this.mainElements = updated
+    }
+    this.cursorIndex = insertIdx + newElements.length
+    this.recomputeLayout()
+    this.render()
+    this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
   }
 
   // ---- Public API ----
@@ -543,18 +966,24 @@ export class Draw implements KeyboardContext {
   getEventBus(): EventBus { return this.eventBus }
 
   undo(): void {
-    const elems = this.historyManager.undo()
-    if (elems) {
-      this.mainElements = elems
+    const zones = this.historyManager.undo()
+    if (zones) {
+      this.headerElements = zones.header
+      this.mainElements = zones.main
+      this.footerElements = zones.footer
+      this.cursorIndex = this.mainElements.length
       this.recomputeLayout()
       this.render()
     }
   }
 
   redo(): void {
-    const elems = this.historyManager.redo()
-    if (elems) {
-      this.mainElements = elems
+    const zones = this.historyManager.redo()
+    if (zones) {
+      this.headerElements = zones.header
+      this.mainElements = zones.main
+      this.footerElements = zones.footer
+      this.cursorIndex = this.mainElements.length
       this.recomputeLayout()
       this.render()
     }
@@ -580,9 +1009,16 @@ export class Draw implements KeyboardContext {
     this.canvas.removeEventListener('wheel', this.boundWheel)
     this.container.removeEventListener('wheel', this.boundWheel)
     this.canvas.removeEventListener('keydown', this.boundKeyDown)
+    this.canvas.removeEventListener('beforeinput', this.boundBeforeInput)
+    this.canvas.removeEventListener('compositionstart', this.boundCompositionStart)
+    this.canvas.removeEventListener('compositionend', this.boundCompositionEnd)
     this.canvas.removeEventListener('mousedown', this.boundMouseDown)
+    this.canvas.removeEventListener('dblclick', this.boundDoubleClick)
     window.removeEventListener('mousemove', this.boundMouseMove)
     window.removeEventListener('mouseup', this.boundMouseUp)
+    this.canvas.removeEventListener('copy', this.boundCopy)
+    this.canvas.removeEventListener('cut', this.boundCut)
+    this.canvas.removeEventListener('paste', this.boundPaste)
     this.measurer.destroy()
     this.eventBus.removeAll()
     if (this.canvas.parentElement) {

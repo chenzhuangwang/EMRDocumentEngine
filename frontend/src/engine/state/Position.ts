@@ -11,6 +11,10 @@ export class Position {
   private pageSetup: IPageSetup
   private measurer: TextMeasurer
 
+  /** Actual computed header/footer heights (includes min + trailing \n). */
+  public headerHeight: number = 50
+  public footerHeight: number = 40
+
   constructor(pageSetup: IPageSetup, measurer: TextMeasurer) {
     this.pageSetup = pageSetup
     this.measurer = measurer
@@ -29,27 +33,65 @@ export class Position {
     for (const page of pages) {
       const pageStartY = page.pageIndex * (pageSetup.height + 20)
 
-      // Header area (relative to page start)
+      // Header area
       let headerY = pageStartY + pageSetup.marginTop
+      let actualHeaderHeight = (pageSetup.headerHeight || 50)
       for (const hl of page.headerLines) {
-        for (const _el of hl.elements) {
+        let contentX = pageSetup.marginLeft
+        for (const el of hl.elements) {
+          const elWidth = (el.value === '​' || el.value === '\n') ? 0 : this.measurer.measureWidth(el.value || '', {
+            font: el.font || 'SimSun',
+            size: el.size || 16,
+            bold: el.bold,
+            italic: el.italic,
+          })
           positions.push({
             index: globalIndex++,
+            pageIndex: page.pageIndex,
+            rowIndex: positions.length,
+            x: contentX,
+            y: headerY,
+            width: elWidth,
+            height: hl.height,
+            ascent: hl.maxAscent,
+            descent: hl.maxDescent,
+          })
+          contentX += elWidth
+        }
+        headerY += hl.height
+      }
+      // Compute actual header height, with a sensible minimum so the zone
+      // doesn't collapse to zero for one-line headers.
+      const configHeaderH = pageSetup.headerHeight || 50
+      if (page.headerLines.length > 0) {
+        const contentH = headerY - (pageStartY + pageSetup.marginTop)
+        actualHeaderHeight = Math.max(contentH, configHeaderH)
+        // If the last header line ends with \n, add a synthetic position
+        // for the implicit next line. Uses globalIndex past the last real
+        // element — zoneFromPosition handles this via Y-based fallback.
+        const lastLine = page.headerLines[page.headerLines.length - 1]
+        const lastEl = lastLine.elements[lastLine.elements.length - 1]
+        if (lastEl && lastEl.value === '\n') {
+          // Use a large sentinel index so zoneFromPosition triggers the
+          // Y-based fallback (pos.index >= total in zoneFromPosition).
+          positions.push({
+            index: Number.MAX_SAFE_INTEGER,
             pageIndex: page.pageIndex,
             rowIndex: positions.length,
             x: pageSetup.marginLeft,
             y: headerY,
             width: 0,
-            height: hl.height,
-            ascent: hl.maxAscent,
-            descent: hl.maxDescent,
+            height: lastLine.height,
+            ascent: lastLine.maxAscent,
+            descent: lastLine.maxDescent,
           })
+          actualHeaderHeight += lastLine.height
         }
-        headerY += hl.height
       }
+      this.headerHeight = actualHeaderHeight
 
-      // Main content area
-      let contentY = pageStartY + pageSetup.marginTop + (pageSetup.headerHeight || 50)
+      // Main content area — starts right after the actual header content
+      let contentY = pageStartY + pageSetup.marginTop + actualHeaderHeight
       for (const ml of page.lines) {
         let contentX = pageSetup.marginLeft
         for (const el of ml.elements) {
@@ -75,21 +117,57 @@ export class Position {
         contentY += ml.height
       }
 
-      // Footer area
-      const footerStartY = pageStartY + pageSetup.height - pageSetup.marginBottom - (pageSetup.footerHeight || 40)
+      // Footer area — positioned from the bottom, growing upward
+      const configFooterH = pageSetup.footerHeight || 40
+      let totalFooterH = configFooterH
       for (const fl of page.footerLines) {
-        for (const _el of fl.elements) {
+        totalFooterH += fl.height
+      }
+      // Start position: bottom margin minus total footer height, so the
+      // last footer line sits at the bottom margin edge
+      let footerY = pageStartY + pageSetup.height - pageSetup.marginBottom - totalFooterH
+      for (const fl of page.footerLines) {
+        let contentX = pageSetup.marginLeft
+        for (const el of fl.elements) {
+          const elWidth = (el.value === '​' || el.value === '\n') ? 0 : this.measurer.measureWidth(el.value || '', {
+            font: el.font || 'SimSun',
+            size: el.size || 16,
+            bold: el.bold,
+            italic: el.italic,
+          })
           positions.push({
             index: globalIndex++,
             pageIndex: page.pageIndex,
             rowIndex: positions.length,
-            x: pageSetup.marginLeft,
-            y: footerStartY,
-            width: 0,
+            x: contentX,
+            y: footerY,
+            width: elWidth,
             height: fl.height,
             ascent: fl.maxAscent,
             descent: fl.maxDescent,
           })
+          contentX += elWidth
+        }
+        footerY += fl.height
+      }
+      this.footerHeight = totalFooterH
+      // Trailing \n synthetic position for footer
+      if (page.footerLines.length > 0) {
+        const lastLine = page.footerLines[page.footerLines.length - 1]
+        const lastEl = lastLine.elements[lastLine.elements.length - 1]
+        if (lastEl && lastEl.value === '\n') {
+          positions.push({
+            index: Number.MAX_SAFE_INTEGER,
+            pageIndex: page.pageIndex,
+            rowIndex: positions.length,
+            x: pageSetup.marginLeft,
+            y: footerY,
+            width: 0,
+            height: lastLine.height,
+            ascent: lastLine.maxAscent,
+            descent: lastLine.maxDescent,
+          })
+          this.footerHeight += lastLine.height
         }
       }
     }
@@ -129,10 +207,26 @@ export class Position {
       }
     }
 
-    // If click is to the right of the last position on its line, place cursor at end
+    // If click is to the right of the last position on its line, place cursor at end.
+    // Search backward to find the last element on the same Y line (not the
+    // absolute last in the list, which may belong to a different zone/page).
+    // Also handles clicks on empty lines (no position at that Y at all).
     if (this.positionList.length > 0) {
-      const last = this.positionList[this.positionList.length - 1]
-      if (y >= last.y && y <= last.y + last.height && x > last.x + last.width) {
+      let foundLine = false
+      for (let i = this.positionList.length - 1; i >= 0; i--) {
+        const last = this.positionList[i]
+        if (y >= last.y && y <= last.y + last.height) {
+          foundLine = true
+          if (x > last.x + last.width) {
+            // For visible characters (width>0): cursor after the char.
+            // For zero-width chars (\n): cursor stays on the current line.
+            return last.width > 0 ? i + 1 : i
+          }
+          break
+        }
+      }
+      // No position at this Y → empty line (trailing \n, gap between zones, etc.)
+      if (!foundLine) {
         return this.positionList.length
       }
     }
@@ -150,6 +244,49 @@ export class Position {
       Math.min(startIndex, endIndex),
       Math.max(startIndex, endIndex) + 1
     )
+  }
+
+  /**
+   * Find the character index on the previous/next line nearest to the
+   * current cursor's x position. Used by ArrowUp / ArrowDown.
+   */
+  getNeighborIndex(currentIndex: number, lineDelta: number): number {
+    const list = this.positionList
+    if (list.length === 0) return 0
+
+    const clampedIdx = Math.min(currentIndex, list.length - 1)
+    const cur = list[clampedIdx]
+
+    // Collect unique y-coordinates (each y = one line)
+    const yValues: number[] = []
+    for (const p of list) {
+      const last = yValues[yValues.length - 1]
+      if (last === undefined || Math.abs(p.y - last) > 1) {
+        yValues.push(p.y)
+      }
+    }
+
+    // Find which line the current cursor is on
+    let lineIdx = 0
+    for (let i = 0; i < yValues.length; i++) {
+      if (Math.abs(cur.y - yValues[i]) < 2) { lineIdx = i; break }
+    }
+
+    // Target line (clamped to valid range)
+    const targetLineIdx = Math.max(0, Math.min(yValues.length - 1, lineIdx + lineDelta))
+    const targetY = yValues[targetLineIdx]
+
+    // Find nearest x position on the target line
+    let bestIdx = clampedIdx
+    let bestDist = Infinity
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i]
+      if (Math.abs(p.y - targetY) < 2) {
+        const dx = Math.abs(p.x - cur.x)
+        if (dx < bestDist) { bestDist = dx; bestIdx = i }
+      }
+    }
+    return bestIdx
   }
 
   getPageCount(): number {

@@ -11,6 +11,8 @@ export interface KeyboardContext {
   cursorIndex: number
   onElementsChange: (elements: IElement[], cursorIndex: number, addHistory: boolean) => void
   rangeManager: RangeManager
+  /** Get the character index on the previous/next line nearest to the given index's x. */
+  getNeighborIndex: (currentIndex: number, lineDelta: number) => number
 }
 
 export class KeyboardHandler {
@@ -70,27 +72,26 @@ export class KeyboardHandler {
 
       // ---- 快捷键 ----
       case 'z':
-        if (ctrl && !e.shiftKey) return false // undo → 外部处理
-        if (ctrl && e.shiftKey) return false   // redo → 外部处理
-        return false
+        if (ctrl) return false // undo → 外部处理
+        break
       case 'y':
-        if (ctrl) return false
-        return false
+        if (ctrl) return false // redo → 外部处理
+        break
       case 'b':
         if (ctrl) { this.toggleFormat('bold'); return true }
-        return false
+        break
       case 'i':
         if (ctrl) { this.toggleFormat('italic'); return true }
-        return false
+        break
       case 'u':
         if (ctrl) { this.toggleFormat('underline'); return true }
-        return false
+        break
       case 's':
         if (ctrl) return false // save → 外部处理
-        return false
+        break
       case 'a':
         if (ctrl) { this.selectAll(); return true }
-        return false
+        break
     }
 
     // Fallback: printable single characters (letters, digits, symbols)
@@ -150,9 +151,9 @@ export class KeyboardHandler {
   }
 
   private moveCursorLine(delta: number): void {
-    // 简化为移动固定数量的元素
-    const charsPerLine = 40
-    this.moveCursor(delta * charsPerLine)
+    const newIndex = this.context.getNeighborIndex(this.context.cursorIndex, delta)
+    this.context.rangeManager.clear()
+    this.context.onElementsChange(this.context.elements, newIndex, false)
   }
 
   private moveCursorToLineStart(): void {
@@ -281,10 +282,15 @@ export class KeyboardHandler {
 
     const before = elements.slice(0, idx - 1)
     const after = elements.slice(idx)
-    this.context.onElementsChange([...before, newEl, ...after], idx, false)
+    this.context.onElementsChange([...before, newEl, ...after], idx, true)
   }
 
   private selectAll(): void {
-    // 选区支持需要 RangeManager，此处为简化实现
+    const elements = this.context.elements
+    if (elements.length === 0) return
+    this.context.rangeManager.startDrag(0)
+    this.context.rangeManager.extendTo(elements.length)
+    this.context.rangeManager.endDrag()
+    this.context.onElementsChange(elements, elements.length, false)
   }
 }
