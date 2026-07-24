@@ -29,8 +29,9 @@ import {
   KeyboardHandler,
   type KeyboardContext,
 } from '../interaction/KeyboardHandler'
+import { IMEHandler, type IMEContext } from '../interaction/IMEHandler'
 
-export class Draw implements KeyboardContext {
+export class Draw implements KeyboardContext, IMEContext {
   // Canvas
   private container: HTMLElement
   private canvas: HTMLCanvasElement
@@ -46,6 +47,7 @@ export class Draw implements KeyboardContext {
   public rangeManager: RangeManager
   private eventBus: EventBus
   private keyboardHandler: KeyboardHandler
+  private imeHandler: IMEHandler
 
   // Config
   public options: IEditorOption
@@ -64,13 +66,12 @@ export class Draw implements KeyboardContext {
   cursorIndex: number = 0
   private activeZone: ZoneType = ZoneType.MAIN
 
+  // IME composition preview text
+  private composingText: string = ''
+
   // Event cleanup references
   private boundResize: () => void
   private boundWheel: (e: WheelEvent) => void
-  private boundKeyDown: (e: KeyboardEvent) => void
-  private boundBeforeInput: (e: InputEvent) => void
-  private boundCompositionStart: (e: CompositionEvent) => void
-  private boundCompositionEnd: (e: CompositionEvent) => void
   private boundMouseDown: (e: MouseEvent) => void
   private boundMouseMove: (e: MouseEvent) => void
   private boundMouseUp: (e: MouseEvent) => void
@@ -92,7 +93,7 @@ export class Draw implements KeyboardContext {
     this.canvas.style.top = '0'
     this.canvas.style.left = '50%'
     this.canvas.style.transform = 'translateX(-50%)'
-    this.canvas.tabIndex = 0
+    // tabIndex removed — keyboard/IME events go through hidden textarea proxy
     container.appendChild(this.canvas)
 
     const ctx = this.canvas.getContext('2d')
@@ -113,10 +114,6 @@ export class Draw implements KeyboardContext {
     // Event listeners (save bound refs for cleanup)
     this.boundResize = this.onResize.bind(this)
     this.boundWheel = this.onWheel.bind(this)
-    this.boundKeyDown = this.onKeyDown.bind(this)
-    this.boundBeforeInput = this.onBeforeInput.bind(this)
-    this.boundCompositionStart = this.onCompositionStart.bind(this)
-    this.boundCompositionEnd = this.onCompositionEnd.bind(this)
     this.boundMouseDown = this.onMouseDown.bind(this)
     this.boundMouseMove = this.onMouseMove.bind(this)
     this.boundMouseUp = this.onMouseUp.bind(this)
@@ -124,6 +121,12 @@ export class Draw implements KeyboardContext {
     this.boundCopy = this.onCopy.bind(this)
     this.boundCut = this.onCut.bind(this)
     this.boundPaste = this.onPaste.bind(this)
+
+    // IME handler — hidden textarea proxy for CJK input
+    this.imeHandler = new IMEHandler(container, this)
+
+    // Compute initial layout so positionList is never empty
+    this.recomputeLayout()
 
     this.bindEvents()
     this.resize()
@@ -355,6 +358,11 @@ export class Draw implements KeyboardContext {
 
     // Cursor overlay
     this.drawCursor()
+
+    // Composition preview (IME intermediate text with underline)
+    if (this.composingText) {
+      this.drawComposingText()
+    }
   }
 
   private drawPage(pageIndex: number, offset: IPageOffset): void {
@@ -669,16 +677,79 @@ export class Draw implements KeyboardContext {
     this.ctx.stroke()
   }
 
+  /** Render IME composition preview text with underline at cursor position. */
+  private drawComposingText(): void {
+    if (!this.composingText) return
+
+    const globalIdx = this.cursorToGlobalIndex(this.cursorIndex)
+    let pos = this.positionList[globalIdx]
+
+    // Fallback: cursor may be past the end — find last position in active zone
+    if (!pos && this.positionList.length > 0) {
+      for (let i = this.positionList.length - 1; i >= 0; i--) {
+        const p = this.positionList[i]
+        const el = this.elementAtGlobal(p.index)
+        if (el && this.zoneFromPosition(p) === this.activeZone) {
+          const lastEl = this.elementAtGlobal(p.index)
+          if (lastEl && lastEl.value === '\n') {
+            pos = { ...p, x: DEFAULT_PAGE_SETUP.marginLeft, y: p.y + p.height }
+          } else {
+            pos = { ...p, x: p.x + p.width }
+          }
+          break
+        }
+      }
+    }
+
+    if (!pos) {
+      // Empty zone fallback
+      const setup = DEFAULT_PAGE_SETUP
+      let cy = setup.marginTop
+      if (this.activeZone === ZoneType.HEADER) {
+        cy = setup.marginTop
+      } else if (this.activeZone === ZoneType.FOOTER) {
+        cy = setup.height - setup.marginBottom - 40
+      } else {
+        cy = setup.marginTop + 50
+      }
+      pos = { index: 0, pageIndex: 0, rowIndex: 0, x: setup.marginLeft, y: cy, width: 0, height: 20, ascent: 16, descent: 4 }
+    }
+
+    const styleEl = this.getCursorStyle()
+    const fontSize = styleEl.size || 16
+    const fontFamily = styleEl.font || 'SimSun'
+
+    const fontParts: string[] = []
+    if (styleEl.bold) fontParts.push('bold')
+    if (styleEl.italic) fontParts.push('italic')
+    fontParts.push(`${fontSize}px`)
+    fontParts.push(`"${fontFamily}"`)
+    this.ctx.font = fontParts.join(' ')
+    this.ctx.fillStyle = styleEl.color || '#000000'
+
+    const tx = pos.x
+    const ty = pos.y + fontSize * 0.8
+    this.ctx.fillText(this.composingText, tx, ty)
+
+    // Underline to visually indicate it's composition (not committed)
+    const tw = this.ctx.measureText(this.composingText).width
+    this.ctx.strokeStyle = '#9CA3AF'
+    this.ctx.lineWidth = 1
+    this.ctx.setLineDash([2, 2])
+    this.ctx.beginPath()
+    this.ctx.moveTo(tx, ty + 2)
+    this.ctx.lineTo(tx + tw, ty + 2)
+    this.ctx.stroke()
+    this.ctx.setLineDash([])
+  }
+
   // ---- Events ----
 
   private bindEvents(): void {
     window.addEventListener('resize', this.boundResize)
     this.canvas.addEventListener('wheel', this.boundWheel, { passive: false })
     this.container.addEventListener('wheel', this.boundWheel, { passive: false })
-    this.canvas.addEventListener('keydown', this.boundKeyDown)
-    this.canvas.addEventListener('beforeinput', this.boundBeforeInput)
-    this.canvas.addEventListener('compositionstart', this.boundCompositionStart)
-    this.canvas.addEventListener('compositionend', this.boundCompositionEnd)
+    // Keyboard / IME / input events are handled by IMEHandler's hidden textarea
     this.canvas.addEventListener('mousedown', this.boundMouseDown)
     this.canvas.addEventListener('dblclick', this.boundDoubleClick)
     window.addEventListener('mousemove', this.boundMouseMove)
@@ -700,42 +771,187 @@ export class Draw implements KeyboardContext {
     this.render()
   }
 
-  private onKeyDown(e: KeyboardEvent): void {
-    // Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z → undo/redo (handled here so they
-    // work regardless of the KeyboardHandler routing).
+  // ---- IMEContext implementation ----
+
+  getCursorScreenPosition(): { x: number; y: number; height: number } | null {
+    const scale = this.options.scale || 1
+    const setup = DEFAULT_PAGE_SETUP
+
+    // Canvas is centered within the container:
+    //   canvas.style.left = '50%'
+    //   canvas.style.transform = 'translateX(-50%)'
+    // So its left edge relative to container:
+    const containerWidth = this.container.clientWidth
+    const canvasCSSWidth = setup.width * scale
+    const canvasLeft = Math.max(0, (containerWidth - canvasCSSWidth) / 2)
+
+    // Helper: doc coords → container-relative CSS coords
+    const toContainer = (docX: number, docY: number) => ({
+      x: canvasLeft + docX * scale,
+      y: (docY - this.scrollTop) * scale,
+    })
+
+    if (this.positionList.length === 0) {
+      const { x, y } = toContainer(setup.marginLeft, setup.marginTop)
+      return { x, y, height: 20 * scale }
+    }
+
+    const globalIdx = this.cursorToGlobalIndex(this.cursorIndex)
+
+    // Cursor past last element — use trailing edge of the last position
+    if (globalIdx >= this.positionList.length) {
+      const last = this.positionList[this.positionList.length - 1]
+      const { x, y } = toContainer(last.x + last.width, last.y)
+      return { x, y, height: last.height * scale }
+    }
+
+    const pos = this.positionList[globalIdx]
+    if (!pos) return null
+
+    const { x, y } = toContainer(pos.x, pos.y)
+    return { x, y, height: pos.height * scale }
+  }
+
+  getCursorStyle(): Partial<IElement> {
+    const elements = this.zoneElements()
+    const idx = this.cursorIndex
+    if (idx > 0 && idx <= elements.length) {
+      return elements[idx - 1]
+    }
+    return elements.length > 0 ? elements[0] : {}
+  }
+
+  // insertText is called by IMEHandler on compositionend
+  insertText(text: string, addHistory: boolean): void {
+    if (this.rangeManager.hasRange) {
+      // Delete selected range first, then insert
+      const elements = this.zoneElements()
+      const start = this.rangeManager.start
+      const end = this.rangeManager.end
+      this.rangeManager.clear()
+      const before = elements.slice(0, start)
+      const after = elements.slice(end)
+      let insertIdx = start
+
+      const newElements: IElement[] = []
+      const styleEl = insertIdx > 0 ? elements[insertIdx - 1] : elements[0]
+      for (const char of [...text]) {
+        newElements.push({
+          id: generateElementId(),
+          type: ElementType.TEXT,
+          value: char,
+          font: styleEl?.font,
+          size: styleEl?.size,
+          bold: styleEl?.bold,
+          italic: styleEl?.italic,
+          underline: styleEl?.underline,
+          color: styleEl?.color,
+        })
+      }
+
+      const updated = [...before, ...newElements, ...after]
+      if (this.activeZone === ZoneType.HEADER) {
+        this.headerElements = updated
+      } else if (this.activeZone === ZoneType.FOOTER) {
+        this.footerElements = updated
+      } else {
+        this.mainElements = updated
+      }
+      this.cursorIndex = insertIdx + newElements.length
+    } else {
+      // Just insert at cursor
+      const elements = [...this.zoneElements()]
+      const idx = this.cursorIndex
+      const newElements: IElement[] = []
+      const styleEl = idx > 0 && idx <= elements.length ? elements[idx - 1] : elements[0]
+      for (const char of [...text]) {
+        newElements.push({
+          id: generateElementId(),
+          type: ElementType.TEXT,
+          value: char,
+          font: styleEl?.font,
+          size: styleEl?.size,
+          bold: styleEl?.bold,
+          italic: styleEl?.italic,
+          underline: styleEl?.underline,
+          color: styleEl?.color,
+        })
+      }
+
+      const before = elements.slice(0, idx)
+      const after = elements.slice(idx)
+      const updated = [...before, ...newElements, ...after]
+      if (this.activeZone === ZoneType.HEADER) {
+        this.headerElements = updated
+      } else if (this.activeZone === ZoneType.FOOTER) {
+        this.footerElements = updated
+      } else {
+        this.mainElements = updated
+      }
+      this.cursorIndex = idx + newElements.length
+    }
+
+    if (addHistory) {
+      this.historyManager.saveState({
+        header: this.headerElements,
+        main: this.mainElements,
+        footer: this.footerElements,
+      })
+    }
+
+    this.recomputeLayout()
+    this.render()
+    this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+  }
+
+  requestRender(): void {
+    this.render()
+  }
+
+  getComposingText(): string {
+    return this.composingText
+  }
+
+  setComposingText(text: string): void {
+    this.composingText = text
+  }
+
+  isComposing(): boolean {
+    return this.imeHandler.isComposing
+  }
+
+  focusCanvas(): void {
+    this.canvas.focus()
+  }
+
+  /** IMEContext.forwardKeyDown — called by IMEHandler.textarea for non-IME keydown */
+  forwardKeyDown(e: KeyboardEvent): boolean {
+    return this.onKeyDownInternal(e)
+  }
+
+  // ---- Keyboard (now proxied through IMEHandler.textarea) ----
+
+  private onKeyDownInternal(e: KeyboardEvent): boolean {
+    // Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z → undo/redo
     const ctrl = e.ctrlKey || e.metaKey
     if (ctrl && !e.shiftKey && e.key === 'z') {
-      e.preventDefault()
       this.undo()
-      return
+      return true
     }
     if (ctrl && ((e.shiftKey && e.key === 'z') || e.key === 'y')) {
-      e.preventDefault()
       this.redo()
-      return
+      return true
     }
+
+    // Skip normal keyboard handling during IME composition
+    if (this.imeHandler.isComposing) return false
 
     const handled = this.keyboardHandler.handleKeyDown(e)
     if (handled) {
-      e.preventDefault()
+      // Cursor may have moved — reposition the hidden textarea for IME
+      this.imeHandler.positionProxy()
     }
-  }
-
-  private onBeforeInput(e: InputEvent): void {
-    // Catch text input that bypasses keydown (dead keys, some IME edge cases).
-    // Skip during IME composition — compositionend handles that.
-    if (e.data && !this.keyboardHandler.isComposing() && !e.isComposing) {
-      e.preventDefault()
-      this.keyboardHandler.handleTextInput(e.data)
-    }
-  }
-
-  private onCompositionStart(_e: CompositionEvent): void {
-    this.keyboardHandler.handleCompositionStart()
-  }
-
-  private onCompositionEnd(e: CompositionEvent): void {
-    this.keyboardHandler.handleCompositionEnd(e.data)
+    return handled
   }
 
   // ---- Mouse Events ----
@@ -781,6 +997,11 @@ export class Draw implements KeyboardContext {
     this.rangeManager.startDrag(clamped)
     this.cursorIndex = clamped
     this.render()
+    // Move textarea to cursor position first
+    this.imeHandler.positionProxy()
+    // Defer focus — browser's native click handling may steal focus back
+    // from the textarea if we focus synchronously inside mousedown
+    setTimeout(() => this.imeHandler.focus(), 0)
   }
 
   private onMouseMove(e: MouseEvent): void {
@@ -815,6 +1036,10 @@ export class Draw implements KeyboardContext {
     this.cursorIndex = this.globalToCursorIndex(globalIdx)
     this.rangeManager.clear()
     this.render()
+    // Move textarea to cursor position first
+    this.imeHandler.positionProxy()
+    // Defer focus — browser's native click handling may steal focus back
+    setTimeout(() => this.imeHandler.focus(), 0)
   }
 
   // ---- Clipboard ----
@@ -951,6 +1176,8 @@ export class Draw implements KeyboardContext {
     this.footerElements = footer
     this.recomputeLayout()
     this.render()
+    // Reposition textarea to initial cursor position
+    this.imeHandler.positionProxy()
   }
 
   setMode(mode: EditorMode): void {
@@ -1002,16 +1229,15 @@ export class Draw implements KeyboardContext {
 
   resize(): void { this.onResize() }
 
-  focus(): void { this.canvas.focus() }
+  focus(): void {
+    // Focus the hidden textarea (IME proxy) so it can receive keyboard + IME events
+    this.imeHandler.focus()
+  }
 
   destroy(): void {
     window.removeEventListener('resize', this.boundResize)
     this.canvas.removeEventListener('wheel', this.boundWheel)
     this.container.removeEventListener('wheel', this.boundWheel)
-    this.canvas.removeEventListener('keydown', this.boundKeyDown)
-    this.canvas.removeEventListener('beforeinput', this.boundBeforeInput)
-    this.canvas.removeEventListener('compositionstart', this.boundCompositionStart)
-    this.canvas.removeEventListener('compositionend', this.boundCompositionEnd)
     this.canvas.removeEventListener('mousedown', this.boundMouseDown)
     this.canvas.removeEventListener('dblclick', this.boundDoubleClick)
     window.removeEventListener('mousemove', this.boundMouseMove)
@@ -1019,6 +1245,7 @@ export class Draw implements KeyboardContext {
     this.canvas.removeEventListener('copy', this.boundCopy)
     this.canvas.removeEventListener('cut', this.boundCut)
     this.canvas.removeEventListener('paste', this.boundPaste)
+    this.imeHandler.destroy()
     this.measurer.destroy()
     this.eventBus.removeAll()
     if (this.canvas.parentElement) {

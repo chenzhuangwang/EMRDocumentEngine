@@ -12,6 +12,9 @@ export { Position } from './state/Position'
 export { HistoryManager } from './state/HistoryManager'
 export { RangeManager } from './state/RangeManager'
 export { KeyboardHandler } from './interaction/KeyboardHandler'
+export { IMEHandler } from './interaction/IMEHandler'
+export type { KeyboardContext } from './interaction/KeyboardHandler'
+export type { IMEContext } from './interaction/IMEHandler'
 export {
   ElementType,
   ControlType,
