@@ -87,28 +87,6 @@ export class IMEHandler {
     return this._composingText
   }
 
-  /** 外部（KeyboardHandler.keydown）询问是否跳过本次按键 */
-  shouldIgnoreKeyDown(e: KeyboardEvent): boolean {
-    if (!this._composing) return false
-
-    // 在 IME 组合中，几乎所有按键都应该放行给 textarea/IME 处理
-    // Enter / Space / Tab / Escape 是例外 — 它们对 IME 有特殊含义
-    // （Enter=确认候选, Escape=取消组合），所以不放行给 canvas keydown
-    const imeControlKeys = ['Enter', 'Escape', 'Tab']
-    if (imeControlKeys.includes(e.key)) {
-      // 放行给 textarea 的 keydown（已经在 onKeyDown 中处理）
-      return true // 告诉调用方：不处理，留给 IME
-    }
-
-    // 其他所有键（字母、数字、符号、方向键）在 composing 期间都忽略
-    return true
-  }
-
-  /** 外部（Draw.beforeInput）询问是否跳过 */
-  shouldIgnoreBeforeInput(_e: InputEvent): boolean {
-    return this._composing
-  }
-
   /** 聚焦 textarea 并定位到光标位置 — 每次光标移动后都应调用 */
   focus(): void {
     this.positionProxy()

@@ -14,6 +14,8 @@ export enum ElementType {
   SEPARATOR = 'separator',
   HYPERLINK = 'hyperlink',
   LATEX = 'latex',
+  BARCODE = 'barcode',
+  QRCODE = 'qrcode',
 }
 
 export enum ControlType {

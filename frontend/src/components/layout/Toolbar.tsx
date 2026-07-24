@@ -6,6 +6,8 @@ import {
   Bold,
   Italic,
   Underline,
+  Undo2,
+  Redo2,
   Strikethrough,
   Superscript,
   Subscript,
@@ -24,7 +26,6 @@ import {
   Indent,
   Outdent,
   ChevronsUpDown,
-  FilePlus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -40,8 +41,11 @@ export function Toolbar({ onFormat, onInsert, onExport, onPrint }: ToolbarProps)
     <div className="h-toolbar bg-white border-b border-gray-100 flex items-center px-3 gap-0.5 flex-shrink-0 overflow-x-auto select-none">
       {/* 组1：历史操作 */}
       <ToolbarGroup>
-        <ToolbarButton title="撤销" disabled>
-          <FilePlus size={16} />
+        <ToolbarButton title="撤销 (Ctrl+Z)" onClick={() => onFormat?.('undo')}>
+          <Undo2 size={16} />
+        </ToolbarButton>
+        <ToolbarButton title="重做 (Ctrl+Y)" onClick={() => onFormat?.('redo')}>
+          <Redo2 size={16} />
         </ToolbarButton>
       </ToolbarGroup>
 

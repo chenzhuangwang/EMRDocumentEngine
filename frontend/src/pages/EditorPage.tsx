@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { EditorLayout } from '@/components/layout/EditorLayout'
-import { EditorProvider } from '@/components/editor/EditorProvider'
+import { EditorProvider, useEditorRef } from '@/components/editor/EditorProvider'
 import { useEditorStore } from '@/store'
 import { documentApi, type DocumentDetail } from '@/services/api'
 import {
@@ -103,20 +103,6 @@ export default function EditorPage() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleSave])
 
-  // 格式化操作
-  const handleFormat = useCallback((action: string, _value?: unknown) => {
-    console.log('Format action:', action)
-    // TODO: 通过引擎 command 执行格式化
-    setDirty(true)
-  }, [setDirty])
-
-  // 元素插入
-  const handleInsert = useCallback((elementType: string) => {
-    console.log('Insert element:', elementType)
-    // TODO: 通过引擎 command 插入元素
-    setDirty(true)
-  }, [setDirty])
-
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -133,20 +119,89 @@ export default function EditorPage() {
         pageMode: PageMode.PAGING,
       }}
     >
-      <EditorLayout
+      <EditorPageInner
+        containerRef={containerRef}
         documentTitle={documentTitle}
         onTitleChange={setDocumentTitle}
         onSave={handleSave}
-        onFormat={handleFormat}
-        onInsert={handleInsert}
-      >
-        {/* Canvas 编辑器容器 */}
-        <div
-          ref={containerRef}
-          className="flex-1 overflow-hidden bg-[#E5E7EB] relative"
-          style={{ minHeight: 0 }}
-        />
-      </EditorLayout>
+        onDirty={setDirty}
+      />
     </EditorProvider>
+  )
+}
+
+// ---- 内部组件：必须在 EditorProvider 内部才能用 useEditorRef ----
+
+function EditorPageInner({
+  containerRef,
+  documentTitle,
+  onTitleChange,
+  onSave,
+  onDirty,
+}: {
+  containerRef: React.RefObject<HTMLDivElement>
+  documentTitle: string
+  onTitleChange: (title: string) => void
+  onSave: () => void
+  onDirty: (dirty: boolean) => void
+}) {
+  const editorRef = useEditorRef()
+
+  // 格式化操作 — 对接引擎实时生效
+  const handleFormat = useCallback((action: string, _value?: unknown) => {
+    const editor = editorRef.current
+    if (!editor) return
+
+    switch (action) {
+      case 'undo':          editor.undo(); break
+      case 'redo':          editor.redo(); break
+      case 'bold':          editor.toggleBold(); break
+      case 'italic':        editor.toggleItalic(); break
+      case 'underline':     editor.toggleUnderline(); break
+      case 'strikeout':     editor.toggleStrikeout(); break
+      case 'superscript':   editor.toggleSuperscript(); break
+      case 'subscript':     editor.toggleSubscript(); break
+      case 'alignLeft':
+      case 'alignCenter':
+      case 'alignRight':
+      case 'alignJustify':  editor.setAlignment(action); break
+      default:
+        console.warn('[EditorPage] Unknown format action:', action)
+    }
+    onDirty(true)
+  }, [editorRef, onDirty])
+
+  // 元素插入 — 对接引擎插入元素
+  const handleInsert = useCallback((elementType: string) => {
+    const editor = editorRef.current
+    if (!editor) return
+
+    switch (elementType) {
+      case 'table':
+      case 'image':
+      case 'control':
+        console.log(`[EditorPage] Insert ${elementType} — not yet implemented in engine`)
+        return
+      default:
+        console.warn('[EditorPage] Unknown insert type:', elementType)
+        return
+    }
+  }, [editorRef])
+
+  return (
+    <EditorLayout
+      documentTitle={documentTitle}
+      onTitleChange={onTitleChange}
+      onSave={onSave}
+      onFormat={handleFormat}
+      onInsert={handleInsert}
+    >
+      {/* Canvas 编辑器容器 */}
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-hidden bg-[#E5E7EB] relative"
+        style={{ minHeight: 0 }}
+      />
+    </EditorLayout>
   )
 }

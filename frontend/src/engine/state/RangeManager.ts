@@ -29,8 +29,9 @@ export class RangeManager {
   /** 正在拖选中 */
   get isSelecting(): boolean { return this._isSelecting }
 
-  /** 开始选区 */
+  /** 设置光标位置（无选区） */
   setSelectionPoint(index: number): void {
+    if (index < 0 || !Number.isFinite(index)) return
     this._start = index
     this._end = index
     this._isSelecting = false
@@ -38,6 +39,7 @@ export class RangeManager {
 
   /** 开始拖选 */
   startDrag(index: number): void {
+    if (index < 0 || !Number.isFinite(index)) return
     this._start = index
     this._end = index
     this._isSelecting = true
@@ -46,6 +48,7 @@ export class RangeManager {
   /** 拖选扩展 */
   extendTo(index: number): void {
     if (!this._isSelecting) return
+    if (index < 0 || !Number.isFinite(index)) return
     this._end = index
   }
 

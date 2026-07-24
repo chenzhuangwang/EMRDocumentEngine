@@ -27,6 +27,10 @@ export class Editor {
     this.draw = new Draw(container, options)
     this.eventBus = this.draw.getEventBus()
 
+    // 转发内部事件（必须在 setValue 之前，否则 setValue 触发的
+    // contentChange 事件会在 listener 注册前发射而丢失）
+    this.setupEventForwarding()
+
     // 设置初始数据
     if (data) {
       this.draw.setValue(
@@ -35,9 +39,6 @@ export class Editor {
         data.footer || []
       )
     }
-
-    // 转发内部事件
-    this.setupEventForwarding()
 
     // 通知就绪
     this.notifyListeners('ready')
@@ -101,6 +102,16 @@ export class Editor {
     this.draw.setPageMode(mode)
   }
 
+  // ==================== 格式化操作 ====================
+
+  toggleBold(): void { this.draw.toggleBold() }
+  toggleItalic(): void { this.draw.toggleItalic() }
+  toggleUnderline(): void { this.draw.toggleUnderline() }
+  toggleStrikeout(): void { this.draw.toggleStrikeout() }
+  toggleSuperscript(): void { this.draw.toggleSuperscript() }
+  toggleSubscript(): void { this.draw.toggleSubscript() }
+  setAlignment(alignment: string): void { this.draw.setAlignment(alignment) }
+
   // ==================== 历史操作 ====================
 
   undo(): void {
@@ -134,7 +145,13 @@ export class Editor {
   private notifyListeners(event: EditorEventType, ...args: unknown[]): void {
     this.listeners
       .filter(l => l.event === event)
-      .forEach(l => l.callback(...args))
+      .forEach(l => {
+        try {
+          l.callback(...args)
+        } catch (err) {
+          console.error(`[Editor] Error in "${event}" listener:`, err)
+        }
+      })
   }
 
   // ==================== 生命周期 ====================

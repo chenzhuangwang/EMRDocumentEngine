@@ -150,11 +150,7 @@ export class Draw implements KeyboardContext, IMEContext {
     addHistory: boolean
   ): void {
     if (addHistory) {
-      this.historyManager.saveState({
-        header: this.headerElements,
-        main: this.mainElements,
-        footer: this.footerElements,
-      })
+      this.historyManager.saveState(this.takeSnapshot())
     }
     if (this.activeZone === ZoneType.HEADER) {
       this.headerElements = newElements
@@ -489,6 +485,10 @@ export class Draw implements KeyboardContext, IMEContext {
     const mLen = unzipElementList(this.mainElements).length
 
     for (const pos of pagePositions) {
+      // Sentinel position (index = Number.MAX_SAFE_INTEGER) — synthetic entry
+      // for trailing \n cursor positioning only, skip rendering.
+      if (pos.index >= 9007199254740990) continue
+
       const el = this.elementAtGlobal(pos.index)
       if (!el || el.value === '\n' || el.value === '​') continue
 
@@ -523,26 +523,33 @@ export class Draw implements KeyboardContext, IMEContext {
     this.ctx.font = fontParts.join(' ')
 
     // Color (revisions take priority)
+    let baseColor = this.options.defaultColor || '#000000'
     if (el.revision) {
       const revColors: Record<string, string> = {
         insert: '#16A34A', delete: '#DC2626', modify: '#2563EB',
       }
-      this.ctx.fillStyle = revColors[el.revision.type] || '#000000'
-    } else {
-      this.ctx.fillStyle = el.color || this.options.defaultColor || '#000000'
+      baseColor = revColors[el.revision.type] || baseColor
+    } else if (el.color) {
+      baseColor = el.color
     }
+    this.ctx.fillStyle = baseColor
 
-    // Highlight background
+    // Highlight background (drawn BEFORE text so it sits behind)
     if (el.highlight) {
       const tw = this.ctx.measureText(el.value).width
       this.ctx.fillStyle = el.highlight
       this.ctx.fillRect(x, y - fontSize * 0.8, tw, fontSize * 1.2)
-      this.ctx.fillStyle = el.color || '#000000'
+      this.ctx.fillStyle = baseColor // restore text color (preserves revision color)
     }
+
+    // Vertical offset for superscript / subscript
+    let textY = y + fontSize * 0.8
+    if (el.superscript) textY = y + fontSize * 0.3
+    else if (el.subscript) textY = y + fontSize * 1.2
 
     // Draw text (skip zero-width joiner and newline)
     if (el.value && el.value !== '​' && el.value !== '\n') {
-      this.ctx.fillText(el.value, x, y + fontSize * 0.8)
+      this.ctx.fillText(el.value, x, textY)
     }
 
     // Underline
@@ -892,11 +899,7 @@ export class Draw implements KeyboardContext, IMEContext {
     }
 
     if (addHistory) {
-      this.historyManager.saveState({
-        header: this.headerElements,
-        main: this.mainElements,
-        footer: this.footerElements,
-      })
+      this.historyManager.saveState(this.takeSnapshot())
     }
 
     this.recomputeLayout()
@@ -1077,11 +1080,7 @@ export class Draw implements KeyboardContext, IMEContext {
       const start = this.rangeManager.start
       const end = this.rangeManager.end
       this.rangeManager.clear()
-      this.historyManager.saveState({
-        header: this.headerElements,
-        main: this.mainElements,
-        footer: this.footerElements,
-      })
+      this.historyManager.saveState(this.takeSnapshot())
 
       const elements = this.zoneElements()
       const before = elements.slice(0, start)
@@ -1107,11 +1106,7 @@ export class Draw implements KeyboardContext, IMEContext {
     e.preventDefault()
 
     const elements = [...this.zoneElements()]
-    this.historyManager.saveState({
-      header: this.headerElements,
-      main: this.mainElements,
-      footer: this.footerElements,
-    })
+    this.historyManager.saveState(this.takeSnapshot())
 
     let insertIdx = this.cursorIndex
     if (this.rangeManager.hasRange) {
@@ -1162,6 +1157,17 @@ export class Draw implements KeyboardContext, IMEContext {
 
   // ---- Public API ----
 
+  /** Build a full zone snapshot for history tracking. */
+  private takeSnapshot(): import('../state/HistoryManager').ZoneSnapshot {
+    return {
+      header: this.headerElements,
+      main: this.mainElements,
+      footer: this.footerElements,
+      cursorIndex: this.cursorIndex,
+      activeZone: this.activeZone,
+    }
+  }
+
   getValue(): { header: IElement[]; main: IElement[]; footer: IElement[] } {
     return {
       header: this.headerElements,
@@ -1178,6 +1184,7 @@ export class Draw implements KeyboardContext, IMEContext {
     this.render()
     // Reposition textarea to initial cursor position
     this.imeHandler.positionProxy()
+    this.eventBus.emit('contentChange', { type: 'contentChange', elements: main })
   }
 
   setMode(mode: EditorMode): void {
@@ -1190,29 +1197,128 @@ export class Draw implements KeyboardContext, IMEContext {
     this.render()
   }
 
+  // ---- Formatting API (called by Toolbar) ----
+
+  toggleBold(): void { this.toggleElementProperty('bold') }
+  toggleItalic(): void { this.toggleElementProperty('italic') }
+  toggleUnderline(): void { this.toggleElementProperty('underline') }
+  toggleStrikeout(): void { this.toggleElementProperty('strikeout') }
+  toggleSuperscript(): void { this.toggleElementProperty('superscript') }
+  toggleSubscript(): void { this.toggleElementProperty('subscript') }
+
+  setAlignment(alignment: string): void {
+    const elements = [...this.zoneElements()]
+    if (elements.length === 0) return
+
+    const rowFlexMap: Record<string, string> = {
+      alignLeft: 'LEFT', alignCenter: 'CENTER',
+      alignRight: 'RIGHT', alignJustify: 'JUSTIFY',
+    }
+    const rowFlex = rowFlexMap[alignment]
+    if (!rowFlex) return
+
+    this.historyManager.saveState(this.takeSnapshot())
+
+    const updated = elements.map(el => ({ ...el, rowFlex: rowFlex as IElement['rowFlex'] }))
+    if (this.activeZone === ZoneType.HEADER) {
+      this.headerElements = updated
+    } else if (this.activeZone === ZoneType.FOOTER) {
+      this.footerElements = updated
+    } else {
+      this.mainElements = updated
+    }
+    this.recomputeLayout()
+    this.render()
+    this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
+  }
+
+  private toggleElementProperty(property: string): void {
+    const elements = [...this.zoneElements()]
+
+    // Save history before any mutation
+    this.historyManager.saveState(this.takeSnapshot())
+
+    // Format selected range — apply to all elements in the selection
+    if (this.rangeManager.hasRange) {
+      const start = this.rangeManager.start
+      const end = this.rangeManager.end
+      const before = elements.slice(0, start)
+      const selected = elements.slice(start, end)
+      const after = elements.slice(end)
+
+      const key = property as keyof IElement
+      const formatted = selected.map(el => ({ ...el, [key]: !el[key] }))
+      const updated = [...before, ...formatted, ...after]
+
+      if (this.activeZone === ZoneType.HEADER) {
+        this.headerElements = updated
+      } else if (this.activeZone === ZoneType.FOOTER) {
+        this.footerElements = updated
+      } else {
+        this.mainElements = updated
+      }
+
+      // Keep cursor at end of formatted range; clear selection on next interaction
+      this.cursorIndex = end
+      this.rangeManager.setSelectionPoint(end)
+      this.recomputeLayout()
+      this.render()
+      this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
+      return
+    }
+
+    // No selection — format the element just before the cursor
+    const idx = this.cursorIndex
+    if (idx <= 0 || idx > elements.length) return
+
+    const el = elements[idx - 1]
+    const key = property as keyof IElement
+    const newEl = { ...el, [key]: !el[key] }
+
+    const before = elements.slice(0, idx - 1)
+    const after = elements.slice(idx)
+    const updated = [...before, newEl, ...after]
+    if (this.activeZone === ZoneType.HEADER) {
+      this.headerElements = updated
+    } else if (this.activeZone === ZoneType.FOOTER) {
+      this.footerElements = updated
+    } else {
+      this.mainElements = updated
+    }
+    this.recomputeLayout()
+    this.render()
+    this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
+  }
+
   getEventBus(): EventBus { return this.eventBus }
 
   undo(): void {
-    const zones = this.historyManager.undo()
+    const zones = this.historyManager.undo(this.takeSnapshot())
     if (zones) {
       this.headerElements = zones.header
       this.mainElements = zones.main
       this.footerElements = zones.footer
-      this.cursorIndex = this.mainElements.length
+      this.cursorIndex = zones.cursorIndex
+      this.activeZone = zones.activeZone
       this.recomputeLayout()
       this.render()
+      this.imeHandler.positionProxy()
+      this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
     }
   }
 
   redo(): void {
-    const zones = this.historyManager.redo()
+    const zones = this.historyManager.redo(this.takeSnapshot())
     if (zones) {
       this.headerElements = zones.header
       this.mainElements = zones.main
       this.footerElements = zones.footer
-      this.cursorIndex = this.mainElements.length
+      this.cursorIndex = zones.cursorIndex
+      this.activeZone = zones.activeZone
       this.recomputeLayout()
       this.render()
+      this.imeHandler.positionProxy()
+      this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
     }
   }
 

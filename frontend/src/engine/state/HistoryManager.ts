@@ -3,11 +3,16 @@
 // ============================================================
 
 import type { IElement } from '../document/DocumentModel'
+import { ZoneType } from '../document/DocumentModel'
 
 export interface ZoneSnapshot {
   header: IElement[]
   main: IElement[]
   footer: IElement[]
+  /** Zone-relative cursor index at the time of snapshot */
+  cursorIndex: number
+  /** Active zone at the time of snapshot */
+  activeZone: ZoneType
 }
 
 interface HistorySnapshot {
@@ -19,19 +24,19 @@ export class HistoryManager {
   private undoStack: HistorySnapshot[] = []
   private redoStack: HistorySnapshot[] = []
   private maxRecords: number
-  private currentZones: ZoneSnapshot
 
   constructor(maxRecords: number = 100) {
     this.maxRecords = maxRecords
-    this.currentZones = { header: [], main: [], footer: [] }
   }
 
-  /** Deep-clone a zone snapshot. */
+  /** Deep-clone a zone snapshot (JSON-safe fields only). */
   private clone(zones: ZoneSnapshot): ZoneSnapshot {
     return {
       header: JSON.parse(JSON.stringify(zones.header)),
       main: JSON.parse(JSON.stringify(zones.main)),
       footer: JSON.parse(JSON.stringify(zones.footer)),
+      cursorIndex: zones.cursorIndex,
+      activeZone: zones.activeZone,
     }
   }
 
@@ -50,39 +55,40 @@ export class HistoryManager {
 
     // New action invalidates the redo stack
     this.redoStack = []
-    this.currentZones = this.clone(zones)
   }
 
   /**
-   * Undo: return the previous snapshot of all three zones.
+   * Undo: push the actual current state (post-mutation) to redo stack,
+   * then return the previous snapshot from undo stack.
    */
-  undo(): ZoneSnapshot | null {
+  undo(actualState: ZoneSnapshot): ZoneSnapshot | null {
     if (this.undoStack.length === 0) return null
 
+    // Push the ACTUAL post-mutation state so redo can restore it correctly
     this.redoStack.push({
-      zones: this.clone(this.currentZones),
+      zones: this.clone(actualState),
       timestamp: Date.now(),
     })
 
     const snapshot = this.undoStack.pop()!
-    this.currentZones = snapshot.zones
-    return snapshot.zones
+    return this.clone(snapshot.zones)
   }
 
   /**
-   * Redo: restore the next snapshot of all three zones.
+   * Redo: push the actual current state (before redo) to undo stack,
+   * then return the next snapshot from redo stack.
    */
-  redo(): ZoneSnapshot | null {
+  redo(actualState: ZoneSnapshot): ZoneSnapshot | null {
     if (this.redoStack.length === 0) return null
 
+    // Push the ACTUAL current state so undo can return to it
     this.undoStack.push({
-      zones: this.clone(this.currentZones),
+      zones: this.clone(actualState),
       timestamp: Date.now(),
     })
 
     const snapshot = this.redoStack.pop()!
-    this.currentZones = snapshot.zones
-    return snapshot.zones
+    return this.clone(snapshot.zones)
   }
 
   canUndo(): boolean {

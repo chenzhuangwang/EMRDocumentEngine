@@ -3,7 +3,8 @@
 // ============================================================
 
 import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react'
-import { Editor, type IEditorOption, type IElement } from '@/engine'
+import { Editor } from '@/engine'
+import type { IEditorOption, IElement } from '@/engine'
 
 interface EditorContextValue {
   editorRef: React.MutableRefObject<Editor | null>
@@ -36,6 +37,13 @@ export function EditorProvider({ children, containerRef, data, options }: Editor
       editorRef.current = null
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync external data changes into the editor (e.g. async-loaded document)
+  useEffect(() => {
+    if (editorRef.current && data) {
+      editorRef.current.setValue(data)
+    }
+  }, [data])
 
   return (
     <EditorContext.Provider value={{ editorRef }}>
