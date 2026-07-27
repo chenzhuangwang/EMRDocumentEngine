@@ -21,9 +21,10 @@ interface HeaderBarProps {
   onTitleChange?: (title: string) => void
   onSave?: () => void
   onShare?: () => void
+  onFormat?: (action: string) => void
 }
 
-export function HeaderBar({ documentTitle, onTitleChange, onSave, onShare }: HeaderBarProps) {
+export function HeaderBar({ documentTitle, onTitleChange, onSave, onShare, onFormat }: HeaderBarProps) {
   const saveStatus = useEditorStore((s) => s.saveStatus)
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
   const user = useUserStore((s) => s.user)
@@ -68,14 +69,14 @@ export function HeaderBar({ documentTitle, onTitleChange, onSave, onShare }: Hea
       <div className="flex items-center gap-1">
         <button
           className="toolbar-btn"
-          disabled
+          onClick={() => onFormat?.('undo')}
           title="撤销 (Ctrl+Z)"
         >
           <Undo2 size={16} />
         </button>
         <button
           className="toolbar-btn"
-          disabled
+          onClick={() => onFormat?.('redo')}
           title="重做 (Ctrl+Y)"
         >
           <Redo2 size={16} />

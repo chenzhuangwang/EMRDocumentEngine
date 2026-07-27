@@ -110,7 +110,14 @@ export class Editor {
   toggleStrikeout(): void { this.draw.toggleStrikeout() }
   toggleSuperscript(): void { this.draw.toggleSuperscript() }
   toggleSubscript(): void { this.draw.toggleSubscript() }
+  setFont(fontFamily: string): void { this.draw.setFont(fontFamily) }
+  setFontSize(size: number): void { this.draw.setFontSize(size) }
+  setTextColor(color: string): void { this.draw.setTextColor(color) }
   setAlignment(alignment: string): void { this.draw.setAlignment(alignment) }
+  toggleUnorderedList(): void { this.draw.toggleUnorderedList() }
+  toggleOrderedList(): void { this.draw.toggleOrderedList() }
+  increaseIndent(): void { this.draw.increaseIndent() }
+  decreaseIndent(): void { this.draw.decreaseIndent() }
   insertTable(rows: number, cols: number): void { this.draw.insertTable(rows, cols) }
   insertControl(controlType: string): void { this.draw.insertControl(controlType) }
   insertImage(src: string, width: number, height: number): void { this.draw.insertImage(src, width, height) }

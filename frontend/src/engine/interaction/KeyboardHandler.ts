@@ -182,10 +182,21 @@ export class KeyboardHandler {
   // ---- 文本操作 ----
 
   private insertText(text: string): void {
-    this.context.rangeManager.clear()
-
     const elements = [...this.context.elements]
-    const insertIndex = this.context.cursorIndex
+    let insertIndex = this.context.cursorIndex
+
+    // 有选区 → 先删除选区内容，再在选区起点插入
+    if (this.context.rangeManager.hasRange) {
+      const start = this.context.rangeManager.start
+      const end = this.context.rangeManager.end
+      const before = elements.slice(0, start)
+      const after = elements.slice(end)
+      elements.length = 0
+      elements.push(...before, ...after)
+      insertIndex = start
+    }
+
+    this.context.rangeManager.clear()
 
     // 在光标位置插入
     const newElements: IElement[] = []

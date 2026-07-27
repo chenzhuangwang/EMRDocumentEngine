@@ -17,6 +17,8 @@ interface EditorLayoutProps {
   onSave?: () => void
   onFormat?: (action: string, value?: unknown) => void
   onInsert?: (elementType: string) => void
+  onExport?: (format: string) => void
+  onPrint?: () => void
 }
 
 export function EditorLayout({
@@ -26,6 +28,8 @@ export function EditorLayout({
   onSave,
   onFormat,
   onInsert,
+  onExport,
+  onPrint,
 }: EditorLayoutProps) {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
@@ -37,12 +41,15 @@ export function EditorLayout({
         documentTitle={documentTitle}
         onTitleChange={onTitleChange}
         onSave={onSave}
+        onFormat={onFormat}
       />
 
       {/* 工具栏 */}
       <Toolbar
         onFormat={onFormat}
         onInsert={onInsert}
+        onExport={onExport}
+        onPrint={onPrint}
       />
 
       {/* 主体区域 */}

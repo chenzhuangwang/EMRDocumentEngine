@@ -79,6 +79,9 @@ export class Draw implements KeyboardContext, IMEContext {
   // Focused table cell (null = no cell focused)
   private focusedCell: { tableEl: IElement; td: ITd } | null = null
 
+  // Cache for loaded images to prevent redundant async loads and render loops
+  private loadedImages: Map<string, HTMLImageElement> = new Map()
+
   // Event cleanup references
   private boundResize: () => void
   private boundWheel: (e: WheelEvent) => void
@@ -249,8 +252,9 @@ export class Draw implements KeyboardContext, IMEContext {
 
   /**
    * Convert a global position-list index (from getIndexByCoord) to a
-   * zone-relative cursor index. Returns the zone's element count when
-   * the click is past the last position (cursor at end of zone).
+   * zone-relative cursor index. Uses modulo wrapping so multi-page
+   * documents correctly map clicks on any page to the right zone position.
+   * Returns the zone's element count when the click is past the last position.
    */
   private globalToCursorIndex(globalIdx: number): number {
     const hLen = unzipElementList(this.headerElements).length
@@ -259,24 +263,31 @@ export class Draw implements KeyboardContext, IMEContext {
     const total = hLen + mLen + fLen
 
     // Click past the end of all content → cursor at end of active zone
-    if (globalIdx >= total) {
+    if (globalIdx >= this.positionList.length) {
       if (this.activeZone === ZoneType.HEADER) return hLen
       if (this.activeZone === ZoneType.FOOTER) return fLen
       return mLen
     }
 
+    if (total === 0) return 0
+
+    // Wrap multi-page indices to their page-0 equivalent, then apply zone offset.
+    // Page layout: [h0..hN][m0..mN][f0..fN] per page, repeated for multi-page.
     if (this.activeZone === ZoneType.HEADER) {
       if (hLen === 0) return 0
-      // Clicking past the last header element (globalIdx == hLen) → cursor at end
-      if (globalIdx === hLen) return hLen
-      return globalIdx % hLen
+      const wrapped = globalIdx % total
+      // wrapped is in [0, hLen) for header positions
+      return wrapped < hLen ? wrapped : hLen
     }
     if (this.activeZone === ZoneType.FOOTER) {
       if (fLen === 0) return 0
-      if (globalIdx === hLen + mLen + fLen) return fLen
-      return globalIdx % fLen
+      const wrapped = (globalIdx - hLen - mLen + total) % total
+      return wrapped < fLen ? wrapped : fLen
     }
-    return globalIdx - hLen
+    // MAIN: positions start at hLen each page cycle
+    if (mLen === 0) return 0
+    const wrapped = (globalIdx - hLen + total) % total
+    return wrapped < mLen ? wrapped : mLen
   }
 
   /**
@@ -493,6 +504,8 @@ export class Draw implements KeyboardContext, IMEContext {
     const hasSelection = this.rangeManager.hasRange
     const hLen = unzipElementList(this.headerElements).length
     const mLen = unzipElementList(this.mainElements).length
+    const fLen = unzipElementList(this.footerElements).length
+    const totalUnzipped = hLen + mLen + fLen
 
     for (const pos of pagePositions) {
       // Sentinel position (index = Number.MAX_SAFE_INTEGER) — synthetic entry
@@ -504,13 +517,16 @@ export class Draw implements KeyboardContext, IMEContext {
 
       // Selection highlight — convert global pos.index to zone-relative,
       // then compare only when the position's zone matches activeZone.
+      // Multi-page: wrap pos.index by totalUnzipped to map page N positions
+      // back to their equivalent page-0 indices before zone-relative mapping.
       if (hasSelection) {
         const pZone = this.zoneFromPosition(pos)
         if (pZone === this.activeZone) {
-          let zoneIdx = pos.index
-          if (pZone === ZoneType.MAIN) zoneIdx = pos.index - hLen
-          else if (pZone === ZoneType.FOOTER) zoneIdx = pos.index - hLen - mLen
-          if (zoneIdx >= selStart && zoneIdx < selEnd) {
+          const wrapped = totalUnzipped > 0 ? pos.index % totalUnzipped : pos.index
+          let zoneIdx = wrapped
+          if (pZone === ZoneType.MAIN) zoneIdx = wrapped - hLen
+          else if (pZone === ZoneType.FOOTER) zoneIdx = wrapped - hLen - mLen
+          if (zoneIdx >= 0 && zoneIdx >= selStart && zoneIdx < selEnd) {
             this.ctx.fillStyle = 'rgba(59, 130, 246, 0.25)'
             this.ctx.fillRect(pos.x, pos.y, pos.width, pos.height)
           }
@@ -577,9 +593,9 @@ export class Draw implements KeyboardContext, IMEContext {
       this.ctx.fillText(el.value, x, textY)
     }
 
-    // Underline
+    // Underline — use baseColor so revision-colored text gets matching underline
     if (el.underline) {
-      this.ctx.strokeStyle = el.color || '#000000'
+      this.ctx.strokeStyle = baseColor
       this.ctx.lineWidth = 1
       const uy = y + fontSize * 0.9
       const tw = this.ctx.measureText(el.value).width
@@ -591,9 +607,9 @@ export class Draw implements KeyboardContext, IMEContext {
       this.ctx.setLineDash([])
     }
 
-    // Strikethrough
+    // Strikethrough — use baseColor for consistency with text/revision color
     if (el.strikeout) {
-      this.ctx.strokeStyle = el.color || '#000000'
+      this.ctx.strokeStyle = baseColor
       this.ctx.lineWidth = 1
       const sy = y + fontSize * 0.4
       const tw = this.ctx.measureText(el.value).width
@@ -856,7 +872,7 @@ export class Draw implements KeyboardContext, IMEContext {
     // ---- Pass 3: render unique cells (dedupe by reference) ----
     const rendered = new Set<CellSlot>()
     const totalTableW = colWidths.reduce((a, b) => a + b, 0)
-    const totalTableH = trList.reduce((h, tr) => h + (tr.height || 30), 0)
+    const totalTableH = trList.reduce((h, tr) => h + (tr.height || 30), 0) + 2
 
     // Outer border
     this.ctx.strokeStyle = '#9CA3AF'
@@ -951,6 +967,14 @@ export class Draw implements KeyboardContext, IMEContext {
 
     this.ctx.save()
 
+    // Check cache first — draw cached image synchronously (no async trigger)
+    if (img.src && this.loadedImages.has(img.src)) {
+      const cached = this.loadedImages.get(img.src)!
+      this.ctx.drawImage(cached, x, y, w, h)
+      this.ctx.restore()
+      return
+    }
+
     // Placeholder frame while image loads
     this.ctx.fillStyle = '#F3F4F6'
     this.ctx.fillRect(x, y, w, h)
@@ -964,16 +988,21 @@ export class Draw implements KeyboardContext, IMEContext {
     this.ctx.font = `12px Inter, sans-serif`
     this.ctx.fillStyle = '#9CA3AF'
     this.ctx.textAlign = 'center'
-    this.ctx.fillText('[图片]', x + w / 2, y + h / 2 + 4)
+    this.ctx.fillText('[Image]', x + w / 2, y + h / 2 + 4)
     this.ctx.textAlign = 'start'
 
-    // Async load and render
+    // Async load and render (only once — onload caches and triggers a single re-render)
     if (img.src) {
       const image = new Image()
-      const drawX = x, drawY = y, drawW = w, drawH = h
       image.onload = () => {
-        this.ctx.drawImage(image, drawX, drawY, drawW, drawH)
+        // Cache the loaded image so subsequent renders draw synchronously
+        this.loadedImages.set(img.src!, image)
+        // Trigger a single re-render to replace the placeholder with the real image
         this.render()
+      }
+      image.onerror = () => {
+        // On error, still mark as handled so we don't keep retrying
+        this.loadedImages.set(img.src!, image)
       }
       image.src = img.src
     }
@@ -1659,11 +1688,12 @@ export class Draw implements KeyboardContext, IMEContext {
       this.rangeManager.clear()
     }
 
-    // Inherit style from cursor position in the active zone
+    // Inherit style from cursor position in the active zone.
+    // Falls back to editor defaults when the zone is empty.
     const zoneEls = this.zoneElements()
-    const styleEl = insertIdx > 0 && insertIdx <= zoneEls.length
+    const styleEl: Partial<IElement> = insertIdx > 0 && insertIdx <= zoneEls.length
       ? zoneEls[insertIdx - 1]
-      : zoneEls[0]
+      : zoneEls[0] || {}
 
     const newElements: IElement[] = []
     for (const char of [...text]) {
@@ -1671,12 +1701,12 @@ export class Draw implements KeyboardContext, IMEContext {
         id: generateElementId(),
         type: ElementType.TEXT,
         value: char,
-        font: styleEl?.font,
-        size: styleEl?.size,
-        bold: styleEl?.bold,
-        italic: styleEl?.italic,
-        underline: styleEl?.underline,
-        color: styleEl?.color,
+        font: styleEl.font || this.options.defaultFont,
+        size: styleEl.size || this.options.defaultSize,
+        bold: styleEl.bold,
+        italic: styleEl.italic,
+        underline: styleEl.underline,
+        color: styleEl.color || this.options.defaultColor,
       })
     }
 
@@ -1745,6 +1775,158 @@ export class Draw implements KeyboardContext, IMEContext {
   toggleSuperscript(): void { this.toggleElementProperty('superscript') }
   toggleSubscript(): void { this.toggleElementProperty('subscript') }
 
+  /** Apply a font family to the selected range or the element at cursor. */
+  setFont(fontFamily: string): void {
+    this.setElementProperty('font', fontFamily)
+  }
+
+  /** Apply a font size to the selected range or the element at cursor. */
+  setFontSize(size: number): void {
+    this.setElementProperty('size', size)
+  }
+
+  /** Apply a text color to the selected range or the element at cursor. */
+  setTextColor(color: string): void {
+    this.setElementProperty('color', color)
+  }
+
+  /**
+   * Apply a scalar property value to the selected range or element at cursor.
+   * Follows the same selection/no-selection branching as toggleElementProperty.
+   */
+  private setElementProperty(property: string, value: unknown): void {
+    const elements = [...this.zoneElements()]
+    this.historyManager.saveState(this.takeSnapshot())
+
+    if (this.rangeManager.hasRange) {
+      const start = this.rangeManager.start
+      const end = this.rangeManager.end
+      const before = elements.slice(0, start)
+      const selected = elements.slice(start, end)
+      const after = elements.slice(end)
+
+      const key = property as keyof IElement
+      const formatted = selected.map(el => ({ ...el, [key]: value }))
+      const updated = [...before, ...formatted, ...after]
+
+      this.updateZoneElements(updated)
+      this.cursorIndex = end
+      this.rangeManager.setSelectionPoint(end)
+      this.recomputeLayout()
+      this.render()
+      this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
+      return
+    }
+
+    // No selection — apply to element before cursor
+    const idx = this.cursorIndex
+    if (idx <= 0 || idx > elements.length) return
+
+    const el = elements[idx - 1]
+    const key = property as keyof IElement
+    const newEl = { ...el, [key]: value }
+    const updated = [...elements.slice(0, idx - 1), newEl, ...elements.slice(idx)]
+
+    this.updateZoneElements(updated)
+    // Font and size changes affect layout; color only needs re-render
+    if (property === 'color') {
+      this.render()
+    } else {
+      this.recomputeLayout()
+      this.render()
+    }
+    this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
+  }
+
+  /** Toggle a bullet (unordered list) marker at the start of the current paragraph. */
+  toggleUnorderedList(): void {
+    this.toggleListMarker('• ') // bullet character
+  }
+
+  /** Toggle a number (ordered list) marker at the start of the current paragraph. */
+  toggleOrderedList(): void {
+    this.toggleListMarker('1. ')
+  }
+
+  /** Insert or remove a list marker at the beginning of the current paragraph. */
+  private toggleListMarker(marker: string): void {
+    const elements = this.zoneElements()
+    const { start } = this.getParagraphRange()
+    this.historyManager.saveState(this.takeSnapshot())
+
+    // Check if the paragraph already starts with this marker
+    const firstEl = elements[start]
+    if (firstEl && firstEl.value?.startsWith(marker)) {
+      // Remove marker
+      const stripped = { ...firstEl, value: firstEl.value.slice(marker.length) }
+      const updated = [...elements.slice(0, start), stripped, ...elements.slice(start + 1)]
+      this.updateZoneElements(updated)
+    } else {
+      // Insert marker — prepend to the first text element at paragraph start
+      if (firstEl && firstEl.type === ElementType.TEXT) {
+        const marked = { ...firstEl, value: marker + (firstEl.value || '') }
+        const updated = [...elements.slice(0, start), marked, ...elements.slice(start + 1)]
+        this.updateZoneElements(updated)
+      } else {
+        // No text element at paragraph start — insert a new one
+        const markerEl: IElement = {
+          id: generateElementId(),
+          type: ElementType.TEXT,
+          value: marker,
+          font: this.options.defaultFont,
+          size: this.options.defaultSize,
+        }
+        const updated = [...elements.slice(0, start), markerEl, ...elements.slice(start)]
+        this.updateZoneElements(updated)
+      }
+    }
+
+    this.recomputeLayout()
+    this.render()
+    this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+  }
+
+  /** Increase indent of the current paragraph. */
+  increaseIndent(): void {
+    this.adjustIndent(24)
+  }
+
+  /** Decrease indent of the current paragraph. */
+  decreaseIndent(): void {
+    this.adjustIndent(-24)
+  }
+
+  private adjustIndent(delta: number): void {
+    const elements = this.zoneElements()
+    const { start, end } = this.getParagraphRange()
+    this.historyManager.saveState(this.takeSnapshot())
+
+    const before = elements.slice(0, start)
+    const paragraph = elements.slice(start, end)
+    const after = elements.slice(end)
+    const adjusted = paragraph.map(el => ({
+      ...el,
+      indent: Math.max(0, (el.indent || 0) + delta),
+    }))
+    const updated = [...before, ...adjusted, ...after]
+
+    this.updateZoneElements(updated)
+    this.recomputeLayout()
+    this.render()
+    this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
+  }
+
+  /** Replace the active zone's elements array with the given updated list. */
+  private updateZoneElements(updated: IElement[]): void {
+    if (this.activeZone === ZoneType.HEADER) {
+      this.headerElements = updated
+    } else if (this.activeZone === ZoneType.FOOTER) {
+      this.footerElements = updated
+    } else {
+      this.mainElements = updated
+    }
+  }
+
   /**
    * Get the start/end indices of the paragraph containing the cursor.
    * A paragraph is delimited by \n elements (or zone boundaries).
@@ -1801,6 +1983,12 @@ export class Draw implements KeyboardContext, IMEContext {
     this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
   }
 
+  // Properties whose toggle does NOT affect element width/height/line-breaking.
+  // Skipping recomputeLayout for these avoids a full unzip→linebreak→pagebreak→position pipeline.
+  private static readonly STYLE_ONLY_PROPERTIES = new Set<string>([
+    'underline', 'strikeout', 'superscript', 'subscript',
+  ])
+
   private toggleElementProperty(property: string): void {
     const elements = [...this.zoneElements()]
 
@@ -1830,8 +2018,13 @@ export class Draw implements KeyboardContext, IMEContext {
       // Keep cursor at end of formatted range; clear selection on next interaction
       this.cursorIndex = end
       this.rangeManager.setSelectionPoint(end)
-      this.recomputeLayout()
-      this.render()
+      // Style-only changes (underline, strikeout, etc.) don't need full relayout
+      if (Draw.STYLE_ONLY_PROPERTIES.has(property)) {
+        this.render()
+      } else {
+        this.recomputeLayout()
+        this.render()
+      }
       this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
       return
     }
@@ -1854,8 +2047,12 @@ export class Draw implements KeyboardContext, IMEContext {
     } else {
       this.mainElements = updated
     }
-    this.recomputeLayout()
-    this.render()
+    if (Draw.STYLE_ONLY_PROPERTIES.has(property)) {
+      this.render()
+    } else {
+      this.recomputeLayout()
+      this.render()
+    }
     this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
   }
 

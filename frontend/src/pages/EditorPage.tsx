@@ -171,7 +171,7 @@ function EditorPageInner({
   const editorRef = useEditorRef()
 
   // 格式化操作 — 对接引擎实时生效
-  const handleFormat = useCallback((action: string, _value?: unknown) => {
+  const handleFormat = useCallback((action: string, value?: unknown) => {
     const editor = editorRef.current
     if (!editor) return
 
@@ -184,10 +184,17 @@ function EditorPageInner({
       case 'strikeout':     editor.toggleStrikeout(); break
       case 'superscript':   editor.toggleSuperscript(); break
       case 'subscript':     editor.toggleSubscript(); break
+      case 'font':          editor.setFont(value as string); break
+      case 'fontSize':      editor.setFontSize(value as number); break
+      case 'color':         editor.setTextColor(value as string); break
       case 'alignLeft':
       case 'alignCenter':
       case 'alignRight':
       case 'alignJustify':  editor.setAlignment(action); break
+      case 'unorderedList': editor.toggleUnorderedList(); break
+      case 'orderedList':   editor.toggleOrderedList(); break
+      case 'indent':        editor.increaseIndent(); break
+      case 'outdent':       editor.decreaseIndent(); break
       default:
         console.warn('[EditorPage] Unknown format action:', action)
     }
@@ -208,6 +215,7 @@ function EditorPageInner({
       case 'select':
       case 'date':
       case 'checkbox':
+      case 'radio':
       case 'number':
       case 'textarea':
         editor.insertControl(elementType)
@@ -221,6 +229,30 @@ function EditorPageInner({
     }
   }, [editorRef, onDirty])
 
+  // 导出
+  const handleExport = useCallback((format: string) => {
+    const editor = editorRef.current
+    if (!editor) return
+
+    const value = editor.getValue()
+    switch (format) {
+      case 'json':
+        downloadJson(value)
+        break
+      case 'pdf':
+      case 'word':
+        alert(`${format.toUpperCase()} 导出功能需要后端服务支持`)
+        break
+      default:
+        console.warn('[EditorPage] Unknown export format:', format)
+    }
+  }, [editorRef])
+
+  // 打印
+  const handlePrint = useCallback(() => {
+    window.print()
+  }, [])
+
   return (
     <EditorLayout
       documentTitle={documentTitle}
@@ -228,6 +260,8 @@ function EditorPageInner({
       onSave={onSave}
       onFormat={handleFormat}
       onInsert={handleInsert}
+      onExport={handleExport}
+      onPrint={handlePrint}
     >
       {/* Canvas 编辑器容器 */}
       <div
@@ -237,4 +271,15 @@ function EditorPageInner({
       />
     </EditorLayout>
   )
+}
+
+/** Download content as a JSON file. */
+function downloadJson(value: unknown): void {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `document-${Date.now()}.json`
+  a.click()
+  URL.revokeObjectURL(url)
 }

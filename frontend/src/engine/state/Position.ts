@@ -129,13 +129,15 @@ export class Position {
 
       // Footer area — positioned from the bottom, growing upward
       const configFooterH = pageSetup.footerHeight || 40
-      let totalFooterH = configFooterH
       const footerContentWidth = pageSetup.width - pageSetup.marginLeft - pageSetup.marginRight
+      // Calculate content height first, then enforce minimum (mirrors header logic)
+      let contentFooterH = 0
       for (const fl of page.footerLines) {
-        totalFooterH += fl.height
+        contentFooterH += fl.height
       }
+      const totalFooterH = Math.max(contentFooterH, configFooterH)
       // Start position: bottom margin minus total footer height, so the
-      // last footer line sits at the bottom margin edge
+      // footer content is vertically centered within the allocated zone
       let footerY = pageStartY + pageSetup.height - pageSetup.marginBottom - totalFooterH
       for (const fl of page.footerLines) {
         const lineLayout = this.computeLineLayout(fl.elements, footerContentWidth)
@@ -200,12 +202,22 @@ export class Position {
         visibleElements.push({ el, width: 0 })
         continue
       }
-      const w = this.measurer.measureWidth(el.value || '', {
-        font: el.font || 'SimSun',
-        size: el.size || 16,
-        bold: el.bold,
-        italic: el.italic,
-      })
+      // Compute width per element type (table/image/control have non-text widths)
+      let w: number
+      if (el.type === 'table') {
+        w = contentWidth // tables fill the content area
+      } else if (el.type === 'image' && el.imageData) {
+        w = el.imageData.width || 100
+      } else if (el.type === 'control' && el.control) {
+        w = el.control.width || 120
+      } else {
+        w = this.measurer.measureWidth(el.value || '', {
+          font: el.font || 'SimSun',
+          size: el.size || 16,
+          bold: el.bold,
+          italic: el.italic,
+        })
+      }
       visibleElements.push({ el, width: w })
       totalWidth += w
     }
