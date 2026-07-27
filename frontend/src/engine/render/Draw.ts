@@ -56,6 +56,8 @@ export class Draw implements KeyboardContext, IMEContext {
   // Config
   public options: IEditorOption
   private mode: EditorMode
+  /** Whether the user explicitly set a scale in options — auto-resize won't override. */
+  private userScale: boolean
 
   // Data
   private headerElements: IElement[] = []
@@ -97,6 +99,8 @@ export class Draw implements KeyboardContext, IMEContext {
     this.container = container
     this.options = { ...DEFAULT_EDITOR_OPTIONS, ...options }
     this.mode = this.options.mode || EditorMode.EDIT
+    // Track whether the user explicitly requested a scale — if so, preserve it across resize.
+    this.userScale = options?.scale !== undefined
 
     // Canvas
     this.canvas = document.createElement('canvas')
@@ -466,7 +470,8 @@ export class Draw implements KeyboardContext, IMEContext {
         }
         cy += line.height
       }
-      cy = pageY + _setup.marginTop + 50
+      // Main starts after actual header (use computed height when available)
+      cy = Math.max(cy, pageY + _setup.marginTop + (this.position.headerHeight || 50))
       for (const line of page.lines) {
         let cx = pageX + _setup.marginLeft
         for (const el of line.elements) {
@@ -480,7 +485,8 @@ export class Draw implements KeyboardContext, IMEContext {
         }
         cy += line.height
       }
-      cy = pageY + _setup.height - _setup.marginBottom - 40
+      // Footer positioned relative to bottom margin (use computed height when available)
+      cy = pageY + _setup.height - _setup.marginBottom - (this.position.footerHeight || 40)
       for (const line of page.footerLines) {
         let cx = pageX + _setup.marginLeft
         for (const el of line.elements) {
@@ -703,7 +709,7 @@ export class Draw implements KeyboardContext, IMEContext {
         cy = setup.height - setup.marginBottom - minFooter
       } else {
         // MAIN: start at the header's actual bottom (dynamic, follows content)
-        cy = setup.marginTop + (setup.headerHeight || 50)
+        cy = setup.marginTop + (this.position.headerHeight || 50)
         for (const p of this.positionList) {
           if (this.zoneFromPosition(p) === ZoneType.HEADER) {
             const bottom = p.y + p.height
@@ -759,9 +765,9 @@ export class Draw implements KeyboardContext, IMEContext {
       if (this.activeZone === ZoneType.HEADER) {
         cy = setup.marginTop
       } else if (this.activeZone === ZoneType.FOOTER) {
-        cy = setup.height - setup.marginBottom - 40
+        cy = setup.height - setup.marginBottom - (this.position.footerHeight || 40)
       } else {
-        cy = setup.marginTop + 50
+        cy = setup.marginTop + (this.position.headerHeight || 50)
       }
       pos = { index: 0, pageIndex: 0, rowIndex: 0, x: setup.marginLeft, y: cy, width: 0, height: 20, ascent: 16, descent: 4 }
     }
@@ -1021,24 +1027,46 @@ export class Draw implements KeyboardContext, IMEContext {
 
     this.ctx.save()
 
-    // Checkbox / Radio — compact inline rendering
+    // Checkbox — square box with checkmark
+    // Radio — circle with filled dot
     if (ctrl.controlType === 'checkbox' || ctrl.controlType === 'radio') {
+      const isRadio = ctrl.controlType === 'radio'
       const boxSize = Math.min(14, ctrlHeight - 2)
       const boxY = y + (ctrlHeight - boxSize) / 2
+
       this.ctx.fillStyle = '#FFFFFF'
-      this.ctx.fillRect(x + 2, boxY, boxSize, boxSize)
       this.ctx.strokeStyle = '#6B7280'
       this.ctx.lineWidth = 1.5
       this.ctx.setLineDash([])
-      this.ctx.strokeRect(x + 2, boxY, boxSize, boxSize)
-      if (ctrl.checked) {
-        this.ctx.strokeStyle = '#2563EB'
-        this.ctx.lineWidth = 2
+
+      if (isRadio) {
+        // Circle outline + filled dot when checked
+        const cx = x + 2 + boxSize / 2
+        const cy = boxY + boxSize / 2
+        const r = boxSize / 2
         this.ctx.beginPath()
-        this.ctx.moveTo(x + 4, boxY + boxSize / 2)
-        this.ctx.lineTo(x + boxSize / 2 + 2, boxY + boxSize - 3)
-        this.ctx.lineTo(x + boxSize + 2, boxY + 2)
+        this.ctx.arc(cx, cy, r, 0, Math.PI * 2)
+        this.ctx.fill()
         this.ctx.stroke()
+        if (ctrl.checked) {
+          this.ctx.fillStyle = '#2563EB'
+          this.ctx.beginPath()
+          this.ctx.arc(cx, cy, r * 0.45, 0, Math.PI * 2)
+          this.ctx.fill()
+        }
+      } else {
+        // Checkbox square + checkmark when checked
+        this.ctx.fillRect(x + 2, boxY, boxSize, boxSize)
+        this.ctx.strokeRect(x + 2, boxY, boxSize, boxSize)
+        if (ctrl.checked) {
+          this.ctx.strokeStyle = '#2563EB'
+          this.ctx.lineWidth = 2
+          this.ctx.beginPath()
+          this.ctx.moveTo(x + 4, boxY + boxSize / 2)
+          this.ctx.lineTo(x + boxSize / 2 + 2, boxY + boxSize - 3)
+          this.ctx.lineTo(x + boxSize + 2, boxY + 2)
+          this.ctx.stroke()
+        }
       }
       // Label sits next to checkbox, aligned with text baseline
       const labelX = x + boxSize + 8
@@ -1074,7 +1102,7 @@ export class Draw implements KeyboardContext, IMEContext {
     const ctrl = el.control
     if (!ctrl) return
 
-    if (ctrl.controlType === 'checkbox') {
+    if (ctrl.controlType === 'checkbox' || ctrl.controlType === 'radio') {
       this.historyManager.saveState(this.takeSnapshot())
       ctrl.checked = !ctrl.checked
       this.updateElementInZone(el)
@@ -1126,12 +1154,20 @@ export class Draw implements KeyboardContext, IMEContext {
       case 'Tab':
         this.focusedControl = null
         this.render()
-        // Tab/Enter moves to next element
         return true
       case 'Backspace':
         if (ctrl.value) {
           this.historyManager.saveState(this.takeSnapshot())
           ctrl.value = ctrl.value.slice(0, -1)
+          this.updateElementInZone(this.focusedControl!)
+          this.render()
+          this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+        }
+        return true
+      case 'Delete':
+        if (ctrl.value) {
+          this.historyManager.saveState(this.takeSnapshot())
+          ctrl.value = ''
           this.updateElementInZone(this.focusedControl!)
           this.render()
           this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
@@ -1163,6 +1199,7 @@ export class Draw implements KeyboardContext, IMEContext {
     switch (e.key) {
       case 'Escape':
       case 'Tab':
+      case 'Enter':
         this.focusedCell = null
         this.render()
         return true
@@ -1172,6 +1209,24 @@ export class Draw implements KeyboardContext, IMEContext {
           this.historyManager.saveState(this.takeSnapshot())
           lastEl.value = lastEl.value.slice(0, -1)
           if (lastEl.value === '') td.value.pop()
+          this.recomputeLayout()
+          this.render()
+          this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+        } else if (lastEl && lastEl.value === '') {
+          // Empty text element — remove it
+          this.historyManager.saveState(this.takeSnapshot())
+          td.value.pop()
+          this.recomputeLayout()
+          this.render()
+          this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+        }
+        return true
+      }
+      case 'Delete': {
+        // Delete acts like clearing the cell: remove all content
+        if (td.value.length > 0) {
+          this.historyManager.saveState(this.takeSnapshot())
+          td.value = []
           this.recomputeLayout()
           this.render()
           this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
@@ -1206,8 +1261,9 @@ export class Draw implements KeyboardContext, IMEContext {
 
   private bindEvents(): void {
     window.addEventListener('resize', this.boundResize)
+    // Wheel on canvas only — container listener removed to avoid double-firing
+    // (wheel events bubble from canvas to container, causing 2x scroll speed).
     this.canvas.addEventListener('wheel', this.boundWheel, { passive: false })
-    this.container.addEventListener('wheel', this.boundWheel, { passive: false })
     // Keyboard / IME / input events are handled by IMEHandler's hidden textarea
     this.canvas.addEventListener('mousedown', this.boundMouseDown)
     this.canvas.addEventListener('dblclick', this.boundDoubleClick)
@@ -1219,14 +1275,19 @@ export class Draw implements KeyboardContext, IMEContext {
   }
 
   private onResize(): void {
-    const cw = this.container.clientWidth
-    this.options.scale = cw > 0 ? Math.min(1, (cw - 40) / DEFAULT_PAGE_SETUP.width) : 1
+    if (!this.userScale) {
+      const cw = this.container.clientWidth
+      this.options.scale = cw > 0 ? Math.min(1, (cw - 40) / DEFAULT_PAGE_SETUP.width) : 1
+    }
     this.render()
   }
 
   private onWheel(e: WheelEvent): void {
     e.preventDefault()
-    this.scrollTop = Math.max(0, this.scrollTop + e.deltaY)
+    const setup = DEFAULT_PAGE_SETUP
+    const totalHeight = this.pageCount * (setup.height + 20)
+    const maxScroll = Math.max(0, totalHeight - this.container.clientHeight / (this.options.scale || 1))
+    this.scrollTop = Math.max(0, Math.min(maxScroll, this.scrollTop + e.deltaY))
     this.render()
   }
 
@@ -1319,6 +1380,11 @@ export class Draw implements KeyboardContext, IMEContext {
       return
     }
 
+    // Save history BEFORE mutation so undo can revert to pre-IME state
+    if (addHistory) {
+      this.historyManager.saveState(this.takeSnapshot())
+    }
+
     if (this.rangeManager.hasRange) {
       // Delete selected range first, then insert
       const elements = this.zoneElements()
@@ -1327,7 +1393,7 @@ export class Draw implements KeyboardContext, IMEContext {
       this.rangeManager.clear()
       const before = elements.slice(0, start)
       const after = elements.slice(end)
-      let insertIdx = start
+      const insertIdx = start
 
       const newElements: IElement[] = []
       const styleEl = insertIdx > 0 ? elements[insertIdx - 1] : elements[0]
@@ -1385,10 +1451,6 @@ export class Draw implements KeyboardContext, IMEContext {
         this.mainElements = updated
       }
       this.cursorIndex = idx + newElements.length
-    }
-
-    if (addHistory) {
-      this.historyManager.saveState(this.takeSnapshot())
     }
 
     this.recomputeLayout()
@@ -1494,7 +1556,8 @@ export class Draw implements KeyboardContext, IMEContext {
 
     // Walk table cells and test bounding boxes
     let ry = 0
-    for (const tr of trList) {
+    for (let ri = 0; ri < trList.length; ri++) {
+      const tr = trList[ri]
       const rowH = tr.height || 30
       let cxAcc = 0
       let ci = 0
@@ -1502,7 +1565,12 @@ export class Draw implements KeyboardContext, IMEContext {
         const colspan = td.colspan || 1
         let cw = 0
         for (let s = 0; s < colspan && ci + s < maxCols; s++) cw += colWidths[ci + s]
-        const ch = rowH * (td.rowspan || 1)
+        // Rowspan height: sum individual row heights (not all rows are equal)
+        let ch = 0
+        const rowspan = td.rowspan || 1
+        for (let s = 0; s < rowspan && ri + s < trList.length; s++) {
+          ch += trList[ri + s]?.height || 30
+        }
 
         if (clickX >= cxAcc && clickX < cxAcc + cw && clickY >= ry && clickY < ry + ch) {
           return { td, cx: cxAcc, cy: ry, cw, ch }
@@ -1664,6 +1732,7 @@ export class Draw implements KeyboardContext, IMEContext {
       this.cursorIndex = start
       this.recomputeLayout()
       this.render()
+      this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
     }
   }
 
@@ -1749,6 +1818,14 @@ export class Draw implements KeyboardContext, IMEContext {
     this.headerElements = header
     this.mainElements = main
     this.footerElements = footer
+    // Reset all editor state for the new document
+    this.cursorIndex = 0
+    this.scrollTop = 0
+    this.activeZone = ZoneType.MAIN
+    this.focusedControl = null
+    this.focusedCell = null
+    this.rangeManager.clear()
+    this.historyManager.clearHistory()
     this.recomputeLayout()
     this.render()
     // Reposition textarea to initial cursor position
@@ -1868,17 +1945,20 @@ export class Draw implements KeyboardContext, IMEContext {
         const updated = [...elements.slice(0, start), marked, ...elements.slice(start + 1)]
         this.updateZoneElements(updated)
       } else {
-        // No text element at paragraph start — insert a new one
-        const markerEl: IElement = {
-          id: generateElementId(),
-          type: ElementType.TEXT,
-          value: marker,
-          font: this.options.defaultFont,
-          size: this.options.defaultSize,
-        }
-        const updated = [...elements.slice(0, start), markerEl, ...elements.slice(start)]
-        this.updateZoneElements(updated)
+      // No text element at paragraph start — insert a new one.
+      // Inherit style from the cursor position for visual consistency.
+      const styleEl = this.getCursorStyle()
+      const markerEl: IElement = {
+        id: generateElementId(),
+        type: ElementType.TEXT,
+        value: marker,
+        font: styleEl.font || this.options.defaultFont,
+        size: styleEl.size || this.options.defaultSize,
+        color: styleEl.color,
       }
+      const updated = [...elements.slice(0, start), markerEl, ...elements.slice(start)]
+      this.updateZoneElements(updated)
+    }
     }
 
     this.recomputeLayout()
@@ -2058,13 +2138,15 @@ export class Draw implements KeyboardContext, IMEContext {
 
   /** Insert a table at the current cursor position. */
   insertTable(rows: number, cols: number): void {
+    const style = this.getCursorStyle()
+    const cellFontSize = style.size || 14
     const trList: ITr[] = []
     for (let r = 0; r < rows; r++) {
       const tdList: ITd[] = []
       for (let c = 0; c < cols; c++) {
         tdList.push({
           width: 120,
-          value: [{ id: generateElementId(), type: ElementType.TEXT, value: '', size: 14 }],
+          value: [{ id: generateElementId(), type: ElementType.TEXT, value: '', size: cellFontSize }],
           isHeader: false,
         })
       }
@@ -2076,6 +2158,8 @@ export class Draw implements KeyboardContext, IMEContext {
       type: ElementType.TABLE,
       value: '',
       trList,
+      font: style.font,
+      size: style.size,
     }
 
     this._insertElement(tableEl)
@@ -2083,9 +2167,10 @@ export class Draw implements KeyboardContext, IMEContext {
 
   /** Insert a form control at the current cursor position. */
   insertControl(controlType: string): void {
+    const style = this.getCursorStyle()
     const ctrlEl = createControlElement(
       controlType as ControlType,
-      { size: 16, font: 'SimSun' }
+      { size: style.size || 16, font: style.font || 'SimSun' }
     )
     this._insertElement(ctrlEl)
   }
@@ -2132,6 +2217,10 @@ export class Draw implements KeyboardContext, IMEContext {
       this.footerElements = zones.footer
       this.cursorIndex = zones.cursorIndex
       this.activeZone = zones.activeZone
+      // Clear focused control/cell — the restored elements are deep-cloned,
+      // so previous references are stale and would silently fail to update.
+      this.focusedControl = null
+      this.focusedCell = null
       this.recomputeLayout()
       this.render()
       this.imeHandler.positionProxy()
@@ -2147,6 +2236,8 @@ export class Draw implements KeyboardContext, IMEContext {
       this.footerElements = zones.footer
       this.cursorIndex = zones.cursorIndex
       this.activeZone = zones.activeZone
+      this.focusedControl = null
+      this.focusedCell = null
       this.recomputeLayout()
       this.render()
       this.imeHandler.positionProxy()
@@ -2175,7 +2266,6 @@ export class Draw implements KeyboardContext, IMEContext {
   destroy(): void {
     window.removeEventListener('resize', this.boundResize)
     this.canvas.removeEventListener('wheel', this.boundWheel)
-    this.container.removeEventListener('wheel', this.boundWheel)
     this.canvas.removeEventListener('mousedown', this.boundMouseDown)
     this.canvas.removeEventListener('dblclick', this.boundDoubleClick)
     window.removeEventListener('mousemove', this.boundMouseMove)
