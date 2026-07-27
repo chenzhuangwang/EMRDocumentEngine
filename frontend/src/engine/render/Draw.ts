@@ -951,7 +951,7 @@ export class Draw implements KeyboardContext, IMEContext {
 
     this.ctx.save()
 
-    // Placeholder rectangle while image loads
+    // Placeholder frame while image loads
     this.ctx.fillStyle = '#F3F4F6'
     this.ctx.fillRect(x, y, w, h)
     this.ctx.strokeStyle = '#D1D5DB'
@@ -960,19 +960,19 @@ export class Draw implements KeyboardContext, IMEContext {
     this.ctx.strokeRect(x, y, w, h)
     this.ctx.setLineDash([])
 
-    // Image icon placeholder
-    this.ctx.font = '12px Inter, sans-serif'
+    // Placeholder text
+    this.ctx.font = `12px Inter, sans-serif`
     this.ctx.fillStyle = '#9CA3AF'
     this.ctx.textAlign = 'center'
     this.ctx.fillText('[图片]', x + w / 2, y + h / 2 + 4)
     this.ctx.textAlign = 'start'
 
-    // If src is available, attempt to load and render
+    // Async load and render
     if (img.src) {
       const image = new Image()
+      const drawX = x, drawY = y, drawW = w, drawH = h
       image.onload = () => {
-        this.ctx.drawImage(image, x, y, w, h)
-        // Re-render the full canvas to make it visible
+        this.ctx.drawImage(image, drawX, drawY, drawW, drawH)
         this.render()
       }
       image.src = img.src

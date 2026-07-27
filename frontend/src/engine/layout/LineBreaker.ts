@@ -62,6 +62,21 @@ export class LineBreaker {
         continue
       }
 
+      // Image: block-level by default (wrapType !== 'inline' → own line)
+      if (el.type === ElementType.IMAGE && el.imageData?.wrapType !== 'inline') {
+        if (currentLineElements.length > 0) {
+          lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
+          currentLineElements = []
+          currentLineWidth = 0
+          maxAscent = 0
+          maxDescent = 0
+        }
+        const imgW = el.imageData?.width || 100
+        const imgH = el.imageData?.height || 100
+        lines.push(this.createLine([el], imgW, imgH * 0.8, imgH * 0.2))
+        continue
+      }
+
       const elWidth = this.getElementWidth(el, options)
       const ascent = el.size ? el.size * 0.8 : options.defaultSize * 0.8
       const descent = el.size ? el.size * 0.2 : options.defaultSize * 0.2
