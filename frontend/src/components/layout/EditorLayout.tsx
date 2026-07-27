@@ -17,7 +17,7 @@ interface EditorLayoutProps {
   onSave?: () => void
   onFormat?: (action: string, value?: unknown) => void
   onInsert?: (elementType: string) => void
-  onExport?: (format: string) => void
+  onExportClick?: () => void
   onPrint?: () => void
 }
 
@@ -28,7 +28,7 @@ export function EditorLayout({
   onSave,
   onFormat,
   onInsert,
-  onExport,
+  onExportClick,
   onPrint,
 }: EditorLayoutProps) {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
@@ -48,7 +48,7 @@ export function EditorLayout({
       <Toolbar
         onFormat={onFormat}
         onInsert={onInsert}
-        onExport={onExport}
+        onExportClick={onExportClick}
         onPrint={onPrint}
       />
 

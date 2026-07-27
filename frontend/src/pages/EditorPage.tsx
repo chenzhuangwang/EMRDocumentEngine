@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { EditorLayout } from '@/components/layout/EditorLayout'
 import { EditorProvider, useEditorRef } from '@/components/editor/EditorProvider'
+import { ExportDialog } from '@/components/dialogs/ExportDialog'
 import { useEditorStore } from '@/store'
 import { documentApi, type DocumentDetail } from '@/services/api'
 import {
@@ -97,15 +98,17 @@ export default function EditorPage() {
 
   // 保存文档
   const handleSave = useCallback(async () => {
+    console.log('保存文档')
     const doc = useEditorStore.getState().document
     if (!doc) return
 
     setSaveStatus('saving')
     try {
-      await documentApi.update(doc.id, {
-        title: documentTitle,
-        content: doc.content,
-      })
+      // await documentApi.update(doc.id, {
+      //   title: documentTitle,
+      //   content: doc.content,
+      // })
+      console.log('保存文档:', doc)
       setSaveStatus('saved')
       setDirty(false)
     } catch (err) {
@@ -169,6 +172,7 @@ function EditorPageInner({
   onDirty: (dirty: boolean) => void
 }) {
   const editorRef = useEditorRef()
+  const [exportOpen, setExportOpen] = useState(false)
 
   // 格式化操作 — 对接引擎实时生效
   const handleFormat = useCallback((action: string, value?: unknown) => {
@@ -260,7 +264,7 @@ function EditorPageInner({
       onSave={onSave}
       onFormat={handleFormat}
       onInsert={handleInsert}
-      onExport={handleExport}
+      onExportClick={() => setExportOpen(true)}
       onPrint={handlePrint}
     >
       {/* Canvas 编辑器容器 */}
@@ -268,6 +272,13 @@ function EditorPageInner({
         ref={containerRef}
         className="flex-1 overflow-hidden bg-[#E5E7EB] relative"
         style={{ minHeight: 0 }}
+      />
+
+      {/* Dialogs (Spec TASK-304) */}
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        onExport={handleExport}
       />
     </EditorLayout>
   )

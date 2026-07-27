@@ -8,7 +8,7 @@ import {
   Printer, ChevronDown, AlignLeft, AlignCenter, AlignRight,
   AlignJustify, List, ListOrdered, Indent, Outdent,
   ChevronsUpDown, Type, ListFilter, Calendar, CheckSquare,
-  Circle, Hash, RectangleEllipsis, FileText, FileJson,
+  Circle, Hash, RectangleEllipsis, FileText,
 } from 'lucide-react'
 import { useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
 interface ToolbarProps {
   onFormat?: (action: string, value?: unknown) => void
   onInsert?: (elementType: string) => void
-  onExport?: (format: string) => void
+  onExportClick?: () => void
   onPrint?: () => void
 }
 
@@ -57,7 +57,7 @@ interface ControlItem {
 }
 
 // ================================================================
-export function Toolbar({ onFormat, onInsert, onExport, onPrint }: ToolbarProps) {
+export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarProps) {
   return (
     <div className="h-toolbar bg-white border-b border-gray-100 flex items-center px-3 gap-0.5 flex-shrink-0 overflow-x-auto select-none">
       {/* 组1：历史操作 */}
@@ -166,7 +166,7 @@ export function Toolbar({ onFormat, onInsert, onExport, onPrint }: ToolbarProps)
         <ToolbarButton title="打印" onClick={onPrint}>
           <Printer size={16} />
         </ToolbarButton>
-        <ExportDropdown onExport={onExport} />
+        <ExportDropdown onExportClick={onExportClick} />
       </ToolbarGroup>
     </div>
   )
@@ -349,7 +349,7 @@ function InsertControlDropdown({ onInsert }: { onInsert?: (type: string) => void
 
 // ---- 导出下拉 ----
 
-function ExportDropdown({ onExport }: { onExport?: (format: string) => void }) {
+function ExportDropdown({ onExportClick }: { onExportClick?: () => void }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -371,26 +371,10 @@ function ExportDropdown({ onExport }: { onExport?: (format: string) => void }) {
           <DropdownMenu.Item
             className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 outline-none cursor-default
                        data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700"
-            onClick={() => onExport?.('pdf')}
+            onClick={onExportClick}
           >
             <FileText size={14} />
-            <span>导出 PDF</span>
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 outline-none cursor-default
-                       data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700"
-            onClick={() => onExport?.('word')}
-          >
-            <FileText size={14} />
-            <span>导出 Word</span>
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 outline-none cursor-default
-                       data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700"
-            onClick={() => onExport?.('json')}
-          >
-            <FileJson size={14} />
-            <span>导出 JSON</span>
+            <span>导出文档...</span>
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
