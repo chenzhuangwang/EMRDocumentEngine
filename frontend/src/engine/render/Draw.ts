@@ -25,7 +25,9 @@ import { unzipElementList } from '../document/ElementFormatter'
 import { TextMeasurer } from '../layout/TextMeasurer'
 import { LineBreaker } from '../layout/LineBreaker'
 import { PageBreaker } from '../layout/PageBreaker'
-import { HistoryManager } from '../state/HistoryManager'
+import { CommandManager, type ICommandContext, type ZoneSnapshot } from '../command/CommandManager'
+import { ZoneEditCommand, ControlEditCommand, TableCellEditCommand } from '../command/commands'
+import { TextParticle } from './particles/TextParticle'
 import { Position } from '../state/Position'
 import { RangeManager } from '../state/RangeManager'
 import { EventBus } from '../EventBus'
@@ -34,43 +36,45 @@ import {
   type KeyboardContext,
 } from '../interaction/KeyboardHandler'
 import { IMEHandler, type IMEContext } from '../interaction/IMEHandler'
+import { MouseHandler, type MouseContext } from '../interaction/MouseHandler'
 
-export class Draw implements KeyboardContext, IMEContext {
-  // Canvas
-  private container: HTMLElement
-  private canvas: HTMLCanvasElement
+export class Draw implements KeyboardContext, IMEContext, ICommandContext, MouseContext {
+  // Canvas (public for MouseContext interface)
+  public container: HTMLElement
+  public canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
-  private dpr: number
+  public dpr: number
 
   // Subsystems
   private measurer: TextMeasurer
   private lineBreaker: LineBreaker
   private pageBreaker: PageBreaker
-  private historyManager: HistoryManager
+  public commandManager: CommandManager
   private position: Position
   public rangeManager: RangeManager
   private eventBus: EventBus
   private keyboardHandler: KeyboardHandler
   private imeHandler: IMEHandler
+  private mouseHandler: MouseHandler
 
   // Config
   public options: IEditorOption
-  private mode: EditorMode
+  public mode: EditorMode
   /** Whether the user explicitly set a scale in options — auto-resize won't override. */
   private userScale: boolean
 
   // Data
-  private headerElements: IElement[] = []
-  private mainElements: IElement[] = []
-  private footerElements: IElement[] = []
-  private positionList: IPosition[] = []
+  public headerElements: IElement[] = []
+  public mainElements: IElement[] = []
+  public footerElements: IElement[] = []
+  public positionList: IPosition[] = []
   private pages: IPage[] = []
 
   // State
-  private scrollTop: number = 0
+  public scrollTop: number = 0
   private pageCount: number = 1
   cursorIndex: number = 0
-  private activeZone: ZoneType = ZoneType.MAIN
+  public activeZone: ZoneType = ZoneType.MAIN
 
   // IME composition preview text
   private composingText: string = ''
@@ -86,11 +90,6 @@ export class Draw implements KeyboardContext, IMEContext {
 
   // Event cleanup references
   private boundResize: () => void
-  private boundWheel: (e: WheelEvent) => void
-  private boundMouseDown: (e: MouseEvent) => void
-  private boundMouseMove: (e: MouseEvent) => void
-  private boundMouseUp: (e: MouseEvent) => void
-  private boundDoubleClick: (e: MouseEvent) => void
   private boundCopy: (e: ClipboardEvent) => void
   private boundCut: (e: ClipboardEvent) => void
   private boundPaste: (e: ClipboardEvent) => void
@@ -122,7 +121,7 @@ export class Draw implements KeyboardContext, IMEContext {
     this.measurer = new TextMeasurer()
     this.lineBreaker = new LineBreaker(this.measurer)
     this.pageBreaker = new PageBreaker()
-    this.historyManager = new HistoryManager(this.options.historyMaxRecordCount)
+    this.commandManager = new CommandManager(this.options.historyMaxRecordCount || 100)
     this.position = new Position(DEFAULT_PAGE_SETUP, this.measurer)
     this.rangeManager = new RangeManager()
     this.eventBus = new EventBus()
@@ -130,17 +129,15 @@ export class Draw implements KeyboardContext, IMEContext {
 
     // Event listeners (save bound refs for cleanup)
     this.boundResize = this.onResize.bind(this)
-    this.boundWheel = this.onWheel.bind(this)
-    this.boundMouseDown = this.onMouseDown.bind(this)
-    this.boundMouseMove = this.onMouseMove.bind(this)
-    this.boundMouseUp = this.onMouseUp.bind(this)
-    this.boundDoubleClick = this.onDoubleClick.bind(this)
     this.boundCopy = this.onCopy.bind(this)
     this.boundCut = this.onCut.bind(this)
     this.boundPaste = this.onPaste.bind(this)
 
     // IME handler — hidden textarea proxy for CJK input
     this.imeHandler = new IMEHandler(container, this)
+
+    // Mouse handler — delegates all mouse/wheel events (Spec TASK-205)
+    this.mouseHandler = new MouseHandler(this)
 
     // Compute initial layout so positionList is never empty
     this.recomputeLayout()
@@ -166,9 +163,7 @@ export class Draw implements KeyboardContext, IMEContext {
     newCursorIndex: number,
     addHistory: boolean
   ): void {
-    if (addHistory) {
-      this.historyManager.saveState(this.takeSnapshot())
-    }
+    const beforeCmd = addHistory ? this.snapshot() : null
     if (this.activeZone === ZoneType.HEADER) {
       this.headerElements = newElements
     } else if (this.activeZone === ZoneType.FOOTER) {
@@ -177,6 +172,9 @@ export class Draw implements KeyboardContext, IMEContext {
       this.mainElements = newElements
     }
     this.cursorIndex = newCursorIndex
+    if (beforeCmd) {
+      this.commandManager.push(new ZoneEditCommand('text', beforeCmd, this.snapshot()))
+    }
     this.recomputeLayout()
     this.render()
     this.eventBus.emit('contentChange', { type: 'contentChange', elements: newElements })
@@ -196,7 +194,7 @@ export class Draw implements KeyboardContext, IMEContext {
    * header/footer positions repeat per page and may exceed the combined
    * unzipped list length — in that case we wrap back to the original element.
    */
-  private elementAtGlobal(globalIdx: number): IElement | undefined {
+  public elementAtGlobal(globalIdx: number): IElement | undefined {
     const all = this.allUnzipped()
     if (globalIdx < all.length) return all[globalIdx]
     // Multi-page wrap: find the position and map back to the zone element
@@ -233,7 +231,7 @@ export class Draw implements KeyboardContext, IMEContext {
   }
 
   /** Determine zone from a document Y coordinate using actual content heights. */
-  private zoneFromY(y: number): ZoneType {
+  public zoneFromY(y: number): ZoneType {
     const setup = DEFAULT_PAGE_SETUP
     const pageHeight = setup.height + 20
     const pageIdx = Math.max(0, Math.floor(y / pageHeight))
@@ -260,7 +258,7 @@ export class Draw implements KeyboardContext, IMEContext {
    * documents correctly map clicks on any page to the right zone position.
    * Returns the zone's element count when the click is past the last position.
    */
-  private globalToCursorIndex(globalIdx: number): number {
+  public globalToCursorIndex(globalIdx: number): number {
     const hLen = unzipElementList(this.headerElements).length
     const mLen = unzipElementList(this.mainElements).length
     const fLen = unzipElementList(this.footerElements).length
@@ -344,6 +342,30 @@ export class Draw implements KeyboardContext, IMEContext {
 
     // 4. Position computation
     this.positionList = this.position.computePositions(this.pages, pageSetup)
+  }
+
+  // ---- MouseContext read-only accessors (Spec TASK-205) ----
+
+  get isSelecting(): boolean { return this.rangeManager.isSelecting }
+  get scale(): number { return this.options.scale || 1 }
+
+  getIndexByCoord(x: number, y: number): number { return this.position.getIndexByCoord(x, y) }
+  setCursorIndex(idx: number): void { this.cursorIndex = idx }
+  setActiveZone(z: ZoneType): void { this.activeZone = z }
+  setFocusedControl(el: IElement | null): void { this.focusedControl = el }
+  setFocusedCell(c: { tableEl: IElement; td: ITd } | null): void { this.focusedCell = c }
+  getFocusedControl(): IElement | null { return this.focusedControl }
+  getFocusedCell(): { tableEl: IElement; td: ITd } | null { return this.focusedCell }
+  getZoneElements(): IElement[] { return this.zoneElements() }
+  startDrag(idx: number): void { this.rangeManager.startDrag(idx) }
+  extendTo(idx: number): void { this.rangeManager.extendTo(idx) }
+  endDrag(): void { this.rangeManager.endDrag() }
+  clearRange(): void { this.rangeManager.clear() }
+  requestRender(): void { this.render() }
+  focusIME(): void { this.imeHandler.focus() }
+  positionProxy(): void { this.imeHandler.positionProxy() }
+  emitContentChange(els: IElement[]): void {
+    this.eventBus.emit('contentChange', { type: 'contentChange', elements: els })
   }
 
   // ---- Render ----
@@ -558,72 +580,8 @@ export class Draw implements KeyboardContext, IMEContext {
       return
     }
 
-    // ---- Text / Hyperlink / LaTeX ----
-    const fontSize = el.size || 16
-    const fontFamily = el.font || 'SimSun'
-
-    const fontParts: string[] = []
-    if (el.bold) fontParts.push('bold')
-    if (el.italic) fontParts.push('italic')
-    fontParts.push(`${fontSize}px`)
-    fontParts.push(`"${fontFamily}"`)
-    this.ctx.font = fontParts.join(' ')
-
-    // Color (revisions take priority)
-    let baseColor = this.options.defaultColor || '#000000'
-    if (el.revision) {
-      const revColors: Record<string, string> = {
-        insert: '#16A34A', delete: '#DC2626', modify: '#2563EB',
-      }
-      baseColor = revColors[el.revision.type] || baseColor
-    } else if (el.color) {
-      baseColor = el.color
-    }
-    this.ctx.fillStyle = baseColor
-
-    // Highlight background (drawn BEFORE text so it sits behind)
-    if (el.highlight) {
-      const tw = this.ctx.measureText(el.value).width
-      this.ctx.fillStyle = el.highlight
-      this.ctx.fillRect(x, y - fontSize * 0.8, tw, fontSize * 1.2)
-      this.ctx.fillStyle = baseColor // restore text color (preserves revision color)
-    }
-
-    // Vertical offset for superscript / subscript
-    let textY = y + fontSize * 0.8
-    if (el.superscript) textY = y + fontSize * 0.3
-    else if (el.subscript) textY = y + fontSize * 1.2
-
-    // Draw text (skip zero-width joiner and newline)
-    if (el.value && el.value !== '​' && el.value !== '\n') {
-      this.ctx.fillText(el.value, x, textY)
-    }
-
-    // Underline — use baseColor so revision-colored text gets matching underline
-    if (el.underline) {
-      this.ctx.strokeStyle = baseColor
-      this.ctx.lineWidth = 1
-      const uy = y + fontSize * 0.9
-      const tw = this.ctx.measureText(el.value).width
-      this.ctx.beginPath()
-      this.ctx.moveTo(x, uy)
-      this.ctx.lineTo(x + tw, uy)
-      if (el.underlineStyle === 'wave') this.ctx.setLineDash([2, 2])
-      this.ctx.stroke()
-      this.ctx.setLineDash([])
-    }
-
-    // Strikethrough — use baseColor for consistency with text/revision color
-    if (el.strikeout) {
-      this.ctx.strokeStyle = baseColor
-      this.ctx.lineWidth = 1
-      const sy = y + fontSize * 0.4
-      const tw = this.ctx.measureText(el.value).width
-      this.ctx.beginPath()
-      this.ctx.moveTo(x, sy)
-      this.ctx.lineTo(x + tw, sy)
-      this.ctx.stroke()
-    }
+    // ---- Text / Hyperlink / LaTeX — delegated to TextParticle (Spec TASK-107) ----
+    TextParticle.render(this.ctx, el, x, y, this.options)
   }
 
   private drawHeaderFooter(
@@ -1110,36 +1068,8 @@ export class Draw implements KeyboardContext, IMEContext {
     this.ctx.restore()
   }
 
-  /** Handle click on a form control element. */
-  private handleControlClick(el: IElement): void {
-    const ctrl = el.control
-    if (!ctrl) return
-
-    if (ctrl.controlType === 'checkbox' || ctrl.controlType === 'radio') {
-      this.historyManager.saveState(this.takeSnapshot())
-      ctrl.checked = !ctrl.checked
-      this.updateElementInZone(el)
-      this.render()
-      this.eventBus.emit('contentChange', {
-        type: 'contentChange',
-        elements: this.zoneElements(),
-      })
-      return
-    }
-
-    // Focusable controls: input, textarea, number, date, select
-    const focusable = ['input', 'textarea', 'number', 'date', 'select']
-    if (focusable.includes(ctrl.controlType)) {
-      this.focusedControl = el
-      this.imeHandler.positionProxy()
-      this.render()
-      setTimeout(() => this.imeHandler.focus(), 0)
-      return
-    }
-  }
-
   /** Find and update an element by reference in the current zone array. */
-  private updateElementInZone(el: IElement): void {
+  public updateElementInZone(el: IElement): void {
     const zone = this.activeZone === ZoneType.HEADER
       ? this.headerElements : this.activeZone === ZoneType.FOOTER
         ? this.footerElements : this.mainElements
@@ -1170,30 +1100,33 @@ export class Draw implements KeyboardContext, IMEContext {
         return true
       case 'Backspace':
         if (ctrl.value) {
-          this.historyManager.saveState(this.takeSnapshot())
+          const _b = this.saveBefore()
           ctrl.value = ctrl.value.slice(0, -1)
           this.updateElementInZone(this.focusedControl!)
           this.render()
           this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+          this.commitControlEdit('control backspace', _b)
         }
         return true
       case 'Delete':
         if (ctrl.value) {
-          this.historyManager.saveState(this.takeSnapshot())
+          const _b = this.saveBefore()
           ctrl.value = ''
           this.updateElementInZone(this.focusedControl!)
           this.render()
           this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+          this.commitControlEdit('control delete', _b)
         }
         return true
       default: {
         // Printable characters
         if (e.key.length === 1 && !ctrlKey && !e.altKey) {
-          this.historyManager.saveState(this.takeSnapshot())
+          const _b = this.saveBefore()
           ctrl.value = (ctrl.value || '') + e.key
           this.updateElementInZone(this.focusedControl!)
           this.render()
           this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+          this.commitControlEdit('control input', _b)
           return true
         }
         return false
@@ -1219,36 +1152,39 @@ export class Draw implements KeyboardContext, IMEContext {
       case 'Backspace': {
         const lastEl = td.value[td.value.length - 1]
         if (lastEl && lastEl.value && lastEl.value.length > 0) {
-          this.historyManager.saveState(this.takeSnapshot())
+          const _b = this.saveBefore()
           lastEl.value = lastEl.value.slice(0, -1)
           if (lastEl.value === '') td.value.pop()
           this.recomputeLayout()
           this.render()
           this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+          this.commitCellEdit('cell backspace', _b)
         } else if (lastEl && lastEl.value === '') {
           // Empty text element — remove it
-          this.historyManager.saveState(this.takeSnapshot())
+          const _b = this.saveBefore()
           td.value.pop()
           this.recomputeLayout()
           this.render()
           this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+          this.commitCellEdit('cell remove empty', _b)
         }
         return true
       }
       case 'Delete': {
         // Delete acts like clearing the cell: remove all content
         if (td.value.length > 0) {
-          this.historyManager.saveState(this.takeSnapshot())
+          const _b = this.saveBefore()
           td.value = []
           this.recomputeLayout()
           this.render()
           this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+          this.commitCellEdit('cell delete', _b)
         }
         return true
       }
       default: {
         if (e.key.length === 1 && !ctrlKey && !e.altKey) {
-          this.historyManager.saveState(this.takeSnapshot())
+          const _b = this.saveBefore()
           const lastEl = td.value[td.value.length - 1]
           if (lastEl && lastEl.type === 'text' && !lastEl.bold && !lastEl.italic) {
             lastEl.value += e.key
@@ -1263,6 +1199,7 @@ export class Draw implements KeyboardContext, IMEContext {
           this.recomputeLayout()
           this.render()
           this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+          this.commitCellEdit('cell input', _b)
           return true
         }
         return false
@@ -1274,14 +1211,9 @@ export class Draw implements KeyboardContext, IMEContext {
 
   private bindEvents(): void {
     window.addEventListener('resize', this.boundResize)
-    // Wheel on canvas only — container listener removed to avoid double-firing
-    // (wheel events bubble from canvas to container, causing 2x scroll speed).
-    this.canvas.addEventListener('wheel', this.boundWheel, { passive: false })
+    // Mouse/wheel events delegated to MouseHandler (Spec TASK-205)
+    this.mouseHandler.bind()
     // Keyboard / IME / input events are handled by IMEHandler's hidden textarea
-    this.canvas.addEventListener('mousedown', this.boundMouseDown)
-    this.canvas.addEventListener('dblclick', this.boundDoubleClick)
-    window.addEventListener('mousemove', this.boundMouseMove)
-    window.addEventListener('mouseup', this.boundMouseUp)
     this.canvas.addEventListener('copy', this.boundCopy)
     this.canvas.addEventListener('cut', this.boundCut)
     this.canvas.addEventListener('paste', this.boundPaste)
@@ -1292,15 +1224,6 @@ export class Draw implements KeyboardContext, IMEContext {
       const cw = this.container.clientWidth
       this.options.scale = cw > 0 ? Math.min(1, (cw - 40) / DEFAULT_PAGE_SETUP.width) : 1
     }
-    this.render()
-  }
-
-  private onWheel(e: WheelEvent): void {
-    e.preventDefault()
-    const setup = DEFAULT_PAGE_SETUP
-    const totalHeight = this.pageCount * (setup.height + 20)
-    const maxScroll = Math.max(0, totalHeight - this.container.clientHeight / (this.options.scale || 1))
-    this.scrollTop = Math.max(0, Math.min(maxScroll, this.scrollTop + e.deltaY))
     this.render()
   }
 
@@ -1358,23 +1281,20 @@ export class Draw implements KeyboardContext, IMEContext {
   insertText(text: string, addHistory: boolean): void {
     // Route IME text to focused control
     if (this.focusedControl && this.focusedControl.control) {
-      if (addHistory) {
-        this.historyManager.saveState(this.takeSnapshot())
-      }
+      const _b = addHistory ? this.saveBefore() : null
       const ctrl = this.focusedControl.control
       ctrl.value = (ctrl.value || '') + text
       this.updateElementInZone(this.focusedControl)
       this.recomputeLayout()
       this.render()
       this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+      if (_b) this.commitControlEdit('ime control', _b)
       return
     }
 
     // Route IME text to focused table cell
     if (this.focusedCell) {
-      if (addHistory) {
-        this.historyManager.saveState(this.takeSnapshot())
-      }
+      const _b = addHistory ? this.saveBefore() : null
       const td = this.focusedCell.td
       const lastEl = td.value[td.value.length - 1]
       if (lastEl && lastEl.type === 'text' && !lastEl.bold && !lastEl.italic) {
@@ -1390,13 +1310,12 @@ export class Draw implements KeyboardContext, IMEContext {
       this.recomputeLayout()
       this.render()
       this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
+      if (_b) this.commitCellEdit('ime cell', _b)
       return
     }
 
     // Save history BEFORE mutation so undo can revert to pre-IME state
-    if (addHistory) {
-      this.historyManager.saveState(this.takeSnapshot())
-    }
+    const _b = addHistory ? this.saveBefore() : null
 
     if (this.rangeManager.hasRange) {
       // Delete selected range first, then insert
@@ -1466,13 +1385,11 @@ export class Draw implements KeyboardContext, IMEContext {
       this.cursorIndex = idx + newElements.length
     }
 
+    if (_b) this.commitZoneEdit('ime text', _b)
+
     this.recomputeLayout()
     this.render()
     this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
-  }
-
-  requestRender(): void {
-    this.render()
   }
 
   getComposingText(): string {
@@ -1531,169 +1448,6 @@ export class Draw implements KeyboardContext, IMEContext {
     return handled
   }
 
-  // ---- Mouse Events ----
-
-  private clientToDoc(clientX: number, clientY: number): { x: number; y: number } {
-    const rect = this.canvas.getBoundingClientRect()
-    const scale = this.options.scale || 1
-
-    const cssX = clientX - rect.left
-    const cssY = clientY - rect.top
-
-    const bufToCssX = rect.width > 0 ? this.canvas.width / rect.width : 1
-    const bufToCssY = rect.height > 0 ? this.canvas.height / rect.height : 1
-
-    const bufX = cssX * bufToCssX
-    const bufY = cssY * bufToCssY
-
-    const docX = bufX / (this.dpr * scale)
-    const docY = bufY / (this.dpr * scale) + this.scrollTop
-
-    return { x: docX, y: docY }
-  }
-
-  /** Find which table cell was clicked. Returns the td and its bounding box. */
-  private hitTestTable(tableEl: IElement, clickX: number, clickY: number): { td: ITd; cx: number; cy: number; cw: number; ch: number } | null {
-    const trList = tableEl.trList
-    if (!trList) return null
-
-    let maxCols = 0
-    for (const tr of trList) {
-      let colCount = 0
-      for (const td of tr.tdList) colCount += td.colspan || 1
-      if (colCount > maxCols) maxCols = colCount
-    }
-
-    const contentW = DEFAULT_PAGE_SETUP.width - DEFAULT_PAGE_SETUP.marginLeft - DEFAULT_PAGE_SETUP.marginRight
-    const colWidths = new Array(maxCols).fill(Math.round(contentW / maxCols))
-
-    // Walk table cells and test bounding boxes
-    let ry = 0
-    for (let ri = 0; ri < trList.length; ri++) {
-      const tr = trList[ri]
-      const rowH = tr.height || 30
-      let cxAcc = 0
-      let ci = 0
-      for (const td of tr.tdList) {
-        const colspan = td.colspan || 1
-        let cw = 0
-        for (let s = 0; s < colspan && ci + s < maxCols; s++) cw += colWidths[ci + s]
-        // Rowspan height: sum individual row heights (not all rows are equal)
-        let ch = 0
-        const rowspan = td.rowspan || 1
-        for (let s = 0; s < rowspan && ri + s < trList.length; s++) {
-          ch += trList[ri + s]?.height || 30
-        }
-
-        if (clickX >= cxAcc && clickX < cxAcc + cw && clickY >= ry && clickY < ry + ch) {
-          return { td, cx: cxAcc, cy: ry, cw, ch }
-        }
-        cxAcc += cw
-        ci += colspan
-      }
-      ry += rowH
-    }
-    return null
-  }
-
-  private onMouseDown(e: MouseEvent): void {
-    if (this.mode === EditorMode.READONLY || this.mode === EditorMode.PRINT) return
-
-    const { x, y } = this.clientToDoc(e.clientX, e.clientY)
-    const yZone = this.zoneFromY(y)
-
-    // Single-click in MAIN always switches back to MAIN zone.
-    // Single-click in HEADER/FOOTER does NOT switch (needs double-click).
-    if (yZone === ZoneType.MAIN) {
-      this.activeZone = ZoneType.MAIN
-    }
-
-    const globalIdx = this.position.getIndexByCoord(x, y)
-    const clickedEl = globalIdx < this.positionList.length
-      ? this.elementAtGlobal(globalIdx)
-      : undefined
-
-    // Table cell hit-testing: handle clicks on table cells
-    if (clickedEl && clickedEl.type === ElementType.TABLE && clickedEl.trList) {
-      const tablePos = this.positionList[globalIdx]
-      if (tablePos) {
-        const cell = this.hitTestTable(clickedEl, x - tablePos.x, y - tablePos.y)
-        if (cell) {
-          this.focusedCell = { tableEl: clickedEl, td: cell.td }
-          this.focusedControl = null
-          this.imeHandler.positionProxy()
-          this.render()
-          // Defer focus — browser's click handling may steal it back synchronously
-          setTimeout(() => this.imeHandler.focus(), 0)
-          return
-        }
-      }
-    }
-
-    // Control hit-testing: handle clicks on form controls
-    if (clickedEl && clickedEl.type === ElementType.CONTROL && clickedEl.control) {
-      this.handleControlClick(clickedEl)
-      return
-    }
-
-    // Clicked outside any control/table cell — unfocus
-    this.focusedControl = null
-    this.focusedCell = null
-
-    const index = this.globalToCursorIndex(globalIdx)
-
-    // Clamp to valid range for the current active zone
-    const zoneMax = this.zoneElements().length
-    const clamped = index < 0 ? 0 : index > zoneMax ? zoneMax : index
-
-    this.rangeManager.startDrag(clamped)
-    this.cursorIndex = clamped
-    this.render()
-    // Move textarea to cursor position first
-    this.imeHandler.positionProxy()
-    // Defer focus — browser's native click handling may steal focus back
-    // from the textarea if we focus synchronously inside mousedown
-    setTimeout(() => this.imeHandler.focus(), 0)
-  }
-
-  private onMouseMove(e: MouseEvent): void {
-    if (!this.rangeManager.isSelecting) return
-
-    const { x, y } = this.clientToDoc(e.clientX, e.clientY)
-    let index = this.globalToCursorIndex(this.position.getIndexByCoord(x, y))
-    // Clamp to active zone bounds (cursor can't leave its zone during drag)
-    const zoneMax = this.zoneElements().length
-    if (index < 0) index = 0
-    if (index > zoneMax) index = zoneMax
-
-    if (index !== this.cursorIndex) {
-      this.rangeManager.extendTo(index)
-      this.cursorIndex = index
-      this.render()
-    }
-  }
-
-  private onMouseUp(_e: MouseEvent): void {
-    if (!this.rangeManager.isSelecting) return
-    this.rangeManager.endDrag()
-    this.render()
-  }
-
-  private onDoubleClick(e: MouseEvent): void {
-    if (this.mode === EditorMode.READONLY || this.mode === EditorMode.PRINT) return
-    const { x, y } = this.clientToDoc(e.clientX, e.clientY)
-    this.activeZone = this.zoneFromY(y)
-    // Position cursor at the double-click point within the new zone
-    const globalIdx = this.position.getIndexByCoord(x, y)
-    this.cursorIndex = this.globalToCursorIndex(globalIdx)
-    this.rangeManager.clear()
-    this.render()
-    // Move textarea to cursor position first
-    this.imeHandler.positionProxy()
-    // Defer focus — browser's native click handling may steal focus back
-    setTimeout(() => this.imeHandler.focus(), 0)
-  }
-
   // ---- Clipboard ----
 
   private getSelectedText(): string {
@@ -1729,7 +1483,7 @@ export class Draw implements KeyboardContext, IMEContext {
       const start = this.rangeManager.start
       const end = this.rangeManager.end
       this.rangeManager.clear()
-      this.historyManager.saveState(this.takeSnapshot())
+      const _b = this.saveBefore()
 
       const elements = this.zoneElements()
       const before = elements.slice(0, start)
@@ -1746,6 +1500,7 @@ export class Draw implements KeyboardContext, IMEContext {
       this.recomputeLayout()
       this.render()
       this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
+      this.commitZoneEdit('cut', _b)
     }
   }
 
@@ -1756,7 +1511,7 @@ export class Draw implements KeyboardContext, IMEContext {
     e.preventDefault()
 
     const elements = [...this.zoneElements()]
-    this.historyManager.saveState(this.takeSnapshot())
+    const _b = this.saveBefore()
 
     let insertIdx = this.cursorIndex
     if (this.rangeManager.hasRange) {
@@ -1804,19 +1559,7 @@ export class Draw implements KeyboardContext, IMEContext {
     this.recomputeLayout()
     this.render()
     this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
-  }
-
-  // ---- Public API ----
-
-  /** Build a full zone snapshot for history tracking. */
-  private takeSnapshot(): import('../state/HistoryManager').ZoneSnapshot {
-    return {
-      header: this.headerElements,
-      main: this.mainElements,
-      footer: this.footerElements,
-      cursorIndex: this.cursorIndex,
-      activeZone: this.activeZone,
-    }
+    this.commitZoneEdit('paste', _b)
   }
 
   getValue(): { header: IElement[]; main: IElement[]; footer: IElement[] } {
@@ -1838,7 +1581,7 @@ export class Draw implements KeyboardContext, IMEContext {
     this.focusedControl = null
     this.focusedCell = null
     this.rangeManager.clear()
-    this.historyManager.clearHistory()
+    this.commandManager.clear()
     this.recomputeLayout()
     this.render()
     // Reposition textarea to initial cursor position
@@ -1886,7 +1629,7 @@ export class Draw implements KeyboardContext, IMEContext {
    */
   private setElementProperty(property: string, value: unknown): void {
     const elements = [...this.zoneElements()]
-    this.historyManager.saveState(this.takeSnapshot())
+    const _b = this.saveBefore()
 
     if (this.rangeManager.hasRange) {
       const start = this.rangeManager.start
@@ -1926,6 +1669,7 @@ export class Draw implements KeyboardContext, IMEContext {
       this.render()
     }
     this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
+    this.commitZoneEdit('set ' + property, _b)
   }
 
   /** Toggle a bullet (unordered list) marker at the start of the current paragraph. */
@@ -1942,7 +1686,7 @@ export class Draw implements KeyboardContext, IMEContext {
   private toggleListMarker(marker: string): void {
     const elements = this.zoneElements()
     const { start } = this.getParagraphRange()
-    this.historyManager.saveState(this.takeSnapshot())
+    const _b = this.saveBefore()
 
     // Check if the paragraph already starts with this marker
     const firstEl = elements[start]
@@ -1974,6 +1718,8 @@ export class Draw implements KeyboardContext, IMEContext {
     }
     }
 
+    this.commitZoneEdit('toggle list', _b)
+
     this.recomputeLayout()
     this.render()
     this.eventBus.emit('contentChange', { type: 'contentChange', elements: this.zoneElements() })
@@ -1992,7 +1738,7 @@ export class Draw implements KeyboardContext, IMEContext {
   private adjustIndent(delta: number): void {
     const elements = this.zoneElements()
     const { start, end } = this.getParagraphRange()
-    this.historyManager.saveState(this.takeSnapshot())
+    const _b = this.saveBefore()
 
     const before = elements.slice(0, start)
     const paragraph = elements.slice(start, end)
@@ -2004,6 +1750,7 @@ export class Draw implements KeyboardContext, IMEContext {
     const updated = [...before, ...adjusted, ...after]
 
     this.updateZoneElements(updated)
+    this.commitZoneEdit('indent', _b)
     this.recomputeLayout()
     this.render()
     this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
@@ -2056,7 +1803,7 @@ export class Draw implements KeyboardContext, IMEContext {
     // Scope to the paragraph containing the cursor (delimited by \n)
     const { start, end } = this.getParagraphRange()
 
-    this.historyManager.saveState(this.takeSnapshot())
+    const _b = this.saveBefore()
 
     // Only mutate elements in the current paragraph
     const before = elements.slice(0, start)
@@ -2071,12 +1818,11 @@ export class Draw implements KeyboardContext, IMEContext {
     } else {
       this.mainElements = updated
     }
+    this.commitZoneEdit('align ' + alignment, _b)
     this.recomputeLayout()
     this.render()
     this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
   }
-
-  // Properties whose toggle does NOT affect element width/height/line-breaking.
   // Skipping recomputeLayout for these avoids a full unzip→linebreak→pagebreak→position pipeline.
   private static readonly STYLE_ONLY_PROPERTIES = new Set<string>([
     'underline', 'strikeout', 'superscript', 'subscript',
@@ -2086,7 +1832,7 @@ export class Draw implements KeyboardContext, IMEContext {
     const elements = [...this.zoneElements()]
 
     // Save history before any mutation
-    this.historyManager.saveState(this.takeSnapshot())
+    const _b = this.saveBefore()
 
     // Format selected range — apply to all elements in the selection
     if (this.rangeManager.hasRange) {
@@ -2119,10 +1865,9 @@ export class Draw implements KeyboardContext, IMEContext {
         this.render()
       }
       this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
+      this.commitZoneEdit('toggle ' + property, _b)
       return
     }
-
-    // No selection — format the element just before the cursor
     const idx = this.cursorIndex
     if (idx <= 0 || idx > elements.length) return
 
@@ -2147,6 +1892,7 @@ export class Draw implements KeyboardContext, IMEContext {
       this.render()
     }
     this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
+    this.commitZoneEdit('toggle ' + property, _b)
   }
 
   /** Insert a table at the current cursor position. */
@@ -2201,7 +1947,7 @@ export class Draw implements KeyboardContext, IMEContext {
 
   /** Shared logic for inserting an element at cursor. */
   private _insertElement(el: IElement): void {
-    this.historyManager.saveState(this.takeSnapshot())
+    const _b = this.saveBefore()
     const elements = [...this.zoneElements()]
     const idx = this.cursorIndex
     const updated = [...elements.slice(0, idx), el, ...elements.slice(idx)]
@@ -2218,22 +1964,14 @@ export class Draw implements KeyboardContext, IMEContext {
     this.render()
     this.imeHandler.positionProxy()
     this.eventBus.emit('contentChange', { type: 'contentChange', elements: updated })
+    this.commitZoneEdit('insert element', _b)
   }
 
   getEventBus(): EventBus { return this.eventBus }
 
   undo(): void {
-    const zones = this.historyManager.undo(this.takeSnapshot())
-    if (zones) {
-      this.headerElements = zones.header
-      this.mainElements = zones.main
-      this.footerElements = zones.footer
-      this.cursorIndex = zones.cursorIndex
-      this.activeZone = zones.activeZone
-      // Clear focused control/cell — the restored elements are deep-cloned,
-      // so previous references are stale and would silently fail to update.
-      this.focusedControl = null
-      this.focusedCell = null
+    const cmd = this.commandManager.undo(this)
+    if (cmd) {
       this.recomputeLayout()
       this.render()
       this.imeHandler.positionProxy()
@@ -2242,15 +1980,8 @@ export class Draw implements KeyboardContext, IMEContext {
   }
 
   redo(): void {
-    const zones = this.historyManager.redo(this.takeSnapshot())
-    if (zones) {
-      this.headerElements = zones.header
-      this.mainElements = zones.main
-      this.footerElements = zones.footer
-      this.cursorIndex = zones.cursorIndex
-      this.activeZone = zones.activeZone
-      this.focusedControl = null
-      this.focusedCell = null
+    const cmd = this.commandManager.redo(this)
+    if (cmd) {
       this.recomputeLayout()
       this.render()
       this.imeHandler.positionProxy()
@@ -2258,8 +1989,46 @@ export class Draw implements KeyboardContext, IMEContext {
     }
   }
 
-  canUndo(): boolean { return this.historyManager.canUndo() }
-  canRedo(): boolean { return this.historyManager.canRedo() }
+  canUndo(): boolean { return this.commandManager.canUndo() }
+  canRedo(): boolean { return this.commandManager.canRedo() }
+
+  // ---- ICommandContext implementation ----
+  clearFocused(): void {
+    this.focusedControl = null
+    this.focusedCell = null
+  }
+
+  /**
+   * Convenience: capture a snapshot of the current state.
+   * Used by commands to record before/after state.
+   */
+  private snapshot(): ZoneSnapshot {
+    return {
+      header: this.headerElements,
+      main: this.mainElements,
+      footer: this.footerElements,
+      cursorIndex: this.cursorIndex,
+      activeZone: this.activeZone,
+    }
+  }
+
+  /** Record pre-mutation state. Call before mutating. */
+  public saveBefore(): ZoneSnapshot { return this.snapshot() }
+
+  /** Create & push a ZoneEditCommand after mutation completed. */
+  public commitZoneEdit(desc: string, before: ZoneSnapshot): void {
+    this.commandManager.push(new ZoneEditCommand(desc, before, this.snapshot()))
+  }
+
+  /** Create & push a ControlEditCommand after mutation completed. */
+  private commitControlEdit(desc: string, before: ZoneSnapshot): void {
+    this.commandManager.push(new ControlEditCommand(desc, before, this.snapshot()))
+  }
+
+  /** Create & push a TableCellEditCommand after mutation completed. */
+  private commitCellEdit(desc: string, before: ZoneSnapshot): void {
+    this.commandManager.push(new TableCellEditCommand(desc, before, this.snapshot()))
+  }
 
   getPageSetup() {
     return { ...DEFAULT_PAGE_SETUP }
@@ -2278,11 +2047,7 @@ export class Draw implements KeyboardContext, IMEContext {
 
   destroy(): void {
     window.removeEventListener('resize', this.boundResize)
-    this.canvas.removeEventListener('wheel', this.boundWheel)
-    this.canvas.removeEventListener('mousedown', this.boundMouseDown)
-    this.canvas.removeEventListener('dblclick', this.boundDoubleClick)
-    window.removeEventListener('mousemove', this.boundMouseMove)
-    window.removeEventListener('mouseup', this.boundMouseUp)
+    this.mouseHandler.unbind()
     this.canvas.removeEventListener('copy', this.boundCopy)
     this.canvas.removeEventListener('cut', this.boundCut)
     this.canvas.removeEventListener('paste', this.boundPaste)
