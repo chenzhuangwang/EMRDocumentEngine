@@ -361,7 +361,7 @@ export class Draw implements KeyboardContext, IMEContext {
     this.canvas.style.width = `${pageSetup.width * scale}px`
     this.canvas.style.height = `${totalHeight * scale}px`
 
-    this.ctx.setTransform(this.dpr * scale, 0, 0, this.dpr * scale, 0, -this.scrollTop * scale)
+    this.ctx.setTransform(this.dpr * scale, 0, 0, this.dpr * scale, 0, -this.scrollTop * scale * this.dpr)
 
     // Background
     this.ctx.fillStyle = '#E5E7EB'
@@ -909,11 +909,17 @@ export class Draw implements KeyboardContext, IMEContext {
         this.ctx.lineWidth = isFocused ? 2 : 0.5
         this.ctx.strokeRect(cx, cy, cw, ch)
 
-        // Cell content
+        // Cell content — clipped to cell bounds to prevent overflow into adjacent cells
         const paddingX = 4
         const paddingY = 4
         let contentX = cx + paddingX
         const cellFontSize = el.size || 14
+
+        this.ctx.save()
+        this.ctx.beginPath()
+        this.ctx.rect(cx + 1, cy + 1, cw - 2, ch - 2)
+        this.ctx.clip()
+
         for (const childEl of td.value) {
           const childFontSize = childEl.size || cellFontSize
           const childFontFamily = childEl.font || el.font || 'SimSun'
@@ -939,6 +945,8 @@ export class Draw implements KeyboardContext, IMEContext {
           }
           this.ctx.restore()
         }
+
+        this.ctx.restore() // end cell content clip
 
         // Draw cursor in focused cell
         if (isFocused) {
@@ -1087,12 +1095,17 @@ export class Draw implements KeyboardContext, IMEContext {
     this.ctx.setLineDash([])
     this.ctx.strokeRect(x, y, ctrlWidth, ctrlHeight)
 
-    // Text inside control — align baseline with surrounding text
+    // Text inside control — align baseline with surrounding text, clipped to bounds
+    this.ctx.save()
+    this.ctx.beginPath()
+    this.ctx.rect(x + 3, y, ctrlWidth - 6, ctrlHeight)
+    this.ctx.clip()
     const textBaseY = y + fontSize * 0.8
     const displayValue = ctrl.value || ctrl.placeholder || ctrl.controlType || ''
     this.ctx.font = `${fontSize}px "${el.font || 'SimSun'}"`
     this.ctx.fillStyle = ctrl.value ? '#374151' : '#9CA3AF'
     this.ctx.fillText(displayValue, x + 4, textBaseY)
+    this.ctx.restore()
 
     this.ctx.restore()
   }
