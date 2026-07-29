@@ -1,8 +1,8 @@
 # UI/UX 设计文档 - 文档编辑器引擎
 
-> 版本: v2.0 | 日期: 2026-07-28 | 阶段: docs (重构更新)
+> 版本: v3.0 | 日期: 2026-07-29 | 阶段: docs (对齐 PRD v3.2 + 架构 v19.3)
 >
-> **v2.0 变更**: 图标系统统一为 Lucide React，清除所有 emoji，对齐 ModelD 树形文档模型
+> **v3.0 变更**: 全面同步 PRD/架构 —— 新增查找替换对话框、选择性粘贴、格式刷、缩放滑块、页面设置对话框、打印/续打对话框、分节符插入、大纲导航、批注面板、文档比较 UI、脚注交互等；工具栏和图标清单大幅扩充。
 
 ## 1. 设计理念
 
@@ -36,46 +36,33 @@
   --color-primary-900: #1E3A8A;
 
   /* 中性色 */
-  --color-gray-50:  #F9FAFB;
-  --color-gray-100: #F3F4F6;
-  --color-gray-200: #E5E7EB;
-  --color-gray-300: #D1D5DB;
-  --color-gray-400: #9CA3AF;
-  --color-gray-500: #6B7280;
-  --color-gray-600: #4B5563;
-  --color-gray-700: #374151;
-  --color-gray-800: #1F2937;
-  --color-gray-900: #111827;
+  --color-gray-50:  #F9FAFB;  --color-gray-100: #F3F4F6;
+  --color-gray-200: #E5E7EB;  --color-gray-300: #D1D5DB;
+  --color-gray-400: #9CA3AF;  --color-gray-500: #6B7280;
+  --color-gray-600: #4B5563;  --color-gray-700: #374151;
+  --color-gray-800: #1F2937;  --color-gray-900: #111827;
 
   /* 功能色 */
-  --color-success-500: #22C55E;
-  --color-success-100: #DCFCE7;
-  --color-warning-500: #F59E0B;
-  --color-warning-100: #FEF3C7;
-  --color-error-500:   #EF4444;
-  --color-error-100:   #FEE2E2;
-  --color-info-500:    #3B82F6;
-  --color-info-100:    #DBEAFE;
+  --color-success-500: #22C55E;  --color-success-100: #DCFCE7;
+  --color-warning-500: #F59E0B;  --color-warning-100: #FEF3C7;
+  --color-error-500:   #EF4444;  --color-error-100:   #FEE2E2;
+  --color-info-500:    #3B82F6;  --color-info-100:    #DBEAFE;
 
   /* 语义色 */
-  --color-bg-primary:    #FFFFFF;
-  --color-bg-secondary:  #F9FAFB;
-  --color-bg-tertiary:   #F3F4F6;
-  --color-bg-canvas:     #E5E7EB;       /* 编辑器画布背景 */
-  --color-border:        #E5E7EB;
-  --color-border-light:  #F3F4F6;
-  --color-text-primary:   #111827;
-  --color-text-secondary: #6B7280;
-  --color-text-tertiary:  #9CA3AF;
-  --color-text-inverse:   #FFFFFF;
+  --color-bg-primary:    #FFFFFF;   --color-bg-secondary:  #F9FAFB;
+  --color-bg-tertiary:   #F3F4F6;   --color-bg-canvas:     #E5E7EB;
+  --color-border:        #E5E7EB;   --color-border-light:  #F3F4F6;
+  --color-text-primary:   #111827;  --color-text-secondary: #6B7280;
+  --color-text-tertiary:  #9CA3AF;  --color-text-inverse:   #FFFFFF;
 
   /* 留痕颜色 */
-  --color-revision-insert:    #16A34A;
-  --color-revision-delete:    #DC2626;
-  --color-revision-modify:    #2563EB;
-  --color-revision-insert-bg: #DCFCE7;
-  --color-revision-delete-bg: #FEE2E2;
-  --color-revision-modify-bg: #DBEAFE;
+  --color-revision-insert:    #16A34A;  --color-revision-insert-bg: #DCFCE7;
+  --color-revision-delete:    #DC2626;  --color-revision-delete-bg: #FEE2E2;
+  --color-revision-modify:    #2563EB;  --color-revision-modify-bg: #DBEAFE;
+
+  /* 查找高亮 */
+  --color-find-highlight:        #FDE047;  /* 黄色高亮 */
+  --color-find-highlight-active: #F97316;  /* 橙色当前命中 */
 
   /* 校验状态 */
   --color-validation-error:   #EF4444;
@@ -84,54 +71,9 @@
 }
 ```
 
-### 2.2 字体系统
+### 2.2 字体/间距/圆角/阴影
 
-```css
---font-family-ui:       'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
---font-family-editor:   'JetBrains Mono', 'Consolas', 'Courier New', monospace; /* 等宽区域 */
---font-family-content:  'Songti SC', 'Noto Serif CJK SC', 'SimSun', serif;      /* 正文 */
-
-/* 字号阶梯 */
---text-xs:   0.75rem;    /* 12px */
---text-sm:   0.875rem;   /* 14px */
---text-base: 1rem;       /* 16px */
---text-lg:   1.125rem;   /* 18px */
---text-xl:   1.25rem;    /* 20px */
---text-2xl:  1.5rem;     /* 24px */
---text-3xl:  1.875rem;   /* 30px */
-```
-
-### 2.3 间距系统
-
-```css
---space-1:  0.25rem;   /* 4px */
---space-2:  0.5rem;    /* 8px */
---space-3:  0.75rem;   /* 12px */
---space-4:  1rem;      /* 16px */
---space-5:  1.25rem;   /* 20px */
---space-6:  1.5rem;    /* 24px */
---space-8:  2rem;      /* 32px */
---space-10: 2.5rem;    /* 40px */
---space-12: 3rem;      /* 48px */
-```
-
-### 2.4 圆角
-
-```css
---radius-sm: 0.25rem;   /* 4px */
---radius-md: 0.375rem;  /* 6px */
---radius-lg: 0.5rem;    /* 8px */
---radius-xl: 0.75rem;   /* 12px */
-```
-
-### 2.5 阴影
-
-```css
---shadow-sm:  0 1px 2px rgba(0,0,0,0.05);
---shadow-md:  0 4px 6px -1px rgba(0,0,0,0.1);
---shadow-lg:  0 10px 15px -3px rgba(0,0,0,0.1);
---shadow-xl:  0 20px 25px -5px rgba(0,0,0,0.1);
-```
+保持 v2.0 不变（见 backup）。
 
 ## 3. 布局架构
 
@@ -147,211 +89,379 @@
 │  (240px) │  │                           │ │  Panel      │
 │          │  │   编辑画布区域              │ │  (280px)    │
 │  模板列表 │  │   (Canvas Editor)         │ │             │
-│  元素面板 │  │                           │ │  元素属性    │
+│  大纲导航 │  │                           │ │  元素属性    │
 │  页面缩略图│  │                           │ │  数据绑定    │
 │          │  │                           │ │  校验规则    │
-│          │  │                           │ │             │
 │          │  └───────────────────────────┘ │             │
 │          │  Status Bar (28px)             │             │
 ├──────────┴────────────────────────────────┴─────────────┤
-│  Context Menu / Dialogs                                 │
+│  Context Menu / Dialogs / Comment Panel (右侧浮层)       │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 3.2 视图模式切换 (v16.1: 对齐 EditorMode 六值)
+### 3.2 视图模式切换
 
-| 模式            | 阶段 | 侧边栏 | 工具栏         | 属性面板 | 画布                               |
-| --------------- | ---- | ------ | -------------- | -------- | ---------------------------------- |
-| 编辑 (EDIT)     | MVP  | 可见   | 可见           | 隐藏     | 分页                               |
-| 阅读 (READONLY) | MVP  | 隐藏   | 隐藏           | 隐藏     | 分页/连续                          |
-| 表单 (FORM)     | P1   | 隐藏   | **隐藏** | 隐藏     | 分页 (仅 SmartTextNode 高亮可编辑) |
-| 清洁 (CLEAN)    | P1   | 隐藏   | 隐藏           | 隐藏     | 分页 (**隐藏留痕标记**)      |
-| 设计 (DESIGN)   | P2   | 可见   | 可见           | 可见     | 分页                               |
-| 打印 (PRINT)    | MVP  | 隐藏   | 隐藏           | 隐藏     | 分页预览                           |
-
-协作组件标注: 状态栏"在线:N人"、HeaderBar"协作头像" → **P3 远期**，MVP 基线不包含。
+| 模式 | 阶段 | 侧边栏 | 工具栏 | 属性面板 | 画布 |
+|------|------|--------|--------|----------|------|
+| 编辑 (EDIT) | MVP | 可见 | 可见 | 隐藏 | 分页 |
+| 阅读 (READONLY) | MVP | 隐藏 | 隐藏 | 隐藏 | 分页/连续 |
+| 表单 (FORM) | P1 | 隐藏 | 隐藏 | 隐藏 | 分页 (仅 SmartTextNode 高亮) |
+| 清洁 (CLEAN) | P1 | 隐藏 | 隐藏 | 隐藏 | 分页 (隐藏留痕) |
+| 设计 (DESIGN) | P2 | 可见 | 可见 | 可见 | 分页 |
+| 打印 (PRINT) | MVP | 隐藏 | 隐藏 | 隐藏 | 分页预览 |
 
 ## 4. 页面交互设计
 
-### 4.1 工具栏设计
+### 4.1 工具栏设计 (v3.0 扩充)
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│ [Undo] [Redo] │ [字体] [字号] │ B I U S X² X₂ │ Aa ▾ │ ⋮ │
-│               │              │               │ 颜色  │    │
-├────────────────────────────────────────────────────────────┤
-│ [插入▾] [表格] [图片] [控件▾] │ [对齐▾] [列表▾] [缩进▾]  │
-│                                │                          │
-├────────────────────────────────────────────────────────────┤
-│ [保存] [打印▾] [导出▾] │ [留痕:开/关] │ [模式▾] [视图▾]  │
-└────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│ [Undo] [Redo] │ [正文▾] [字体▾] [字号▾] │ B I U S X² X₂ │ Aa▾ │
+│               │                         │               │ 颜色  │
+├──────────────────────────────────────────────────────────────────┤
+│ [插入▾] [表格] [图片] [分隔线] │ [对齐▾] [列表▾] [缩进▾] │ [刷] │
+│                                │                           │ 格式刷│
+├──────────────────────────────────────────────────────────────────┤
+│ [查找] [替换] │ [显示¶] │ [缩放 100%▾] │ [保存] [打印▾] [导出▾] │
+│               │         │ [-][滑块][+] │                         │
+├──────────────────────────────────────────────────────────────────┤
+│ [留痕:开/关] │ [模式▾] [视图▾] │ [批注面板] [比较]               │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-工具栏分组逻辑：
+工具栏分组逻辑（v3.0 重排）：
 
-- **组1**：历史操作（Undo/Redo）
-- **组2**：文本格式化（字体/字号/样式）
-- **组3**：元素插入（表格/图片/控件）
-- **组4**：段落格式（对齐/列表/缩进）
-- **组5**：文件操作（保存/打印/导出）
-- **组6**：视图控制（留痕开关/模式/视图）
+- **组1**: 历史操作（Undo/Redo）
+- **组2**: 文本样式（标题级别/字体/字号/粗斜体/上下标/颜色/高亮）
+- **组3**: 元素插入（通用插入下拉/表格/图片/分隔线）
+- **组4**: 段落格式（对齐/列表/缩进/格式刷）
+- **组5**: 查找与视图（查找/替换/不可见字符/缩放滑块）
+- **组6**: 文件操作（保存/打印/导出）
+- **组7**: 视图控制（留痕开关/模式/视图/批注面板/比较）
 
-### 4.2 侧边栏
+### 4.2 状态栏 (v3.0 扩充)
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│ 第 1 页 / 共 3 页  │ 字数: 1,234 字  │ 已保存  │ [缩放 100% ▾] │
+│ 节 1 (A4 纵向)     │ 选中: 56 字     │          │ [-][滑块][+] │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+- 点击"节 N"显示当前节信息（纸张/方向/页边距）
+- 缩放滑块范围 25%-400%，预设档位: 50%/75%/100%/125%/150%/200%
+- 字数/选区统计满足医学文书最低字数检查
+
+### 4.3 侧边栏
 
 ```
 ┌──────────────────────┐
 │ 搜索模板...          │
 ├──────────────────────┤
-│ ┌──────────────────┐ │
-│ │ [模板库] [元素] [页面] │  ← Tab 切换 (FileText / Puzzle / Layout 图标)
-│ └──────────────────┘ │
+│ [模板库] [大纲] [页面] │  ← Tab 切换 (FileText / ListTree / Layout)
 ├──────────────────────┤
+│ 大纲导航              │
+│ ├ 主诉 ......... 1   │  ← 点击跳转到该标题所在页
+│ ├ 现病史 ....... 1   │
+│ │ ├ 发病情况 ... 2   │
+│ │ └ 诊疗经过 ... 3   │
+│ ├ 既往史 ....... 4   │
+│ ├ 体格检查 ..... 5   │
+│ └ 辅助检查 ..... 7   │
+├──────────────────────┤
+│ 模板列表              │
 │ 门急诊病历            │
 │  ├ 初诊记录          │
-│  ├ 复诊记录          │
 │  └ 急诊记录          │
 │ 住院病历              │
 │  ├ 入院记录          │
 │  ├ 病程记录          │
-│  ├ 手术记录          │
 │  └ 出院小结          │
-│ 检查报告              │
-│ ...                   │
 └──────────────────────┘
 ```
 
-### 4.3 属性面板（选中元素时右侧滑出）
+- 大纲 Tab 根据 §2.11 outlineLevel 自动提取
+- 点击标题 → 滚动到对应页面
+- 当前编辑位置在哪个标题下 → 对应大纲项高亮
+
+### 4.4 属性面板（选中元素时右侧滑出）
+
+保持 v2.0 设计，确认权限开关与架构 §5.1 对齐。
+
+### 4.5 右键菜单 (v3.0 扩充)
 
 ```
 ┌──────────────────────────┐
-│ 输入域属性               │
-│                          │
-│ 控件类型: [下拉选择 ▾]   │
-│ 占位文本: [请输入...]    │
-│ 是否必填: [✓]           │
-│ 最大长度: [100]          │
-│ ──────────────────────   │
-│ 数据绑定                 │
-│ 数据源: [patient.name]   │
-│ ──────────────────────   │
-│ 校验规则                 │
-│ 正则表达式: [.......]    │
-│ 错误提示: [格式不正确]   │
-│ ──────────────────────   │
-│ 权限                     │
-│ 用户级: [owner ▾]        │  ← 下拉: owner/editor/commenter/viewer
-│ 节点级:                  │
-│  ☑ 锁定内容 (locked)     │
-│  ☐ 禁止删除 (undeletable) │
-│  ☑ 必填 (required)       │  ← 三开关与 §2.12 L2-L4 对齐
+│ Scissors  剪切     Ctrl+X │
+│ Copy      复制     Ctrl+C │
+│ 📋 Paste   粘贴    Ctrl+V │
+│ 📋 选择性粘贴...  Ctrl+Shift+V │  ← 新增
+├──────────────────────────┤
+│ Bold      加粗     Ctrl+B │
+│ Italic    斜体     Ctrl+I │
+│ Underline 下划线   Ctrl+U │
+│ ClearFormat 格式清除      │  ← 新增
+├──────────────────────────┤
+│ List      项目符号        │  ← 新增
+│ ListOrdered 编号列表      │  ← 新增
+├──────────────────────────┤
+│ MessageSquare 添加批注    │
+│ Bookmark  插入书签        │  ← 新增 (Lucide Bookmark)
+│ Link      插入链接        │
+├──────────────────────────┤
+│ Scissors  剪切            │
+│ Copy      复制            │
+│ Trash2    删除            │
+├──────────────────────────┤
+│ Settings  段落设置...     │  ← 新增
 └──────────────────────────┘
 ```
 
-### 4.4 状态栏
+## 5. 对话框设计
+
+### 5.1 查找与替换对话框
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│ 第 1 页 / 共 3 页  │ 字数: 1,234 │ 保存状态  │ 在线: 3 人 │
-└────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────┐
+│ 🔍 查找和替换                   [×] │
+├─────────────────────────────────────┤
+│ 查找内容: [___________________]     │
+│ 替换为:   [___________________]     │
+├─────────────────────────────────────┤
+│ ☐ 区分大小写   ☐ 全词匹配           │
+│ ☐ 使用正则表达式                    │
+├─────────────────────────────────────┤
+│ [查找下一处] [替换] [全部替换]       │
+│                                     │
+│ 搜索结果: 共找到 12 处匹配           │
+│ ┌─────────────────────────────────┐ │
+│ │ 1. "入院记录" — 第1页, 第3行    │ │
+│ │ 2. "入院诊断" — 第1页, 第8行    │ │
+│ │ 3. "入院时间" — 第2页, 第1行    │ │
+│ │ ...                             │ │
+│ └─────────────────────────────────┘ │
+└─────────────────────────────────────┘
 ```
 
-### 4.5 右键菜单
+交互：
+- Ctrl+F 打开查找，聚焦"查找内容"输入框
+- Ctrl+H 打开替换，聚焦"查找内容"输入框
+- 输入时实时搜索并高亮所有匹配项（黄色）
+- 当前命中项橙色高亮，Enter 跳到下一个
+- 点击结果列表项 → 滚动到对应位置
+- 替换前当前命中项闪烁提示，执行后自动移到下一命中
+
+### 5.2 页面设置对话框
 
 ```
-┌────────────────────┐
-│ Scissors  剪切 Ctrl+X │  ← 图标: Scissors
-│ Copy      复制 Ctrl+C │  ← 图标: Copy
-│ Paste     粘贴 Ctrl+V │  ← 图标: ClipboardPaste
-├────────────────────┤
-│ Bold      加粗 Ctrl+B │  ← 图标: Bold
-│ Italic    斜体 Ctrl+I │  ← 图标: Italic
-│ Underline 下划线 Ctrl+U│ ← 图标: Underline
-├────────────────────┤
-│ MessageSquare 添加批注 │  ← 图标: MessageSquare
-│ Link       插入链接   │  ← 图标: Link
-├────────────────────┤
-│ Trash2     删除       │  ← 图标: Trash2
-└────────────────────┘
+┌──────────────────────────────────────────────┐
+│ 页面设置                                 [×] │
+├──────────────────────────────────────────────┤
+│ [页边距] [纸张] [版式]                        │  ← Tab
+├──────────────────────────────────────────────┤
+│ 纸张大小: [A4 (210×297mm) ▾]                 │
+│ 宽度: [21.0] cm   高度: [29.7] cm            │
+│ 方向: (●) 纵向  ( ) 横向                      │
+├──────────────────────────────────────────────┤
+│ 页边距                                        │
+│ 上: [2.54] cm   下: [2.54] cm                │
+│ 左: [3.17] cm   右: [3.17] cm                │
+│ 装订线: [0] cm  装订线位置: [左 ▾]          │
+├──────────────────────────────────────────────┤
+│ 预览                                          │
+│ ┌──────────────────────┐                      │
+│ │      ┌──────┐        │                      │
+│ │      │      │        │                      │
+│ │      │      │        │                      │
+│ │      └──────┘        │                      │
+│ └──────────────────────┘                      │
+├──────────────────────────────────────────────┤
+│ 应用于: [整篇文档 ▾]                          │
+│  整篇文档 / 本节 / 从此节之后                 │
+│                            [确定] [取消]      │
+└──────────────────────────────────────────────┘
 ```
 
-## 5. 核心交互流程
+版式 Tab：
+- 节的起始位置: [新建页/新建栏/连续/偶数页/奇数页 ▾]
+- 页眉页脚: 首页不同 ☐ / 奇偶页不同 ☐
+- 页眉距边界: [1.5] cm / 页脚距边界: [1.75] cm
+- 垂直对齐方式: (●) 顶端 ( ) 居中 ( ) 两端对齐
 
-### 5.1 新建文档流程
-
-```
-首页（文档列表）
-    │
-    ▼ 点击「新建文档」
-选择模板对话框
-    │
-    ├─ 从模板新建 ──── 浏览模板 → 选择 → 创建
-    │
-    └─ 空白文档 ────── 直接创建
-    │
-    ▼
-编辑器加载（EDIT 模式）
-    │
-    ▼ 编辑内容 → Ctrl+S 保存
-    │
-    ▼
-文档自动出现在文档列表中
-```
-
-### 5.2 模板设计流程
+### 5.3 打印对话框
 
 ```
-模板管理页
-    │
-    ▼ 点击「新建模板」
-编辑器（DESIGN 模式）
-    │
-    ├─ 拖拽控件到画布
-    ├─ 右键配置属性
-    ├─ 设置数据绑定
-    ├─ 配置校验规则
-    │
-    ▼ 点击「保存模板」
-填写模板名称/分类 → 保存
+┌──────────────────────────────────────────────┐
+│ 打印                                     [×] │
+├──────────────────────────────────────────────┤
+│ 打印机: [HP LaserJet 1020 ▾]     [属性...]   │
+│ 状态: 就绪                                    │
+├──────────────────────────────────────────────┤
+│ 打印范围                                      │
+│ (●) 全部                                      │
+│ ( ) 当前页 (第 3 页)                           │
+│ ( ) 页码范围: [1,3,5-8]                       │
+│ ( ) 续打: [从第 5 页继续]                     │
+│      ┌──────────────────────────────┐         │
+│      │ 打印历史                      │         │
+│      │ 2026-07-29 14:30  打印 3 份  │         │
+│      │  第 1-8 页已完成  ✓          │         │
+│      │  第 9-12 页 未完成  ← 断点    │         │
+│      │ 2026-07-28 09:15  打印 1 份   │         │
+│      │  全部完成                     │         │
+│      └──────────────────────────────┘         │
+├──────────────────────────────────────────────┤
+│ 份数: [1]                                     │
+│ ☐ 逐份打印                                    │
+│ 打印: (●) 单面  ( ) 双面(长边翻转)            │
+│ 缩放: 每页版数 [1 页/版 ▾]                    │
+│       缩放至纸张 [无缩放 ▾]                    │
+├──────────────────────────────────────────────┤
+│                        [打印预览] [打印] [取消] │
+└──────────────────────────────────────────────┘
 ```
 
-### 5.3 质控审核流程
+续打逻辑：
+- 每次打印成功后记录 {时间, 页码范围, 份数, 完成状态}
+- 下次打印时检测上次是否有未完成打印任务
+- "续打"选项自动选中未完成的页码范围
+- 用户可手动指定"从第 N 页继续"
+
+### 5.4 选择性粘贴对话框
 
 ```
-打开文档（READONLY 模式）
-    │
-    ▼ 阅读文档内容
-    │
-    ├─ 发现问题 → 选中文本 → 添加批注
-    ├─ 修改内容 → 自动留痕
-    │
-    ▼ 审核完成
-    │
-    ├─ 通过 → 更新状态为「已审核」
-    └─ 驳回 → 更新状态为「需修改」+ 批注说明
+┌──────────────────────────────────────┐
+│ 选择性粘贴                           │
+├──────────────────────────────────────┤
+│ 来源: 未知来源                       │
+│ 格式: 格式化文本 (RTF)               │
+├──────────────────────────────────────┤
+│ 方式:                                │
+│ ( ) 保留源格式                       │
+│     保持原始文档中的字体、颜色、样式  │
+│ (●) 匹配目标格式                     │
+│     自动适配当前文档的默认样式        │
+│ ( ) 仅保留文本                       │
+│     移除所有格式，只粘贴纯文本        │
+├──────────────────────────────────────┤
+│                 [确定] [取消]         │
+└──────────────────────────────────────┘
 ```
 
-### 5.4 拖拽交互 (v16.1 新增 — 设计模式核心)
+交互：
+- Ctrl+V 默认"匹配目标格式"（医疗场景最常用——粘贴 HIS 数据到病历模板）
+- Ctrl+Shift+V 弹出选择性粘贴对话框
+- 粘贴含 SmartTextNode 绑定的内容时，保留编码但清除外部样式
 
-拖拽状态: EditorRuntimeState.drag (DragState, 架构 §27.4)
+### 5.5 批注面板 (右侧浮层)
 
-- drag.type='move': 移动已放置元素 → 预览半透明原位置 + 光标处跟随缩略图
-- drag.type='resize': 表格列宽拖拽 → 垂直虚线指示线 + 相邻列实时宽度预览
-- drag.type='none': 闲置
+```
+┌──────────────────────────────────────┐
+│ 批注                          [×]    │
+├──────────────────────────────────────┤
+│ 筛选: [全部 ▾] [未解决] [我的]       │
+├──────────────────────────────────────┤
+│ ┌──────────────────────────────────┐ │
+│ │ 张医生           2026-07-29 14:30│ │
+│ │ "主诉内容不完整，请补充持续时间"  │ │
+│ │ [已解决 ●]                       │ │
+│ ├──────────────────────────────────┤ │
+│ │ 李主任           2026-07-29 15:00│ │
+│ │ "已补充，请复核"                 │ │
+│ └──────────────────────────────────┘ │
+│ ┌──────────────────────────────────┐ │
+│ │ 王质控           2026-07-29 16:00│ │
+│ │ "血压值异常，请确认"              │ │
+│ │ [未解决 ○]                       │ │
+│ ├──────────────────────────────────┤ │
+│ │ ┌────────────────────────────┐   │ │
+│ │ │ 输入回复...               │   │ │
+│ │ │                      [回复]│   │ │
+│ │ └────────────────────────────┘   │ │
+│ └──────────────────────────────────┘ │
+└──────────────────────────────────────┘
+```
 
-合法落点指示:
+交互：
+- 选中文本 → 右键"添加批注" 或 工具栏"批注面板"按钮
+- 批注锚点在正文中显示为黄色高亮背景 + 批注图标
+- 点击正文中的批注锚点 → 面板自动滚动到对应批注
+- resolved 后锚点颜色变灰
+- 快捷键: Ctrl+Alt+M 添加批注
 
-- 块级元素拖拽: 目标行间显示蓝色水平线 (insert indicator)
-- 表格列宽: 仅水平移动, 吸附到 colWidths 网格 (±3px 吸附)
-- 非法落点: 拖拽至 undeletable 节点上 → 光标变 not-allowed + 红色虚线框
+### 5.6 文档比较视图
 
-ElementPalette 拖拽到画布:
+```
+┌──────────────────────────────────────────────────────┐
+│ 文档比较: 版本 5 (旧) vs 版本 6 (新)           [×]   │
+├────────────────────────┬─────────────────────────────┤
+│ 旧版本 (v5)            │ 新版本 (v6)                  │
+│ 2026-07-28 10:00       │ 2026-07-29 14:30             │
+│ 编辑者: 张医生          │ 编辑者: 李主任               │
+├────────────────────────┼─────────────────────────────┤
+│ ┌────────────────────┐ │ ┌─────────────────────────┐  │
+│ │ 入院记录            │ │ │ 入院记录                 │  │
+│ │                     │ │ │                          │  │
+│ │ 主诉: 头痛3天       │ │ │ 主诉: 头痛3天            │  │
+│ │ ┌─────────────────┐ │ │ │ 伴恶心呕吐1天  ← 绿色    │  │
+│ │ │ 发热38.5℃ ← 删除│ │ │ │                          │  │
+│ │ └─────────────────┘ │ │ │ 现病史: ...              │  │
+│ │                     │ │ │                          │  │
+│ │ 现病史: ...         │ │ │                          │  │
+│ └────────────────────┘ │ │ └─────────────────────────┘  │
+├────────────────────────┴─────────────────────────────┤
+│ 差异 1/5: 新增文本 "伴恶心呕吐1天"                    │
+│ [接受] [拒绝]  [←上一个] [下一个→]                    │
+└──────────────────────────────────────────────────────┘
+```
 
-- 从侧边栏拖出控件 → 光标变为 grab 图标
-- 进入画布区 → 光标变为 copy 图标 (表示将创建新节点)
-- 释放 → 触发 InsertBlockCommand
-- 对齐线: 与相邻段落左边界 ±5px 内自动吸附
+- 两个 Editor 实例并排，共享 ScrollSync 控制器
+- 红色删除线 = deleted，绿色下划线 = added，蓝色高亮 = modified
+- 底部控制栏显示当前差异详情
+- 接受 → 应用到新版本，拒绝 → 保持旧版本
+- 快捷键: 接受(Ctrl+Shift+Y) / 拒绝(Ctrl+Shift+N)
 
-## 6. 组件树
+## 6. 核心交互流程
+
+### 6.1 页眉/页脚编辑交互
+
+```
+双击页眉/页脚区域
+  → 正文内容变灰（不可编辑）
+  → 页眉/页脚区域变为可编辑
+  → 工具栏切换为"页眉页脚工具"上下文工具栏
+  ┌──────────────────────────────────────────┐
+  │ [首页不同 ☐] [奇偶页不同 ☐] │ [页码▾] [日期] │ [关闭页眉页脚] │
+  └──────────────────────────────────────────┘
+  → 点击正文区域或"关闭页眉页脚" → 退出编辑模式
+```
+
+### 6.2 脚注编辑交互
+
+1. 光标定位到正文位置 → 工具栏"插入" → "脚注"（或 Ctrl+Alt+F）
+2. 当前位置插入上标 `¹`（FootnoteRef）+ 页面底部自动分配脚注区域
+3. 光标自动跳转到页面底部对应编号的脚注编辑区
+4. 脚注文本编辑完成后，点击正文区域返回
+5. 删除正文中的脚注标记 → 自动删除对应脚注文本 + 重新编号
+
+### 6.3 分节符交互
+
+1. 光标定位到插入位置 → 工具栏"插入" → "分节符" → 选择类型
+   - 下一页: 新节从下一页开始
+   - 连续: 新节从本页当前位置继续
+   - 偶数页/奇数页: 新节从下一个偶数/奇数页开始
+2. 画布上显示分节符标记线（虚线 + "=====分节符(下一页)====="）
+3. 双击标记线 → 打开页面设置对话框，自动定位到当前节
+4. 不可见字符显示开启时可见分节符标记
+
+### 6.4 大纲导航交互
+
+- 侧边栏"大纲"Tab 实时显示文档结构（outlineLevel 1-6 的段落）
+- 编辑时自动更新大纲文字（输入/删除标题内容后实时刷新）
+- 点击大纲项 → 画布平滑滚动到对应标题位置
+- 拖拽大纲项 → 移动整个标题段落及其子内容到大纲新位置
+
+## 7. 组件树 (v3.0 扩充)
 
 ```
 App
@@ -359,156 +469,144 @@ App
 │   ├── HeaderBar
 │   │   ├── Logo
 │   │   ├── DocumentTitle
-│   │   ├── SaveIndicator          // 已保存/保存中/未保存
-│   │   ├── CollaboratorAvatars     // 在线协作者头像
+│   │   ├── SaveIndicator
+│   │   ├── CollaboratorAvatars
 │   │   └── UserMenu
 │   ├── Sidebar
-│   │   ├── SidebarTabs             // 模板 | 元素 | 页面
-│   │   ├── TemplateList            // 模板分类 + 列表
-│   │   ├── ElementPalette          // 可拖拽元素
-│   │   └── PageThumbnails          // 页面缩略图
+│   │   ├── SidebarTabs             // 模板 | 大纲 | 页面
+│   │   ├── OutlineNav              // 大纲导航树 (新增)
+│   │   ├── TemplateList
+│   │   ├── ElementPalette
+│   │   └── PageThumbnails
 │   ├── EditorArea
 │   │   ├── Toolbar
 │   │   │   ├── ToolbarGroup (History)
-│   │   │   ├── ToolbarGroup (Format)
-│   │   │   ├── ToolbarGroup (Insert)
-│   │   │   ├── ToolbarGroup (Paragraph)
-│   │   │   ├── ToolbarGroup (File)
-│   │   │   └── ToolbarGroup (View)
-│   │   ├── Canvas                  // Canvas 渲染区 (3 层)  │
-│   │   │   ├── StaticLayer         // 静态层: 页面背景/阴影/边距线/页眉页脚/页码/水印
-│   │   │   ├── ContentLayer        // 内容层: 文本/表格/SmartText/Image
-│   │   │   └── InteractLayer       // 交互层: 光标/选区高亮/IME 预览/批注指示
+│   │   │   ├── ToolbarGroup (Style)        // 标题级别/字体/字号
+│   │   │   ├── ToolbarGroup (Format)       // B/I/U/S/上下标/颜色
+│   │   │   ├── ToolbarGroup (Insert)       // 插入/表格/图片/分隔线
+│   │   │   ├── ToolbarGroup (Paragraph)    // 对齐/列表/缩进/格式刷
+│   │   │   ├── ToolbarGroup (FindView)     // 查找/替换/显示¶/缩放 (新增)
+│   │   │   ├── ToolbarGroup (File)         // 保存/打印/导出
+│   │   │   └── ToolbarGroup (ViewControl)  // 留痕/模式/批注面板/比较 (新增)
+│   │   ├── Canvas (3层渲染)
+│   │   │   ├── StaticLayer
+│   │   │   ├── ContentLayer
+│   │   │   └── InteractLayer
 │   │   └── StatusBar
-│   │       ├── PageIndicator
-│   │       ├── WordCount
+│   │       ├── PageInfo + SectionInfo (节信息, 新增)
+│   │       ├── WordCount + SelectionCount
 │   │       ├── SaveStatus
+│   │       ├── ZoomSlider (新增: [-][滑块][+])
 │   │       └── OnlineCount
-│   ├── PropertiesPanel             // 右侧滑出
+│   ├── PropertiesPanel
 │   │   ├── ElementProperties
 │   │   ├── DataBindingConfig
 │   │   ├── ValidationConfig
 │   │   └── PermissionConfig
+│   ├── CommentPanel              // 右侧浮层批注面板 (新增)
 │   └── ContextMenu
 ├── Dialogs
+│   ├── FindReplaceDialog         // 查找替换 (新增)
+│   ├── PageSetupDialog           // 页面设置 (新增)
+│   ├── PrintDialog               // 打印+续打 (新增)
+│   ├── PasteSpecialDialog        // 选择性粘贴 (新增)
 │   ├── TemplateSelectDialog
 │   ├── PrintPreviewDialog
 │   ├── ExportDialog
-│   └── VersionHistoryDialog
+│   ├── VersionHistoryDialog
+│   └── DocumentCompareView       // 文档比较并排视图 (新增)
 └── Notifications
-    ├── Toast                      // 操作反馈
-    └── ValidationIndicator        // 校验状态标记
+    ├── Toast
+    └── ValidationIndicator
 ```
 
-## 7. UI 状态设计
+## 8. UI 状态设计
 
-### 7.1 保存状态
+### 8.1 保存/协作/校验状态
 
-| 状态   | 标识      | 视觉效果                   |
-| ------ | --------- | -------------------------- |
-| 已保存 | Saved     | 灰色 "已保存" 文字         |
-| 保存中 | Saving... | 蓝色旋转图标 + "保存中..." |
-| 未保存 | Unsaved   | 橙色圆点 + "未保存"        |
+保持 v2.0 设计不变。
 
-### 7.2 协作状态
+### 8.2 查找状态 (新增)
 
-| 状态   | 标识    | 视觉效果          |
-| ------ | ------- | ----------------- |
-| 在线   | Online  | 绿色圆点          |
-| 离线   | Offline | 灰色圆点          |
-| 编辑中 | Editing | 用户名 + 彩色光标 |
+| 状态 | 视觉效果 |
+|------|----------|
+| 搜索中 | 输入时实时反馈，命中数实时更新 |
+| 有结果 | 全部命中黄色高亮 + 当前命中橙色高亮 |
+| 无结果 | 输入框红色边框 + "未找到"提示 |
+| 替换确认 | 当前命中闪烁 300ms 后替换 |
 
-### 7.3 校验状态
+### 8.3 批注状态 (新增)
 
-| 状态     | 视觉效果                           |
-| -------- | ---------------------------------- |
-| 未校验   | 无标记                             |
-| 校验通过 | 绿色小勾 ✓                        |
-| 校验失败 | 红色边框 + 错误图标 + tooltip 提示 |
-| 必填未填 | 橙色边框 + "此项必填" tooltip      |
+| 状态 | 视觉效果 |
+|------|----------|
+| 未解决 | 黄色高亮 + 橙色批注图标 |
+| 已解决 | 灰色高亮 + 灰色批注图标 |
+| 新建批注 | 高亮闪烁 500ms 后固定 |
+| 有回复 | 批注图标角标数字 |
 
-## 8. 响应式策略
+## 9. 响应式策略
 
-| 断点    | 宽度        | 布局调整                                              |
-| ------- | ----------- | ----------------------------------------------------- |
-| Desktop | >= 1280px   | 完整三栏                                              |
-| Laptop  | 1024-1279px | 属性面板折叠为抽屉                                    |
-| Tablet  | 768-1023px  | 侧边栏+属性面板均折叠                                 |
-| Mobile  | < 768px     | **只读查看模式** (编辑不支持, v16.0 与架构统一) |
+保持 v2.0 不变。
 
-## 9. 图标清单
-
-以下所有图标来自 Lucide React 图标库：
+## 10. 图标清单 (v3.0 大幅扩充)
 
 ```
 工具栏:
-  Undo          - Undo2
-  Redo          - Redo2
-  Bold          - Bold
-  Italic        - Italic
-  Underline     - Underline
-  Strikethrough - Strikethrough
-  Superscript   - Superscript
-  Subscript     - Subscript
-  TextColor     - Palette
-  Table         - Table
-  Image         - Image
-  Save          - Save
-  Print         - Printer
-  Export        - Download
-  Search        - Search
+  Undo/Redo           - Undo2 / Redo2
+  Bold/Italic/Underline - Bold / Italic / Underline
+  Strikethrough       - Strikethrough
+  Superscript/Subscript - Superscript / Subscript
+  FormatPainter       - Paintbrush               ← 新增
+  ClearFormatting     - RemoveFormatting         ← 新增
+  Find                - Search                   ← 新增
+  Replace             - Replace                  ← 新增
+  ShowHideMarks       - Pilcrow                  ← 新增 (显示¶)
+  Zoom/Slider         - ZoomIn / ZoomOut         ← 新增
 
-侧边栏:
-  Templates     - FileText
-  Elements      - Puzzle
-  Pages         - Layout
+  TextColor           - Palette
+  HighlightColor      - Highlighter              ← 新增
+  Table/Image         - Table / Image
+  Separator           - Minus                    ← 新增 (分隔线)
+  SectionBreak        - ScissorsLineDashed       ← 新增 (分节符)
+  Heading             - Heading1-6               ← 新增 (标题下拉)
+  List/ListOrdered    - List / ListOrdered
+  AlignLeft/Center/Right/Justify - AlignLeft / AlignCenter / AlignRight / AlignJustify
+  Indent/Outdent      - IndentIncrease / IndentDecrease
+  LineSpacing         - StretchVertical          ← 新增
+
+  Save/Print/Export   - Save / Printer / Download
+  Comment/Annotation  - MessageSquare / MessagesSquare
+  Bookmark            - Bookmark                 ← 新增
+  CrossReference      - Link2                    ← 新增
+  Field               - Brackets                 ← 新增 (域)
+  Footnote            - Baseline                 ← 新增 (脚注)
+  Compare             - GitCompare
 
 状态栏:
-  PageInfo      - FileText
-  WordCount     - Type
-  Online        - Users
-  Saved         - Check
-  Unsaved       - Circle
-  Saving        - Loader2
-
-右键菜单:
-  Cut           - Scissors
-  Copy          - Copy
-  Paste         - ClipboardPaste
-  Delete        - Trash2
-  Annotation    - MessageSquare
-  Link          - Link
+  PageInfo/WordCount  - FileText / Type
+  ZoomSlider          - ZoomIn / ZoomOut
+  OnlineUsers         - Users
+  SaveStatus          - Check / Circle / Loader2
 
 导航:
-  Home          - Home
-  Settings      - Settings
-  User          - User
-  Logout        - LogOut
-  Expand        - ChevronRight
-  Collapse      - ChevronLeft
+  Outline             - ListTree                 ← 新增 (大纲)
+  Templates/Elements/Pages - FileText / Puzzle / Layout
+
+右键菜单:
+  Cut/Copy/Paste/Delete - Scissors / Copy / ClipboardPaste / Trash2
+  PasteSpecial        - ClipboardList            ← 新增
 
 控件类型:
-  Input         - Type
-  Select        - ChevronDown
-  Date          - Calendar
-  Checkbox      - CheckSquare
-  Radio         - Circle
-  Number        - Hash
+  Input/Select/Date/Checkbox/Radio/Number - Type / ChevronDown / Calendar / CheckSquare / Circle / Hash
 
 文档操作:
-  New           - FilePlus
-  Open          - FolderOpen
-  Copy          - Copy
-  Move          - ArrowRightLeft
-  Share         - Share2
-  Version       - GitBranch
-  Compare       - GitCompare
+  New/Open/Copy/Move/Share/Version - FilePlus / FolderOpen / Copy / ArrowRightLeft / Share2 / GitBranch
 
 状态:
-  Online        - Wifi
-  Offline       - WifiOff
-  Success       - CheckCircle2
-  Warning       - AlertTriangle
-  Error         - AlertCircle
-  Info          - Info
+  Online/Offline/Success/Warning/Error/Info - Wifi / WifiOff / CheckCircle2 / AlertTriangle / AlertCircle / Info
+
+续打 (新增):
+  ResumePrint         - Play
+  PrintHistory        - Clock
+  Reprint             - RotateCcw
 ```
