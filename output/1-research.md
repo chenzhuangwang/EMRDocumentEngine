@@ -1,6 +1,8 @@
 # 文档编辑器引擎 - 调研报告
 
-> 版本: v1.0 | 日期: 2026-07-17 | 阶段: research
+> 版本: v2.0 | 日期: 2026-07-28 | 阶段: research (重构更新)
+>
+> **v2.0 变更**: 补充 ModelD 树形文档模型决策记录，更新项目结构
 
 ---
 
@@ -289,14 +291,25 @@ interface IElement {
 
 **建议：内部使用 JSON 格式（与前端 canvas-editor 模型一致），支持导出为 XML 以兼容行业标准。**
 
-### 5.3 文档模型设计：自研 vs 复用
+### 5.3 文档模型设计：ModelA (v1.0) → ModelD (v2.0)
 
-**建议：基于 canvas-editor 的 IElement 模型扩展**，增加：
-- 权限元数据（权限等级、创建者、修改者）
-- 数据绑定元数据（数据源路径、绑定表达式）
-- 校验规则元数据（必填、正则、范围）
-- 留痕元数据（修改类型、修改人、时间戳）
-- 业务扩展字段（extension 属性）
+**v1.0 决策 (已废弃)**: 基于 canvas-editor 的 `IElement[]` 扁平数组模型扩展。
+
+**v2.0 决策 (当前)**: 重构为树形 `DocumentTree` 模型，原因：
+
+| 维度 | ModelA (扁平数组) | ModelD (树形) |
+|------|------------------|---------------|
+| 文档结构 | `IDocument { header[], main[], footer[] }` | `DocumentTree → Page[] → FlowBody → BlockNode[]` |
+| 表格表达 | `IElement { type: TABLE, trList }` 扁平 | `Table → TableRow[] → TableCell[] → BlockNode[]` 支持嵌套 |
+| 结构化字段 | `IElement { type: CONTROL }` 扁平控件 | `SmartTextNode { element: ElementMeta }` 原生 HDSD/DE 编码 |
+| 遍历操作 | 数组遍历，位置不稳定 | 树遍历 + TreePath 路径稳定 |
+| 医疗语义 | 无内建支持 | 内建 ElementCode (internal + dataElement) |
+
+**关键优势**:
+- 树形结构天然映射到电子病历的章节/段落/字段层级
+- SmartTextNode 直接携带国标 DE 编码，无需通过 extension 扩展
+- TreePath 路径在插入/删除后比数组索引更稳定
+- TableCell 支持嵌套 BlockNode，可表达复杂表格内容
 
 ---
 
@@ -306,14 +319,15 @@ interface IElement {
 | 类别 | 选型 | 理由 |
 |------|------|------|
 | 语言 | TypeScript 5.x | 类型安全 |
-| 框架 | React 18+ | 生态丰富，与 canvas-editor 兼容 |
+| 框架 | React 18+ | 生态丰富 |
 | 构建 | Vite 5+ | 快速构建 |
-| 渲染引擎 | Canvas + SVG + 自研布局引擎 | 跨浏览器一致排版 |
-| 文档模型 | JSON (IElement[]) | 轻量、可扩展 |
-| UI 组件库 | Ant Design / shadcn/ui | 中后台首选 |
+| 渲染引擎 | Canvas + 自研布局引擎 | 跨浏览器一致排版 |
+| 文档模型 | JSON (DocumentTree 树形) | 层级结构，支持 HDSD/DE 编码 |
+| UI 组件库 | Radix UI (dialog/dropdown-menu/tooltip/tabs) | 无样式 headless 组件 |
 | 图标库 | Lucide React | 符合 Super Dev 规范 |
 | 状态管理 | Zustand | 轻量、TypeScript 友好 |
-| 协作 | Yjs (CRDT) | 去中心化冲突解决 |
+| 样式 | Tailwind CSS 3.x | 原子化 CSS |
+| 协作 | Yjs (CRDT) | 去中心化冲突解决 (待集成) |
 
 ### 后端
 | 类别 | 选型 | 理由 |
@@ -362,40 +376,46 @@ interface IElement {
 
 ---
 
-## 8. 项目结构建议
+## 8. 项目结构 (v2.0 当前)
 
 ```
 EMRDocumentEngine/
 ├── frontend/                    # React + TypeScript 前端
 │   ├── src/
 │   │   ├── engine/              # 核心渲染引擎
-│   │   │   ├── document/        # 文档模型
+│   │   │   ├── index.ts         # 统一导出
+│   │   │   ├── Editor.ts        # 编辑器入口 (Facade)
+│   │   │   ├── document/        # ModelD 树形文档模型
+│   │   │   │   ├── DocumentModel.ts    # 类型定义 + ID 生成
+│   │   │   │   └── ElementFormatter.ts # 工厂/遍历/快照/UndoRedoStack
 │   │   │   ├── layout/          # 布局引擎
+│   │   │   │   ├── TextMeasurer.ts     # Canvas measureText + LRU 缓存
+│   │   │   │   ├── LineBreaker.ts      # CJK+英文混排换行
+│   │   │   │   └── PageBreaker.ts      # 分页 (孤行/寡行控制)
 │   │   │   ├── render/          # Canvas 渲染器
-│   │   │   ├── interaction/     # 交互处理
-│   │   │   └── command/         # 命令系统
+│   │   │   │   ├── Draw.ts             # 核心渲染 (709行, 待拆分)
+│   │   │   │   └── particles/
+│   │   │   │       └── TextParticle.ts # 文本粒子渲染
+│   │   │   ├── state/           # 状态管理
+│   │   │   │   └── Position.ts         # 坐标计算器
+│   │   │   └── __tests__/
+│   │   │       ├── ModelD.test.ts      # 文档模型单元测试
+│   │   │       └── Draw.test.ts        # 渲染器集成测试
 │   │   ├── components/          # React UI 组件
 │   │   ├── hooks/               # React Hooks
 │   │   ├── services/            # API 服务层
-│   │   ├── store/               # 状态管理
+│   │   ├── store/               # Zustand 状态管理
 │   │   └── pages/               # 页面
 │   ├── package.json
 │   └── vite.config.ts
 ├── backend/                     # Java SpringBoot 后端
-│   ├── src/main/java/
-│   │   ├── controller/          # REST 控制器
-│   │   ├── service/             # 业务逻辑
-│   │   ├── repository/          # 数据访问
-│   │   ├── entity/              # 实体类
-│   │   ├── dto/                 # 数据传输对象
-│   │   ├── config/              # 配置类
-│   │   └── websocket/           # WebSocket 处理
-│   ├── src/main/resources/
-│   │   ├── application.yml
-│   │   └── mapper/              # Mybatis XML
-│   └── pom.xml
+│   └── ...
 └── output/                      # Super Dev 产物
-    └── 1-research.md
+    ├── 1-research.md
+    ├── 2-prd.md
+    ├── 3-architecture.md
+    ├── 4-uiux.md
+    └── 5-spec.md
 ```
 
 ---
