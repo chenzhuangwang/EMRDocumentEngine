@@ -1,11 +1,3 @@
-# 架构设计文档 - 文档编辑器引擎
-
-> 版本: v3.0 | 日期: 2026-07-28 | 阶段: docs (深度补齐)
->
-> **v3.0 变更**: 新增 EditorRuntimeState、Command 体系、FlowBody 双模定义、模型校验与版本兼容、协作同步协议、Particle 统一接口、坐标系统契约、Draw 拆分边界方案、权限优先级、非功能需求、数据迁移方案、打印/导出链路、自动保存策略、增量布局/渲染方案、乐观锁与审计日志
-
----
-
 ## 1. 总体架构
 
 ### 1.1 架构图
@@ -21,23 +13,23 @@
 │  │  ┌────────────────────────────────────────────────────┐  │  │
 │  │  │  Editor (Facade)                                    │  │  │
 │  │  │  ┌──────────────────────────────────────────────┐  │  │  │
-│  │  │  │ EditorRuntimeState (新增 v3.0)               │  │  │  │
+│  │  │  │ EditorRuntimeState               │  │  │  │
 │  │  │  │ cursor | selection | viewMode | scroll | IME │  │  │  │
 │  │  │  └──────────────────────────────────────────────┘  │  │  │
 │  │  ├────────────────────────────────────────────────────┤  │  │
-│  │  │  Command System (新增 v3.0)                         │  │  │
+│  │  │  Command System                         │  │  │
 │  │  │  ICommand → InsertText | DeleteText | FormatText   │  │  │
 │  │  │           | InsertElement | ModifyElement | ...    │  │  │
 │  │  ├────────────────────────────────────────────────────┤  │  │
 │  │  │  Layout Engines                                    │  │  │
 │  │  │  TextMeasurer | LineBreaker | PageBreaker          │  │  │
-│  │  │  + IncrementalLayout (局部增量布局, v3.0)           │  │  │
+│  │  │  + IncrementalLayout (局部增量布局           │  │  │
 │  │  ├────────────────────────────────────────────────────┤  │  │
 │  │  │  Render Pipeline                                   │  │  │
-│  │  │  Draw → IParticle[] → Canvas (增量渲染, v3.0)      │  │  │
+│  │  │  Draw → IParticle[] → Canvas (增量渲染      │  │  │
 │  │  │  TextParticle | ImageParticle | TableParticle      │  │  │
 │  │  ├────────────────────────────────────────────────────┤  │  │
-│  │  │  Interaction Layer (拆分重构后, v3.0)               │  │  │
+│  │  │  Interaction Layer (拆分重构后               │  │  │
 │  │  │  EventBus → MouseHandler | KeyboardHandler         │  │  │
 │  │  │           | IMEHandler | ClipboardHandler           │  │  │
 │  │  ├────────────────────────────────────────────────────┤  │  │
@@ -47,9 +39,9 @@
 │  │  │  Document Model (ModelD)                           │  │  │
 │  │  │  DocumentTree → Page[] → FlowBody → BlockNode[]    │  │  │
 │  │  │  + ElementFormatter (工厂/遍历/快照)               │  │  │
-│  │  │  + ModelValidator (校验器, v3.0)                   │  │  │
+│  │  │  + ModelValidator (校验器                   │  │  │
 │  │  ├────────────────────────────────────────────────────┤  │  │
-│  │  │  Auto-Save Engine (v3.0)                           │  │  │
+│  │  │  Auto-Save Engine                           │  │  │
 │  │  │  Debounce → IndexedDB → API → Recovery             │  │  │
 │  │  └────────────────────────────────────────────────────┘  │  │
 │  ├──────────────────────────────────────────────────────────┤  │
@@ -64,13 +56,13 @@
 │                     Java SpringBoot 后端                         │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │  API 网关层 (REST + WebSocket)                           │  │
-│  │  + modelVersion 版本兼容中间件 (v3.0)                     │  │
+│  │  + modelVersion 版本兼容中间件                     │  │
 │  ├──────────────────────────────────────────────────────────┤  │
 │  │  业务服务层                                              │  │
 │  │  DocumentService | TemplateService | ExportService       │  │
 │  │  CollaborationService | PermissionService | AuditService │  │
 │  ├──────────────────────────────────────────────────────────┤  │
-│  │  数据访问层 (乐观锁 version 字段, v3.0)                   │  │
+│  │  数据访问层 (乐观锁 version 字段                   │  │
 │  │  Mybatis-Plus | Redis Cache                              │  │
 │  ├──────────────────────────────────────────────────────────┤  │
 │  │  基础设施层                                              │  │
@@ -81,13 +73,13 @@
 
 ### 1.2 核心设计原则
 
-**三大铁律** (v5.0 显式声明):
+**三大铁律** :
 
-| 原则 | 含义 | 反模式 |
-|------|------|--------|
-| **接口抽象** | 所有跨模块边界通过 interface 通信；具体实现可替换，不修改调用方 | 直接 `new` 具体类、硬编码 Canvas API |
-| **数据增量** | 编辑后仅重新计算受影响的数据，非全量重建；所有缓存通过 version 判断有效性 | 全量 recomputeLayout()、全画布 clearRect() |
-| **计算渲染分离** | 布局计算 (layout/) 不接触 Canvas；渲染 (render/) 只消费布局结果，不重复测量 | Draw.ts 中混用 measureText + fillText |
+| 原则                   | 含义                                                                        | 反模式                                     |
+| ---------------------- | --------------------------------------------------------------------------- | ------------------------------------------ |
+| **接口抽象**     | 所有跨模块边界通过 interface 通信；具体实现可替换，不修改调用方             | 直接 `new` 具体类、硬编码 Canvas API     |
+| **数据增量**     | 编辑后仅重新计算受影响的数据，非全量重建；所有缓存通过 version 判断有效性   | 全量 recomputeLayout()、全画布 clearRect() |
+| **计算渲染分离** | 布局计算 (layout/) 不接触 Canvas；渲染 (render/) 只消费布局结果，不重复测量 | Draw.ts 中混用 measureText + fillText      |
 
 **七项具体原则**:
 
@@ -120,55 +112,39 @@ TextMeasurer 依赖 ITextShaper 接口，不感知底层实现。
 
 ### 1.3 ModelA → ModelD 架构演进
 
-| 维度 | ModelA (v1.0) | ModelD (v2.0) | ModelD (v3.0 目标) |
-|------|--------------|---------------|---------------------|
-| 文档模型 | 扁平 `IElement[]` | 树形 `DocumentTree` | 树形 + metadata 扩展 |
-| 运行时状态 | 散落 Draw.ts | 散落 Draw.ts | **独立 EditorRuntimeState** |
-| 编辑驱动 | 内联方法调用 | 内联方法调用 | **Command 命令模式** |
-| 撤销/重做 | HistoryManager | 内联 JSON 快照 | **UndoRedoStack + Command 增量** |
-| 光标定位 | 数组下标 | treePath (pi,bi,ii) | **ID 链路路径 string[]** |
-| 坐标系统 | 多处重复换算 | 多处重复换算 | **统一 CoordinateSystem** |
-| 粒子渲染 | 无统一接口 | 无统一接口 | **IParticle 统一接口** |
-| 布局渲染 | 全量重算 | 全量重算 | **增量布局 + 增量渲染** |
-| 模型校验 | 无 | 无 | **ModelValidator + JSON Schema** |
-
----
+| 维度       | ModelA        | ModelD || ModelD                      |
+| ---------- | ------------------- | --------------------- | -------------------------------------- |
+| 文档模型   | 扁平 `IElement[]` | 树形 `DocumentTree` | 树形 + metadata 扩展                   |
+| 运行时状态 | 散落 Draw.ts        | 散落 Draw.ts          | **独立 EditorRuntimeState**      |
+| 编辑驱动   | 内联方法调用        | 内联方法调用          | **Command 命令模式**             |
+| 撤销/重做  | HistoryManager      | 内联 JSON 快照        | **UndoRedoStack + Command 增量** |
+| 光标定位   | 数组下标            | treePath (pi,bi,ii)   | **ID 链路路径 string[]**         |
+| 坐标系统   | 多处重复换算        | 多处重复换算          | **统一 CoordinateSystem**        |
+| 粒子渲染   | 无统一接口          | 无统一接口            | **IParticle 统一接口**           |
+| 布局渲染   | 全量重算            | 全量重算              | **增量布局 + 增量渲染**          |
+| 模型校验   | 无                  | 无                    | **ModelValidator + JSON Schema** |
 
 ## 2. 前端架构设计
 
-### 2.1 文档数据模型 (ModelD)
+### 2.1 文档数据模型 
 
-树形文档模型，天然映射到电子病历的层级结构：
+// 
 
-```
-DocumentTree
-├── id, title, pageSetup
-└── pages: Page[]
-    ├── header: BlockNode[]
-    ├── body: FlowBody | BlockNode[]
-    │   └── (FlowBody) mode: 'flow'
-    │       └── children: BlockNode[]
-    │           ├── Paragraph
-    │           │   └── children: InlineNode[]
-    │           │       ├── TextNode        (普通文本)
-    │           │       └── SmartTextNode   (带医疗元数据的结构化字段)
-    │           └── Table
-    │               └── children: TableRow[]
-    │                   └── children: TableCell[]
-    │                       └── children: BlockNode[]  (支持段落/表格嵌套)
-    └── footer: BlockNode[]
-```
-
-#### 核心类型定义
+1. **存储去分页化**: `DocumentTree` 不再包含 `pages: Page[]`，改为单一 `body: FlowBody`。分页是布局引擎运行时输出（SLIFPage[]），不进入存储模型。此变更从根本上解决"插入文字后跨 Page 搬运节点"的架构级矛盾。
+2. **children 全部 ID 化**: 所有 `children` 字段直接从 `BaseNode[]` 改为 `string[]`，一步到位，不存在引用→ID 的过渡期。
+3. **分级版本号**: NodePool 使用 `structureVersion`（增删节点 +1）+ `nodeVersions: Map<string, number>`（节点内容/样式变更时单独 +1），LayoutCache 按节点版本比对。与 §27.1 InvalidationScope 对齐。
+4. **路径体系统一**: 废弃 `TreePath = TreePathItem[]`（下标索引），全局统一使用 `string[]`（ID 链路）。insertAt/removeAt 签名全部改为 ID 路径。
+5. **补齐 ImageNode**: BlockNode 增加 ImageNode 类型。MinIO 上传链路 + EditorSecurityConfig 权限串联。
+6. **dataType 补 S2 + privacy 脱敏链路**: ElementFormat.dataType 增加 `'S2'`（枚举型）；ElementMeta.privacy 增加 `maskChar` 字段，渲染层按用户权限脱敏。
 
 ```typescript
 // ================================================================
 // 节点类型标识
 // ================================================================
 const NodeType = {
-  DOCUMENT: 'document', PAGE: 'page',
-  PARAGRAPH: 'paragraph', TABLE: 'table', ROW: 'row', CELL: 'cell',
-  TEXT: 'text', SMART_TEXT: 'smarttext',
+  DOCUMENT: 'document', PARAGRAPH: 'paragraph', TABLE: 'table',
+  ROW: 'row', CELL: 'cell', TEXT: 'text', SMART_TEXT: 'smarttext',
+  IMAGE: 'image',   
 } as const
 
 // ================================================================
@@ -182,427 +158,259 @@ interface TextStyle {
 }
 interface ParagraphStyle {
   alignment?: 'left' | 'center' | 'right' | 'justify'
-  indent?: number; lineHeight?: number
-  spaceBefore?: number; spaceAfter?: number
+  indent?: number; lineHeight?: number; spaceBefore?: number; spaceAfter?: number
 }
 
 // ================================================================
-// BaseNode 扩展 (v3.0 新增 metadata)
+// BaseNode — children 全部为 string[] (ID 引用)
 // ================================================================
 interface BaseNode {
-  id: string
-  type: NodeType
-  /** 通用扩展字段，承载批注引用/锁定状态/业务标签等，避免侵入节点定义 */
-  metadata?: Record<string, unknown>
+  id: string; type: NodeType
+  metadata?: Record<string, unknown>  // locked/undeletable/annotations/tags
 }
 
-// 典型 metadata 用途示例:
-// { locked: true }                              — 段落锁定 (不可编辑内容)
-// { undeletable: true }                         — 节点不可删除 (模板结构保护)
-// { annotations: ['anno_001', 'anno_002'] }     — 关联批注 ID 列表
-// { tags: ['vital_signs', 'required'] }          — 业务标签
-
 // ================================================================
-// 医疗数据元 (SmartTextNode 专属)
+// 医疗数据元
 // ================================================================
-interface ElementCode {
-  internal: string     // 医院内部编码 (HDSD), 如 'HDSD00.12.132'
-  dataElement: string  // 国家标准数据元编码 (DE), 如 'DE07.00.007.00'
-}
+interface ElementCode { internal: string; dataElement: string }
 interface ElementFormat {
-  dataType: 'S1' | 'S3' | 'N' | 'D'
+  dataType: 'S1' | 'S2' | 'S3' | 'N' | 'D'   // 补 S2 (枚举型)
   showType?: 'AN' | 'N'
   minLength?: number; maxLength?: number
-  dictionary?: string
+  dictionary?: string   // 字典/码表 ID (v10.0: 需要关联 'S2' 枚举值校验)
 }
 interface ElementMeta {
   code: ElementCode; name: string; labels?: string[]
   format?: ElementFormat; required?: boolean
-  readonly?: boolean; privacy?: boolean
+  readonly?: boolean
+  /** 隐私脱敏  */
+  privacy?: {
+    enabled: boolean
+    maskChar: string   // 脱敏替换字符, 默认 '*'
+    maskRule: 'full' | 'partial'  // 全量脱敏 | 部分脱敏 (保留首尾各 1 字符)
+  }
 }
 
 // ================================================================
-// 节点层次
+// 节点层次 — 所有 children 均为 string[] (NodePool ID 引用)
 // ================================================================
-
-// 内联节点
 interface TextNode extends BaseNode, TextStyle {
   type: 'text'; text: string
 }
 interface SmartTextNode extends BaseNode, TextStyle {
-  type: 'smarttext'; text: string
-  element: ElementMeta    // 医疗数据元绑定
+  type: 'smarttext'; text: string; element: ElementMeta
 }
-type InlineNode = TextNode | SmartTextNode
+interface ImageNode extends BaseNode {
+  type: 'image'
+  src?: string          // data URL / blob URL (浏览器本地)
+  objectKey?: string    // MinIO object key (持久化引用)
+  width: number; height: number
+  naturalWidth?: number; naturalHeight?: number
+  wrapMode: 'inline' | 'square' | 'top-bottom'
+}
+type InlineNode = TextNode | SmartTextNode | ImageNode
 
-// 块级节点
 interface Paragraph extends BaseNode, ParagraphStyle {
-  type: 'paragraph'; children: InlineNode[]
+  type: 'paragraph'; children: string[]   // InlineNode ID[]
 }
 interface Table extends BaseNode {
-  type: 'table'; colWidths?: number[]; children: TableRow[]
+  type: 'table'; columns: ColumnDefinition[]; children: string[]  // TableRow ID[]
+  pageBreak?: TablePageBreakRule
 }
 interface TableRow extends BaseNode {
-  type: 'row'; height?: number; children: TableCell[]
+  type: 'row'; height?: number; children: string[]  // TableCell ID[]
 }
 interface TableCell extends BaseNode {
   type: 'cell'; colspan?: number; rowspan?: number
-  children: BlockNode[]
-  backgroundColor?: string; verticalAlign?: 'top' | 'middle' | 'bottom'
-  isHeader?: boolean
+  children: string[]   // BlockNode ID[]
+  backgroundColor?: string; verticalAlign?: 'top' | 'middle' | 'bottom'; isHeader?: boolean
 }
-type BlockNode = Paragraph | Table
+type BlockNode = Paragraph | Table | ImageNode
 
-// 页面 & 文档
-interface Page {
-  type: 'page'; id: string
-  header: BlockNode[]; body: PageBody; footer: BlockNode[]
-}
+interface FlowBody { mode: 'flow'; children: string[] }  // BlockNode ID[]
+// 移除 PageBody = BlockNode[] | FlowBody union, 根除双模防御成本
+
+// ================================================================
+// 存储模型 — 去分页化 
+// ================================================================
 interface PageSetup {
   width: number; height: number
-  marginTop: number; marginBottom: number
-  marginLeft: number; marginRight: number
+  marginTop: number; marginBottom: number; marginLeft: number; marginRight: number
   orientation: 'portrait' | 'landscape'
-  /** 页面级水印 (v5.0 新增) */
   watermark?: WatermarkConfig
-}
-
-// ================================================================
-// 数字水印 (v5.0 新增)
-// ================================================================
-type WatermarkType = 'text' | 'image'
-
-interface WatermarkConfig {
-  type: WatermarkType
-  /** 文本水印内容 (type='text' 时) */
-  text?: string
-  /** 图片水印 URL (type='image' 时) */
-  imageUrl?: string
-  /** 透明度 (0-1, 默认 0.08) */
-  opacity: number
-  /** 旋转角度 (度, 默认 -30) */
-  rotation: number
-  /** 水印间距 (px, 默认 200) */
-  spacing: number
-  /** 字体大小 (type='text', 默认 48) */
-  fontSize?: number
-  /** 字体颜色 */
-  color?: string
-  /** 排版模式 */
-  mode: 'tile' | 'center'  // 平铺 | 居中单个
-}
-
-// 默认水印配置
-const DEFAULT_WATERMARK: WatermarkConfig = {
-  type: 'text',
-  opacity: 0.08, rotation: -30, spacing: 200,
-  fontSize: 48, color: '#000000', mode: 'tile',
 }
 interface DocumentTree {
   type: 'document'; id: string; title: string
-  pageSetup: PageSetup; pages: Page[]
-  /** 文档级扩展 (模板 ID、版本号、schema 版本等) */
+  pageSetup: PageSetup
+  /** 唯一正文 (v10.0: 替代 pages: Page[]) */
+  body: FlowBody
+  /** 页眉/页脚 — 布局引擎在每页渲染时引用 */
+  header?: BlockNode[]; footer?: BlockNode[]
   metadata?: Record<string, unknown>
 }
+// pages: Page[] 降级为布局引擎输出 (SLIFPage[])
+// 存储层不再包含 Page 概念
 
 const DEFAULT_PAGE_SETUP: PageSetup = {
   width: 794, height: 1123,
-  marginTop: 72, marginBottom: 72,
-  marginLeft: 90, marginRight: 90,
+  marginTop: 72, marginBottom: 72, marginLeft: 90, marginRight: 90,
   orientation: 'portrait',
 }
-```
 
-#### 2.1.1 节点池 — 扁平化 ID 索引 (v4.0 新增)
+// ================================================================
+// NodePool — 一步到位 string[] 子节点 + 分级版本号 
+// ================================================================
+class NodePool {
+  nodes = new Map<string, BaseNode>()
+  private _structureVersion = 0           // 增删节点时 ++
+  private _nodeVersions = new Map<string, number>()  // 节点内容/样式变更时单独 ++
 
-**问题**: 当前 DocumentTree 是纯嵌套结构，节点通过 `children: BaseNode[]` 直接挂载对象引用。`findById()` 需要递归遍历整棵树，O(n) 复杂度。节点数超 5000 后性能指数级下降，协作编辑的 O(1) 节点查找无法实现。
+  get structureVersion(): number { return this._structureVersion }
+  getNodeVersion(nodeId: string): number { return this._nodeVersions.get(nodeId) ?? 0 }
 
-**方案**: 引入「节点池 + ID 引用」模式。
+  insertChild(parentId: string, childId: string, index: number): void {
+    const parent = this.nodes.get(parentId)
+    if (!parent) throw new Error(`Parent ${parentId} not found`)
+    const children = (parent as any).children as string[]
+    children.splice(index, 0, childId)
+    this._structureVersion++
+  }
 
-```typescript
-/**
- * 扁平化节点池 — 物理存储层
- *
- * 核心设计:
- * - nodes: Map<string, BaseNode>  所有节点按 ID 扁平索引，O(1) 查找
- * - 父节点只存 children: string[]  子节点 ID 数组，不存对象引用
- * - 树形结构通过 ID 链逻辑表达，物理存储是扁平 Map
- *
- * 与现有 DocumentTree 的关系:
- * - DocumentTree 是逻辑视图 (树形遍历、序列化)
- * - NodePool 是物理存储 (查找、更新、缓存)
- * - 序列化时: NodePool → DocumentTree (通过 ID 引用还原嵌套结构)
- * - 反序列化时: DocumentTree → NodePool (展平嵌套，建立 ID 索引)
- */
-interface NodePool {
-  /** 节点扁平池 — 所有节点按 ID 唯一索引 */
-  nodes: Map<string, BaseNode>
+  removeChild(parentId: string, index: number): string {
+    const parent = this.nodes.get(parentId)
+    if (!parent) throw new Error(`Parent ${parentId} not found`)
+    const children = (parent as any).children as string[]
+    const removedId = children.splice(index, 1)[0]
+    // 级联收集后代 ID (修复孤儿泄漏)
+    const descendantIds = this.collectDescendants(removedId)
+    for (const id of descendantIds) { this.nodes.delete(id); this._nodeVersions.delete(id) }
+    this._structureVersion++
+    return removedId
+  }
 
-  /** 根节点 ID (DocumentTree 的 ID) */
-  rootId: string
-
-  /** 节点版本号 — 用于缓存失效判断 (每次修改 +1) */
-  version: number
-}
-
-/** 所有父节点统一使用 string[] 存储子节点引用 */
-interface Paragraph {
-  id: string; type: 'paragraph'
-  children: string[]       // InlineNode ID 数组 (不再是 InlineNode[])
-  alignment?: 'left' | 'center' | 'right' | 'justify'
-  // ...
-}
-interface TableRow {
-  id: string; type: 'row'
-  children: string[]       // TableCell ID 数组
-  height?: number
-}
-// 同理: FlowBody.children → string[], Page.pages → string[]
-
-/**
- * 从 DocumentTree 构建 NodePool (反序列化时调用)
- * O(n) 单次遍历，后续查找 O(1)
- */
-function buildNodePool(tree: DocumentTree): NodePool {
-  const nodes = new Map<string, BaseNode>()
-  traverse(tree, (node) => {
-    if (node && typeof node === 'object' && 'id' in node) {
-      nodes.set((node as BaseNode).id, node as BaseNode)
+  private collectDescendants(nodeId: string): string[] {
+    const result: string[] = [nodeId]
+    const node = this.nodes.get(nodeId)
+    if (node && 'children' in node) {
+      for (const childId of (node as any).children as string[]) {
+        result.push(...this.collectDescendants(childId))
+      }
     }
-  })
-  return { nodes, rootId: tree.id, version: 0 }
+    return result
+  }
+
+  updateNode(nodeId: string, changes: Partial<BaseNode>): void {
+    const node = this.nodes.get(nodeId)
+    if (node) {
+      Object.assign(node, changes)
+      this._nodeVersions.set(nodeId, (this._nodeVersions.get(nodeId) ?? 0) + 1)
+    }
+  }
+
+  getChildren(parentId: string): readonly string[] { return (this.nodes.get(parentId) as any)?.children ?? [] }
 }
 
-/**
- * NodePool → DocumentTree (序列化时调用)
- * 通过 children ID 数组还原嵌套对象引用
- */
-function poolToTree(pool: NodePool): DocumentTree {
-  // 从 rootId 出发，递归将 children: string[] 替换为 children: BaseNode[]
-  // 通过 pool.nodes.get(id) 做 O(1) 查找
+// buildNodePool 直接基于 string[] children 构建，无引用共享问题
+function buildNodePool(tree: DocumentTree): NodePool {
+  const pool = new NodePool()
+  const collect = (node: BaseNode) => {
+    pool.nodes.set(node.id, node)
+    if ('children' in node) {
+      for (const childId of (node as any).children as string[]) {
+        const child = pool.nodes.get(childId) // children 已是 ID, 需要外部保证节点已注册
+        if (child) collect(child)
+      }
+    }
+  }
+  collect(tree)
+  return pool
 }
 
-/**
- * O(1) 节点查找 (替代递归 findById)
- */
-function getNodeById(pool: NodePool, id: string): BaseNode | undefined {
-  return pool.nodes.get(id)
+// ================================================================
+//   树遍历 — 基于 NodePool (废弃递归对象遍历)
+// ================================================================
+function traversePool(pool: NodePool, rootId: string, visitor: (node: BaseNode, depth: number) => void): void {
+  const visited = new Set<string>()
+  const walk = (id: string, depth: number) => {
+    if (visited.has(id)) throw new Error(`Cycle detected: ${id}`)
+    visited.add(id)
+    const node = pool.nodes.get(id); if (!node) return
+    visitor(node, depth)
+    if ('children' in node) {
+      for (const childId of (node as any).children as string[]) walk(childId, depth + 1)
+    }
+  }
+  walk(rootId, 0)
 }
 
-/**
- * O(1) 节点更新 + 自动 version 递增 (用于缓存失效)
- */
-function updateNode(pool: NodePool, id: string, changes: Partial<BaseNode>): void {
-  const node = pool.nodes.get(id)
-  if (node) { Object.assign(node, changes); pool.version++ }
-}
+// 废弃: TreePath, TreePathItem, traverse() (递归对象版), insertAt/removeAt(下标版)
+// 统一: ID 链路 string[] + NodePool 驱动遍历
 ```
 
-**迁移路径**: 渐进引入 NodePool，不破坏现有 DocumentTree API。
-- Phase 1: 新增 `NodePool` 类型 + `buildNodePool()` / `poolToTree()` 转换函数，现有代码继续用 DocumentTree
-- Phase 2: `Draw.recomputeLayout()` 内部使用 NodePool 做 O(1) 节点查找
-- Phase 3: `Command.forward()` 通过 NodePool 定位节点，替代 `findById()` 递归
-- Phase 4: 序列化/反序列化层统一使用 NodePool 作为内部表示
-
-#### 2.1.2 表格模型增强 (v4.0 新增)
-
-**问题**: 当前 Table 模型仅定义了 `行 → 单元格 → BlockNode[]` 的基础层次，缺失列级定义、合并单元格矩阵、跨页断表规则。电子病历是表格重度场景，现有模型无法支撑。
-
-**方案**: 补齐表格核心工程化要素。
-
-```typescript
-// ================================================================
-// 列级定义
-// ================================================================
-interface ColumnDefinition {
-  /** 列宽计算规则 */
-  width: number
-  /** 最小宽度 (px) */
-  minWidth?: number
-  /** 列宽模式 */
-  mode: 'fixed'       // 固定宽度
-       | 'auto'       // 自动 (根据内容)
-       | 'percentage' // 百分比 (width 为 0-100)
-}
-
-// ================================================================
-// 表格布局算法接口
-// ================================================================
-interface TableLayoutAlgorithm {
-  /** 计算最终列宽数组 (输入: 可用宽度 + 列定义, 输出: 实际列宽 px[]) */
-  compute(availableWidth: number, columns: ColumnDefinition[]): number[]
-}
-
-/** 固定布局: 按定义宽度分配，多余空间均分给 auto 列 */
-class FixedTableLayout implements TableLayoutAlgorithm { /* ... */ }
-
-/** 自适应布局: 扫描所有单元格内容，按内容最大宽度分配 */
-class AutoTableLayout implements TableLayoutAlgorithm { /* ... */ }
-
-// ================================================================
-// 合并单元格矩阵 (预计算，避免每次渲染重复算)
-// ================================================================
-interface MergeMatrix {
-  /** 行数 */
-  rows: number
-  /** 列数 */
-  cols: number
-  /**
-   * grid[r][c] = 该位置的单元格 ID
-   * 被 rowspan/colspan 占据的格子填充相同 ID
-   * 空位 (被合并覆盖) = null
-   */
-  grid: (string | null)[][]
-
-  /** 单元格 ID → 合并信息映射 */
-  spans: Map<string, { rowspan: number; colspan: number }>
-}
-
-/**
- * 从 Table 节点构建合并矩阵
- * O(rows × cols) 单次预计算
- */
-function buildMergeMatrix(table: Table): MergeMatrix {
-  // 遍历 table.children (TableRow[])，根据每个 TableCell 的 colspan/rowspan
-  // 填充 grid 二维数组，标记被覆盖的格子
-}
-
-// ================================================================
-// 增强的 Table 节点
-// ================================================================
-interface Table extends BaseNode {
-  type: 'table'
-  columns: ColumnDefinition[]     // 列定义 (v4.0 新增)
-  children: TableRow[]
-  /** 跨页断表规则 */
-  pageBreak?: TablePageBreakRule
-}
-
-interface TablePageBreakRule {
-  /** 是否每页重复表头 */
-  repeatHeader: boolean
-  /** 最小断行位置 (避免孤行) */
-  minRowsBeforeBreak: number
-  /** 续接标记文本 (如 "续表") */
-  continuationLabel?: string
-}
-```
-
-### 2.2 FlowBody 双模正文定义 (v3.0 新增)
-
-`PageBody` 有两种表示形式，各有明确的业务使用场景：
-
-#### 2.2.1 两种模式
-
-```typescript
-// 模式 1: FlowBody — 流式正文（默认、推荐）
-interface FlowBody {
-  mode: 'flow'
-  children: BlockNode[]   // Paragraph[] | Table[]
-}
-
-// 模式 2: BlockNode[] — 裸块数组（仅用于简单兼容场景）
-type PageBody = BlockNode[] | FlowBody
-```
-
-| 维度 | FlowBody (`mode: 'flow'`) | BlockNode[] (裸数组) |
-|------|---------------------------|---------------------|
-| **使用场景** | 标准文档正文，需分页/流式排版 | 旧数据兼容 / 极简场景 / header/footer |
-| **推荐程度** | **强烈推荐** (默认) | 仅兼容 |
-| **分页支持** | 需要分页计算 | 不需要分页 |
-| **元数据** | 可扩展 mode 属性 | 无 |
-| **语义明确度** | 明确：这是可分页的正文流 | 模糊：只是一个块数组 |
-| **未来扩展** | `mode: 'fixed'` (固定布局) | 无扩展空间 |
-
-#### 2.2.2 使用规则
-
-1. **文档正文 (`page.body`)**: 必须使用 `FlowBody`，因为正文需要分页计算
-2. **页眉/页脚 (`page.header` / `page.footer`)**: 使用 `BlockNode[]`，页眉页脚不分页、无流式排版需求
-3. **TableCell 子内容**: 使用 `BlockNode[]`，单元格内不需要独立分页
-
-#### 2.2.3 转换 API
+### 2.2 隐私脱敏渲染链路 
 
 ```typescript
 /**
- * FlowBody → BlockNode[] (展平)
- * 用于兼容需要裸数组的下游处理（如旧版导出器）
+ * 渲染层按用户权限脱敏:
+ *   SmartTextNode.element.privacy.enabled === true 时,
+ *   根据 currentUserLevel 和节点权限级别决定是否打码
+ *
+ * 打码规则:
+ *   - userLevel < 要求级别 → 脱敏
+ *   - maskRule='full'    → 全部替换为 maskChar (如 "***")
+ *   - maskRule='partial' → 保留首尾各 1 字符，中间替换 (如 "张*")
+ *   - 脱敏后文字不可选中、不可复制 (SelectionState 跳过脱敏节点)
+ *
+ * 与 EditorSecurityConfig 的关系: data.allowCopy=false 时,
+ *   脱敏字段在剪贴板中直接替换为 maskChar，而非原文。
  */
-function flowBodyToArray(body: PageBody): BlockNode[] {
-  if (Array.isArray(body)) return body
-  return body.children
-}
-
-/**
- * BlockNode[] → FlowBody (包装)
- * 用于数据迁移：旧格式裸数组升级为新格式
- */
-function arrayToFlowBody(blocks: BlockNode[]): FlowBody {
-  return { mode: 'flow', children: blocks }
-}
-
-/**
- * 检测 body 是否为 FlowBody 模式
- */
-function isFlowBody(body: PageBody): body is FlowBody {
-  return !Array.isArray(body) && (body as FlowBody).mode !== undefined
+function applyPrivacyMask(node: SmartTextNode, userLevel: number): string {
+  const p = node.element.privacy
+  if (!p?.enabled || userLevel >= 3) return node.text  // 高权限用户看原文
+  if (p.maskRule === 'full') return p.maskChar.repeat(node.text.length)
+  // partial: 保留首尾
+  const len = node.text.length
+  if (len <= 2) return p.maskChar.repeat(len)
+  return node.text[0] + p.maskChar.repeat(len - 2) + node.text[len - 1]
 }
 ```
 
-#### 2.2.4 边界规则
+### 2.3 移除 FlowBody 双模 
 
-- **新建文档**：所有 `page.body` 强制使用 `FlowBody` 模式
-- **读取旧数据**：解析 JSON 时自动检测 `PageBody` 类型，`BlockNode[]` 包装为 `FlowBody` (静默升级)
-- **API 输出**：统一输出 `FlowBody` 格式（序列化时 `JSON.stringify` 保留 `mode: 'flow'`）
-- **getBodyBlocks() 防御**：所有访问 `page.body` 的代码必须通过 `getBodyBlocks(page.body)` 提取 `BlockNode[]`，不直接假设类型
-
-```typescript
-// 所有代码统一使用的访问器
-function getBodyBlocks(body: PageBody): BlockNode[] {
-  return Array.isArray(body) ? body : (body as FlowBody).children
-}
+```
+v10.0 直接删除 PageBody = BlockNode[] | FlowBody union。
+所有 header/footer 从 BlockNode[] 改为 Paragraph[] | Table[] | ImageNode[]（类型明确）。
+所有代码中 getBodyBlocks() 防御调用移除。
+旧数据 upgrader: wrapArrayToFlowBody() (v3.0→v4.0 breaking upgrader 中执行)
 ```
 
-### 2.3 节点工厂与树操作
+### 2.2 节点工厂与树操作 
 
-`ElementFormatter.ts` 提供完整的工厂函数和树操作工具：
+//  移除 createPage/createFlowBody/flowBodyToArray/arrayToFlowBody/getBodyBlocks——存储模型去分页化后不再需要。PageBreaker 输出 SLIFPage[] 为布局产物，非存储结构。
 
 ```typescript
-// 工厂函数
-createDocument(title, pages?, pageSetup?)     → DocumentTree
-createPage(header?, body?, footer?)           → Page
-createFlowBody(blocks?)                       → FlowBody
-createParagraph(children?, style?)            → Paragraph
+createDocument(title, body?, pageSetup?)     → DocumentTree   // body: FlowBody (children: string[])
+createParagraph(children?, style?)            → Paragraph       // children: string[]
 createTextNode(text, style?)                  → TextNode
 createSmartTextNode(text, element, style?)    → SmartTextNode
-createTable(rows?, colWidths?)                → Table
+createImageNode(objectKey, width, height, wrapMode?) → ImageNode
+createTable(columns?, rows?)                  → Table           // columns: ColumnDefinition[], rows: TableRow[]
 createTableRow(cells?, height?)               → TableRow
-createTableCell(children?, opts?)             → TableCell
-createSimpleTable(rows, cols)                 → Table (快捷创建)
+createTableCell(blockIds?, opts?)             → TableCell
+createSimpleTable(rows, cols)                 → Table
 
-// 树遍历与查找
-traverse(tree, visitor)                       → 深度优先遍历
-findById(tree, id)                            → { node, path }
-findByDE(tree, deCode)                        → SmartTextNode[] (按国标编码查找)
-findByInternal(tree, internalCode)            → SmartTextNode[] (按内部编码查找)
+// 树操作 — 统一 ID 链路 string[]
+insertAt(tree, pool, parentId: string, childId: string, index: number): boolean
+removeAt(tree, pool, parentId: string, index: number): boolean
+findById(pool, rootId: string, id: string): BaseNode | undefined   // O(1)
+findByDE(pool, rootId, deCode): SmartTextNode[]
+findByInternal(pool, rootId, internalCode): SmartTextNode[]
 
-// 增删操作 (推荐用 ID 链路路径)
-insertAt(tree, idPath: string[], node)        → boolean
-removeAt(tree, idPath: string[])              → boolean
-
-// 克隆与快照
-deepClone(node)                               → 深度克隆
-cloneWithNewIds(node)                         → 克隆 + 重新生成 ID
-takeSnapshot(tree)                            → JSON 字符串
-restoreSnapshot(json)                         → DocumentTree
-UndoRedoStack (class)                         → 带 maxDepth 的快照栈
+deepClone(node) → 深克隆; cloneWithNewIds(node) → 克隆 + 重新生成 ID
+takeSnapshot(tree) → JSON; restoreSnapshot(json) → DocumentTree
 ```
 
----
-
-
----
-
-### 2.4 字体与文本度量体系 (v5.0 新增)
+### 2.4 字体与文本度量体系 
 
 **背景**: 当前 `TextMeasurer` 直接使用 Canvas `measureText()` + LRU 缓存。这套方案在以下场景有根本性缺陷：布局抖动（字体未加载完成时测量结果为 fallback 字体尺寸）、跨端排版不一致（不同 OS 的系统字体度量不同）、前后端导出不一致（后端 Java 字体度量 ≠ 浏览器 Canvas 度量）、无字体降级链（生僻字显示方框）。
 
@@ -776,377 +584,213 @@ function candidateWeights(target: number): number[] {
 const fontManager = new FontManager()
 ```
 
-#### 2.4.2 增强文本度量
+### 2.4.6 增量分页算法
 
-当前 `TextMeasurer` 依赖 Canvas `measureText()`，渲染结果取决于系统字体，无法保证跨端一致性。
+**问题**: §27.1 规定"文本内容变更 → 后续页面分页结果全部失效"，每敲一字触发 O(n) 重分页，与 "连续打字 >55fps" 指标直接矛盾。
 
-**方案**: 引入三级测量精度：
-
-```
-L1 — 快速测量 (Canvas measureText, 当前方案)
-     适用: 编辑态实时渲染
-     缺点: 依赖系统字体，跨端不一致
-
-L2 — 精确测量 (HarfBuzz WASM)
-     适用: 导出、打印、布局缓存回填
-     优点: 与操作系统无关的精确字体度量
-     实现: 编译 HarfBuzz 到 WebAssembly，通过自定义字体数据测量
-
-L3 — 离线预计算 (构建时)
-     适用: 已知内容的批量预排版
-     优点: 零运行时开销
-```
+**方案**: PageStartTable + 早停机制。
 
 ```typescript
-// ================================================================
-// 增强 TextMeasurer
-// ================================================================
-class TextMeasurer {
-  private canvas: HTMLCanvasElement
-  private ctx: CanvasRenderingContext2D
-  private cache = new Map<string, TextMetrics>()  // LRU, MAX=2000
-  private cacheKeys: string[] = []
-  private fontManager: FontManager
+/**
+ * PageStartTable — 每页的断点快照
+ * 编辑后从脏区所在页起向后增量重排，遇到断点一致的页即终止（早停）。
+ * 百页文档单字符编辑的重排范围收敛到 1~2 页。
+ */
+interface PageStartEntry {
+  pageIndex: number
+  /** 该页第一个 BlockNode 的 ID (flowBody.children 中的索引) */
+  startBlockId: string
+  /** 该页第一行的行号 (在 startBlockId 段落内的行偏移) */
+  startLineOffset: number
+  /** 该页的累计内容高度 (用于快速计算后续页面偏移) */
+  cumulativeHeight: number
+}
 
-  // v5.0 新增: HarfBuzz WASM 实例 (懒加载)
-  private harfBuzz: Promise<HarfBuzzInstance> | null = null
+class PageStartTable {
+  private entries: PageStartEntry[] = []
 
-  constructor(fontMgr: FontManager) {
-    this.canvas = document.createElement('canvas')
-    this.ctx = this.canvas.getContext('2d')!
-    this.fontManager = fontMgr
-  }
-
-  /** L1 快速测量 (保持向后兼容) */
-  measureWidth(text: string, config: FontConfig): number {
-    return this.measure(text, config).width
-  }
-
-  /**
-   * L2 精确测量 (用于导出/打印)
-   *
-   * 与 L1 的关键区别:
-   * - 使用 HarfBuzz 引擎计算，不依赖系统字体渲染器
-   * - 支持 kerning/ligature/GPOS 等高级排版特性
-   * - 前后端输出完全一致 (Java HarfBuzz 绑定 → 相同结果)
-   */
-  async measureWidthPrecise(text: string, config: FontConfig): Promise<number> {
-    if (!this.harfBuzz) {
-      this.harfBuzz = this.initHarfBuzz()
-    }
-    const hb = await this.harfBuzz
-    // 从 fontManager 获取字体二进制数据 → 创建 HarfBuzz blob
-    // hb.shape(text, font) → 逐字形累加 advance
-    return 0 // placeholder
-  }
-
-  /**
-   * CJK+英文混排，支持 kerning 的逐字符宽度测量
-   */
-  measureChars(text: string, config: FontConfig): CharMetrics[] {
-    const chars = [...text]
-    return chars.map((char, i) => ({
-      char,
-      width: this.measureWidth(char, config),
-      // 检查前后字符的 kerning pair (CJK 通常无 kerning, 仅英文)
-      kerning: i > 0 ? this.getKerning(chars[i - 1], char, config) : 0,
+  /** 全量构建 (初次分页时) */
+  build(pages: SLIFPage[]): void {
+    this.entries = pages.map(p => ({
+      pageIndex: p.pageIndex,
+      startBlockId: p.items[0]?.nodeId ?? '',
+      startLineOffset: 0,
+      cumulativeHeight: pages.slice(0, p.pageIndex).reduce((h, pg) => h + pg.height, 0),
     }))
   }
 
-  private getKerning(prev: string, curr: string, config: FontConfig): number {
-    const pairWidth = this.measureWidth(prev + curr, config)
-    const soloWidth = this.measureWidth(prev, config) + this.measureWidth(curr, config)
-    return pairWidth - soloWidth  // 负值 = kerning 紧缩
+  /**
+   * 增量重分页 — 仅重排脏区所在页起的内容
+   *
+   * @returns 更新后的 SLIFPage[] + 新的 PageStartTable 快照
+   */
+  incrementalRepaginate(
+    dirtyBlockId: string,           // 脏 BlockNode ID
+    currentPages: SLIFPage[],
+    oldTable: PageStartTable,
+    flowBody: FlowBody,
+    pageSetup: PageSetup,
+  ): { pages: SLIFPage[]; newTable: PageStartTable } {
+    // 1. 找到脏 BlockNode 所在的页
+    const dirtyPageIndex = this.findPageOfBlock(dirtyBlockId, oldTable)
+    if (dirtyPageIndex < 0) return { pages: currentPages, newTable: oldTable }
+
+    // 2. 从该页的起始断点重新排，向后流动
+    const stableFrom = oldTable.entries[dirtyPageIndex]
+    const newPages: SLIFPage[] = currentPages.slice(0, dirtyPageIndex)
+
+    // 3. 从 stableFrom.startBlockId 起，按 pageSetup 重新分页
+    let currentBlockIdx = flowBody.children.indexOf(stableFrom.startBlockId)
+    let remainingHeight = pageSetup.height - pageSetup.marginTop - pageSetup.marginBottom
+    let currentPage: SLIFPage = { pageIndex: dirtyPageIndex, width: pageSetup.width, height: pageSetup.height, items: [] }
+
+    for (let i = currentBlockIdx; i < flowBody.children.length; i++) {
+      const blockId = flowBody.children[i]
+      const block = pool.nodes.get(blockId)!
+      const blockHeight = this.measureBlockHeight(block, pageSetup)
+
+      if (blockHeight > remainingHeight && currentPage.items.length > 0) {
+        // 分页
+        newPages.push(currentPage)
+        currentPage = { pageIndex: newPages.length, width: pageSetup.width, height: pageSetup.height, items: [] }
+        remainingHeight = pageSetup.height - pageSetup.marginTop - pageSetup.marginBottom
+        // 表格跨页: 表头重复 (repeatHeader)
+        if (block.type === 'table' && (block as Table).pageBreak?.repeatHeader) {
+          // 在新页顶部插入表头行
+        }
+      }
+
+      currentPage.items.push(...this.layoutBlock(block, pageSetup))
+      remainingHeight -= blockHeight
+    }
+    if (currentPage.items.length > 0) newPages.push(currentPage)
+
+    // 4. 早停检查: 从 dirtyPageIndex 起与旧表逐页比对
+    const newTable = new PageStartTable(); newTable.build(newPages)
+    const divergedCount = newPages.length - oldTable.entries.length
+    // 实际重排页数 = divergedCount (通常 1~2 页)
+
+    return { pages: newPages, newTable }
   }
 
-  getLineHeight(config: FontConfig): number { return config.size * 1.5 }
-  getAscent(config: FontConfig): number { return config.size * 0.8 }
-  getDescent(config: FontConfig): number { return config.size * 0.2 }
-  clearCache(): void { this.cache.clear(); this.cacheKeys = [] }
-  destroy(): void { this.clearCache() }
-
-  private async initHarfBuzz(): Promise<HarfBuzzInstance> { /* 懒加载 WASM */ return {} as any }
-}
-
-/**
- * ITextShaper — 文本塑形接口 (v5.0 新增)
- *
- * 设计意图: 通过接口抽象隔离 Canvas measureText 和 HarfBuzz WASM 两种实现。
- * TextMeasurer 依赖 ITextShaper，不感知底层引擎。
- * WASM 模块可平滑接入，零调用方改动。
- */
-interface ITextShaper {
-  /** 对文本进行字形塑形，返回逐字形度量 */
-  shape(text: string, font: FontVariant, size: number): Promise<ShapedGlyph[]>
-}
-
-interface ShapedGlyph {
-  char: string
-  /** 字形 advance (水平推进量) */
-  xAdvance: number
-  /** 字形偏移 (用于标记/连字等) */
-  xOffset: number; yOffset: number
-  /** 字形 ID (用于精确渲染) */
-  glyphId: number
-}
-
-/** L1 实现: 基于 Canvas measureText (快速，当前方案) */
-class CanvasTextShaper implements ITextShaper {
-  private canvas = document.createElement('canvas')
-  private ctx = this.canvas.getContext('2d')!
-
-  async shape(text: string, font: FontVariant, size: number): Promise<ShapedGlyph[]> {
-    const style = `${font.descriptor.style} ${font.descriptor.weight} ${size}px "${font.descriptor.family}"`
-    this.ctx.font = style
-    return [...text].map(char => ({
-      char,
-      xAdvance: this.ctx.measureText(char).width,
-      xOffset: 0, yOffset: 0, glyphId: 0,
-    }))
+  private findPageOfBlock(blockId: string, table: PageStartTable): number {
+    // 二分查找 blockId 所在页
+    for (let i = table.entries.length - 1; i >= 0; i--) {
+      if (table.entries[i].startBlockId <= blockId) return i
+    }
+    return 0
   }
 }
-
-/** L2 实现: 基于 HarfBuzz WASM (精确，前后端一致) */
-class HarfBuzzShaper implements ITextShaper {
-  private hb: HarfBuzzInstance | null = null
-
-  private async ensureLoaded(): Promise<HarfBuzzInstance> {
-    if (this.hb) return this.hb
-    // 懒加载 WASM: import('harfbuzzjs') → 初始化 → 返回实例
-    this.hb = {} as HarfBuzzInstance  // placeholder
-    return this.hb
-  }
-
-  async shape(text: string, font: FontVariant, size: number): Promise<ShapedGlyph[]> {
-    const hb = await this.ensureLoaded()
-    // hb.createFont(font.blob) → hb.shape(text, font) → 逐字形 advance
-    return []  // placeholder
-  }
-}
-
-/**
- * 切换实现: 仅需替换注入的 ITextShaper 实例
- *   const measurer = new TextMeasurer(fontMgr, new CanvasTextShaper())   // L1 快速
- *   const measurer = new TextMeasurer(fontMgr, new HarfBuzzShaper())    // L2 精确
- *
- * TextMeasurer 内部代码完全不变。这就是「接口抽象」的意义:
- * WASM 模块零侵入接入，不导致大规模重构。
- */
-}
-
-/** 界面大小写字母/特殊符号/全半角——正匹配 */
 ```
 
-#### 2.4.3 字体 Fallback 链
+### 2.4.7 行高统一收口
 
-处理生僻字与特殊符号：当指定字体缺少某个字符的字形时，自动降级到后备字体。
+**问题**: TextMeasurer 启发式 (size×1.5/0.8/0.2) 与 FontManager 精确度量 (ascent/descent/lineGap) 并存，必然导致字体加载前后行高跳变。
+
+**方案**: 删除 TextMeasurer 全部启发式方法，行高唯一来源 = FontMetrics。
 
 ```typescript
 /**
- * 字体降级链配置
+ * LineHeightResolver — 行高计算唯一入口
  *
- * 查找顺序: 首选字体 → 同族 fallback → 通用 fallback → 最后手段
+ * 公式: lineHeight = (fontMetrics.ascent + fontMetrics.descent + fontMetrics.lineGap)
+ *                     × (fontSize / upem) × paragraphStyle.lineHeight
+ * 其中 upem = 1000 (extractMetrics 中固定)
+ *
+ * 字体未就绪期间: 禁止进入编辑态 (§19 策略)，禁止布局计算。
+ * 字体就绪后: 一次性用精确 FontMetrics 重建 PageStartTable (一次性操作，非每帧)。
  */
-const DEFAULT_FALLBACK_CHAINS: Record<string, string[]> = {
-  // 简体中文
-  'SimSun':            ['Microsoft YaHei', 'Noto Sans CJK SC', 'PingFang SC', 'sans-serif'],
-  'SimHei':            ['Microsoft YaHei', 'Noto Sans CJK SC', 'PingFang SC', 'sans-serif'],
-  'Microsoft YaHei':   ['Noto Sans CJK SC', 'PingFang SC', 'SimHei', 'sans-serif'],
-  // 英文
-  'Arial':             ['Helvetica', 'sans-serif'],
-  'Times New Roman':   ['Georgia', 'serif'],
-  // 等宽
-  'Courier New':       ['Consolas', 'monospace'],
+function resolveLineHeight(node: InlineNode, paragraphStyle: ParagraphStyle, fontMgr: FontManager): number {
+  const family = (node as TextNode).font || 'SimSun'
+  const size = (node as TextNode).size || 16
+  const variant = fontMgr.getVariant(family, (node as TextNode).bold ? 700 : 400)
+  if (!variant?.metrics) return size * 1.5  // 最后兜底 (仅无字体信息时)
+  const m = variant.metrics
+  const base = (m.ascent + m.descent + m.lineGap) * (size / 1000)
+  return base * (paragraphStyle.lineHeight ?? 1.0)
 }
 
-class FontFallback {
-  constructor(private fontManager: FontManager) {}
-
-  /**
-   * 检测文本中每个字符在当前字体中是否有字形
-   *
-   * 使用 Canvas measureText + 6px 零宽字符技巧:
-   * 测量 "缺字字符" 和 "缺字字符 + U+200B"，
-   * 如果宽度相同 → 当前字体无法渲染该字符 → fallback
-   */
-  detectMissingGlyphs(text: string, family: string): Map<string, string> {
-    const missing = new Map<string, string>()  // char → recommended fallback font
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d')!
-
-    for (const char of new Set([...text])) {
-      ctx.font = `6px "${family}"`
-      const w1 = ctx.measureText(char).width       // 当前字体
-      ctx.font = `6px "${family}", "Noto Sans CJK SC"`  // + 通用 fallback
-      const w2 = ctx.measureText(char).width
-      if (w1 === 0 && w2 > 0) {
-        missing.set(char, 'Noto Sans CJK SC')  // 检测到缺字
-      }
-    }
-    return missing
-  }
-
-  /**
-   * 为给定文本选择合适的字体组合
-   *
-   * 规则:
-   * 1. 全部字符在首选字体中 → 直接使用首选字体
-   * 2. 部分字符缺失 → 对缺失字符标记 fallback 字体 (渲染时按字符粒度切换)
-   * 3. 全部缺失 → 完全降级到后备字体
-   */
-  resolveFallbackFonts(text: string, preferredFamily: string): FontRun[] {
-    const missing = this.detectMissingGlyphs(text, preferredFamily)
-    if (missing.size === 0) return [{ text, family: preferredFamily }]
-
-    // 按字符粒度拆分文本为 FontRun[]
-    const runs: FontRun[] = []
-    let currentFamily = preferredFamily
-    let currentText = ''
-    for (const char of [...text]) {
-      const needed = missing.get(char) ? missing.get(char)! : preferredFamily
-      if (needed !== currentFamily) {
-        if (currentText) runs.push({ text: currentText, family: currentFamily })
-        currentText = char; currentFamily = needed
-      } else {
-        currentText += char
-      }
-    }
-    if (currentText) runs.push({ text: currentText, family: currentFamily })
-    return runs
-  }
-}
-
-interface FontRun { text: string; family: string }
+// TextMeasurer 删除: getLineHeight() / getAscent() / getDescent() (全部启发式)
+// TextMeasurer 保留: measureWidth() / measureWidthPrecise() / measureChars()
 ```
 
-#### 2.4.4 换行规则引擎增强
+### 2.4.8 LineBreaker 契约重定义
 
-当前 `LineBreaker` 仅基于宽度做断行，缺少 Unicode 标准换行规则。
+**问题**: LineElement 类型残留 ModelA 概念 (page_break/separator/control/latex)，与 ModelD 的 InlineNode[] 不兼容。
+
+**方案**: LineBreaker 输入直接使用 ModelD 原生类型。
 
 ```typescript
-/**
- * Unicode 换行算法 (UAX #14) 核心规则子集
- *
- * 实现关键规则:
- * - LB1-LB8:  强制断行 (LF, CR, NL, 分页符)
- * - LB9-LB10: 空格/制表符处理
- * - LB11-LB12: 直接断行字符
- * - LB13-LB18: CJK 规则 (任意位置断行)
- * - LB19-LB30: 英文规则 (单词边界断行)
- * - LB31:      不可断行字符序列
- */
-enum LineBreakClass {
-  AL,   // 字母
-  CJ,   // CJK 统一表意文字 (任意位置断行)
-  CL,   // 闭合标点 (不可在之前断行)
-  OP,   // 开标点 (不可在之后断行)
-  GL,   // 不可断行字符 (non-breaking)
-  SP,   // 空格
-  NU,   // 数字
-  // ... 共 42 个分类
+interface LineBreakInput {
+  /** 内联节点序列 (TextNode | SmartTextNode | ImageNode) */
+  nodes: InlineNode[]
+  /** 段落样式 */
+  style: ParagraphStyle
 }
 
-/**
- * 增强换行选项
- */
 interface LineBreakOptions {
   maxWidth: number
-  /** 换行策略 */
-  strategy: 'break-all' | 'break-word' | 'keep-all' | 'uax14'
+  wordBreak: 'break-all' | 'break-word' | 'keep-all'
   /** 避头尾字符 (中文排版规范) */
-  lineStartForbidden?: string   // 不可出现于行首的字符 (如 」）】
-  lineEndForbidden?: string     // 不可出现于行尾的字符 (如 「（【
-  defaultFont: string; defaultSize: number
+  lineStartForbidden: string   // 不可出现于行首 (如 」、。)
+  lineEndForbidden: string     // 不可出现于行尾 (如 「、（)
 }
 
-class LineBreaker {
-  private measurer: TextMeasurer
-
-  /**
-   * 增强断行 — 支持 UAX #14 + 中文避头尾
-   */
-  breakLines(elements: LineElement[], options: LineBreakOptions): ILine[] {
-    if (options.strategy === 'uax14') {
-      return this.breakLinesUAX14(elements, options)
-    }
-    return this.breakLinesLegacy(elements, options)
-  }
-
-  private breakLinesUAX14(elements: LineElement[], options: LineBreakOptions): ILine[] {
-    // 1. 按 UAX #14 规则确定每个字符的 LineBreakClass
-    // 2. 在允许断行的位置标记 break opportunities
-    // 3. 在 break opportunities 中, 选取不超过 maxWidth 的最右位置
-    // 4. 应用中文避头尾规则 (lineStartForbidden/lineEndForbidden)
-    // 5. 回退到上一个合法断点
-    return [] // placeholder
-  }
-}
+// 删除: LineElement, page_break/separator/control/latex 类型
+// page_break → BlockNode 层级的 PageBreakNode 或 ParagraphStyle.pageBreakBefore
+// separator   → BlockNode 层级的 SeparatorNode
+// control     → SmartTextNode (ModelD 原生)
+// latex       → 远期作为 InlineNode 子类型
 ```
 
-#### 2.4.5 多语言元数据
+### 2.4.9 测量缓存与字体检测修正
 
 ```typescript
-/**
- * 多语言支持 — 用于双语病历场景
- *
- * 当前设计: TextStyle.font 仅存字体名称 (如 'SimSun')
- * 问题: 无法表达"中文用 SimSun, 英文用 Arial, 数字用 Times New Roman"
- *
- * 方案: 按 Unicode 脚本自动选择字体
- */
-interface MultiLangFontConfig {
-  /** 默认字体 (未匹配到任何脚本时使用) */
-  default: string
-  /** 按 Unicode 脚本分配的字体映射 */
-  scripts: Partial<Record<UnicodeScript, string>>
+// 缓存键: (char, fontKey) 粒度
+// fontKey = `${family}:${weight}:${style}`
+// CJK 常用 ~7000 字 × 有限字体组合 → 实际唯一 key 量可控
+// 容量: 10000 (而非 2000), LRU 淘汰低频条目
+
+class TextMeasurer {
+  private static readonly MAX_CACHE_SIZE = 10000
+
+  measureChars(text: string, config: FontConfig): CharMetrics[] {
+    const chars = [...text]
+    return chars.map((char, i) => {
+      const width = this.measureWidth(char, config)  // 读缓存
+      // kerning 仅 Latin 相邻时计算 (CJK 无 kerning)
+      const kerning = (i > 0 && isLatin(chars[i-1]) && isLatin(char))
+        ? this.measureWidth(chars[i-1] + char, config) - this.measureWidth(chars[i-1], config) - width
+        : 0
+      return { char, width, kerning }
+    })
+  }
 }
 
-type UnicodeScript = 'Hans' | 'Hant' | 'Latin' | 'Arabic' | 'Cyrillic' | 'Kana' | 'Hangul'
-
-const MEDICAL_FONT_CONFIG: MultiLangFontConfig = {
-  default: 'SimSun',
-  scripts: {
-    Hans:  'SimSun',        // 简体中文
-    Latin: 'Arial',          // 英文/拉丁字母
-    Hant:  'Microsoft YaHei', // 繁体中文
-    Kana:  'MS Gothic',      // 日文假名 (如有需要)
-  },
-}
-
-/**
- * 按 MultiLangFontConfig 将文本拆分为 FontRun[]
- * 渲染时每个 FontRun 使用对应字体，确保中英文混排各自使用正确字体
- */
-function resolveScriptRuns(text: string, config: MultiLangFontConfig): FontRun[] {
-  const runs: FontRun[] = []
-  let currentScript = ''; let currentText = ''
-  for (const char of [...text]) {
-    const script = detectScript(char)
-    const font = config.scripts[script] || config.default
-    if (font !== currentScript) {
-      if (currentText) runs.push({ text: currentText, family: currentScript })
-      currentText = char; currentScript = font
-    } else {
-      currentText += char
+// 缺字检测: 使用 FontFaceSet API (原生、可靠)
+function detectMissingGlyphs(text: string, family: string): Set<string> {
+  const missing = new Set<string>()
+  for (const char of new Set([...text])) {
+    if (!document.fonts.check(`12px "${family}"`, char)) {
+      missing.add(char)
     }
   }
-  if (currentText) runs.push({ text: currentText, family: currentScript })
-  return runs
+  return missing
 }
+// 删除: 基于宽度比较的 hack (w1===0 && w2>0 不可靠)
 
-/** 检测单个字符的 Unicode 脚本 */
+// 脚本检测: 使用 Unicode Property Escapes (ES2018+)
 function detectScript(char: string): UnicodeScript {
-  const cp = char.codePointAt(0)!
-  if (cp >= 0x4E00 && cp <= 0x9FFF) return 'Hans'      // CJK 统一表意文字
-  if (cp >= 0x3400 && cp <= 0x4DBF) return 'Hans'      // CJK 扩展 A
-  if (cp >= 0x0041 && cp <= 0x007A) return 'Latin'
-  if (cp >= 0x3040 && cp <= 0x309F) return 'Kana'      // 平假名
-  if (cp >= 0x30A0 && cp <= 0x30FF) return 'Kana'      // 片假名
-  if (cp >= 0xAC00 && cp <= 0xD7AF) return 'Hangul'
-  return 'Hans'  // 默认归入中文
+  if (/\p{Script=Han}/u.test(char))  return 'Hans'
+  if (/\p{Script=Latin}/u.test(char)) return 'Latin'
+  if (/\p{Script=Hiragana}/u.test(char) || /\p{Script=Katakana}/u.test(char)) return 'Kana'
+  if (/\p{Script=Hangul}/u.test(char)) return 'Hangul'
+  return 'Latin'  // 数字/标点/符号默认归 Latin (而非 Hans)
 }
+// 删除: 手写码点范围表 (0x4E00-0x9FFF 等)
 ```
-### 2.5 EditorRuntimeState — 运行时状态模型 (v3.0 新增)
+
+### 2.5 EditorRuntimeState — 运行时状态模型 
 
 **问题**: 光标、选区、视图模式、IME 临时状态、滚动位置等运行时数据当前散落在 `Draw.ts` 的私有字段中，与持久化的 `DocumentTree` 混杂。
 
@@ -1174,56 +818,51 @@ interface EditorRuntimeState {
 }
 
 // ================================================================
-// 光标 — 用 ID 链路路径替代下标路径
+// ================================================================
+// 光标 — 统一两层位置模型 
 // ================================================================
 interface CursorState {
   /**
-   * 节点定位: ID 链路路径
-   * 示例: ['doc_1', 'page_1', 'flow_1', 'para_3', 'text_7']
-   * 表示: DocumentTree → pages[0] → body.children[0] → children[3] → children[7]
-   *
-   * 为什么不用下标路径?
-   * - 下标路径在节点插入/删除后失稳，需要全部重算
-   * - ID 链路路径通过 findById 始终能定位到正确节点，仅 offset 需微调
+   * 段落定位: ID 链路路径，最后一个 ID 始终指向 Paragraph 节点
+   * 示例: ['doc_1', 'para_3'] 表示 DocumentTree → body.children[0] → para_3
    */
-  path: string[]
+  paragraphPath: string[]
 
   /**
-   * 在目标节点内的偏移量
-   * - 对于 TextNode: 字符偏移 (0..text.length)
-   * - 对于 Paragraph: inlineNode 索引
-   * - 对于 TableCell: blockNode 索引
+   * 字符偏移: 在该段落全部可见文本中的 UTF-16 码元偏移 (0..totalTextLength)
+   *
+   * 单一语义，不与节点类型耦合:
+   *   - Run 模型下，一个 Paragraph 可能只有 1 个 TextNode 承载全文
+   *   - offset 始终是"用户看到的光标在第几个字符后"，不是 children 数组下标
+   *   - 内部由 NodePool.resolveCharOffset() 转换为 (textNodeId, localOffset)
+   *
+   * Surrogate pair 处理: offset 按 UTF-16 码元计数 (与 JS string.length 一致)
    */
   offset: number
 
-  /** 是否可见 (光标闪烁) */
   visible: boolean
 }
 
-	/**
-	 * 插入位置规则 (v5.0 显式声明):
-	 *
-	 * CursorState { path: string[], offset: number } 确定文本插入位置:
-	 *
-	 *   1. path 最后一个 ID 指向 Paragraph 节点 (插入目标段落)
-	 *   2. offset 指向 paragraph.children 中的插入索引
-	 *      - offset=0 → 插入到段落开头
-	 *      - offset=N → 插入到第 N 个 InlineNode 之后
-	 *      - offset=children.length → 追加到段落末尾
-	 *
-	 *   3. 特殊位置处理:
-	 *      - 光标在 SmartTextNode 内的文本中间 → 先 split SmartTextNode, 在间隙处插入新 TextNode
-	 *      - 光标在 TableCell 内 → path 指向 TableCell, offset 指向 cell.children 中的 BlockNode 索引
-	 *      - 光标在空段落 → offset=0, 在 children[0] 前插入
-	 *
-	 *   4. 不可删除节点保护:
-	 *      - Delete/Backspace 前先检查 isDeletable(node, mode)
-	 *      - 若目标节点 { undeletable: true } → 跳过, 光标移至下一个可删除节点
-	 *      - 若选区包含不可删除节点 → 过滤后仅删除可删除部分
-	 */
-// ================================================================
-// 选区 — 起点 + 终点 + 方向
-// ================================================================
+class NodePool {
+  /** 字符偏移 → (textNodeId, localOffset)。全文档唯一合法的 offset 解析入口。 */
+  resolveCharOffset(paragraphId: string, charOffset: number): { textNodeId: string; localOffset: number } | null {
+    const para = this.nodes.get(paragraphId) as any
+    if (!para) return null
+    let remaining = charOffset
+    for (const childId of para.children) {
+      const node = this.nodes.get(childId)
+      if (node?.type === 'text') { const len = (node as any).text.length; if (remaining <= len) return { textNodeId: childId, localOffset: remaining }; remaining -= len }
+      else { if (remaining <= 1) return { textNodeId: childId, localOffset: Math.min(remaining, 1) }; remaining -= 1 }
+    }
+    return null
+  }
+  getCharOffset(paragraphId: string, textNodeId: string, localOffset: number): number {
+    const para = this.nodes.get(paragraphId) as any; let offset = 0
+    for (const childId of para.children) { if (childId === textNodeId) return offset + localOffset; const node = this.nodes.get(childId); if (node?.type === 'text') offset += (node as any).text.length; else offset += 1 }
+    return offset
+  }
+}
+
 interface SelectionState {
   /** 选区起点 */
   anchor: CursorState
@@ -1325,285 +964,203 @@ interface EditorStoreState {
 }
 ```
 
----
+### 2.6 Command 命令体系 
 
-### 2.6 Command 命令体系 (v3.0 新增)
 
-**问题**: 当前仅用整树 JSON 快照实现撤销重做，每次编辑后序列化整个 DocumentTree。性能差（长文档 JSON 可达 MB 级），无法支撑增量操作、剪贴板、多人协作操作重放。
 
-**方案**: 用 Command 模式封装每个编辑操作，提供 forward/invert 双方法，UndoRedoStack 管理命令历史。
+1. **Run 模型**: TextNode.text 存连续同样式文本（非单字符），InsertTextCommand 做字符串插入 + 相邻同样式合并
+2. **invert 契约**: `invert(document: DocumentTree): ICommand` — 传入当前文档现场，不依赖实例状态
+3. **不可变**: MergeableCommand.merge() 返回新命令，不 mutate 入栈命令
+4. **合并 vs 事务边界**: 500ms 自动合并仅 InsertTextCommand/DeleteRangeCommand；事务 API 仅 UI 宏操作
+5. **旧栈废弃**: UndoRedoStack（快照版）@deprecated，Ctrl+Z 由 CommandManager 仲裁
 
-#### 2.5.1 ICommand 接口
+#### 2.6.1 Run 模型文本存储
 
 ```typescript
-/**
- * 命令接口 — 所有文档编辑操作的标准封装
- *
- * 设计原则:
- * - forward():  执行操作，返回 StatePatch 描述运行时状态变化
- * - invert():   返回逆操作 (不是执行撤销，而是生成反向命令)
- * - 命令实例是不可变的纯数据，可序列化/传输 (协作重放)
- */
+// TextNode.text 存储连续同样式文本（非单字符）
+// 文档 "Hello World"（均为默认样式）→ 1 个 TextNode { text: "Hello World" }
+// 文档 "Hello **World**"（World 加粗）→ 2 个 TextNode: { text: "Hello " }, { text: "World", bold: true }
+// 节点数从 O(字符) 降到 O(样式段)
+
+class InsertTextCommand extends PositionalCommand {
+  readonly type = 'insert-text'
+
+  forward(doc: DocumentTree, pool: NodePool): StatePatch {
+    const para = pool.nodes.get(this.path[this.path.length - 1]) as Paragraph
+    if (!para) return null
+
+    // 1. 检查 offset 位置的左右相邻节点，若同样式则合并
+    const left = offset > 0 ? pool.nodes.get(para.children[offset - 1]) as TextNode : null
+    const right = offset < para.children.length ? pool.nodes.get(para.children[offset]) as TextNode : null
+    const style = this.style ?? { font: 'SimSun', size: 16 }
+
+    if (left && left.type === 'text' && sameStyle(left, style)) {
+      // 左边同为 TextNode 且样式一致 → 直接追加到 text
+      pool.updateNode(left.id, { text: left.text + this.text })
+      return { cursor: { path: this.path, offset: this.offset } }
+    }
+    if (right && right.type === 'text' && sameStyle(right, style)) {
+      // 右边同为 TextNode 且样式一致 → 前插到 text
+      pool.updateNode(right.id, { text: this.text + right.text })
+      return { cursor: { path: this.path, offset: this.offset + [...this.text].length } }
+    }
+    // 否则创建新 TextNode
+    const newNode = createTextNode(this.text, style)
+    pool.nodes.set(newNode.id, newNode)
+    pool.insertChild(para.id, newNode.id, offset)
+    return { cursor: { path: this.path, offset: this.offset + [...this.text].length } }
+  }
+
+  invert(doc: DocumentTree, pool: NodePool): ICommand {
+    return new DeleteRangeCommand(generateId(), Date.now(), this.author, this.path, this.offset, this.offset + [...this.text].length)
+  }
+
+  serialize(): SerializedCommand {
+    return { type: 'insert-text', id: this.id, timestamp: this.timestamp, author: this.author,
+             path: this.path, offset: this.offset, text: this.text, style: this.style }
+  }
+}
+
+function sameStyle(a: TextStyle, b: TextStyle): boolean {
+  return a.font === b.font && a.size === b.size && a.bold === b.bold && a.italic === b.italic
+      && a.color === b.color && a.underline === b.underline && a.strikeout === b.strikeout
+}
+
+/** 每次编辑后调用，合并相邻同样式 TextNode */
+function normalizeParagraph(para: Paragraph, pool: NodePool): void {
+  const merged: string[] = []
+  let prev: TextNode | null = null
+  for (const childId of para.children) {
+    const node = pool.nodes.get(childId)
+    if (node?.type === 'text' && prev && sameStyle(prev, node as TextNode)) {
+      pool.updateNode(prev.id, { text: prev.text + (node as TextNode).text })
+      pool.removeChild(para.id, para.children.indexOf(childId))  // 删除重复节点
+    } else {
+      merged.push(childId)
+      prev = node?.type === 'text' ? node as TextNode : null
+    }
+  }
+}
+```
+
+#### 2.6.2 invert 契约修正
+
+```typescript
 interface ICommand {
-  /** 命令类型标识 (用于序列化/反序列化) */
-  readonly type: string
-
-  /** 命令唯一 ID (用于协作去重) */
-  readonly id: string
-
-  /** 时间戳 (用于协作排序) */
-  readonly timestamp: number
-
-  /** 发起者 ID (用于协作显示) */
-  readonly author: string
-
-  /**
-   * 执行命令，返回运行时状态变更
-   * @returns StatePatch — cursor/selection 的增量变化，null 表示无状态变化
-   */
-  forward(document: DocumentTree): StatePatch | null
-
-  /**
-   * 生成逆操作命令 (不修改 document)
-   * @returns ICommand — 执行 forward 前的逆操作
-   */
-  invert(): ICommand
-
-  /**
-   * 序列化为可传输格式 (用于协作同步)
-   */
+  readonly type: string; readonly id: string
+  readonly timestamp: number; readonly author: string
+  forward(document: DocumentTree, pool: NodePool): StatePatch | null
+  /** v13.0: 传入当前文档现场，逆操作从文档中提取数据，不依赖实例状态 */
+  invert(document: DocumentTree, pool: NodePool): ICommand
   serialize(): SerializedCommand
 }
 
-/**
- * 运行时状态补丁 — 命令执行后对 EditorRuntimeState 的变更
- */
-interface StatePatch {
-  /** 更新光标位置 (null = 不变) */
-  cursor?: Partial<CursorState>
-  /** 更新选区 (null = 不变) */
-  selection?: Partial<SelectionState>
-}
-```
-
-#### 2.5.2 具体命令
-
-```typescript
-// ---- 文本操作 ----
-
-class InsertTextCommand implements ICommand {
-  constructor(
-    readonly id: string,
-    readonly timestamp: number,
-    readonly author: string,
-    private path: string[],       // 插入位置的 ID 链路路径 (Paragraph 节点 ID)
-    private offset: number,       // 偏移量 (在 paragraph.children 中的位置)
-    private text: string,         // 插入的文本
-    private style?: TextStyle     // 文本样式
-  ) {}
-  readonly type = 'insert-text'
-
-  forward(doc: DocumentTree): StatePatch {
-    // 1. 定位目标 Paragraph
-    const result = findById(doc, this.path[this.path.length - 1])
-    if (!result) return null
-    const para = result.node as Paragraph
-
-    // 2. 在 offset 处逐个插入 TextNode
-    const insertedCount = [...this.text].length  // Unicode 安全拆分
-    for (let i = 0; i < insertedCount; i++) {
-      const char = [...this.text][i]
-      const node = createTextNode(char, this.style ?? { font: 'SimSun', size: 16 })
-      para.children.splice(this.offset + i, 0, node)
-    }
-
-    // 3. 返回光标位移: 光标移动到插入文本之后
-    return {
-      cursor: { path: this.path, offset: this.offset + insertedCount }
-    }
-  }
-
-  invert(): ICommand {
-    return new DeleteRangeCommand(
-      generateId(), Date.now(), this.author,
-      this.path, this.offset, this.offset + [...this.text].length
-    )
-  }
-
-  serialize(): SerializedCommand {
-    return { type: 'insert-text', id: this.id, timestamp: this.timestamp,
-             author: this.author, path: this.path, offset: this.offset,
-             text: this.text, style: this.style }
-  }
-}
-
-class DeleteRangeCommand implements ICommand {
-  /** 被删除的节点快照 (用于 invert 恢复) */
-  private deletedNodes: InlineNode[] = []
-
-  constructor(
-    readonly id: string,
-    readonly timestamp: number,
-    readonly author: string,
-    private path: string[],       // 目标 Paragraph ID 路径
-    private startOffset: number,  // 起始偏移
-    private endOffset: number     // 结束偏移 (不包含)
-  ) {}
+class DeleteRangeCommand extends PositionalCommand {
   readonly type = 'delete-range'
 
-  forward(doc: DocumentTree): StatePatch {
-    const result = findById(doc, this.path[this.path.length - 1])
-    if (!result) return null
-    const para = result.node as Paragraph
-
-    // 保存被删除节点 (深克隆, 用于 invert)
-    this.deletedNodes = para.children.slice(this.startOffset, this.endOffset).map(deepClone)
-    para.children.splice(this.startOffset, this.endOffset - this.startOffset)
-
-    return {
-      cursor: { path: this.path, offset: this.startOffset }
-    }
+  forward(doc: DocumentTree, pool: NodePool): StatePatch {
+    const para = pool.nodes.get(this.path[this.path.length - 1]) as Paragraph
+    if (!para) return null
+    // forward 不保留 deletedNodes 状态
+    const count = this.endOffset - this.startOffset
+    for (let i = 0; i < count; i++) pool.removeChild(para.id, this.startOffset)
+    return { cursor: { path: this.path, offset: this.startOffset } }
   }
 
-  invert(): ICommand {
-    // 恢复被删除的节点 (使用 InsertBlockCommand 的变体)
-    return new InsertNodesCommand(
-      generateId(), Date.now(), this.author,
-      this.path, this.startOffset, this.deletedNodes
-    )
+  invert(doc: DocumentTree, pool: NodePool): ICommand {
+    // 逆操作: 在当前位置插入被删内容 → 构造 InsertTextCommand
+    // 由于 forward 已删除，invert 时文档已无源数据 → serialize 内嵌
+    // v13.0: 选择 "快照+增量混合"——序列化载荷内嵌被删文本
+    return new InsertTextCommand(generateId(), Date.now(), this.author, this.path, this.startOffset, this.deletedText)
   }
 
   serialize(): SerializedCommand {
-    return { type: 'delete-range', id: this.id, timestamp: this.timestamp,
-             author: this.author, path: this.path,
-             startOffset: this.startOffset, endOffset: this.endOffset }
+    return { type: 'delete-range', id: this.id, timestamp: this.timestamp, author: this.author,
+             path: this.path, startOffset: this.startOffset, endOffset: this.endOffset,
+             deletedText: this.deletedText }  // 内嵌被删文本，协作端可重放
   }
-}
-
-// ---- 格式化 ----
-
-class FormatTextCommand implements ICommand {
-  constructor(
-    readonly id: string,
-    readonly timestamp: number,
-    readonly author: string,
-    private paths: string[],      // 被格式化的节点 ID 列表
-    private changes: Partial<TextStyle>
-  ) {}
-
-  forward(doc: DocumentTree): StatePatch { /* 批量应用样式变更 */ }
-  invert(): ICommand { /* 恢复原样式 */ }
-}
-
-// ---- 结构操作 ----
-
-class InsertBlockCommand implements ICommand {
-  constructor(
-    readonly id: string,
-    readonly timestamp: number,
-    readonly author: string,
-    private parentPath: string[], // 插入位置的父节点 ID 路径
-    private index: number,        // 插入索引
-    private block: BlockNode      // 要插入的块
-  ) {}
-
-  forward(doc: DocumentTree): StatePatch { /* 插入块级节点 */ }
-  invert(): ICommand { /* 删除已插入的块 */ }
-}
-
-class DeleteBlockCommand implements ICommand {
-  /* 删除块级节点 + 保存被删除节点用于 invert */
-}
-
-class MoveBlockCommand implements ICommand {
-  /* 移动块级节点 (拖拽) */
-}
-
-// ---- 剪贴板 ----
-
-class PasteCommand implements ICommand {
-  constructor(
-    readonly id: string,
-    readonly timestamp: number,
-    readonly author: string,
-    private targetPath: string[],
-    private targetOffset: number,
-    private content: BlockNode[] | InlineNode[]  // 剪贴板内容 (已 cloneWithNewIds)
-  ) {}
-
-  forward(doc: DocumentTree): StatePatch { /* 插入粘贴内容 */ }
-  invert(): ICommand { /* 删除粘贴的内容 */ }
 }
 ```
 
-#### 2.5.3 UndoRedoStack (改进版)
+#### 2.6.3 合并与事务边界
 
 ```typescript
-/**
- * 命令驱动的撤销重做栈
- *
- * 与旧版快照式 UndoRedoStack 的区别:
- * - 旧版: push(snapshot_json) → undo 恢复整树 JSON 快照 (O(n) 内存)
- * - 新版: execute(command) → undo 执行 command.invert()  (O(1) 内存 per command)
- *
- * 渐进迁移策略:
- * Phase 1: 保留快照式栈，但限制 maxDepth=50，同时引入 Command 栈并行运行
- * Phase 2: 新编辑操作全部走 Command 栈，快照式仅做兜底
- * Phase 3: 移除快照式栈
- */
+// 合并: 仅 InsertTextCommand/DeleteRangeCommand，500ms 窗口
+// 事务: 仅 UI 宏操作 (替换全部/批量格式刷)，显式 beginTransaction/commitTransaction
+// 两套机制不重叠
+
+interface MergeableCommand extends ICommand {
+  /** 返回新命令（不可变），不修改 this */
+  canMergeWith(other: ICommand): boolean
+  mergeWith(other: ICommand): ICommand
+}
+
 class CommandUndoRedoStack {
   private undoStack: ICommand[] = []
-  private redoStack: ICommand[] = []
-  readonly maxDepth: number
+  private readonly MERGE_WINDOW_MS = 500
 
-  constructor(maxDepth = 100) { this.maxDepth = maxDepth }
-
-  /** 执行命令并推入历史 */
-  execute(command: ICommand, document: DocumentTree): StatePatch | null {
-    const patch = command.forward(document)
-    this.undoStack.push(command)
+  execute(command: ICommand, doc: DocumentTree, pool: NodePool): StatePatch | null {
+    // 尝试合并
+    const last = this.undoStack[this.undoStack.length - 1]
+    if (last && this.canMerge(last, command)) {
+      const merged = (last as MergeableCommand).mergeWith(command)
+      this.undoStack[this.undoStack.length - 1] = merged  // 替换栈顶（栈本身可变，命令不可变）
+    } else {
+      this.undoStack.push(command)
+    }
     if (this.undoStack.length > this.maxDepth) this.undoStack.shift()
-    this.redoStack = [] // 新操作清空 redo
-    return patch
+    this.redoStack = []
+    return command.forward(doc, pool)
   }
 
-  /** 撤销: 执行最近命令的 invert() 生成反向命令 */
-  undo(document: DocumentTree): StatePatch | null {
-    const command = this.undoStack.pop()
-    if (!command) return null
-    const inverse = command.invert()
-    const patch = inverse.forward(document)
-    this.redoStack.push(command)
-    return patch
+  private canMerge(last: ICommand, next: ICommand): boolean {
+    if (last.type !== next.type) return false
+    if (last.author !== next.author) return false
+    if (next.timestamp - last.timestamp > this.MERGE_WINDOW_MS) return false
+    if (!('canMergeWith' in last)) return false
+    return (last as MergeableCommand).canMergeWith(next)
   }
-
-  /** 重做: 重新执行最近撤销的命令 */
-  redo(document: DocumentTree): StatePatch | null {
-    const command = this.redoStack.pop()
-    if (!command) return null
-    const patch = command.forward(document)
-    this.undoStack.push(command)
-    return patch
-  }
-
-  get canUndo(): boolean { return this.undoStack.length > 0 }
-  get canRedo(): boolean { return this.redoStack.length > 0 }
-  clear(): void { this.undoStack = []; this.redoStack = [] }
 }
 ```
 
-#### 2.5.4 技术债务治理路线
+#### 2.6.4 Command 子系统类图
 
-| 阶段 | 内容 | 状态 |
-|------|------|------|
-| Phase 0 | Draw.ts 内联 undoStack/redoStack (JSON 快照) | 当前 |
-| Phase 1 | 引入 CommandUndoRedoStack，Implement ICommand 接口 | 待实现 |
-| Phase 2 | InsertText/DeleteText/FormatText 走 Command 栈 | 待实现 |
-| Phase 3 | InsertBlock/Paste 走 Command 栈 | 待实现 |
-| Phase 4 | 移除 Draw.ts 内联栈，完全迁移到 CommandUndoRedoStack | 待实现 |
-| Phase 5 | Command.serialize() 用于协作操作传输 | 远期 |
+```
+┌──────────────────────────────────────────────────────────┐
+│                       IEditor                             │
+│  execCommand(cmd: ICommand): void                         │
+│  undo(): void   redo(): void                              │
+│  canUndo(): boolean  canRedo(): boolean                   │
+└──────────┬───────────────────────────────────────────────┘
+           │ 持有
+           ▼
+┌──────────────────────────────────────────────────────────┐
+│                    CommandManager                         │
+│  - undoStack: CommandUndoRedoStack   (唯一历史栈)         │
+│  - dirtyTracker: DirtyTracker                             │
+│  - eventBus: EventBus                                     │
+│                                                           │
+│  execute(cmd): StatePatch | null                          │
+│    → cmd.forward(doc, pool)                               │
+│    → undoStack.execute(cmd)                               │
+│    → dirtyTracker.mark(...)                               │
+│    → eventBus.emit('document:changed')                    │
+│  undo(): void                                             │
+│    → undoStack.undo(doc, pool)  // 走新栈                  │
+│    → eventBus.emit('render:request')                      │
+│  redo(): void  // 同上                                    │
+└──────────────────────────────────────────────────────────┘
+           │
+    ┌──────┴──────┐
+    ▼             ▼
+  Handler 构造命令   EventBus 通知 Draw 重绘
+  (不触碰栈)        (不触碰栈)
 
-### 2.7 Particle 统一渲染接口 (v3.0 新增)
+// 旧快照栈: @deprecated, 仅迁移期兜底
+// Ctrl+Z 入口: CommandManager.undo() → 新栈非空走新栈, 新栈空才 fallback 旧栈
+```
+
+### 2.7 Particle 统一渲染接口 
 
 ```typescript
 /**
@@ -1701,9 +1258,7 @@ class ParticleRegistry {
 }
 ```
 
----
-
-### 2.8 全局坐标系统 (v3.0 新增)
+### 2.8 全局坐标系统 
 
 **问题**: 逻辑文档坐标、Canvas 画布坐标、屏幕像素坐标、滚动偏移在 Draw.ts 中多处重复换算，极易出现不一致。
 
@@ -1798,13 +1353,10 @@ class CoordinateSystem {
   }
 }
 
-// 全局单例
-const coordinateSystem = new CoordinateSystem(window.devicePixelRatio || 1)
+// v12.0: 删除全局单例, CoordinateSystem 由 Editor 构造注入 (实例私有)
 ```
 
----
-
-### 2.9 渲染管道 (v3.0 — 增加增量布局/增量渲染)
+### 2.9 渲染管道 
 
 #### 2.8.1 当前实现 (全量重算)
 
@@ -1920,8 +1472,70 @@ class DirtyTracker {
     this.needsFullLayout = false
   }
 }
+
+### 布局失效传播规则
+
+**规则**: 采用「最小失效范围」原则，按变更类型分级传播：
+
+```
+编辑操作 → 确定失效范围 → 标记对应缓存失效 → 增量重算
+
+┌─────────────────────────────────────────────────────────────┐
+│ 变更类型                    │ 失效范围                       │
+├─────────────────────────────┼───────────────────────────────┤
+│ 文本样式变更                │ 该节点重测量                    │
+│ (font/size/bold/color)     │ 行宽不变 → 不触发段落重排       │
+│                             │ 行高变化 → 该行重排             │
+├─────────────────────────────┼───────────────────────────────┤
+│ 文本内容变更                │ 所属 Paragraph 重排             │
+│ (增/删/改字符)             │ + 该段落所在页的后续段落偏移重算 │
+│                             │ + 后续页面的分页结果全部失效    │
+├─────────────────────────────┼───────────────────────────────┤
+│ 块级插入/删除               │ 所在 FlowBody 全量重分页       │
+│ (Paragraph/Table)          │ 后续所有页面的 PageItem 失效    │
+│                             │ 静态层(页眉/页脚/页码)不失效   │
+├─────────────────────────────┼───────────────────────────────┤
+│ 表格结构变更                │ 该 Table 重排 + 后续全量重分页 │
+│ (插入/删除/移动行/列)      │ 合并矩阵重建                   │
+├─────────────────────────────┼───────────────────────────────┤
+│ 页面设置变更                │ 全文档重分页                   │
+│ (纸张大小/边距/方向)       │ 所有缓存失效                   │
+├─────────────────────────────┼───────────────────────────────┤
+│ 页眉/页脚变更               │ 仅静态层重绘 (不影响正文分页)  │
+│ 缩放变更                    │ 仅渲染层 (不影响布局)          │
+└─────────────────────────────────────────────────────────────┘
+
+特殊场景:
+  跨页断表: 表格重排 → 重算分页断点 → 后续所有页面失效
+  页眉页脚联动: 页眉页脚高度变化 → 正文区可用高度变化 → 全量重分页
 ```
 
+```typescript
+/** 变更影响范围 — 由 Command.forward() 返回 */
+type InvalidationScope =
+  | 'none'                          // 无影响 (如缩放)
+  | 'node'                          // 仅该节点 (样式变更)
+  | 'paragraph'                     // 该段落 (文本内容变更)
+  | 'paragraph_and_downstream'      // 该段落 + 后续偏移 (行高变化)
+  | 'block'                         // 该块级元素
+  | 'flowbody'                      // 所在 FlowBody (块级插入/删除)
+  | 'table'                         // 表格结构变更
+  | 'page_setup'                    // 全文档 (页面设置变更)
+  | 'full'                          // 全量失效 (兜底)
+
+interface StatePatch {
+  cursor?: Partial<CursorState>
+  selection?: Partial<SelectionState>
+  /** 命令执行后返回的布局失效范围 */
+  invalidation?: InvalidationScope
+}
+
+// DirtyTracker 根据 InvalidationScope 标记脏区:
+//   'paragraph_and_downstream' → markParagraphDirty + markDownstreamOffsetDirty
+//   'flowbody' → markFullLayout
+```
+
+```
 
 **问题**: PageItem 是每次 `recomputeLayout()` 的临时产物，全量重算。增量布局的前提是「每个节点的布局结果可独立缓存、可单独失效」，当前完全没有缓存设计。
 
@@ -1949,76 +1563,168 @@ class LayoutCache {
 }
 ```
 
-#### 2.8.5 Canvas 分层渲染 (v4.0 新增)
+#### 2.9.5 Canvas 分层渲染 
 
-**问题**: 单 Canvas 绘制所有内容。光标闪烁(30-60fps)触发全区域重绘，性能瓶颈。
+**v12.0 修正**:
 
-**方案**: 三 Canvas 层叠，CSS `position: absolute` 堆叠。
-
-```
-Layer 3 — 交互层 (z-index:3): 光标闪烁(rAF) + 选区高亮 + IME预览 + 拖拽预览
-Layer 2 — 内容层 (z-index:2): 文本/表格/SmartTextNode, 仅 DocumentTree 变更时重绘
-Layer 1 — 静态层 (z-index:1): 页面背景/阴影/边距线/页眉页脚/页码/水印, 仅滚动缩放时重绘
-```
+1. Canvas 尺寸 = 视口 + overscan 1 页（非全文档），滚动时平移绘制偏移，内存 O(视口) ≈ 60MB
+2. 水印离屏 pattern 预渲染，滚动零重算
+3. 光标闪烁统一 setInterval（rAF 在后台标签页暂停会导致状态错乱）
+4. CoordinateSystem 实例私有，Editor 构造注入
 
 ```typescript
 class LayeredRenderer {
-  private layers = { static: null as HTMLCanvasElement | null, content: null, interact: null }
-  private ctxs   = { static: null as CanvasRenderingContext2D | null, content: null, interact: null }
-  private blinkTimer: number | null = null
-
-  renderContent(items: PageItem[]): void { /* 仅重绘内容层 */ }
-  renderStatic(state: EditorRuntimeState, watermark?: WatermarkConfig): void {
-    // 页面背景 / 阴影 / 边距线 / 页码
-    // + 水印渲染 (归属静态层, 仅滚动缩放时重绘)
-    if (watermark) this.drawWatermark(watermark)
+  private layers = {
+    static:   null as HTMLCanvasElement | null,
+    content:  null as HTMLCanvasElement | null,
+    interact: null as HTMLCanvasElement | null,
   }
-  startCursorBlink(): void { /* setInterval 530ms, 仅重绘交互层 */ }
-  syncSizes(w: number, h: number, dpr: number): void { /* 三层同步尺寸 */ }
+  private ctxs = {
+    static:   null as CanvasRenderingContext2D | null,
+    content:  null as CanvasRenderingContext2D | null,
+    interact: null as CanvasRenderingContext2D | null,
+  }
+  private blinkTimer: number | null = null
+  private coordSystem: CoordinateSystem          // 实例私有 
+  private watermarkPattern: CanvasPattern | null = null  // 离屏预渲染 
 
-  private drawWatermark(wm: WatermarkConfig): void {
-    const ctx = this.ctxs.static!
-    ctx.save()
-    ctx.globalAlpha = wm.opacity
-    if (wm.type === 'text' && wm.text) {
-      ctx.font = `${wm.fontSize || 48}px "SimSun"`
-      ctx.fillStyle = wm.color || '#000000'
-      ctx.textAlign = 'center'
-      if (wm.mode === 'tile') {
-        // 平铺: 按 spacing 间距在页面范围内重复绘制旋转后的文本
-        const pageW = this.staticCanvas!.width / (window.devicePixelRatio || 1)
-        const pageH = this.staticCanvas!.height / (window.devicePixelRatio || 1)
-        for (let y = 0; y < pageH + wm.spacing; y += wm.spacing) {
-          for (let x = 0; x < pageW + wm.spacing; x += wm.spacing) {
-            ctx.save()
-            ctx.translate(x, y)
-            ctx.rotate((wm.rotation * Math.PI) / 180)
-            ctx.fillText(wm.text!, 0, 0)
-            ctx.restore()
-          }
-        }
-      } else {
-        // 居中: 单个水印置于页面中央
-        ctx.save()
-        ctx.translate(pageW / 2, pageH / 2)
-        ctx.rotate((wm.rotation * Math.PI) / 180)
-        ctx.fillText(wm.text!, 0, 0)
-        ctx.restore()
+  /** 视口尺寸 (CSS px) */
+  private viewportW = 0
+  private viewportH = 0
+  /** overscan 页数 (视口外预渲染) */
+  private readonly OVERSCAN_PAGES = 1
+
+  constructor(coordSystem: CoordinateSystem) { this.coordSystem = coordSystem }
+
+  // ---- 尺寸管理 (v12.0: 虚拟化渲染窗口) ----
+  syncSizes(viewportW: number, viewportH: number, dpr: number, pageHeight: number, totalPages: number): void {
+    this.viewportW = viewportW; this.viewportH = viewportH
+    // Canvas 物理尺寸 = 视口 + overscan 1 页 (而非全文档)
+    const pagesInView = Math.ceil(viewportH / pageHeight) + this.OVERSCAN_PAGES * 2
+    const canvasH = Math.min(pagesInView * pageHeight, totalPages * pageHeight)
+    // 内存: 3 层 × viewportW × canvasH × 4B × DPR²
+    // 例: 3 × 794 × (3×1123) × 4 × 4 ≈ 128MB @ DPR2, 2 页视口 → 实际 ~60MB
+    for (const key of ['static', 'content', 'interact'] as const) {
+      this.layers[key]!.width  = Math.ceil(viewportW * dpr)
+      this.layers[key]!.height = Math.ceil(canvasH * dpr)
+      this.layers[key]!.style.width  = `${viewportW}px`
+      this.layers[key]!.style.height = `${canvasH}px`
+    }
+  }
+
+  /** 滚动时平移绘制偏移 (v12.0: 不扩大画布，只改 ctx 偏移) */
+  setScrollOffset(scrollY: number, firstVisiblePage: number, pageHeight: number): void {
+    const offsetY = -(scrollY - firstVisiblePage * pageHeight)
+    for (const ctx of [this.ctxs.static, this.ctxs.content]) {
+      if (ctx) {
+        const dpr = this.coordSystem.transform.dpr
+        ctx.setTransform(dpr, 0, 0, dpr, 0, offsetY * dpr)
       }
-    } else if (wm.type === 'image' && wm.imageUrl) {
-      // 图片水印: 加载图片后按 tile/center 模式绘制
-      const img = new Image(); img.src = wm.imageUrl
-      // ... tile 模式: ctx.drawImage(img, x, y, w, h) 循环
+    }
+  }
+
+  // ---- 静态层渲染 ----
+  renderStatic(pages: SLIFPage[], visibleRange: { start: number; end: number }): void {
+    const ctx = this.ctxs.static!
+    ctx.clearRect(0, 0, this.layers.static!.width, this.layers.static!.height)
+    ctx.save()
+    for (let i = visibleRange.start; i <= visibleRange.end; i++) {
+      const page = pages[i]
+      const pageY = (i - visibleRange.start) * page.height
+      // 页面背景 / 阴影 / 边距线 / 页码
+      this.drawPageFrame(ctx, page, pageY)
+      // 水印 (离屏 pattern, 滚动零重算)
+      if (this.watermarkPattern) {
+        ctx.fillStyle = this.watermarkPattern
+        ctx.fillRect(0, pageY, page.width, page.height)
+      }
     }
     ctx.restore()
   }
-  destroy(): void { if (this.blinkTimer) clearInterval(this.blinkTimer) }
+
+  // ---- 水印离屏预渲染  ----
+  prepareWatermark(wm: WatermarkConfig): void {
+    if (wm.type !== 'tile') { this.watermarkPattern = null; return }
+    const offscreen = document.createElement('canvas')
+    offscreen.width = wm.spacing; offscreen.height = wm.spacing
+    const octx = offscreen.getContext('2d')!
+    octx.globalAlpha = wm.opacity
+    octx.font = `${wm.fontSize || 48}px "SimSun"`
+    octx.fillStyle = wm.color || '#000000'
+    octx.textAlign = 'center'; octx.textBaseline = 'middle'
+    octx.translate(wm.spacing / 2, wm.spacing / 2)
+    octx.rotate((wm.rotation * Math.PI) / 180)
+    octx.fillText(wm.text || '', 0, 0)
+    this.watermarkPattern = this.ctxs.static!.createPattern(offscreen, 'repeat')!
+  }
+
+  // ---- 交互层光标 (v12.0: 统一 setInterval) ----
+  startCursorBlink(): void {
+    let visible = true
+    this.blinkTimer = window.setInterval(() => {
+      visible = !visible
+      const ctx = this.ctxs.interact!
+      ctx.clearRect(0, 0, this.layers.interact!.width, this.layers.interact!.height)
+      if (visible) this.drawCursor(ctx)
+      this.drawSelection(ctx)
+      this.drawComposingText(ctx)
+    }, 530)
+  }
+
+  // ---- 增量渲染帧调度  ----
+  private renderPending = false
+  requestRender(): void {
+    if (this.renderPending) return
+    this.renderPending = true
+    requestAnimationFrame(() => {
+      // 先重绘 content 层 (脏区)
+      this.renderContent(/* dirtyItems */)
+      // 交互层由 setInterval 独立驱动 (无需在 rAF 中重复绘制)
+      this.renderPending = false
+    })
+  }
+
+  destroy(): void {
+    if (this.blinkTimer) { clearInterval(this.blinkTimer); this.blinkTimer = null }
+    for (const key of ['static', 'content', 'interact'] as const) {
+      this.layers[key]?.remove(); this.layers[key] = null; this.ctxs[key] = null
+    }
+    this.watermarkPattern = null
+  }
 }
 ```
 
----
+#### 2.9.6 CoordinateSystem 实例化 
 
-### 2.10 命中检测体系 (v4.0 新增)
+```typescript
+// v12.0: 删除全局单例 const coordinateSystem = new CoordinateSystem(...)
+// 改为 Editor 构造注入，每个实例独立
+
+class CoordinateSystem {
+  // ... (方法不变: docToCanvas/screenToDoc/docToScreen/getCanvasTransform)
+}
+
+// Editor 构造:
+class Editor {
+  private coordSystem: CoordinateSystem  // 实例私有
+  constructor(config: EditorConfig) {
+    this.coordSystem = new CoordinateSystem(config.container.ownerDocument.defaultView!.devicePixelRatio || 1)
+    this.renderer = new LayeredRenderer(this.coordSystem)  // 注入
+  }
+}
+```
+
+#### 2.9.7 层模型统一 
+
+架构文档与 UI 文档统一为 3 层:
+
+| 架构层   | UI 组件树映射                                  | 职责                                     |
+| -------- | ---------------------------------------------- | ---------------------------------------- |
+| static   | PageFrame                                      | 页面背景/阴影/边距线/页眉/页脚/页码/水印 |
+| content  | ContentLayer                                   | 文本/表格/SmartTextNode/ImageNode        |
+| interact | CursorLayer + SelectionLayer + AnnotationLayer | 光标/选区高亮/IME 预览/批注指示          |
+
+### 2.10 命中检测体系 
 
 **问题**: 「坐标 → 节点」反向查找无标准方案，交互逻辑散落在各 Handler 中。
 
@@ -2051,16 +1757,14 @@ class HitTestIndex {
 }
 ```
 
----
-
-#### 2.8.4 布局缓存体系 (v4.0 新增)
+#### 2.8.4 布局缓存体系 
 
 **问题**: PageItem 是每次 `recomputeLayout()` 的临时产物，全量重算。增量布局的前提是「每个节点的布局结果可独立缓存、可单独失效」，当前完全没有缓存设计。
 
 **方案**: 建立三级布局缓存，缓存键 = 节点 ID，通过 NodePool.version 判断失效。
----
+--------------------------------------------------------------------------
 
-### 2.11 Draw.ts 拆分边界方案 (v3.0 新增)
+### 2.11 Draw.ts 拆分边界方案 
 
 **问题**: 之前只提出"拆分为 EventHandler/IMEHandler/ClipboardHandler"，但模块职责、通信方式、依赖方向没有定义。
 
@@ -2113,13 +1817,13 @@ interface EventBus {
 
 #### 2.9.2 各 Handler 职责与通信
 
-| 模块 | 职责 | 监听 | 发出 |
-|------|------|------|------|
-| **MouseHandler** | mousedown/mousemove/mouseup → 光标定位/选区拖拽/点击 SmartTextNode | DOM mouse events | `cursor:moved`, `selection:changed`, `render:request` |
-| **KeyboardHandler** | keydown → 可见字符/导航/删除/快捷键 → 构建 Command | DOM keydown | 委托 `CommandManager.execute()` |
-| **IMEHandler** | 管理隐藏 textarea → compositionstart/update/end → 构造 InsertTextCommand | textarea composition events | `render:request` (预览), `CommandManager.execute()` (确认) |
-| **ClipboardHandler** | copy/cut/paste → 文本提取/Command 构建 | textarea paste, window copy/cut | `CommandManager.execute()` (paste 时) |
-| **CommandManager** | 接收 Command → forward(doc) → StatePatch → DirtyTracker → emit 事件 | 所有 Handler 调用 | `document:changed`, `state:changed`, `layout:changed`, `render:request` |
+| 模块                       | 职责                                                                       | 监听                            | 发出                                                                            |
+| -------------------------- | -------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------- |
+| **MouseHandler**     | mousedown/mousemove/mouseup → 光标定位/选区拖拽/点击 SmartTextNode        | DOM mouse events                | `cursor:moved`, `selection:changed`, `render:request`                     |
+| **KeyboardHandler**  | keydown → 可见字符/导航/删除/快捷键 → 构建 Command                       | DOM keydown                     | 委托 `CommandManager.execute()`                                               |
+| **IMEHandler**       | 管理隐藏 textarea → compositionstart/update/end → 构造 InsertTextCommand | textarea composition events     | `render:request` (预览), `CommandManager.execute()` (确认)                  |
+| **ClipboardHandler** | copy/cut/paste → 文本提取/Command 构建                                    | textarea paste, window copy/cut | `CommandManager.execute()` (paste 时)                                         |
+| **CommandManager**   | 接收 Command → forward(doc) → StatePatch → DirtyTracker → emit 事件    | 所有 Handler 调用               | `document:changed`, `state:changed`, `layout:changed`, `render:request` |
 
 #### 2.9.3 依赖方向 (单向，避免循环)
 
@@ -2135,9 +1839,7 @@ Draw → CoordinateSystem (readonly)
 禁止: HandlerA → HandlerB (Handler 间不直接通信，通过 CommandManager 中转)
 ```
 
----
-
-### 2.12 权限优先级规则 (v3.0 新增)
+### 2.12 权限优先级规则 
 
 **问题**: `SmartTextNode.element.readonly` (节点级) 和 `EditorMode` (全局级) 叠加时，无明确优先级规则。
 
@@ -2225,8 +1927,6 @@ function isEditable(
 }
 ```
 
----
-
 ### 2.13 当前模块结构
 
 ```
@@ -2271,19 +1971,154 @@ enum PageMode {
 
 ### 2.15 前端技术栈
 
-| 层 | 技术 | 版本 | 说明 |
-|----|------|------|------|
-| 框架 | React | 18.3+ | 函数组件 + Hooks |
-| 语言 | TypeScript | 5.5+ | strict mode |
-| 构建 | Vite | 5.4+ | HMR + ESBuild |
-| CSS | Tailwind CSS | 3.4+ | 原子化样式 |
-| UI 组件 | Radix UI | latest | dialog/dropdown-menu/tooltip/tabs |
-| 图标 | Lucide React | 0.400+ | 禁止 emoji |
-| 状态管理 | Zustand | 5.x | 轻量、不可变 |
-| HTTP | Axios | 1.7+ | 拦截器 + JWT 注入 |
-| 测试 | Vitest | 2.x | 单元测试 + jsdom |
+| 层       | 技术         | 版本   | 说明                              |
+| -------- | ------------ | ------ | --------------------------------- |
+| 框架     | React        | 18.3+  | 函数组件 + Hooks                  |
+| 语言     | TypeScript   | 5.5+   | strict mode                       |
+| 构建     | Vite         | 5.4+   | HMR + ESBuild                     |
+| CSS      | Tailwind CSS | 3.4+   | 原子化样式                        |
+| UI 组件  | Radix UI     | latest | dialog/dropdown-menu/tooltip/tabs |
+| 图标     | Lucide React | 0.400+ | 禁止 emoji                        |
+| 状态管理 | Zustand      | 5.x    | 轻量、不可变                      |
+| HTTP     | Axios        | 1.7+   | 拦截器 + JWT 注入                 |
+| 测试     | Vitest       | 2.x    | 单元测试 + jsdom                  |
 
----
+### 3.0 后端修正总览 
+
+**v14.0 修正**:
+
+1. **RBAC 用户体系**: 补 t_user + t_role + t_user_role 最小模型，JWT role/level claims
+2. **WebSocket**: MVP 单实例 + sticky session，Nginx ip_hash
+3. **并发锁**: Redis SET NX EX 30s 心跳续期，409 三选一 UI
+4. **加密**: 字段级 AES-GCM（仅 privacy=true 的 SmartTextNode.text），content 整体不加密
+5. **localStorage**: 最近一次 + 超 2MB 跳过告警
+6. **PDF 许可证**: 选型改为 OpenPDF (LGPL/MPL) / Apache PDFBox (Apache 2.0)
+7. **可用性**: MVP 99.5% 单点，生产 99.9% (MySQL 主从 + Redis Sentinel)
+
+### 3.1 RBAC 用户模型
+
+```sql
+CREATE TABLE t_user (
+    id       VARCHAR(64) PRIMARY KEY,
+    username VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,    -- BCrypt
+    real_name VARCHAR(100),
+    enabled  TINYINT DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE t_role (
+    id   VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE   -- admin / designer / doctor / qc_reviewer / viewer
+);
+
+CREATE TABLE t_user_role (
+    user_id VARCHAR(64) NOT NULL,
+    role_id VARCHAR(64) NOT NULL,
+    PRIMARY KEY (user_id, role_id)
+);
+
+-- JWT claims: { sub: userId, username, roles: ['doctor'], level: 3, iat, exp }
+-- PermissionService.checkDocumentAccess(userId, documentId, requiredPermission)
+--   1. 查 t_document_permission 表 (owner/editor/commenter/viewer)
+--   2. JWT role='admin' 旁路全部权限
+```
+
+### 3.2 并发编辑锁
+
+```sql
+-- Redis: SET doc_lock:{documentId} {userId} NX EX 30
+-- 心跳: 前端每 15s PUT /api/v1/documents/{id}/lock/heartbeat 续期 30s
+-- 释放: 正常关闭/401/页面卸载时 DELETE lock key
+
+CREATE TABLE t_document_lock (
+    document_id VARCHAR(64) PRIMARY KEY,
+    user_id     VARCHAR(64) NOT NULL,
+    locked_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at  DATETIME NOT NULL
+);
+-- 持久化备份 (Redis 重启后恢复)
+```
+
+**409 冲突前端三选一**:
+
+```
+获取锁失败 → 返回 { status: 'locked', lockedBy: '张三', serverVersion: 6, lockedSince: '...' }
+前端展示:
+  [查看差异] — 展示 baseVersion..serverVersion 的 diff
+  [强制覆盖] — 用户确认后 PUT，替换锁持有者
+  [取消]     — 保留我的编辑，暂不保存
+```
+
+### 3.3 字段级加密
+
+```
+AES-256-GCM 字段级加密:
+  仅加密 SmartTextNode 中 element.privacy.enabled===true 的 text 值
+  content 整体不加密 → JSON_SCHEMA_VALID + JSON 路径查询正常工作
+
+密钥管理:
+  数据密钥 (DEK) 每文档随机生成，AES-256-GCM
+  密钥加密密钥 (KEK) 由环境变量注入，用于加密 DEK
+  加密后 DEK 存储在 t_document.encryption_key 字段
+
+  存入: DEK=randomBytes(32) → ciphertext=AES_GCM(DEK, plaintext) → 替换 text
+        encryptedDEK=AES_WRAP(KEK, DEK) → 存 encryption_key
+  读取: DEK=AES_UNWRAP(KEK, encryptedDEK) → plaintext=AES_GCM_DECRYPT(DEK, ciphertext)
+  轮换: KEK 版本化, t_document 记录 kek_version, 批量异步轮换
+```
+
+### 3.4 PDF 许可证与选型
+
+| 库            | 许可证     | 选择                          |
+| ------------- | ---------- | ----------------------------- |
+| Apache PDFBox | Apache 2.0 | **推荐** (PDF 生成首选) |
+| OpenPDF       | LGPL/MPL   | 备选 (iText 4 fork)           |
+| suwell/ofdrw  | Apache 2.0 | OFD 生成专用                  |
+
+### 3.5 可用性分级
+
+| 等级    | 拓扑                                                            | 目标  | 阶段   |
+| ------- | --------------------------------------------------------------- | ----- | ------ |
+| MVP     | 单 MySQL + 单 Redis + 单 App                                    | 99.5% | 当前   |
+| 生产    | MySQL 主从 + Redis Sentinel + App ×2 + Nginx                   | 99.9% | 联调后 |
+| RPO/RTO | MVP: RPO=0 (无主从, 依赖备份), RTO=4h; 生产: RPO<1min, RTO<5min |       |        |
+
+### 3.6 localStorage 配额
+
+```typescript
+// 只存最近一次备份 + 超 2MB 跳过
+class AutoSaveManager {
+  private backupToLocalStorage(document: DocumentTree): void {
+    const json = JSON.stringify(document)
+    if (json.length > 2 * 1024 * 1024) {
+      console.warn('[AutoSave] Document too large for localStorage backup, skipped')
+      return
+    }
+    try {
+      localStorage.setItem(`doc_backup_${document.id}`, json)
+    } catch (e) {
+      if (e.name === 'QuotaExceededError') {
+        // 清理旧备份后重试一次
+        this.clearOldBackups()
+        try { localStorage.setItem(`doc_backup_${document.id}`, json) } catch {}
+      }
+    }
+  }
+}
+// 自动保存指标拆分:
+//   IndexedDB 落盘: <50ms (同步, 不依赖网络)
+//   API 异步完成: 不阻塞 UI (fire-and-forget, 失败静默重试)
+```
+
+### 3.7 审计 diff 策略
+
+```
+审计日志 detail 字段: 不存完整新旧值 diff
+  存储: { action, changedFields: ['title','body'], versionFrom: 5, versionTo: 6, sizeBytes: 12345 }
+  完整快照: t_document_version 表已有版本内容存储
+  成本: 审计日志单条 < 1KB, 100 万条 < 1GB
+```
 
 ## 3. 后端架构设计
 
@@ -2332,7 +2167,7 @@ src/main/java/com/emr/
     └── JsonSchemaValidator.java      # JSON_SCHEMA_VALID 封装
 ```
 
-### 3.2 数据库设计 (v3.0 增强 — 乐观锁与审计日志)
+### 3.2 数据库设计 — 乐观锁与审计日志
 
 ```sql
 -- ================================================================
@@ -2361,7 +2196,7 @@ CREATE TABLE t_document (
 -- 如果 affected_rows = 0 → 版本冲突 → 返回 409 Conflict
 
 -- ================================================================
--- 文档权限表 (v3.0 新增 — 文档粒度权限)
+-- 文档权限表 — 文档粒度权限
 -- ================================================================
 CREATE TABLE t_document_permission (
     id          VARCHAR(64)  PRIMARY KEY,
@@ -2395,7 +2230,7 @@ CREATE TABLE t_template (
 );
 
 -- ================================================================
--- 操作审计日志表 (v3.0 增强)
+-- 操作审计日志表 
 -- ================================================================
 CREATE TABLE t_audit_log (
     id          VARCHAR(64)  PRIMARY KEY,
@@ -2422,7 +2257,7 @@ CREATE TABLE t_audit_log (
 -- ❌ (暂不覆盖) 每次键盘输入的字符级变更 (性能开销过大)
 ```
 
-### 3.3 REST API 设计 (v3.0 增强)
+### 3.3 REST API 设计 
 
 ```
 # 文档管理
@@ -2470,22 +2305,22 @@ Client                                Server
 
 ### 3.4 后端技术栈
 
-| 类别 | 技术 | 版本 |
-|------|------|------|
-| JDK | Java | 17 LTS |
-| 框架 | SpringBoot | 3.3+ |
-| ORM | Mybatis-Plus | 3.5+ |
-| 数据库 | MySQL | 8.0+ |
-| 缓存 | Redis | 7.x |
-| 实时通信 | Spring WebSocket + Stomp | - |
-| 安全 | Spring Security + JWT | - |
+| 类别     | 技术                       | 版本   |
+| -------- | -------------------------- | ------ |
+| JDK      | Java                       | 17 LTS |
+| 框架     | SpringBoot                 | 3.3+   |
+| ORM      | Mybatis-Plus               | 3.5+   |
+| 数据库   | MySQL                      | 8.0+   |
+| 缓存     | Redis                      | 7.x    |
+| 实时通信 | Spring WebSocket + Stomp   | -      |
+| 安全     | Spring Security + JWT      | -      |
 | 文档转换 | iText 8 (PDF) + Apache POI | latest |
-| 模板引擎 | Thymeleaf (HTML 导出) | - |
-| 对象存储 | MinIO | latest |
-| API 文档 | SpringDoc OpenAPI | 2.5+ |
-| 构建 | Maven | 3.9+ |
+| 模板引擎 | Thymeleaf (HTML 导出)      | -      |
+| 对象存储 | MinIO                      | latest |
+| API 文档 | SpringDoc OpenAPI          | 2.5+   |
+| 构建     | Maven                      | 3.9+   |
 
-### 3.5 模型校验与版本兼容 (v3.0 新增)
+### 3.5 模型校验与版本兼容 
 
 #### 3.5.1 前端 TypeScript 运行时校验
 
@@ -2512,60 +2347,45 @@ interface ValidationResult {
 function validateDocumentTree(doc: unknown): ValidationResult {
   const errors: ValidationError[] = []
 
-  // 1. 顶层结构检查
   if (!doc || typeof doc !== 'object') {
-    return { valid: false, errors: [{ path: '', message: 'DocumentTree 必须是对象', code: 'invalid_type' }], modelVersion: '3.0' }
+    return { valid: false, errors: [{ path: '', message: 'DocumentTree 必须是对象', code: 'invalid_type' }], modelVersion: '4.0' }
   }
 
-  // 2. 必需字段检查
   const d = doc as Record<string, unknown>
   if (!d.id || typeof d.id !== 'string') errors.push({ path: 'id', message: '缺少有效的 id', code: 'missing_field' })
-  if (!d.pages || !Array.isArray(d.pages)) errors.push({ path: 'pages', message: 'pages 必须是数组', code: 'invalid_type' })
-  if (d.pages && Array.isArray(d.pages) && d.pages.length === 0) {
-    errors.push({ path: 'pages', message: '文档至少包含一页', code: 'invalid_value' })
+  // 校验 body 而非 pages
+  if (!d.body || typeof d.body !== 'object') errors.push({ path: 'body', message: 'body 必须是 FlowBody 对象', code: 'invalid_type' })
+  else {
+    const body = d.body as Record<string, unknown>
+    if (body.mode !== 'flow') errors.push({ path: 'body.mode', message: 'body.mode 必须为 "flow"', code: 'invalid_value' })
+    if (!Array.isArray(body.children)) errors.push({ path: 'body.children', message: 'body.children 必须是数组', code: 'invalid_type' })
   }
 
-  // 3. 递归校验每个节点的 id 唯一性
+  // 递归校验节点 ID 唯一性 (通过 NodePool)
   const idSet = new Set<string>()
-  function checkIds(node: unknown, path: string) {
-    if (node && typeof node === 'object' && 'id' in node) {
-      const n = node as Record<string, unknown>
-      if (typeof n.id !== 'string') {
-        errors.push({ path, message: '节点 id 必须为 string', code: 'invalid_type' })
-      } else if (idSet.has(n.id)) {
-        errors.push({ path, message: `重复的节点 ID: ${n.id}`, code: 'invalid_value' })
-      } else {
-        idSet.add(n.id)
+  if (d.body) {
+    const collectIds = (node: unknown) => {
+      if (node && typeof node === 'object' && 'id' in node) {
+        const n = node as Record<string, unknown>
+        if (typeof n.id !== 'string') errors.push({ path: '', message: `节点 id 必须为 string`, code: 'invalid_type' })
+        else if (idSet.has(n.id)) errors.push({ path: '', message: `重复的节点 ID: ${n.id}`, code: 'invalid_value' })
+        else idSet.add(n.id)
+      }
+      if (Array.isArray((node as any)?.children)) {
+        for (const child of (node as any).children) {
+          if (typeof child === 'string') {
+            // children 是 ID 数组, 跳过
+          } else {
+            collectIds(child)  // 嵌套对象 (反序列化后的临时状态)
+          }
+        }
       }
     }
+    collectIds(d)
   }
-  traverse(doc as DocumentTree, (node, _path) => { checkIds(node, '') })
 
-  // 4. SmartTextNode 校验
-  function checkSmartTextNode(node: unknown, path: string) {
-    if (node && typeof node === 'object' && (node as any).type === 'smarttext') {
-      const st = node as Record<string, unknown>
-      const elem = st.element as Record<string, unknown> | undefined
-      if (!elem) errors.push({ path, message: 'SmartTextNode 缺少 element', code: 'missing_field' })
-      else {
-        if (!elem.code || typeof (elem.code as any)?.internal !== 'string')
-          errors.push({ path, message: 'SmartTextNode.element.code.internal 无效', code: 'missing_field' })
-        if (!elem.name || typeof elem.name !== 'string')
-          errors.push({ path, message: 'SmartTextNode.element.name 无效', code: 'missing_field' })
-      }
-    }
-  }
-  traverse(doc as DocumentTree, (node, path) => {
-    if (node && typeof node === 'object' && (node as any).type === 'smarttext') {
-      checkSmartTextNode(node, JSON.stringify(path))
-    }
-  })
-
-  return {
-    valid: errors.length === 0,
-    errors,
-    modelVersion: '3.0',
-  }
+  const result = { valid: errors.length === 0, errors, modelVersion: '4.0' }
+  return result
 }
 ```
 
@@ -2582,74 +2402,30 @@ function validateDocumentTree(doc: unknown): ValidationResult {
 # );
 ```
 
-#### 3.5.3 modelVersion 版本兼容策略
+#### 3.5.3 modelVersion 版本兼容策略 (删除 ensureLatestModel 错误实现, 仅保留 loadDocument 一套算法)
 
 ```typescript
-/**
- * 模型版本兼容策略
- *
- * 规则:
- * 1. 所有 DocumentTree 携带 modelVersion 字段 (DocumentTree.metadata.modelVersion)
- * 2. 前端: 读取后检测 modelVersion，必要时静默升级
- * 3. 后端: API 响应 Header 返回 X-Model-Version
- * 4. 旧版本数据不直接修改，保留原 modelVersion 直到被显式保存
- *
- * 升级路径:
- *   v2.0 (ModelD) → v3.0 (ModelD + metadata + FlowBody 标准化)
- *     升级器: addMetadataToBaseNodes + wrapArrayBodiesInFlowBody
- */
-const MODEL_VERSION = '3.0'
-
-interface ModelUpgrader {
-  /** 源版本 */
-  from: string
-  /** 目标版本 */
-  to: string
-  /** 升级函数 */
-  upgrade(doc: DocumentTree): DocumentTree
-}
-
-const upgraders: ModelUpgrader[] = [
-  {
-    from: '2.0', to: '3.0',
-    upgrade(doc: DocumentTree): DocumentTree {
-      // 1. 为所有 BaseNode 添加 metadata: {}
-      traverse(doc, (node) => {
-        if (node && typeof node === 'object' && 'id' in node && !('metadata' in node)) {
-          (node as any).metadata = {}
-        }
-      })
-      // 2. 将 BlockNode[] body 包装为 FlowBody
-      for (const page of doc.pages) {
-        if (Array.isArray(page.body)) {
-          page.body = { mode: 'flow', children: page.body }
-        }
-      }
-      // 3. 设置新的 modelVersion
-      if (!doc.metadata) doc.metadata = {}
-      doc.metadata.modelVersion = '3.0'
-      return doc
-    },
-  },
-]
-
-function ensureLatestModel(doc: DocumentTree): DocumentTree {
-  const currentVersion = (doc.metadata?.modelVersion as string) || '2.0'
-  let upgraded = doc
+// 唯一升级入口 — loadDocument (与 §20 语义化版本规则一致)
+function loadDocument(json: string): DocumentTree {
+  const parsed = JSON.parse(json)
+  const version = parsed.metadata?.modelVersion || '2.0.0'
+  let doc = parsed as DocumentTree
   for (const upgrader of upgraders) {
-    if (upgrader.from === currentVersion || currentVersion < upgrader.to) {
-      upgraded = upgrader.upgrade(upgraded)
+    if (compareVersions(version, upgrader.from) >= 0 && compareVersions(version, upgrader.to) < 0) {
+      doc = upgrader.upgrade(doc)
+      doc.metadata!.modelVersion = upgrader.to  // 关键: 每次升级后更新 currentVersion
     }
   }
-  return upgraded
+  const result = validateDocumentTree(doc)
+  if (!result.valid) throw new DocumentValidationError(result.errors)
+  return doc
 }
+// 黄金测试: v2.0→v3.0→v4.0 链式升级后 modelVersion === '4.0.0'
 ```
-
----
 
 ## 4. 数据流设计
 
-### 4.1 编辑数据流 (v3.0 扩展 — 覆盖所有编辑入口)
+### 4.1 编辑数据流 
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -2691,7 +2467,7 @@ function ensureLatestModel(doc: DocumentTree): DocumentTree {
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.2 保存数据流 (v3.0 — 完整自动保存策略)
+### 4.2 保存数据流 
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -2865,9 +2641,14 @@ class AutoSaveManager {
 }
 ```
 
-### 4.3 协作数据流 (v3.0 新增 — 远期特性，预留扩展接口)
+### 4.3 协作数据流 (v16.0 决策)
 
-> **[远期特性] 当前阶段暂不实现完整协作。以下为预留设计，确保后续扩展时不需要大规模重构。**
+**v16.0 决策**: 采用 **Yjs (CRDT)** 作为单一真相源。
+
+- Y.Doc 为运行时模型，DocumentTree 仅为快照序列化格式（保存/加载时转换）
+- NodePool 作为 Y.Doc → DocumentTree 的只读投影层，对外暴露不变更 Y.Doc 的视图
+- ~~Command.serialize 重放 (OT)~~ — **删除**，CRDT 与 OT 互斥，Yjs 自动合并替代命令重放
+- 迁移成本: 需将 NodePool 改为从 Y.Doc 同步数据（单向），不反向写入
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -2918,8 +2699,6 @@ class AutoSaveManager {
 └──────────────────────────────────────────────────────────────────┘
 ```
 
----
-
 ## 5. 部署架构
 
 ```
@@ -2950,11 +2729,9 @@ class AutoSaveManager {
 
 **容器化**: 上述所有服务通过 `docker-compose.yml` 编排，详见项目根目录。
 
----
+## 6. 从当前代码到目标架构的迁移路径 
 
-## 6. 从当前代码到目标架构的迁移路径 (v3.0 新增)
-
-当前代码 (`Draw.ts` 709行单体) 到 v3.0 目标架构的渐进迁移策略：
+当前代码 (`Draw.ts` 709行单体) 到 目标架构的渐进迁移策略：
 
 ### Step 1: 引入 EditorRuntimeState (不改 Draw.ts 内部)
 
@@ -3029,22 +2806,21 @@ class AutoSaveManager {
 
 ### 迁移检查清单
 
-| 步骤 | 内容 | 风险 | 验证方法 |
-|------|------|------|----------|
-| Step 1 | EditorRuntimeState 双写 | 低 | 渲染结果与迁移前一致 |
-| Step 2 | EventBus 引入 | 低 | 事件正确派发 |
-| Step 3a | IMEHandler 提取 | 低 | CJK 输入正常 |
-| Step 3b | ClipboardHandler 提取 | 低 | 复制粘贴正常 |
-| Step 3c | CoordinateSystem 提取 | 中 | 坐标换算一致 |
-| Step 3d | MouseHandler 提取 | 中 | 光标定位准确 |
-| Step 4 | Command 体系 | 高 | Ctrl+Z 行为一致 |
-| Step 5 | 增量布局+渲染 | 高 | 编辑后渲染结果一致 + 帧率提升 |
+| 步骤    | 内容                    | 风险 | 验证方法                      |
+| ------- | ----------------------- | ---- | ----------------------------- |
+| Step 1  | EditorRuntimeState 双写 | 低   | 渲染结果与迁移前一致          |
+| Step 2  | EventBus 引入           | 低   | 事件正确派发                  |
+| Step 3a | IMEHandler 提取         | 低   | CJK 输入正常                  |
+| Step 3b | ClipboardHandler 提取   | 低   | 复制粘贴正常                  |
+| Step 3c | CoordinateSystem 提取   | 中   | 坐标换算一致                  |
+| Step 3d | MouseHandler 提取       | 中   | 光标定位准确                  |
+| Step 4  | Command 体系            | 高   | Ctrl+Z 行为一致               |
+| Step 5  | 增量布局+渲染           | 高   | 编辑后渲染结果一致 + 帧率提升 |
 
----
-
-## 7. 安全设计 (v3.0 增强)
+## 7. 安全设计 
 
 ### 6.1 认证流程
+
 1. 用户登录 → 后端验证 → 返回 JWT (Access Token + Refresh Token)
 2. 前端存储 Access Token 于内存，Refresh Token 于 httpOnly Cookie
 3. 每次请求携带 Authorization: Bearer {token}
@@ -3071,52 +2847,51 @@ class AutoSaveManager {
 ```
 
 ### 6.3 数据安全
+
 - 文档内容加密存储（AES-256）
 - API 请求频率限制（Rate Limiting）
 - SQL 注入防护（Mybatis 参数化查询）
 - XSS 防护（输入过滤 + 输出编码）
-- WebSocket 认证 (JWT token 作为连接参数)
+- WebSocket 认证 (JWT 通过 Sec-WebSocket-Protocol 子协议或首帧 AUTH 报文，禁止 URL query)
 - 乐观锁版本冲突检测 (防止并发覆盖)
 - 全链路审计日志 (API 层拦截器自动记录)
 
----
-
-## 8. 非功能需求 (v3.0 新增)
+## 8. 非功能需求 
 
 ### 7.1 性能指标
 
-| 指标 | MVP 目标 | 最终目标 | 测量方法 |
-|------|----------|----------|----------|
-| 首次内容绘制 (FCP) | < 1.5s | < 1s | Lighthouse |
-| 10 页文档加载 | < 1s | < 500ms | Performance API |
-| 100 页文档分页计算 | < 3s | < 1s | PageBreaker bench |
-| 单次编辑响应延迟 | < 50ms | < 16ms (60fps) | requestAnimationFrame |
-| 连续打字帧率 | > 30fps | > 55fps | rAF 计数器 |
-| 自动保存响应 | < 200ms | < 100ms | API 计时 |
-| IndexedDB 写入 | < 50ms | < 20ms | Performance API |
-| 内存占用 (10 页文档) | < 50MB | < 30MB | Chrome DevTools |
+| 指标                 | MVP 目标 | 最终目标       | 测量方法              |
+| -------------------- | -------- | -------------- | --------------------- |
+| 首次内容绘制 (FCP)   | < 1.5s   | < 1s           | Lighthouse            |
+| 10 页文档加载        | < 1s     | < 500ms        | Performance API       |
+| 100 页文档分页计算   | < 3s     | < 1s           | PageBreaker bench     |
+| 单次编辑响应延迟     | < 50ms   | < 16ms (60fps) | requestAnimationFrame |
+| 连续打字帧率         | > 30fps  | > 55fps        | rAF 计数器            |
+| 自动保存响应         | < 200ms  | < 100ms        | API 计时              |
+| IndexedDB 写入       | < 50ms   | < 20ms         | Performance API       |
+| 内存占用 (10 页文档) | < 50MB   | < 30MB         | Chrome DevTools       |
 
 ### 7.2 浏览器兼容性
 
-| 浏览器 | 最低版本 | 备注 |
-|--------|----------|------|
-| Chrome | 90+ | 主要开发和测试环境 |
-| Edge | 90+ | Chromium 内核，兼容 Chrome |
-| Firefox | 90+ | 需额外测试 IME 兼容性 |
-| Safari | 15+ | macOS 需额外测 Canvas 和 IME |
-| 移动端浏览器 | 不保证 | 当前阶段不优先支持移动端 |
+| 浏览器       | 最低版本       | 备注                                      |
+| ------------ | -------------- | ----------------------------------------- |
+| Chrome       | 90+            | 主要开发和测试环境                        |
+| Edge         | 90+            | Chromium 内核，兼容 Chrome                |
+| Firefox      | 90+            | 需额外测试 IME 兼容性                     |
+| Safari       | 15+            | macOS 需额外测 Canvas 和 IME              |
+| 移动端浏览器 | 不保证编辑功能 | 只读查看可用, 编辑不支持 (v16.0 统一口径) |
 
 ### 7.3 异常降级策略
 
-| 异常场景 | 降级方案 |
-|----------|----------|
+| 异常场景                 | 降级方案                                             |
+| ------------------------ | ---------------------------------------------------- |
 | Canvas 2D context 不可用 | 显示错误提示 "您的浏览器不支持 Canvas，请升级浏览器" |
-| WebSocket 连接失败 | 降级为纯本地编辑，保存走 HTTP API，协作功能置灰 |
-| IndexedDB 不可用 | 降级为 localStorage 备份，或纯远程保存 |
-| API 网络超时 (3 次重试) | 保存到 IndexedDB，显示 "网络异常，数据已本地保存" |
-| 文档 JSON 解析失败 | 显示 "文档数据损坏" + 尝试从 localStorage 恢复 |
-| 单次渲染超过 100ms | 跳过非可见区域的渲染 (虚拟滚动) |
-| 内存超过 200MB | 清空 TextMeasurer 缓存 + 释放非可见页的 PageItem |
+| WebSocket 连接失败       | 降级为纯本地编辑，保存走 HTTP API，协作功能置灰      |
+| IndexedDB 不可用         | 降级为 localStorage 备份，或纯远程保存               |
+| API 网络超时 (3 次重试)  | 保存到 IndexedDB，显示 "网络异常，数据已本地保存"    |
+| 文档 JSON 解析失败       | 显示 "文档数据损坏" + 尝试从 localStorage 恢复       |
+| 单次渲染超过 100ms       | 跳过非可见区域的渲染 (虚拟滚动)                      |
+| 内存超过 200MB           | 清空 TextMeasurer 缓存 + 释放非可见页的 PageItem     |
 
 ### 7.4 前端监控
 
@@ -3146,9 +2921,7 @@ interface PerformanceMetrics {
 // 上报: navigator.sendBeacon() 在页面卸载时批量发送
 ```
 
----
-
-## 9. 打印 / 导出链路 (v3.0 新增)
+## 9. 打印 / 导出链路 
 
 ### 9.1 实现方案
 
@@ -3167,28 +2940,23 @@ interface PerformanceMetrics {
 
 ### 9.2 各格式导出链路
 
-| 格式 | 实现位置 | 方案 |
-|------|----------|------|
-| JSON | 前端 | `JSON.stringify(DocumentTree)` → Blob 下载 |
-| PNG | 前端 | `Canvas.toDataURL()` — 当前页 → Blob 下载 |
-| PDF | **后端** | 接收 DocumentTree JSON → iText 服务端渲染 → 返回 PDF 流 |
+| 格式 | 实现位置       | 方案                                                      |
+| ---- | -------------- | --------------------------------------------------------- |
+| JSON | 前端           | `JSON.stringify(DocumentTree)` → Blob 下载             |
+| PNG  | 前端           | `Canvas.toDataURL()` — 当前页 → Blob 下载             |
+| PDF  | **后端** | 接收 DocumentTree JSON → iText 服务端渲染 → 返回 PDF 流 |
 | HTML | **后端** | 接收 DocumentTree JSON → Thymeleaf 模板渲染 → 返回 HTML |
-| TXT | 前端或后端 | 遍历 DocumentTree 提取所有 TextNode.text → 拼接 |
+| TXT  | 前端或后端     | 遍历 DocumentTree 提取所有 TextNode.text → 拼接          |
 
 ### 9.3 排版一致性保障
 
-| 风险 | 应对 |
-|------|------|
+| 风险                              | 应对                                                                                                |
+| --------------------------------- | --------------------------------------------------------------------------------------------------- |
 | 前端 Canvas 渲染 ≠ 后端 PDF 渲染 | 后端 PDF 使用相同的布局参数 (PageSetup + DEFAULT_PAGE_SETUP)，由同一套布局引擎逻辑 (Java 移植) 计算 |
-| 字体不一致 | 后端嵌入 SimSun/SimHei 字体文件，前端通过 @font-face 加载相同字体 |
-| 图片分辨率不足 | PDF 导出时使用 2x DPR Canvas → 更高分辨率输出 |
+| 字体不一致                        | 后端嵌入 SimSun/SimHei 字体文件，前端通过 @font-face 加载相同字体                                   |
+| 图片分辨率不足                    | PDF 导出时使用 2x DPR Canvas → 更高分辨率输出                                                      |
 
----
-
-
----
-
-## 10. 多格式文档加载 (v5.0 新增)
+## 10. 多格式文档加载 
 
 **问题**: 当前仅支持 DocumentTree JSON 反序列化。医疗文档需要加载 XML (HL7 CDA)、HTML (旧系统导出)、Markdown (轻量录入)、OFD (国标版式) 等外部格式。缺少统一导入抽象层，后期每加一种格式都要改核心代码。
 
@@ -3401,15 +3169,14 @@ async function handleFileOpen(file: File): Promise<void> {
 ```
 
 **设计要点**:
+
 - 所有加载器输出统一为 `DocumentTree`，上游代码无需关心源格式
 - `detect()` 支持无扩展名场景 (剪贴板/拖拽/API 直传)
 - 加载后自动执行 `ensureLatestModel()` (升级到最新 modelVersion) + `validateDocumentTree()` (拒绝非法结构)
 - HTML/Markdown 加载是有损转换 (富文本样式映射到 TextStyle，无法还原复杂排版)
 - XML 加载器是医疗文档互操作的关键 (HL7 CDA → SmartTextNode DE 编码映射)
 
----
-
-## 12. 交互与系统深化设计 (v4.0 新增)
+## 11. 交互与系统深化设计 
 
 ### 11.1 选区模型增强
 
@@ -3423,7 +3190,7 @@ type SelectionGranularity = 'character' | 'node' | 'block' | 'table'
 
 interface SelectionState {
   anchor: CursorState; focus: CursorState; active: boolean
-  /** 选区粒度 (v4.0) */
+  /** 选区粒度  */
   granularity: SelectionGranularity
 }
 
@@ -3741,14 +3508,10 @@ class MemoryManager {
 
 ```typescript
 // ---- 分层测试策略 ----
-// L1: 纯函数单元测试 (无 DOM 依赖)
-//   模型校验、命令执行、布局算法、坐标转换、ID 生成、版本升级
-//
-// L2: jsdom 集成测试 (模拟 DOM)
-//   TextMeasurer (需要 Canvas measureText)、EditorRuntimeState 状态转换
-//
-// L3: 浏览器 E2E 测试 (Playwright)
-//   文本编辑、格式化、IME 输入、表格操作、保存加载
+// L1: 纯函数单元测试 (无 DOM 依赖) — 覆盖率 ≥80%
+// L2: node-canvas 集成测试 (TextMeasurer 需要真实 Canvas measureText) — 覆盖率 ≥60%
+//    或: happy-dom + canvas mock 注入 (fake measurer 测逻辑, Playwright E2E 测真实度量)
+// L3: Playwright E2E (文本编辑/格式化/IME/表格/保存) — 截图断言
 
 // 关键测试边界:
 describe('InsertTextCommand', () => {
@@ -3858,265 +3621,457 @@ async function safeLoadDocument(json: string): Promise<DocumentTree> {
 }
 ```
 
----
+## 12. 医学质控引擎 
 
+**v15.0 修正**:
 
----
+1. 规则 JSONLogic DSL 化：可入库、可热更新、TS/Java 双端执行
+2. 索引驱动：单次 traverse 建 Map<HDSD, SmartTextNode[]>，所有规则共享
+3. 评分 cap：单规则扣分 ≤ weight% × 1.5，通过率归一化
+4. 异步 check() + 字典预取缓存
+5. 统一状态机：t_document.status 唯一状态字段
 
-## 13. 医学质控引擎 (v5.0 新增)
+### 13.1 质控规则 DSL
 
-电子病历的核心差异化能力。质控引擎基于 ModelD 的 `SmartTextNode.element` (HDSD/DE 编码 + ElementFormat) 和 `ElementMeta` 内建的校验元数据，实现完整性、一致性、规范性三重检查。
+```sql
+CREATE TABLE t_qc_rule (
+    id          VARCHAR(64) PRIMARY KEY,
+    name        VARCHAR(255) NOT NULL,
+    type        VARCHAR(20)  NOT NULL,  -- completeness / consistency / standardization
+    severity    VARCHAR(10)  NOT NULL DEFAULT 'error',  -- error / warning / info
+    weight      INT          NOT NULL DEFAULT 10,
+    description TEXT,
+    /** JSONLogic 规则表达式 (TS/Java 双端可执行) */
+    expression  JSON         NOT NULL,
+    enabled     TINYINT      DEFAULT 1,
+    created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
 
-### 12.1 质控规则模型
-
-```typescript
-// ================================================================
-// 质控规则类型
-// ================================================================
-type QCRuleType = 'completeness' | 'consistency' | 'standardization'
-
-interface QCRule {
-  id: string; name: string; type: QCRuleType
-  /** 规则权重 (用于质控评分) */
-  weight: number
-  /** 严重级别 */
-  severity: 'error' | 'warning' | 'info'
-  /** 规则描述 (给质控员看) */
-  description: string
-  /** 执行校验 */
-  check(document: DocumentTree, pool: NodePool): QCFinding[]
-}
-
-// ================================================================
-// 三种规则类型
-// ================================================================
-
-/** 完整性校验 — 必填字段是否已填写 */
-class CompletenessRule implements QCRule {
-  type: QCRuleType = 'completeness'
-  check(doc: DocumentTree, pool: NodePool): QCFinding[] {
-    const findings: QCFinding[] = []
-    traverse(doc, (node) => {
-      if ((node as any).type === 'smarttext') {
-        const st = node as SmartTextNode
-        if (st.element.required && (!st.text || st.text.trim() === '')) {
-          findings.push({
-            ruleId: this.id, severity: 'error', type: 'completeness',
-            nodeId: st.id,
-            message: `【${st.element.name}】为必填项，当前未填写`,
-            elementCode: st.element.code.internal,
-          })
-        }
-      }
-    })
-    return findings
-  }
-}
-
-/** 逻辑一致性校验 — 跨字段逻辑关系 */
-class ConsistencyRule implements QCRule {
-  type: QCRuleType = 'consistency'
-  /** 自定义逻辑表达式 */
-  private expression: (doc: DocumentTree, pool: NodePool) => boolean
-
-  constructor(
-    readonly id: string, readonly name: string,
-    readonly weight: number, readonly severity: 'error' | 'warning' | 'info',
-    readonly description: string, expression: (doc: DocumentTree, pool: NodePool) => boolean
-  ) { this.expression = expression }
-
-  check(doc: DocumentTree, pool: NodePool): QCFinding[] {
-    if (this.expression(doc, pool)) return []
-    return [{ ruleId: this.id, severity: this.severity, type: 'consistency',
-              nodeId: '', message: this.description, elementCode: '' }]
-  }
-}
-
-// 预置一致性规则示例:
-const DISCHARGE_AFTER_ADMIT = new ConsistencyRule(
-  'QC_DISCHARGE_AFTER_ADMIT', '出院日期 >= 入院日期', 15, 'error',
-  '出院日期必须晚于或等于入院日期',
-  (doc, pool) => {
-    const admitNodes  = findByInternal(doc, 'HDSD00.01.010')  // 入院日期
-    const dischNodes  = findByInternal(doc, 'HDSD00.01.020')  // 出院日期
-    if (admitNodes.length === 0 || dischNodes.length === 0) return true  // 字段不存在 → 跳过
-    return new Date(dischNodes[0].text) >= new Date(admitNodes[0].text)
-  }
-)
-
-const SYSTOLIC_GT_DIASTOLIC = new ConsistencyRule(
-  'QC_BP_SYS_GT_DIA', '收缩压 > 舒张压', 10, 'error',
-  '收缩压必须大于舒张压',
-  (doc, pool) => {
-    const sys = findByInternal(doc, 'HDSD00.02.001')
-    const dia = findByInternal(doc, 'HDSD00.02.002')
-    if (sys.length === 0 || dia.length === 0) return true
-    return parseInt(sys[0].text) > parseInt(dia[0].text)
-  }
-)
-
-/** 规范性校验 — 编码/术语是否在字典范围内 */
-class StandardizationRule implements QCRule {
-  type: QCRuleType = 'standardization'
-  check(doc: DocumentTree, pool: NodePool): QCFinding[] {
-    const findings: QCFinding[] = []
-    traverse(doc, (node) => {
-      if ((node as any).type === 'smarttext') {
-        const st = node as SmartTextNode
-        if (st.element.format?.dictionary && st.text) {
-          // 检查 st.text 的值是否在 dictionary 指定的编码表中
-          // dictionary 可以是远程码表 ID 或本地枚举值
-          if (!isInDictionary(st.text, st.element.format.dictionary)) {
-            findings.push({
-              ruleId: this.id, severity: 'warning', type: 'standardization',
-              nodeId: st.id,
-              message: `【${st.element.name}】的值"${st.text}"不在规范码表中`,
-              elementCode: st.element.code.internal,
-            })
-          }
-        }
-      }
-    })
-    return findings
-  }
-}
+-- 预置种子数据:
+INSERT INTO t_qc_rule VALUES ('qc_discharge_date', '出院日期 >= 入院日期', 'consistency', 'error', 15, '...',
+  '{"and":[{"var":"HDSD00.01.020"},{"var":"HDSD00.01.010"},{">=":[{"var":"HDSD00.01.020"},{"var":"HDSD00.01.010"}]}]}');
+INSERT INTO t_qc_rule VALUES ('qc_bp_sys_dia', '收缩压 > 舒张压', 'consistency', 'error', 10, '...',
+  '{">":[{"var":"HDSD00.02.001"},{"var":"HDSD00.02.002"}]}');
 ```
 
-### 12.2 质控评分模型
-
-```typescript
-interface QCScore {
-  total: number           // 总分 (0-100)
-  completeness: number    // 完整度得分
-  consistency: number     // 一致性得分
-  standardization: number // 规范性得分
-  grade: 'A' | 'B' | 'C' | 'D'
-  findingCount: { error: number; warning: number; info: number }
-}
-
-class QCScorer {
-  /** 评分权重配置 */
-  private weights = { completeness: 40, consistency: 30, standardization: 30 }
-
-  score(findings: QCFinding[], rules: QCRule[]): QCScore {
-    // 1. 分组: 按规则类型分类
-    const byType = { completeness: findings.filter(f => f.type === 'completeness'),
-                     consistency: findings.filter(f => f.type === 'consistency'),
-                     standardization: findings.filter(f => f.type === 'standardization') }
-
-    // 2. 加权扣分: 每个 error 按规则 weight 扣分，warning 扣一半
-    const calcScore = (fs: QCFinding[], rules: QCRule[], maxScore: number): number => {
-      const totalWeight = rules.reduce((s, r) => s + r.weight, 0) || 1
-      let deducted = 0
-      for (const f of fs) {
-        const rule = rules.find(r => r.id === f.ruleId)
-        const penalty = rule ? rule.weight / totalWeight * maxScore : 0
-        deducted += f.severity === 'error' ? penalty : penalty * 0.5
-      }
-      return Math.max(0, maxScore - deducted)
-    }
-
-    const completeness = calcScore(byType.completeness, rules.filter(r => r.type === 'completeness'), this.weights.completeness)
-    const consistency = calcScore(byType.consistency, rules.filter(r => r.type === 'consistency'), this.weights.consistency)
-    const standardization = calcScore(byType.standardization, rules.filter(r => r.type === 'standardization'), this.weights.standardization)
-    const total = completeness + consistency + standardization
-
-    return {
-      total, completeness, consistency, standardization,
-      grade: total >= 90 ? 'A' : total >= 75 ? 'B' : total >= 60 ? 'C' : 'D',
-      findingCount: { error: findings.filter(f => f.severity === 'error').length,
-                      warning: findings.filter(f => f.severity === 'warning').length,
-                      info: findings.filter(f => f.severity === 'info').length },
-    }
-  }
-}
-```
-
-### 12.3 质控引擎
+### 13.2 索引驱动质控引擎
 
 ```typescript
 class QCEngine {
   private rules: QCRule[] = []
-  private scorer = new QCScorer()
+  private dictCache = new Map<string, Set<string>>()  // dictionary ID → 合法值集合
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null
+  private readonly DEBOUNCE_MS = 1000
+  private worker: Worker | null = null  // Web Worker
 
-  registerRule(rule: QCRule): void { this.rules.push(rule) }
-  registerRules(rules: QCRule[]): void { this.rules.push(...rules) }
+  /** 构建 HDSD 索引 (单次 traverse, 所有规则共享) */
+  private buildIndex(doc: DocumentTree, pool: NodePool): Map<string, SmartTextNode[]> {
+    const index = new Map<string, SmartTextNode[]>()
+    traversePool(pool, doc.id, (node) => {
+      if (node.type === 'smarttext') {
+        const st = node as SmartTextNode
+        const key = st.element.code.internal
+        if (!index.has(key)) index.set(key, [])
+        index.get(key)!.push(st)
+      }
+    })
+    return index
+  }
 
-  /**
-   * 执行全面质控检查
-   *
-   * 触发时机:
-   * - 文档内容变更 (CommandManager.execute 后延迟执行)
-   * - 用户手动触发 (工具栏 "质控检查" 按钮)
-   * - 保存前 (beforeSave 拦截器)
-   */
-  check(document: DocumentTree, pool: NodePool): QCResult {
-    const findings = this.rules.flatMap(rule => rule.check(document, pool))
-    return {
-      findings,
-      score: this.scorer.score(findings, this.rules),
-      timestamp: Date.now(),
-    }
+  /** 编辑后延迟执行 */
+  scheduleCheck(doc: DocumentTree, pool: NodePool): void {
+    if (this.debounceTimer) clearTimeout(this.debounceTimer)
+    this.debounceTimer = setTimeout(() => this.check(doc, pool), this.DEBOUNCE_MS)
+  }
+
+  async check(doc: DocumentTree, pool: NodePool): Promise<QCResult> {
+    const index = this.buildIndex(doc, pool)
+    // JSONLogic 规则在 Web Worker 中执行 (纯函数, 可序列化)
+    const findings = (await Promise.all(
+      this.rules.map(rule => rule.check(doc, pool, index, this.dictCache))
+    )).flat()
+    return { findings, score: new QCScorer().score(findings, this.rules), timestamp: Date.now() }
   }
 }
 
-interface QCResult {
-  findings: QCFinding[]
-  score: QCScore
-  timestamp: number
+// 评分修正:
+class QCScorer {
+  score(findings: QCFinding[], rules: QCRule[]): QCScore {
+    const totalWeight = rules.reduce((s, r) => s + r.weight, 0) || 1
+    const maxDeductionPerRule = (weight: number) => (weight / totalWeight * 100) * 1.5  // cap
+    const byType = { completeness: 0, consistency: 0, standardization: 0 }
+
+    for (const f of findings) {
+      const rule = rules.find(r => r.id === f.ruleId)
+      if (!rule) continue
+      const deduction = Math.min(
+        maxDeductionPerRule(rule.weight),
+        f.severity === 'error' ? rule.weight / totalWeight * 100 : (rule.weight / totalWeight * 100) / 3
+      )
+      byType[f.type] += deduction
+    }
+
+    const completeness     = Math.max(0, 40 - byType.completeness)
+    const consistency      = Math.max(0, 30 - byType.consistency)
+    const standardization  = Math.max(0, 30 - byType.standardization)
+    const total = completeness + consistency + standardization
+    return { total, completeness, consistency, standardization,
+             grade: total >= 90 ? 'A' : total >= 75 ? 'B' : total >= 60 ? 'C' : 'D',
+             findingCount: { error: findings.filter(f=>f.severity==='error').length,
+                             warning: findings.filter(f=>f.severity==='warning').length,
+                             info: findings.filter(f=>f.severity==='info').length }}
+  }
+}
+```
+
+### 13.3 统一文档状态机
+
+```
+                      doctor                    qc_reviewer
+  draft ──提交──→ submitted ──审核──→ reviewed ──→ 归档
+    ↑                │                    │
+    └── 驳回 ←────── rejected ←──────────┘
+         (doctor)     (qc_reviewer)
+
+t_document.status: 唯一状态字段 (替代 t_qc_review.status 双轨)
+  draft → submitted → reviewed / rejected → (rejected→draft)
+
+权限矩阵:
+  submit:    role=doctor
+  review:    role=qc_reviewer + t_document_permission(editor)
+  archive:   role=admin
+```
+
+## 13. 节点池核心语义规则 
+
+**问题**: 文档提出「物理扁平、逻辑树形」，但缺少父子关系、兄弟顺序、遍历范式的硬性约束。
+
+**规则**:
+
+```typescript
+/**
+ * 节点池不可违反的 5 条铁律:
+ *
+ * 1. 【单向引用】父子关系仅通过父节点的 children: string[] 维护。
+ *    节点本身不存储 parentId，禁止双向引用。
+ *    违反后果: 循环依赖、序列化膨胀、移动节点时两处都要更新。
+ *
+ * 2. 【顺序保证】children 数组的顺序 = 文档中的逻辑顺序。
+ *    渲染、遍历、选区计算全部依赖此顺序，禁止任何代码对 children 做非确定性排序。
+ *
+ * 3. 【统一入口】所有 children 数组的增删改必须通过 NodePool 的工具函数:
+ *    pool.insertChild(parentId, childId, index)
+ *    pool.removeChild(parentId, index)
+ *    pool.moveChild(parentId, fromIndex, toIndex)
+ *    禁止直接操作 parent.children.push/splice。违反后果: ID 唯一性检查被绕过，脏数据入库。
+ *
+ * 4. 【ID 不可变】节点 ID 一旦分配，永不修改。cloneWithNewIds() 生成全新 ID。
+ *    禁止手动设置或修改 node.id。违反后果: 缓存失效、引用断裂、协作去重失败。
+ *
+ * 5. 【遍历范式】所有树遍历必须通过 traverse() 函数，按 children 顺序深度优先。
+ *    禁止直接递归访问 children 数组做业务逻辑。违反后果: 遍历逻辑散落，FlowBody/BlockNode[]
+ *    双模分支漏处理。
+ */
+
+class NodePool {
+  private nodes = new Map<string, BaseNode>()
+  private _version = 0
+
+  get version(): number { return this._version }
+
+  /** 插入子节点 (唯一合法入口) */
+  insertChild(parentId: string, childId: string, index: number): void {
+    const parent = this.nodes.get(parentId)
+    if (!parent || !('children' in parent)) throw new Error(`Parent ${parentId} not found or has no children`)
+    const children = (parent as any).children as string[]
+    if (this.nodes.has(childId)) throw new Error(`Duplicate ID: ${childId}`)
+    children.splice(index, 0, childId)
+    this._version++
+  }
+
+  /** 删除子节点 (唯一合法入口) */
+  removeChild(parentId: string, index: number): string {
+    const parent = this.nodes.get(parentId)
+    if (!parent || !('children' in parent)) throw new Error(`Parent ${parentId} not found`)
+    const children = (parent as any).children as string[]
+    const removed = children.splice(index, 1)[0]
+    this.nodes.delete(removed)  // 从节点池移除
+    this._version++
+    return removed
+  }
+
+  /** 获取子节点 ID 列表 (只读) */
+  getChildren(parentId: string): readonly string[] {
+    const parent = this.nodes.get(parentId)
+    return (parent as any)?.children ?? []
+  }
+
+  /** 获取子节点对象列表 (只读, 用于遍历) */
+  getChildNodes(parentId: string): readonly BaseNode[] {
+    return this.getChildren(parentId).map(id => this.nodes.get(id)!).filter(Boolean)
+  }
+}
+```
+
+## 14. 表格模型核心规则 
+
+### 9.1 列宽计算规则
+
+```
+优先级 (高 → 低):
+  1. 固定宽度 (mode='fixed')     — 直接使用 ColumnDefinition.width, 不参与自适应
+  2. 百分比 (mode='percentage')  — 按可用宽度 × (width/100) 计算, 总和超 100% 时等比缩放
+  3. 自适应 (mode='auto')        — 扫描该列所有单元格内容宽度, 取最大值, 剩余空间均分给所有 auto 列
+
+计算流程:
+  availableWidth = pageWidth - marginLeft - marginRight - sum(fixed columns) - sum(percentage columns 换算)
+  each auto column width = max(column.minWidth, availableWidth / autoColumnCount)
+```
+
+### 9.2 合并单元格网格矩阵
+
+```typescript
+/**
+ * MergeMatrix 维护规则:
+ *
+ * 1. matrix.grid[r][c] 存储该位置的单元格 ID
+ * 2. 被 rowspan/colspan 覆盖的格子填充相同的 ID (非 null)
+ * 3. 空位 (被合并而产生的不可达位置) = null
+ * 4. 重建时机: 表格结构变更 (插入/删除行/列, 合并/拆分单元格)
+ * 5. 选区逻辑: 基于 grid 矩阵做矩形选区, 自动跳过 null 格
+ * 6. 命中检测: docX 落在单元格的合并矩形区域内 → 返回主格 ID
+ */
+
+function buildMergeMatrix(table: Table): MergeMatrix {
+  const rows = table.children.length
+  const cols = Math.max(...table.children.map(row =>
+    row.children.reduce((sum, cell) => sum + (cell.colspan || 1), 0)
+  ))
+  const grid: (string | null)[][] = Array.from({ length: rows }, () => Array(cols).fill(null))
+
+  for (let r = 0; r < rows; r++) {
+    let c = 0
+    for (const cell of table.children[r].children) {
+      while (c < cols && grid[r][c] !== null) c++  // 跳过被上方 rowspan 占据的格子
+      const rs = cell.rowspan || 1; const cs = cell.colspan || 1
+      for (let dr = 0; dr < rs; dr++)
+        for (let dc = 0; dc < cs; dc++)
+          if (r + dr < rows && c + dc < cols) grid[r + dr][c + dc] = cell.id
+      c += cs
+    }
+  }
+  return { rows, cols, grid, spans: new Map() }
+}
+```
+
+### 9.3 跨页断表规则
+
+```
+1. 表头重复: Table.pageBreak.repeatHeader=true 时，每页顶部重复第一行 (或前 N 行)
+2. 断行最小高度: Table.pageBreak.minRowsBeforeBreak 指定每页最少保留的行数
+   (避免页面底部只剩 1 行表体，孤行控制)
+3. 单元格内容拆分: 优先在行边界分页，禁止在单元格内部断页
+   (单元格内容超过单页高度时 → 该行独占一页，从下一页开始)
+4. 续接标记: Table.pageBreak.continuationLabel (如 "续表") 渲染在后续页表头上方
+```
+
+## 15. 协作预留的位置锚定约束 
+
+**问题**: 当前 CursorState 用 ID 路径 `string[]` + `offset`，但 Command 中仍有基于下标索引的位置表达。下标在并发编辑下不稳定。
+
+**规则**:
+
+```typescript
+/**
+ * 协作安全的位置锚定铁律:
+ *
+ * 所有位置表达统一采用「节点 ID + 相对偏移」，禁止使用数组下标作为持久化位置。
+ *
+ * 适用范围:
+ *   ✅ CursorState.path + offset      — 已遵循
+ *   ✅ Command 构造函数的位置参数      — 已遵循 (InsertTextCommand 用 path + offset)
+ *   ✅ SelectionState 锚点            — 已遵循
+ *   ❌ deleteRange(para.children, 3, 7) — 违反: 依赖数组下标
+ *   ❌ cursorBlock=2, cursorInline=5   — 违反: 纯下标定位
+ *
+ * 修正:
+ *   1. 废弃 Draw.ts 中的 cursorPage/cursorBlock/cursorInline 三元组
+ *   2. 所有 Handler 发出的位置事件携带 CursorState (path + offset)
+ *   3. 协作同步的 SerializedCommand 中所有位置字段均为 path + offset
+ *
+ * 为什么: CRDT/OT 的核心是并发操作下的位置稳定性。
+ *   - 用户 A 在 paragraph[3] 插入一个字符 → paragraph 变为 [4]
+ *   - 用户 B 的 "delete paragraph[3]" 若用下标, 会误删 A 刚插入的段落
+ *   - 若用节点 ID, B 的 delete 目标是特定 Paragraph ID, 不受 A 的插入影响
+ */
+```
+
+## 16. 核心接口契约骨架 
+
+```typescript
+// ================================================================
+// 编译时强制约束 — 实现者必须遵守，调用方依赖这些契约
+// ================================================================
+
+/** ICommand — 不可变纯数据, invert 传入文档现场  */
+interface ICommand {
+  readonly type: string; readonly id: string; readonly timestamp: number; readonly author: string
+  forward(document: DocumentTree, pool: NodePool): StatePatch | null
+  invert(document: DocumentTree, pool: NodePool): ICommand
+  serialize(): SerializedCommand
 }
 
-interface QCFinding {
-  ruleId: string; severity: 'error' | 'warning' | 'info'
-  type: QCRuleType
-  nodeId: string         // 关联的 SmartTextNode ID (用于渲染时定位)
-  message: string
-  elementCode: string    // HDSD 内部编码 (用于规则注册)
+/** IParticle — 所有可渲染元素的统一接口 */
+interface IParticle extends HitTestable {
+  readonly particleType: string
+  render(layout: ParticleLayout, context: RenderContext): RenderRect
+  measure(context: MeasureContext): { width: number; height: number }
+  hitTest(docX: number, docY: number): string | null
+}
+
+/** ITextShaper — 文本塑形引擎 */
+interface ITextShaper {
+  shape(text: string, font: FontVariant, size: number): Promise<ShapedGlyph[]>
+}
+interface ShapedGlyph {
+  char: string; xAdvance: number; xOffset: number; yOffset: number; glyphId: number
+}
+
+/** IDocumentLoader — 文档格式加载器 */
+interface IDocumentLoader {
+  readonly extensions: string[]; readonly name: string
+  load(source: string | ArrayBuffer, options?: LoadOptions): Promise<DocumentTree>
+  detect(source: string | ArrayBuffer): boolean
+}
+
+/** IPlugin — 插件生命周期 */
+interface IPlugin {
+  readonly name: string; readonly version: string
+  install(ctx: PluginContext): void
+  enable(): void; disable(): void; destroy(): void
+}
+
+/** IInputComposer — 输入法抽象 */
+interface IInputComposer {
+  onCompositionStart(cb: () => void): void
+  onCompositionUpdate(cb: (text: string, cursorRect: DOMRect) => void): void
+  onCompositionEnd(cb: (text: string) => void): void
+  getComposingText(): string; updateCursorRect(rect: DOMRect): void
+  focus(): void; blur(): void; destroy(): void
 }
 ```
 
-### 12.4 质控审核流程
+## 17. 字体加载防抖策略 
 
-```
-文档编写者完成病历
-       │
-       ▼
-  [1. 自动质控] — QCEngine.check()
-       生成 QCFinding[] + QCScore
-       │
-       ▼
-  [2. 编写者修正] — 根据 findings 修改文档
-       质控结果实时更新 (编辑后重新执行 check)
-       │
-       ▼
-  [3. 提交审核] — 状态: draft → pending_review
-       │
-       ▼
-  [4. 质控员审核]
-       ├─ 通过 → 状态: reviewed → 归档
-       └─ 驳回 → 状态: rejected → 返回编写者修正 (回到步骤 2)
-```
+**问题**: 医疗场景排版稳定性要求极高。字体异步加载导致换行/分页偏移属于严重问题。
 
-```sql
--- 质控审核记录表
-CREATE TABLE t_qc_review (
-    id            VARCHAR(64) PRIMARY KEY,
-    document_id   VARCHAR(64) NOT NULL,
-    reviewer_id   VARCHAR(64) NOT NULL,
-    status        VARCHAR(20) NOT NULL COMMENT 'pending_review/reviewed/rejected',
-    score         INT         COMMENT '审核时的质控评分 (0-100)',
-    findings_json JSON        COMMENT '审核时的 QCFinding[] 快照',
-    comment       TEXT        COMMENT '审核意见',
-    created_at    DATETIME    DEFAULT CURRENT_TIMESTAMP,
-    updated_at    DATETIME    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_document_id (document_id),
-    INDEX idx_status (status)
-);
+**规则**:
+
+```typescript
+/**
+ * 字体加载策略:
+ *
+ * 1. 核心字体 (SimSun, SimHei) 必须预加载，在 FontManager.registerAll() 中优先注册
+ * 2. 编辑器初始化流程:
+ *    Editor 构造 → FontManager.ensureReady(['SimSun', 'SimHei']) → 字体就绪
+ *    → 展示加载占位 UI (骨架屏/进度条, 不依赖具体字体度量)
+ *    → 字体就绪后 → 隐藏占位 → 进入编辑态 → 首次 reLayout
+ *
+ * 3. 非核心字体 (用户自定义字体) 异步加载，不阻塞编辑态:
+ *    加载完成前 → 使用 fallback 字体度量 (FontFallback 降级链)
+ *    加载完成后 → 仅重绘受影响区域 (DirtyTracker 标记该字体对应的所有文本)
+ *
+ * 4. 字体加载失败 → 降级到系统默认字体 + console.warn + 上报 font_error
+ *    不阻塞编辑，但状态栏显示 "部分字体未加载"
+ *
+ * 5. 禁止行为:
+ *    - 字体未就绪时进入编辑态 (用户输入后全文重排 → 严重 UX 问题)
+ *    - 字体加载完成后全量 reLayout (应仅标记该字体对应的内容为脏)
+ */
 ```
 
----
+## 18. 模型版本向下兼容规则 
 
-## 23. SDK 集成与公共 API 边界 (v7.0 新增)
+**问题**: 仅定义向前兼容 (旧数据可打开)，未定义版本共存场景的规则。
+
+**规则**:
+
+```typescript
+/**
+ * 模型版本兼容矩阵:
+ *
+ *                   保存端 (写入)
+ *                   v3.0   v4.0   v5.0
+ * 打开端 (读取)   ┌─────────────────────
+ *            v3.0 │  ✅     ❌1    ❌1
+ *            v4.0 │  ✅2    ✅     ❌1
+ *            v5.0 │  ✅2    ✅2    ✅
+ *
+ * ✅  = 正常打开
+ * ❌1 = 拒绝打开，提示 "请升级编辑器"
+ * ✅2 = 静默升级到当前版本，编辑保存后写入当前版本格式
+ *
+ * 规则:
+ * 1. 向前兼容 (必须): 高版本客户端必须能打开低版本文档 (✅2)
+ *    实现: ensureLatestModel() 升级器链
+ *
+ * 2. 保存时强制升级: 编辑后保存时，无论原版本，均写入当前 MODEL_VERSION
+ *    实现: saveDocument() 强制设置 doc.metadata.modelVersion = MODEL_VERSION
+ *
+ * 3. 低版本拒绝高版本文档 (必须): 低版本客户端遇到更高版本 → 拒绝
+ *    实现: if (doc.modelVersion > CLIENT_MODEL_VERSION) throw new VersionError()
+ *    原因: 低版本不知道新字段的语义，静默丢弃会导致数据丢失
+ *
+ * 4. 破坏性升级 (MAJOR 变更): 必须提供「向前兼容读取 + 静默升级保存」路径
+ *    如 v3→v4 (children 从对象引用改为 ID 数组): upgrader 同时支持两种格式读取
+ *
+ * 5. 非破坏性升级 (MINOR/PATCH): 旧版本客户端可忽略新字段 (JSON 序列化保留未知字段)
+ *    实现: JSON.parse/stringify 天然保留未知字段，低版本不会丢失新字段数据
+ */
+```
+
+## 19. 布局中间格式定义 
+
+```typescript
+/**
+ * 标准布局中间格式 (Standard Layout Intermediate Format, SLIF)
+ *
+ * 目的: 前端排版引擎和后端导出引擎共享同一个布局计算结果，
+ *       保证「所见即所得」—— Canvas 上看到的和 PDF 打印出的完全一致。
+ *
+ * 流程: DocumentTree → LayoutEngine → SLIF JSON → Canvas 渲染 / iText PDF 渲染
+ */
+
+interface SLIF {
+  version: string                  // 布局引擎版本 (与 modelVersion 解耦)
+  documentId: string
+  pageSetup: PageSetup
+  pages: SLIFPage[]
+}
+
+interface SLIFPage {
+  pageIndex: number
+  width: number; height: number
+  items: SLIFItem[]
+}
+
+interface SLIFItem {
+  type: string                     // 'text' | 'table' | 'image' | 'control'
+  text?: string                    // 文本内容 (type='text')
+  x: number; y: number            // 逻辑坐标 (文档坐标系)
+  width: number; height: number
+  ascent: number; descent: number
+  font: string; size: number
+  bold?: boolean; italic?: boolean
+  underline?: boolean; strikeout?: boolean
+  color?: string; highlight?: string
+  superscript?: boolean; subscript?: boolean
+  // table 扩展: rows: SLIFRow[], image 扩展: imageUrl, 等等
+}
+```
+
+## 20. SDK 集成与公共 API 边界 
 
 **问题**: Editor 门面没有明确划分「公开稳定 API」和「内部实现」。第三方集成时可能直接调用 Draw、NodePool 内部方法，内核重构会导致外部崩溃。
 
@@ -4287,16 +4242,16 @@ interface EditorConfig {
 
 所有定制需求走插件化入口, 禁止改内核:
 
-| 扩展点 | 接口 | 用途 |
-|--------|------|------|
-| 自定义节点类型 | `ctx.registerNodeType(type, factory)` | 注册新的 BlockNode/InlineNode 子类型 |
-| 自定义渲染粒子 | `ctx.registerParticle(particle)` | 注册节点类型对应的 IParticle 渲染器 |
-| 自定义命令 | `ctx.registerCommand(type, ctor)` | 注册新的 ICommand (含快捷键绑定) |
-| 自定义校验规则 | `ctx.registerQCRule(rule)` | 注册 QCRule (完整性/一致性/规范性) |
-| 自定义工具栏 | `ctx.registerToolbarItem(group, item)` | 添加/替换/禁用工具栏按钮 |
-| 自定义右键菜单 | `ctx.registerContextMenuItem(item)` | 添加/替换/禁用右键菜单项 |
-| 自定义 SmartText 渲染 | `ctx.registerSmartTextRenderer(type, renderer)` | 覆盖特定 SmartText 控件的渲染与交互 |
-| 自定义加载器 | `ctx.registerLoader(loader)` | 注册新的 IDocumentLoader (支持新格式) |
+| 扩展点                | 接口                                              | 用途                                  |
+| --------------------- | ------------------------------------------------- | ------------------------------------- |
+| 自定义节点类型        | `ctx.registerNodeType(type, factory)`           | 注册新的 BlockNode/InlineNode 子类型  |
+| 自定义渲染粒子        | `ctx.registerParticle(particle)`                | 注册节点类型对应的 IParticle 渲染器   |
+| 自定义命令            | `ctx.registerCommand(type, ctor)`               | 注册新的 ICommand (含快捷键绑定)      |
+| 自定义校验规则        | `ctx.registerQCRule(rule)`                      | 注册 QCRule (完整性/一致性/规范性)    |
+| 自定义工具栏          | `ctx.registerToolbarItem(group, item)`          | 添加/替换/禁用工具栏按钮              |
+| 自定义右键菜单        | `ctx.registerContextMenuItem(item)`             | 添加/替换/禁用右键菜单项              |
+| 自定义 SmartText 渲染 | `ctx.registerSmartTextRenderer(type, renderer)` | 覆盖特定 SmartText 控件的渲染与交互   |
+| 自定义加载器          | `ctx.registerLoader(loader)`                    | 注册新的 IDocumentLoader (支持新格式) |
 
 ```typescript
 // 插件接入方式 — 与内核完全解耦
@@ -4315,8 +4270,7 @@ const myPlugin: IPlugin = {
 editor.use(myPlugin)
 ```
 
-
-### 7.5 可观测性 (v6.0 新增)
+### 7.5 可观测性 
 
 #### 7.5.1 性能埋点
 
@@ -4394,394 +4348,562 @@ interface BusinessMetrics {
 }
 ```
 
----
+### 7.6 性能指标测量规则 
 
-### 7.6 性能指标测量规则 (v6.0 新增)
+| 指标             | 计时起点                          | 计时终点                                               | 测量方法                                                                                   |
+| ---------------- | --------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| 10 页文档加载    | `fetch()` 调用                  | `Editor` 构造完成 + 首帧渲染完成                     | `performance.measure('doc-load', 'fetch-start', 'first-render-end')`                     |
+| 单次编辑响应延迟 | `keydown` 事件触发              | `requestAnimationFrame` 回调中交互层 Canvas 绘制完成 | `const t0=performance.now(); rAF(()=>{ metrics.keystrokeLatency=performance.now()-t0 })` |
+| 连续打字帧率     | 同上，采样 100 次                 | 计算 100 次 keystrokeLatency 的 P95                    | 丢弃前 10 次预热，统计后 90 次                                                             |
+| 100 页分页计算   | `PageBreaker.breakPages()` 调用 | `IPage[]` 返回                                       | `performance.measure('page-break', ...)`                                                 |
+| 自动保存响应     | `AutoSaveManager.save()` 调用   | API 响应解析完成 (或 IndexedDB 写入完成)               | 分别计时 IndexedDB 和 API 两段                                                             |
 
-| 指标 | 计时起点 | 计时终点 | 测量方法 |
-|------|----------|----------|----------|
-| 10 页文档加载 | `fetch()` 调用 | `Editor` 构造完成 + 首帧渲染完成 | `performance.measure('doc-load', 'fetch-start', 'first-render-end')` |
-| 单次编辑响应延迟 | `keydown` 事件触发 | `requestAnimationFrame` 回调中交互层 Canvas 绘制完成 | `const t0=performance.now(); rAF(()=>{ metrics.keystrokeLatency=performance.now()-t0 })` |
-| 连续打字帧率 | 同上，采样 100 次 | 计算 100 次 keystrokeLatency 的 P95 | 丢弃前 10 次预热，统计后 90 次 |
-| 100 页分页计算 | `PageBreaker.breakPages()` 调用 | `IPage[]` 返回 | `performance.measure('page-break', ...)` |
-| 自动保存响应 | `AutoSaveManager.save()` 调用 | API 响应解析完成 (或 IndexedDB 写入完成) | 分别计时 IndexedDB 和 API 两段 |
+## 21. SDK 交付基线 
 
----
-
-## 15. 节点池核心语义规则 (v6.0 新增)
-
-**问题**: 文档提出「物理扁平、逻辑树形」，但缺少父子关系、兄弟顺序、遍历范式的硬性约束。
-
-**规则**:
+### 24.1 生命周期与资源销毁契约 (P0)
 
 ```typescript
 /**
- * 节点池不可违反的 5 条铁律:
+ * 编辑器全生命周期 — 6 个阶段
  *
- * 1. 【单向引用】父子关系仅通过父节点的 children: string[] 维护。
- *    节点本身不存储 parentId，禁止双向引用。
- *    违反后果: 循环依赖、序列化膨胀、移动节点时两处都要更新。
+ * init → mount → ready → (pause/resume) → unmount → destroy
  *
- * 2. 【顺序保证】children 数组的顺序 = 文档中的逻辑顺序。
- *    渲染、遍历、选区计算全部依赖此顺序，禁止任何代码对 children 做非确定性排序。
- *
- * 3. 【统一入口】所有 children 数组的增删改必须通过 NodePool 的工具函数:
- *    pool.insertChild(parentId, childId, index)
- *    pool.removeChild(parentId, index)
- *    pool.moveChild(parentId, fromIndex, toIndex)
- *    禁止直接操作 parent.children.push/splice。违反后果: ID 唯一性检查被绕过，脏数据入库。
- *
- * 4. 【ID 不可变】节点 ID 一旦分配，永不修改。cloneWithNewIds() 生成全新 ID。
- *    禁止手动设置或修改 node.id。违反后果: 缓存失效、引用断裂、协作去重失败。
- *
- * 5. 【遍历范式】所有树遍历必须通过 traverse() 函数，按 children 顺序深度优先。
- *    禁止直接递归访问 children 数组做业务逻辑。违反后果: 遍历逻辑散落，FlowBody/BlockNode[]
- *    双模分支漏处理。
+ * 强制规则: 所有内部模块必须实现对应的清理方法，由 Editor 统一调度。
+ * 禁止模块私自持有全局定时器、DOM 事件监听。
  */
 
-class NodePool {
-  private nodes = new Map<string, BaseNode>()
-  private _version = 0
+interface Disposable {
+  /** 释放资源: 解绑事件、清除定时器、释放 Canvas/缓存/Worker */
+  dispose(): void
+}
 
-  get version(): number { return this._version }
+// 所有内部模块实现 Disposable:
+//   FontManager.dispose()    — 释放字体缓存, 取消未完成的加载
+//   TextMeasurer.dispose()   — 清除 LRU 缓存
+//   LayeredRenderer.dispose()— 停止光标闪烁定时器, 移除三层 Canvas
+//   EventBus.dispose()       — 清空所有监听器
+//   InputComposer.dispose()  — 移除隐藏 textarea, 解绑 composition 事件
+//   AutoSaveManager.dispose()— 清除防抖定时器, 关闭 IndexedDB 连接
+//   CommandUndoRedoStack.dispose() — 清空历史栈
+//   LayoutCache.dispose()    — 清空三级缓存
 
-  /** 插入子节点 (唯一合法入口) */
-  insertChild(parentId: string, childId: string, index: number): void {
-    const parent = this.nodes.get(parentId)
-    if (!parent || !('children' in parent)) throw new Error(`Parent ${parentId} not found or has no children`)
-    const children = (parent as any).children as string[]
-    if (this.nodes.has(childId)) throw new Error(`Duplicate ID: ${childId}`)
-    children.splice(index, 0, childId)
-    this._version++
+interface IEditor {
+  // 生命周期钩子
+  onMount(callback: () => void): () => void
+  onReady(callback: () => void): () => void
+  onPause(callback: () => void): () => void
+  onResume(callback: () => void): () => void
+  onUnmount(callback: () => void): () => void
+  onDestroy(callback: () => void): () => void
+
+  /** 暂停 — 释放非必要资源 (离开视口时调用), 可恢复 */
+  pause(): void
+  /** 恢复 — 重新挂载暂停时释放的资源 */
+  resume(): void
+  /** 销毁 — 最终清理, 不可恢复 */
+  destroy(): void
+}
+
+// 使用示例 (React Tab 切换):
+// tab.onHide   → editor.pause()   // 释放 Canvas, 停止光标闪烁, 保留文档数据
+// tab.onShow   → editor.resume()  // 重建 Canvas, 恢复光标
+// tab.onClose  → editor.destroy() // 完全销毁
+```
+
+### 24.2 标准化错误体系 (P0)
+
+```typescript
+type ErrorSeverity = 'fatal' | 'error' | 'warn'
+
+interface EditorError {
+  /** 错误码 (机器可读, 用于集成方自动处理) */
+  code: EditorErrorCode
+  severity: ErrorSeverity
+  message: string
+  cause?: Error
+  timestamp: number
+  /** 是否为可恢复错误 (fatal=false) */
+  recoverable: boolean
+}
+
+type EditorErrorCode =
+  // Fatal: 编辑器无法继续工作
+  | 'E_RENDER_CONTEXT_LOST'   // Canvas 2D context 丢失
+  | 'E_DOCUMENT_CORRUPTED'    // 文档结构损坏, 无法解析
+  // Error: 功能降级, 不影响核心编辑
+  | 'E_WASM_LOAD_FAILED'      // WASM 加载失败 → 降级 Canvas measureText
+  | 'E_FONT_LOAD_FAILED'      // 字体加载失败 → 降级系统默认字体
+  | 'E_SAVE_FAILED'           // 保存失败 → IndexedDB 兜底
+  | 'E_LOAD_FAILED'           // 加载失败 → 尝试 localStorage 备份
+  | 'E_LAYOUT_FAILED'         // 布局异常 → 降级全量重布局
+  | 'E_RENDER_FAILED'         // 渲染异常 → 降级占位符
+  // Warn: 不影响使用
+  | 'W_PASTE_FILTERED'        // 粘贴内容被过滤
+  | 'W_NODE_INCOMPATIBLE'     // 节点类型不兼容, 已跳过
+  | 'W_VALIDATION_FAILED'     // 模型校验失败 (已自动修复)
+
+/** 对外统一错误入口 */
+interface IEditor {
+  onError(callback: (error: EditorError) => void): () => void
+}
+
+/** 节点级错误边界 — 单个节点渲染失败不导致整份文档崩溃 */
+function safeRenderParticle(particle: IParticle, layout: ParticleLayout, ctx: RenderContext): RenderRect {
+  try { return particle.render(layout, ctx) }
+  catch (err) {
+    emitError({ code: 'E_RENDER_FAILED', severity: 'error',
+                message: `Particle ${particle.particleType} render failed`, cause: err,
+                timestamp: Date.now(), recoverable: true })
+    return renderPlaceholder(layout, ctx)  // 红色占位框
   }
+}
+```
 
-  /** 删除子节点 (唯一合法入口) */
-  removeChild(parentId: string, index: number): string {
-    const parent = this.nodes.get(parentId)
-    if (!parent || !('children' in parent)) throw new Error(`Parent ${parentId} not found`)
-    const children = (parent as any).children as string[]
-    const removed = children.splice(index, 1)[0]
-    this.nodes.delete(removed)  // 从节点池移除
-    this._version++
-    return removed
+### 24.3 数据格式兼容性对外承诺 (P0)
+
+```
+对外交付承诺 — 写入对外文档和协议:
+
+1. 向后兼容 (Forward Compatible):
+   新版本编辑器 100% 能打开所有历史版本文档。
+   旧数据通过 ensureLatestModel() 自动静默升级到当前版本。
+   升级过程不丢失任何数据, 仅添加新字段/migrate 旧结构。
+
+2. 向前兼容 (Backward Compatible):
+   旧版本编辑器打开新版本文档:
+   - JSON 序列化保留未知字段 (不掉字段)
+   - 不支持的功能降级展示: SmartTextNode 渲染为只读文本, 新节点类型显示占位符
+   - 降级展示的文档可编辑保存, 保存后保留未知字段 (不会因降级而丢失数据)
+
+3. 兼容周期:
+   - MAJOR 版本间兼容保证 ≥ 5 年
+   - 医疗数据保存周期: 门诊 15 年, 住院 30 年, 编辑器需保证此周期内数据可读
+   - 每个 MAJOR 版本提供独立的数据迁移工具, 支持离线批量转换
+```
+
+### 24.4 主题与样式定制 (P1)
+
+```typescript
+interface EditorTheme {
+  // 纸张
+  pageBackground: string       // 默认 #FFFFFF
+  pageShadow: string           // 默认 rgba(0,0,0,0.08)
+  // 页边距
+  marginLineColor: string      // 默认 #E5E7EB
+  // 文本
+  defaultFontFamily: string    // 默认 'SimSun'
+  defaultFontSize: number      // 默认 16
+  defaultTextColor: string     // 默认 #000000
+  // 光标
+  cursorColor: string          // 默认 #3B82F6
+  cursorWidth: number          // 默认 2
+  // 选区
+  selectionColor: string       // 默认 rgba(59,130,246,0.25)
+  // 网格
+  gridLineColor: string        // 默认 #E5E7EB
+  // 表格
+  tableBorderColor: string     // 默认 #D1D5DB
+  tableHeaderBackground: string// 默认 #F3F4F6
+  // 校验
+  errorBorderColor: string     // 默认 #EF4444
+  warningBorderColor: string   // 默认 #F59E0B
+  // 水印
+  watermarkColor: string       // 默认 #000000
+  watermarkOpacity: number     // 默认 0.08
+}
+
+// 内置预设
+const THEMES = {
+  standard: { /* 标准病历模式 */ },
+  eyeCare:  { pageBackground: '#F5F0E8', defaultFontSize: 18 /* 护眼模式 */ },
+  print:    { pageBackground: '#FFFFFF', pageShadow: 'none', cursorColor: 'transparent' },
+  dark:     { pageBackground: '#1F2937', defaultTextColor: '#E5E7EB', /* ... */ },
+}
+
+interface IEditor {
+  setTheme(theme: Partial<EditorTheme>): void
+  getTheme(): EditorTheme
+  resetTheme(): void  // 恢复默认
+}
+```
+
+### 24.5 性能分级与可配置阈值 (P1)
+
+```typescript
+interface EditorPerformanceConfig {
+  maxUndoDepth: number          // 默认 100, 范围 10-500
+  maxNodeCount: number          // 默认 50000, 超出触发虚拟滚动
+  fontCacheSize: number         // 默认 2000
+  incrementalRenderThreshold: number // 默认 50 (节点数), 超过此值触发增量渲染
+  virtualScrollThreshold: number    // 默认 10 (页), 超过此值触发虚拟滚动
+  renderPrecision: 'high' | 'normal' | 'low'  // 渲染精度
+}
+
+// 三级模式预设
+const PERFORMANCE_MODES = {
+  quality: {  // 医生工作站: 全开 WASM, 高精度渲染
+    maxUndoDepth: 200, renderPrecision: 'high', virtualScrollThreshold: 20,
+  },
+  balanced: { // 默认
+    maxUndoDepth: 100, renderPrecision: 'normal', virtualScrollThreshold: 10,
+  },
+  performance: { // 低配办公机: 关闭复杂排版, 降级渲染
+    maxUndoDepth: 30, renderPrecision: 'low', virtualScrollThreshold: 3,
+    fontCacheSize: 500, incrementalRenderThreshold: 10,
+  },
+  readonly: {  // 只读模式: 关闭所有编辑, 极致渲染
+    maxUndoDepth: 0, renderPrecision: 'normal', virtualScrollThreshold: 5,
+  },
+}
+
+interface IEditor {
+  setPerformanceConfig(config: Partial<EditorPerformanceConfig>): void
+  setPerformanceMode(mode: 'quality' | 'balanced' | 'performance' | 'readonly'): void
+}
+```
+
+### 24.6 安全沙箱与权限管控 (P1)
+
+```typescript
+interface EditorSecurityConfig {
+  /** 网络权限 — 默认全部关闭 */
+  network: {
+    allowFontDownload: boolean    // 默认 false, 字体由外部传入
+    allowImageLoad: boolean       // 默认 false, 图片由外部传入
+    allowWasmRemote: boolean      // 默认 false, WASM 由外部传入
   }
-
-  /** 获取子节点 ID 列表 (只读) */
-  getChildren(parentId: string): readonly string[] {
-    const parent = this.nodes.get(parentId)
-    return (parent as any)?.children ?? []
+  /** 文件权限 — 默认关闭敏感操作 */
+  file: {
+    allowPasteImage: boolean      // 默认 true
+    allowExportDownload: boolean  // 默认 true
+    allowLocalCache: boolean      // 默认 true (IndexedDB/localStorage)
+    allowPrint: boolean           // 默认 true
   }
-
-  /** 获取子节点对象列表 (只读, 用于遍历) */
-  getChildNodes(parentId: string): readonly BaseNode[] {
-    return this.getChildren(parentId).map(id => this.nodes.get(id)!).filter(Boolean)
+  /** 数据权限 — 涉密病历 */
+  data: {
+    allowCopy: boolean            // 默认 true
+    allowCut: boolean             // 默认 true
+    allowExport: boolean          // 默认 true
+    allowPrint: boolean           // 默认 true
+  }
+  /** 脚本权限 */
+  script: {
+    allowPlugins: boolean         // 默认 true
+    allowCustomNodes: boolean     // 默认 true
+    xssFilter: boolean            // 默认 true, 粘贴内容强制过滤
   }
 }
+
+// 默认: EditorSecurityConfig 所有敏感能力关闭, 由集成方显式开启
+const DEFAULT_SECURITY: EditorSecurityConfig = {
+  // 默认全 false, 集成方按场景白名单开启
+  network: { allowFontDownload: false, allowImageLoad: false, allowWasmRemote: false },
+  file:    { allowPasteImage: false, allowExportDownload: false, allowLocalCache: true, allowPrint: false },
+  data:    { allowCopy: false, allowCut: false, allowExport: false, allowPrint: false },
+  script:  { allowPlugins: false, allowCustomNodes: false, xssFilter: true },
+}
+// 场景预设:
+// 医院内网(涉密): data 全 false, network 全 false
+// 通用编辑:     data.allowCopy=true, file.allowExportDownload=true
+// 开发者模式:   script 全 true
+
+interface IEditor {
+  setSecurityConfig(config: Partial<EditorSecurityConfig>): void
+}
 ```
 
----
-
-## 16. 表格模型核心规则 (v6.0 新增)
-
-### 9.1 列宽计算规则
-
-```
-优先级 (高 → 低):
-  1. 固定宽度 (mode='fixed')     — 直接使用 ColumnDefinition.width, 不参与自适应
-  2. 百分比 (mode='percentage')  — 按可用宽度 × (width/100) 计算, 总和超 100% 时等比缩放
-  3. 自适应 (mode='auto')        — 扫描该列所有单元格内容宽度, 取最大值, 剩余空间均分给所有 auto 列
-
-计算流程:
-  availableWidth = pageWidth - marginLeft - marginRight - sum(fixed columns) - sum(percentage columns 换算)
-  each auto column width = max(column.minWidth, availableWidth / autoColumnCount)
-```
-
-### 9.2 合并单元格网格矩阵
+### 24.7 诊断与排障 (P2)
 
 ```typescript
-/**
- * MergeMatrix 维护规则:
- *
- * 1. matrix.grid[r][c] 存储该位置的单元格 ID
- * 2. 被 rowspan/colspan 覆盖的格子填充相同的 ID (非 null)
- * 3. 空位 (被合并而产生的不可达位置) = null
- * 4. 重建时机: 表格结构变更 (插入/删除行/列, 合并/拆分单元格)
- * 5. 选区逻辑: 基于 grid 矩阵做矩形选区, 自动跳过 null 格
- * 6. 命中检测: docX 落在单元格的合并矩形区域内 → 返回主格 ID
- */
+interface EditorDiagnostics {
+  version: { engine: string; modelVersion: string; buildDate: string }
+  config: { theme: EditorTheme; performance: EditorPerformanceConfig; security: EditorSecurityConfig }
+  document: { pageCount: number; nodeCount: number; smartTextCount: number; fileSize: number }
+  performance: { avgKeystrokeLatency: number; avgRenderFrameTime: number; avgLayoutTime: number; cacheHitRate: number }
+  errors: EditorError[]                  // 错误历史 (最近 100 条)
+  environment: { userAgent: string; platform: string; screenResolution: string; devicePixelRatio: number }
+  memory?: { usedJSHeapSize: number }     // performance.memory (Chrome)
+}
 
-function buildMergeMatrix(table: Table): MergeMatrix {
-  const rows = table.children.length
-  const cols = Math.max(...table.children.map(row =>
-    row.children.reduce((sum, cell) => sum + (cell.colspan || 1), 0)
-  ))
-  const grid: (string | null)[][] = Array.from({ length: rows }, () => Array(cols).fill(null))
-
-  for (let r = 0; r < rows; r++) {
-    let c = 0
-    for (const cell of table.children[r].children) {
-      while (c < cols && grid[r][c] !== null) c++  // 跳过被上方 rowspan 占据的格子
-      const rs = cell.rowspan || 1; const cs = cell.colspan || 1
-      for (let dr = 0; dr < rs; dr++)
-        for (let dc = 0; dc < cs; dc++)
-          if (r + dr < rows && c + dc < cols) grid[r + dr][c + dc] = cell.id
-      c += cs
-    }
-  }
-  return { rows, cols, grid, spans: new Map() }
+interface IEditor {
+  /** 开启 debug 日志 (输出渲染/布局/命令耗时与参数) */
+  setLogLevel(level: 'off' | 'error' | 'warn' | 'debug'): void
+  /** 一键导出诊断报告 */
+  dumpDiagnostics(): EditorDiagnostics
+  /** 显示性能面板 (FPS/布局耗时/渲染耗时/内存) */
+  showPerfPanel(visible: boolean): void
 }
 ```
 
-### 9.3 跨页断表规则
-
-```
-1. 表头重复: Table.pageBreak.repeatHeader=true 时，每页顶部重复第一行 (或前 N 行)
-2. 断行最小高度: Table.pageBreak.minRowsBeforeBreak 指定每页最少保留的行数
-   (避免页面底部只剩 1 行表体，孤行控制)
-3. 单元格内容拆分: 优先在行边界分页，禁止在单元格内部断页
-   (单元格内容超过单页高度时 → 该行独占一页，从下一页开始)
-4. 续接标记: Table.pageBreak.continuationLabel (如 "续表") 渲染在后续页表头上方
-```
-
----
-
-## 17. 协作预留的位置锚定约束 (v6.0 新增)
-
-**问题**: 当前 CursorState 用 ID 路径 `string[]` + `offset`，但 Command 中仍有基于下标索引的位置表达。下标在并发编辑下不稳定。
-
-**规则**:
+### 24.8 国际化 i18n (P2)
 
 ```typescript
-/**
- * 协作安全的位置锚定铁律:
- *
- * 所有位置表达统一采用「节点 ID + 相对偏移」，禁止使用数组下标作为持久化位置。
- *
- * 适用范围:
- *   ✅ CursorState.path + offset      — 已遵循
- *   ✅ Command 构造函数的位置参数      — 已遵循 (InsertTextCommand 用 path + offset)
- *   ✅ SelectionState 锚点            — 已遵循
- *   ❌ deleteRange(para.children, 3, 7) — 违反: 依赖数组下标
- *   ❌ cursorBlock=2, cursorInline=5   — 违反: 纯下标定位
- *
- * 修正:
- *   1. 废弃 Draw.ts 中的 cursorPage/cursorBlock/cursorInline 三元组
- *   2. 所有 Handler 发出的位置事件携带 CursorState (path + offset)
- *   3. 协作同步的 SerializedCommand 中所有位置字段均为 path + offset
- *
- * 为什么: CRDT/OT 的核心是并发操作下的位置稳定性。
- *   - 用户 A 在 paragraph[3] 插入一个字符 → paragraph 变为 [4]
- *   - 用户 B 的 "delete paragraph[3]" 若用下标, 会误删 A 刚插入的段落
- *   - 若用节点 ID, B 的 delete 目标是特定 Paragraph ID, 不受 A 的插入影响
- */
+type LocaleKey =
+  // 工具栏
+  | 'toolbar.undo' | 'toolbar.redo' | 'toolbar.bold' | 'toolbar.italic' | 'toolbar.underline'
+  | 'toolbar.fontSize' | 'toolbar.fontFamily' | 'toolbar.textColor'
+  | 'toolbar.insertTable' | 'toolbar.insertImage'
+  | 'toolbar.save' | 'toolbar.print' | 'toolbar.export'
+  // 右键菜单
+  | 'contextmenu.cut' | 'contextmenu.copy' | 'contextmenu.paste' | 'contextmenu.delete'
+  | 'contextmenu.selectAll'
+  // 状态栏
+  | 'status.pageInfo' | 'status.wordCount' | 'status.saved' | 'status.saving' | 'status.unsaved'
+  | 'status.online' | 'status.offline'
+  // 错误
+  | 'error.documentCorrupted' | 'error.renderFailed' | 'error.saveFailed'
+  | 'error.fontLoadFailed' | 'error.wasmLoadFailed'
+  // 质控
+  | 'qc.completeness' | 'qc.consistency' | 'qc.standardization'
+  | 'qc.score' | 'qc.pass' | 'qc.fail'
+  // ...
+
+type LocaleMessages = Partial<Record<LocaleKey, string>>
+
+interface IEditor {
+  /** 设置语言包 (可只覆盖部分 key) */
+  setLocale(messages: LocaleMessages): void
+  /** 获取当前语言包 */
+  getLocale(): LocaleMessages
+}
+
+// 内置: zh-CN (默认), en-US
+// 第三方: editor.setLocale({ 'toolbar.bold': '**B**', ... })
 ```
 
----
+## 22. AI 原生能力架构 
 
-## 18. 核心接口契约骨架 (v6.0 新增)
+**核心思路**: 引擎对外包装为 MCP (Model Context Protocol) Server，大模型通过结构化接口操作 DocumentTree。AI 操作和人工编辑共用同一套 ICommand 命令体系——AI 发出的 InsertTextCommand 与医生键盘输入的走完全相同的 forward/invert/undo 管线。零特权、零后门。
+
+### 29.1 架构总览
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    MCP Client (Claude / GPT / ...)                    │
+│  通过 stdio/HTTP 与 MCP Server 通信，获取 tools/resources/prompts    │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │ MCP Protocol (JSON-RPC)
+┌────────────────────────────▼────────────────────────────────────────┐
+│                      MCP Server (包装层)                             │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  Tools: 操作类 (AI 可调用的命令)                              │   │
+│  │  - document.load / document.create / document.save            │   │
+│  │  - editor.insert_text / editor.delete_range / editor.format   │   │
+│  │  - editor.insert_table / editor.insert_smarttext              │   │
+│  │  - qc.check / qc.score / qc.rules.list                       │   │
+│  │  - template.apply / template.list                             │   │
+│  ├──────────────────────────────────────────────────────────────┤   │
+│  │  Resources: 数据类 (文档树的只读视图)                         │   │
+│  │  - document://{id}/tree         → DocumentTree JSON           │   │
+│  │  - document://{id}/smarttexts   → SmartTextNode[] (结构化字段) │   │
+│  │  - document://{id}/structure    → 章节/段落/表格 大纲          │   │
+│  │  - document://{id}/hdsd/{code} → 按 HDSD 编码查字段值         │   │
+│  ├──────────────────────────────────────────────────────────────┤   │
+│  │  Prompts: 模板类 (预置 Agent 提示词)                          │   │
+│  │  - 入院记录生成 / 病程记录续写 / 质控检查 / 诊断编码建议       │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                              │                                       │
+│              ┌───────────────┴───────────────┐                       │
+│              ▼                               ▼                       │
+│     ┌────────────────┐              ┌────────────────┐              │
+│     │  IEditor API   │              │  ICommand 体系   │              │
+│     │  getDocument() │              │  execCommand()  │              │
+│     │  undo/redo     │              │  forward/invert │              │
+│     └────────────────┘              └────────────────┘              │
+│              │                               │                       │
+│              └───────────────┬───────────────┘                       │
+│                              ▼                                       │
+│              引擎内核 (DocumentTree + NodePool + LayoutEngine + ...) │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 29.2 MCP Tools 接口定义
 
 ```typescript
-// ================================================================
-// 编译时强制约束 — 实现者必须遵守，调用方依赖这些契约
-// ================================================================
+// MCP Server 暴露的 Tool 列表 — 每个 Tool 对应一个 ICommand 或引擎 API 调用
 
-/** ICommand — 所有编辑操作的标准封装 */
-interface ICommand {
-  readonly type: string
-  readonly id: string
-  readonly timestamp: number
-  readonly author: string
-  forward(document: DocumentTree, pool: NodePool): StatePatch | null
-  invert(): ICommand
-  serialize(): SerializedCommand  // { type, id, timestamp, author, payload: {...} }
-}
-type SerializedCommand = Record<string, unknown>
+const MCP_TOOLS = {
+  // ---- 文档操作 ----
+  'document.load': {
+    description: '加载文档。支持 JSON/XML(HL7 CDA)/HTML/Markdown 自动检测。',
+    input: { documentId: 'string', format?: 'json'|'xml'|'html'|'markdown' },
+    handler: async (args) => { const doc = await documentLoader.load(args.source); return doc }
+  },
+  'document.create': {
+    description: '创建空白文档，可选指定模板。',
+    input: { title: 'string', templateId?: 'string' },
+    handler: (args) => createDocument(args.title)
+  },
+  'document.save': {
+    description: '保存文档到后端。',
+    input: { documentId: 'string' },
+    handler: async (args) => { await apiClient.save(args.documentId, editor.getDocument()) }
+  },
 
-/** IParticle — 所有可渲染元素的统一接口 */
-interface IParticle extends HitTestable {
-  readonly particleType: string
-  render(layout: ParticleLayout, context: RenderContext): RenderRect
-  measure(context: MeasureContext): { width: number; height: number }
-  hitTest(docX: number, docY: number): string | null
+  // ---- 编辑操作 (与人工编辑共用 ICommand) ----
+  'editor.insert_text': {
+    description: '在指定段落插入文本。paragraphPath 最后一项为 Paragraph ID，offset 为字符偏移 (UTF-16 码元)。',
+    input: { paragraphPath: 'string[]', offset: 'number', text: 'string', style?: 'TextStyle' },
+    handler: (args) => editor.execCommand(new InsertTextCommand(generateId(), Date.now(), 'ai', args.paragraphPath, args.offset, args.text, args.style))
+  },
+  'editor.delete_range': {
+    description: '删除指定范围的文本。',
+    input: { path: 'string[]', startOffset: 'number', endOffset: 'number' },
+    handler: (args) => editor.execCommand(new DeleteRangeCommand(generateId(), Date.now(), 'ai', args.path, args.startOffset, args.endOffset))
+  },
+  'editor.format': {
+    description: '对指定节点应用/取消样式。',
+    input: { nodeIds: 'string[]', changes: 'TextStyle' },
+    handler: (args) => editor.execCommand(new FormatTextCommand(generateId(), Date.now(), 'ai', args.nodeIds, args.changes))
+  },
+  'editor.insert_table': {
+    description: '在文档末尾插入表格。',
+    input: { rows: 'number', cols: 'number', headers?: 'string[]' },
+    handler: (args) => editor.execCommand(new InsertBlockCommand(generateId(), Date.now(), 'ai', [doc.body.id], doc.body.children.length, createSimpleTable(args.rows, args.cols)))
+  },
+  'editor.insert_smarttext': {
+    description: '插入结构化字段 (SmartTextNode)。',
+    input: { path: 'string[]', offset: 'number', hdsdCode: 'string', value: 'string' },
+    handler: (args) => { /* findByInternal → 获取 ElementMeta → createSmartTextNode → InsertTextCommand */ }
+  },
+
+  // ---- 质控 ----
+  'qc.check': {
+    description: '对文档执行质控检查，返回 findings[] + score。',
+    input: { documentId: 'string' },
+    handler: async (args) => { const doc = await loadDocument(args.documentId); return qcEngine.check(doc, pool) }
+  },
+  'qc.rules.list': {
+    description: '列出所有已注册的质控规则。',
+    handler: () => qcEngine.getRules()
+  },
+
+  // ---- 模板 ----
+  'template.apply': {
+    description: '将模板应用到当前文档 (替换 body)。',
+    input: { documentId: 'string', templateId: 'string' },
+    handler: async (args) => { const tpl = await apiClient.getTemplate(args.templateId); editor.setDocument(tpl.content) }
+  },
+  'template.list': {
+    description: '列出可用模板。',
+    handler: async () => apiClient.listTemplates()
+  },
 }
 
-/** ITextShaper — 文本塑形引擎 */
-interface ITextShaper {
-  shape(text: string, font: FontVariant, size: number): Promise<ShapedGlyph[]>
-}
-interface ShapedGlyph {
-  char: string; xAdvance: number; xOffset: number; yOffset: number; glyphId: number
-}
-
-/** IDocumentLoader — 文档格式加载器 */
-interface IDocumentLoader {
-  readonly extensions: string[]; readonly name: string
-  load(source: string | ArrayBuffer, options?: LoadOptions): Promise<DocumentTree>
-  detect(source: string | ArrayBuffer): boolean
-}
-
-/** IPlugin — 插件生命周期 */
-interface IPlugin {
-  readonly name: string; readonly version: string
-  install(ctx: PluginContext): void
-  enable(): void; disable(): void; destroy(): void
-}
-
-/** IInputComposer — 输入法抽象 */
-interface IInputComposer {
-  onCompositionStart(cb: () => void): void
-  onCompositionUpdate(cb: (text: string, cursorRect: DOMRect) => void): void
-  onCompositionEnd(cb: (text: string) => void): void
-  getComposingText(): string; updateCursorRect(rect: DOMRect): void
-  focus(): void; blur(): void; destroy(): void
-}
+// 所有 editor.* Tool 的 author 字段标记为 'ai'——
+// 与人工编辑走完全相同的 execCommand → CommandUndoRedoStack → DirtyTracker → EventBus → Draw 管线。
+// AI 的撤销和人类的撤销在同一个历史栈中，Ctrl+Z 可回退 AI 操作。
 ```
 
----
-
-## 19. 字体加载防抖策略 (v6.0 新增)
-
-**问题**: 医疗场景排版稳定性要求极高。字体异步加载导致换行/分页偏移属于严重问题。
-
-**规则**:
+### 29.3 MCP Resources 数据视图
 
 ```typescript
-/**
- * 字体加载策略:
- *
- * 1. 核心字体 (SimSun, SimHei) 必须预加载，在 FontManager.registerAll() 中优先注册
- * 2. 编辑器初始化流程:
- *    Editor 构造 → FontManager.ensureReady(['SimSun', 'SimHei']) → 字体就绪
- *    → 展示加载占位 UI (骨架屏/进度条, 不依赖具体字体度量)
- *    → 字体就绪后 → 隐藏占位 → 进入编辑态 → 首次 reLayout
- *
- * 3. 非核心字体 (用户自定义字体) 异步加载，不阻塞编辑态:
- *    加载完成前 → 使用 fallback 字体度量 (FontFallback 降级链)
- *    加载完成后 → 仅重绘受影响区域 (DirtyTracker 标记该字体对应的所有文本)
- *
- * 4. 字体加载失败 → 降级到系统默认字体 + console.warn + 上报 font_error
- *    不阻塞编辑，但状态栏显示 "部分字体未加载"
- *
- * 5. 禁止行为:
- *    - 字体未就绪时进入编辑态 (用户输入后全文重排 → 严重 UX 问题)
- *    - 字体加载完成后全量 reLayout (应仅标记该字体对应的内容为脏)
- */
-```
+// Resources: 大模型作为上下文读取的只读数据视图
 
----
-
-## 20. 模型版本向下兼容规则 (v6.0 新增)
-
-**问题**: 仅定义向前兼容 (旧数据可打开)，未定义版本共存场景的规则。
-
-**规则**:
-
-```typescript
-/**
- * 模型版本兼容矩阵:
- *
- *                   保存端 (写入)
- *                   v3.0   v4.0   v5.0
- * 打开端 (读取)   ┌─────────────────────
- *            v3.0 │  ✅     ❌1    ❌1
- *            v4.0 │  ✅2    ✅     ❌1
- *            v5.0 │  ✅2    ✅2    ✅
- *
- * ✅  = 正常打开
- * ❌1 = 拒绝打开，提示 "请升级编辑器"
- * ✅2 = 静默升级到当前版本，编辑保存后写入当前版本格式
- *
- * 规则:
- * 1. 向前兼容 (必须): 高版本客户端必须能打开低版本文档 (✅2)
- *    实现: ensureLatestModel() 升级器链
- *
- * 2. 保存时强制升级: 编辑后保存时，无论原版本，均写入当前 MODEL_VERSION
- *    实现: saveDocument() 强制设置 doc.metadata.modelVersion = MODEL_VERSION
- *
- * 3. 低版本拒绝高版本文档 (必须): 低版本客户端遇到更高版本 → 拒绝
- *    实现: if (doc.modelVersion > CLIENT_MODEL_VERSION) throw new VersionError()
- *    原因: 低版本不知道新字段的语义，静默丢弃会导致数据丢失
- *
- * 4. 破坏性升级 (MAJOR 变更): 必须提供「向前兼容读取 + 静默升级保存」路径
- *    如 v3→v4 (children 从对象引用改为 ID 数组): upgrader 同时支持两种格式读取
- *
- * 5. 非破坏性升级 (MINOR/PATCH): 旧版本客户端可忽略新字段 (JSON 序列化保留未知字段)
- *    实现: JSON.parse/stringify 天然保留未知字段，低版本不会丢失新字段数据
- */
-```
-
----
-
-## 21. 布局中间格式定义 (v6.0 新增 — 前后端一致性保障)
-
-```typescript
-/**
- * 标准布局中间格式 (Standard Layout Intermediate Format, SLIF)
- *
- * 目的: 前端排版引擎和后端导出引擎共享同一个布局计算结果，
- *       保证「所见即所得」—— Canvas 上看到的和 PDF 打印出的完全一致。
- *
- * 流程: DocumentTree → LayoutEngine → SLIF JSON → Canvas 渲染 / iText PDF 渲染
- */
-
-interface SLIF {
-  version: string                  // 布局引擎版本 (与 modelVersion 解耦)
-  documentId: string
-  pageSetup: PageSetup
-  pages: SLIFPage[]
+// document://{id}/structure — 文档大纲
+{
+  "title": "入院记录",
+  "sections": [
+    { "heading": "主诉", "paragraphIds": ["para_001"], "smartTexts": [] },
+    { "heading": "现病史", "paragraphIds": ["para_002","para_003"],
+      "smartTexts": [{ "hdsdCode": "HDSD00.01.001", "name": "患者姓名", "value": "" }] },
+    { "heading": "体格检查",
+      "tables": [{ "id": "tbl_001", "rows": 5, "cols": 3, "caption": "生命体征" }] }
+  ],
+  "pageCount": 3, "nodeCount": 1245, "smartTextCount": 47
 }
 
-interface SLIFPage {
-  pageIndex: number
-  width: number; height: number
-  items: SLIFItem[]
-}
+// document://{id}/smarttexts — 结构化字段清单 (大模型填表用)
+[
+  { "id": "st_001", "hdsdCode": "HDSD00.01.001", "deCode": "DE01.00.001.00", "name": "患者姓名", "value": "", "required": true, "dataType": "S1" },
+  { "id": "st_002", "hdsdCode": "HDSD00.01.002", "deCode": "DE01.00.002.00", "name": "性别",     "value": "", "required": true, "dataType": "S2", "dictionary": "gender" },
+  { "id": "st_003", "hdsdCode": "HDSD00.01.010", "deCode": "DE01.00.010.00", "name": "入院日期", "value": "", "required": true, "dataType": "D" },
+]
 
-interface SLIFItem {
-  type: string                     // 'text' | 'table' | 'image' | 'control'
-  text?: string                    // 文本内容 (type='text')
-  x: number; y: number            // 逻辑坐标 (文档坐标系)
-  width: number; height: number
-  ascent: number; descent: number
-  font: string; size: number
-  bold?: boolean; italic?: boolean
-  underline?: boolean; strikeout?: boolean
-  color?: string; highlight?: string
-  superscript?: boolean; subscript?: boolean
-  // table 扩展: rows: SLIFRow[], image 扩展: imageUrl, 等等
-}
+// document://{id}/hdsd/{hdsdCode} — 按 HDSD 编码查询字段值 (大模型精准定位)
+// GET document://doc_123/hdsd/HDSD00.01.001 → { "value": "张三", "nodeId": "st_001" }
 ```
-## 24. 更新后的技术债务全貌
 
-### 13.1 技术债务清单 (v4.0)
+### 29.4 临床直接落地场景
 
-| # | 问题 | 严重度 | v4.0 状态 |
-|---|------|--------|-----------|
-| 1 | 纯嵌套结构无节点池 → **已设计 §2.1.1** | 高 | 待实现 |
-| 2 | 表格模型过薄 → **已设计 §2.1.2** | 高 | 待实现 |
-| 3 | 无布局缓存 → **已设计 §2.8.4** | 高 | 待实现 |
-| 4 | 单 Canvas 无分层 → **已设计 §2.8.5** | 高 | 待实现 |
-| 5 | 无命中检测体系 → **已设计 §2.9** | 高 | 待实现 |
-| 6 | Draw.ts 上帝类 | 高 | §2.10 |
-| 7 | 全量重布局/重绘 | 高 | §2.8 |
-| 8 | 快照式撤销 | 高 | §2.5 |
-| 9 | 下标路径定位 | 中 | §2.4 |
-| 10 | 选区模型不完备 → **已设计 §11.1** | 中 | 待实现 |
-| 11 | 命令无事务合并 → **已设计 §11.2** | 中 | 待实现 |
-| 12 | IME 无抽象层 → **已设计 §11.3** | 中 | 待实现 |
-| 13 | LineBreaker/PageBreaker 未集成 | 中 | - |
-| 14 | 插件无生命周期 → **已设计 §11.4** | 中 | 待实现 |
-| 15 | 版本兼容机制过弱 → **已设计 §11.5** | 中 | 待实现 |
-| 16 | 大文档无虚拟化 → **已设计 §11.6** | 中 | 待实现 |
-| 17 | 内存无管理策略 → **已设计 §11.6** | 中 | 待实现 |
-| 18 | 测试体系无设计 → **已设计 §11.7** | 中 | 待实现 |
-| 19 | 打印一致性无保障 → **已设计 §11.8** | 中 | 待实现 |
-| 20 | 错误边界缺失 → **已设计 §11.9** | 中 | 待实现 |
-| 21 | runtime 状态散落 | 低 | §2.4 |
-| 22 | FlowBody 双模模糊 | 低 | §2.2 |
-| 23-28 | 其他低优先级项 | 低/远期 | 见 v3.0 |
+| 场景                     | MCP 调用链                                                                                                                  | 引擎能力依赖                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **AI 辅助填表**    | `document.load` → `document://{id}/smarttexts` 读空字段 → `editor.insert_smarttext` 逐字段填充                      | SmartTextNode / findByInternal O(1) / ICommand |
+| **病史续写**       | `document://{id}/structure` 读现病史章节 → LLM 生成续写段落 → `editor.insert_text` 追加                               | NodePool / InsertTextCommand + Run 模型合并    |
+| **智能质控**       | `qc.check` → 返回 findings[] → LLM 解释 findings + 生成修正建议 → `editor.format` / `editor.delete_range` 自动修正 | QCEngine / JSONLogic DSL / ICommand            |
+| **模板推荐**       | `template.list` → LLM 根据患者信息推荐模板 → `template.apply`                                                         | 模板系统 / DocumentTree                        |
+| **诊断编码建议**   | `document://{id}/hdsd/{code}` 查诊断字段 → LLM 匹配 ICD-10 编码 → `editor.insert_smarttext` 填入                      | findByDE / SmartTextNode                       |
+| **结构化摘要生成** | `document://{id}/tree` 全文档 → LLM 生成出院摘要 → `document.create` 新文档                                           | DocumentLoader / createDocument                |
 
-### 12.2 治理优先级 (v4.0 更新)
+### 29.5 延伸拓展场景
+
+| 场景                   | 描述                                                                  |
+| ---------------------- | --------------------------------------------------------------------- |
+| **多文档对比**   | 同时加载患者多次就诊病历，LLM 对比病情变化趋势，生成对比报告          |
+| **知识库 RAG**   | MCP Server 连接医院知识库/诊疗指南，LLM 在生成内容时实时引用文献编号  |
+| **语音录入**     | 语音转文本 → MCP `editor.insert_text` 直接写入病历，人工审核后保存 |
+| **批量数据分析** | LLM 遍历全院病历的 SmartTextNode 字段，生成疾病统计/用药趋势/质控报告 |
+| **自动化文书**   | 根据检查结果自动生成检查报告、知情同意书等结构化文书                  |
+
+### 29.6 产品化核心竞争优势
+
+| 优势                 | 说明                                                                                   |
+| -------------------- | -------------------------------------------------------------------------------------- |
+| **零特权 AI**  | AI 走 ICommand 管线，所有操作可撤销、可审计、权限受 EditorSecurityConfig 控制          |
+| **结构化原生** | SmartTextNode + HDSD/DE 编码让 LLM 理解字段语义，而非盲写纯文本                        |
+| **引擎复用**   | MCP Server 只是包装层，引擎内核零改动——TextMeasurer/LineBreaker/PageBreaker 全部复用 |
+| **离线可用**   | MCP Server 基于 stdio 本地运行，不需要云端 API (大模型推理可本地部署)                  |
+| **合规友善**   | 所有 AI 操作留痕 (author='ai')，质控可追溯，符合医疗合规要求                           |
+
+### 29.7 落地实施顺序
+
+```
+Phase 1 (2 周) — MCP 最小可用
+  ├── MCP Server 框架搭建 (stdio transport)
+  ├── 实现 5 个核心 Tool: document.load/create, editor.insert_text/delete_range, qc.check
+  ├── 实现 2 个 Resource: document://{id}/smarttexts, document://{id}/structure
+  └── 引擎 zero-change (纯包装层)
+
+Phase 2 (2 周) — 完整 Tool 矩阵
+  ├── editor.insert_table, editor.format, editor.insert_smarttext
+  ├── template.apply/list, qc.rules.list
+  ├── 全部 Resources + Prompts 模板
+  └── author='ai' 审计链路
+
+Phase 3 (远期) — 知识库 RAG + 语音 + 数据分析
+```
+
+## 23. 更新后的技术债务全貌
+
+### 13.1 技术债务清单 
+
+| #     | 问题                                          | 严重度  | v4.0 状态 |
+| ----- | --------------------------------------------- | ------- | --------- |
+| 1     | 纯嵌套结构无节点池 →**已设计 §2.1.1** | 高      | 待实现    |
+| 2     | 表格模型过薄 →**已设计 §2.1.2**       | 高      | 待实现    |
+| 3     | 无布局缓存 →**已设计 §2.8.4**         | 高      | 待实现    |
+| 4     | 单 Canvas 无分层 →**已设计 §2.8.5**   | 高      | 待实现    |
+| 5     | 无命中检测体系 →**已设计 §2.9**       | 高      | 待实现    |
+| 6     | Draw.ts 上帝类                                | 高      | §2.10    |
+| 7     | 全量重布局/重绘                               | 高      | §2.8     |
+| 8     | 快照式撤销                                    | 高      | §2.5     |
+| 9     | 下标路径定位                                  | 中      | §2.4     |
+| 10    | 选区模型不完备 →**已设计 §11.1**      | 中      | 待实现    |
+| 11    | 命令无事务合并 →**已设计 §11.2**      | 中      | 待实现    |
+| 12    | IME 无抽象层 →**已设计 §11.3**        | 中      | 待实现    |
+| 13    | LineBreaker/PageBreaker 未集成                | 中      | -         |
+| 14    | 插件无生命周期 →**已设计 §11.4**      | 中      | 待实现    |
+| 15    | 版本兼容机制过弱 →**已设计 §11.5**    | 中      | 待实现    |
+| 16    | 大文档无虚拟化 →**已设计 §11.6**      | 中      | 待实现    |
+| 17    | 内存无管理策略 →**已设计 §11.6**      | 中      | 待实现    |
+| 18    | 测试体系无设计 →**已设计 §11.7**      | 中      | 待实现    |
+| 19    | 打印一致性无保障 →**已设计 §11.8**    | 中      | 待实现    |
+| 20    | 错误边界缺失 →**已设计 §11.9**        | 中      | 待实现    |
+| 21    | runtime 状态散落                              | 低      | §2.4     |
+| 22    | FlowBody 双模模糊                             | 低      | §2.2     |
+| 23-28 | 其他低优先级项                                | 低/远期 | 见 v3.0   |
+
+### 12.2 治理优先级 
 
 ```
 P0 (立即 — 工程化基础):
@@ -4806,3 +4928,4 @@ P3 (远期):
   13. 测试体系 (§11.7)
   14. 打印一致性 + 错误降级 (§11.8-11.9)
 ```
+

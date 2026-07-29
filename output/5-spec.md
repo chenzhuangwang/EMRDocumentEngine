@@ -101,25 +101,26 @@ backend/
 
 ### 2.1 阶段一：渲染引擎核心 ✅ 基本完成
 
-#### TASK-101: 文档数据模型定义 (ModelD) ✅
+#### TASK-101: 文档数据模型定义 (ModelD v10.0 修正) ✅
 
 **文件**: `frontend/src/engine/document/DocumentModel.ts`
 
-树形文档模型 (ModelD)，替代 ModelA 的扁平 `IElement[]`：
+**v10.0 重大修正**:
+- `DocumentTree` 改为 `{ id, title, pageSetup, body: FlowBody, header?, footer? }`，移除 `pages: Page[]`
+- 所有 `children` 字段统一为 `string[]`（NodePool ID 引用），一步到位
+- 新增 `ImageNode`（src/objectKey/width/height/naturalWidth/naturalHeight/wrapMode）
+- `ElementFormat.dataType` 补 `'S2'`（枚举型）
+- `ElementMeta.privacy` 增强为 `{ enabled, maskChar, maskRule }` 脱敏配置
+- 废弃 `Page`/`PageBody`/`TreePath`/`TreePathItem` 类型
+- 废弃 `traverse()`（递归对象版），改为 `traversePool()`（NodePool 驱动）
 
 ```typescript
-// ================================================================
-// 节点类型
-// ================================================================
 export const NodeType = {
-  DOCUMENT: 'document', PAGE: 'page',
-  PARAGRAPH: 'paragraph', TABLE: 'table', ROW: 'row', CELL: 'cell',
-  TEXT: 'text', SMART_TEXT: 'smarttext',
+  DOCUMENT: 'document', PARAGRAPH: 'paragraph', TABLE: 'table',
+  ROW: 'row', CELL: 'cell', TEXT: 'text', SMART_TEXT: 'smarttext',
+  IMAGE: 'image',
 } as const
 
-// ================================================================
-// 样式
-// ================================================================
 export interface TextStyle {
   font?: string; size?: number; bold?: boolean; italic?: boolean
   underline?: boolean; underlineStyle?: 'single' | 'double' | 'wave'
@@ -128,92 +129,53 @@ export interface TextStyle {
 }
 export interface ParagraphStyle {
   alignment?: 'left' | 'center' | 'right' | 'justify'
-  indent?: number; lineHeight?: number
-  spaceBefore?: number; spaceAfter?: number
+  indent?: number; lineHeight?: number; spaceBefore?: number; spaceAfter?: number
 }
 
-// ================================================================
-// 医疗数据元
-// ================================================================
-export interface ElementCode {
-  internal: string     // HDSD 医院内部编码
-  dataElement: string  // DE 国标数据元编码
-}
+export interface BaseNode { id: string; type: NodeType; metadata?: Record<string, unknown> }
+
+export interface ElementCode { internal: string; dataElement: string }
 export interface ElementFormat {
-  dataType: 'S1' | 'S3' | 'N' | 'D'
-  showType?: 'AN' | 'N'
-  minLength?: number; maxLength?: number
-  dictionary?: string
+  dataType: 'S1' | 'S2' | 'S3' | 'N' | 'D'; showType?: 'AN' | 'N'
+  minLength?: number; maxLength?: number; dictionary?: string
 }
 export interface ElementMeta {
   code: ElementCode; name: string; labels?: string[]
-  format?: ElementFormat; required?: boolean
-  readonly?: boolean; privacy?: boolean
+  format?: ElementFormat; required?: boolean; readonly?: boolean
+  privacy?: { enabled: boolean; maskChar: string; maskRule: 'full' | 'partial' }
 }
 
-// ================================================================
-// 节点层次
-// ================================================================
-export interface BaseNode { id: string; type: NodeType }
+// 所有 children 统一为 string[] (NodePool ID 引用)
+export interface TextNode extends BaseNode, TextStyle { type: 'text'; text: string }
+export interface SmartTextNode extends BaseNode, TextStyle { type: 'smarttext'; text: string; element: ElementMeta }
+export interface ImageNode extends BaseNode {
+  type: 'image'; src?: string; objectKey?: string
+  width: number; height: number; naturalWidth?: number; naturalHeight?: number
+  wrapMode: 'inline' | 'square' | 'top-bottom'
+}
+export type InlineNode = TextNode | SmartTextNode | ImageNode
 
-// 内联节点
-export interface TextNode extends BaseNode, TextStyle {
-  type: typeof NodeType.TEXT; text: string
-}
-export interface SmartTextNode extends BaseNode, TextStyle {
-  type: typeof NodeType.SMART_TEXT; text: string
-  element: ElementMeta
-}
-export type InlineNode = TextNode | SmartTextNode
+export interface Paragraph extends BaseNode, ParagraphStyle { type: 'paragraph'; children: string[] }
+export interface Table extends BaseNode { type: 'table'; columns: ColumnDefinition[]; children: string[]; pageBreak?: TablePageBreakRule }
+export interface TableRow extends BaseNode { type: 'row'; height?: number; children: string[] }
+export interface TableCell extends BaseNode { type: 'cell'; colspan?: number; rowspan?: number; children: string[]; backgroundColor?: string; verticalAlign?: 'top' | 'middle' | 'bottom'; isHeader?: boolean }
+export type BlockNode = Paragraph | Table | ImageNode
 
-// 块级节点
-export interface Paragraph extends BaseNode, ParagraphStyle {
-  type: typeof NodeType.PARAGRAPH; children: InlineNode[]
-}
-export interface Table extends BaseNode {
-  type: typeof NodeType.TABLE; colWidths?: number[]
-  children: TableRow[]
-}
-export interface TableRow extends BaseNode {
-  type: typeof NodeType.ROW; height?: number
-  children: TableCell[]
-}
-export interface TableCell extends BaseNode {
-  type: typeof NodeType.CELL; colspan?: number; rowspan?: number
-  children: BlockNode[]
-  backgroundColor?: string; verticalAlign?: 'top' | 'middle' | 'bottom'
-  isHeader?: boolean
-}
-export type BlockNode = Paragraph | Table
+export interface FlowBody { mode: 'flow'; children: string[] }
 
-// 正文
-export interface FlowBody { mode: 'flow'; children: BlockNode[] }
-export type PageBody = BlockNode[] | FlowBody
-
-// 页面 & 文档
-export interface Page {
-  type: typeof NodeType.PAGE; id: string
-  header: BlockNode[]; body: PageBody; footer: BlockNode[]
-}
+// v10.0: 存储去分页化 — DocumentTree 不含 pages
 export interface PageSetup {
-  width: number; height: number
-  marginTop: number; marginBottom: number
-  marginLeft: number; marginRight: number
-  orientation: 'portrait' | 'landscape'
+  width: number; height: number; marginTop: number; marginBottom: number
+  marginLeft: number; marginRight: number; orientation: 'portrait' | 'landscape'
+  watermark?: WatermarkConfig
 }
 export interface DocumentTree {
-  type: typeof NodeType.DOCUMENT; id: string; title: string
-  pageSetup: PageSetup; pages: Page[]
+  type: 'document'; id: string; title: string; pageSetup: PageSetup
+  body: FlowBody; header?: BlockNode[]; footer?: BlockNode[]
+  metadata?: Record<string, unknown>
 }
 
-// 树路径（用于节点定位和操作）
-export interface TreePathItem {
-  container: 'pages' | 'header' | 'body' | 'footer' | 'children' | 'rows'
-  index: number
-}
-export type TreePath = TreePathItem[]
-
-// 默认值
+// 废弃: Page, PageBody, TreePath, TreePathItem, traverse()
 export const DEFAULT_PAGE_SETUP: PageSetup = {
   width: 794, height: 1123,
   marginTop: 72, marginBottom: 72,
@@ -222,39 +184,35 @@ export const DEFAULT_PAGE_SETUP: PageSetup = {
 }
 ```
 
-#### TASK-101b: 节点工厂与树操作 (ElementFormatter) ✅
+#### TASK-101b: 节点工厂与树操作 (ElementFormatter v10.0 简化) ✅
 
 **文件**: `frontend/src/engine/document/ElementFormatter.ts`
 
+**v10.0 变更**: 移除 `createPage`/`createFlowBody`/`flowBodyToArray`/`arrayToFlowBody`/`getBodyBlocks`。<br>
+新增 `createImageNode`/`createSimpleTable`。`insertAt`/`removeAt` 签名改为 `(pool, parentId, childId, index)`。<br>
+`traversePool` 替代 `traverse`。
+
 ```typescript
-// 工厂函数
-createDocument(title, pages?, pageSetup?)     → DocumentTree
-createPage(header?, body?, footer?)           → Page
-createFlowBody(blocks?)                       → FlowBody
-createParagraph(children?, style?)            → Paragraph
-createTextNode(text, style?)                  → TextNode
-createSmartTextNode(text, element, style?)    → SmartTextNode
-createTable(rows?, colWidths?)                → Table
-createTableRow(cells?, height?)               → TableRow
-createTableCell(children?, opts?)             → TableCell
-createSimpleTable(rows, cols)                 → Table
+// 工厂函数 (v10.0)
+createDocument(title, body?, pageSetup?)         → DocumentTree   // body: FlowBody
+createParagraph(children?, style?)                → Paragraph       // children: string[]
+createTextNode(text, style?)                      → TextNode
+createSmartTextNode(text, element, style?)        → SmartTextNode
+createImageNode(objectKey, width, height, wrap?)  → ImageNode
+createTable(columns?, rows?)                      → Table
+createTableRow(cells?, height?)                   → TableRow
+createTableCell(blockIds?, opts?)                 → TableCell
+createSimpleTable(rows, cols)                     → Table
 
-// 树遍历 & 查找
-traverse(tree, visitor)                       → 深度优先遍历
-findById(tree, id)                            → { node, path }
-findByDE(tree, deCode)                        → SmartTextNode[]
-findByInternal(tree, internalCode)            → SmartTextNode[]
+// 树操作 (基于 NodePool)
+traversePool(pool, rootId, visitor)               → 深度优先遍历
+findById(pool, rootId, id)                        → BaseNode | undefined (O(1))
+findByDE(pool, rootId, deCode)                    → SmartTextNode[]
+findByInternal(pool, rootId, internalCode)        → SmartTextNode[]
+insertAt(pool, parentId, childId, index)          → boolean
+removeAt(pool, parentId, index)                   → boolean
 
-// 增删
-insertAt(tree, path, node)                    → boolean
-removeAt(tree, path)                          → boolean
-
-// 克隆 & 快照
-deepClone(node)                               → 深度克隆
-cloneWithNewIds(node)                         → 克隆 + 重新生成 ID
-takeSnapshot(tree)                            → JSON 字符串
-restoreSnapshot(json)                         → DocumentTree
-UndoRedoStack                                 → 带 maxDepth 的快照栈类
+deepClone / cloneWithNewIds / takeSnapshot / restoreSnapshot
 ```
 
 #### TASK-102: Canvas 渲染器 ✅ (需重构)
@@ -530,8 +488,8 @@ function useEditorRef(): React.MutableRefObject<Editor | null>  // 获取 Ref
 | 任务 | 目标文件 | 说明 |
 |------|----------|------|
 | **TASK-401** | `state/EditorRuntimeState.ts` | 实现 EditorRuntimeState 类型 + CursorState/SelectionState/ViewState/IMEState/HistoryState；用 ID 链路路径 `string[]` 替代下标路径 (pi,bi,ii) |
-| **TASK-402** | `command/ICommand.ts` | 定义 ICommand 接口 (type/id/timestamp/author + forward/invert/serialize) |
-| **TASK-403** | `command/commands/` | 实现具体命令类: InsertTextCommand, DeleteRangeCommand, FormatTextCommand, InsertBlockCommand, DeleteBlockCommand, PasteCommand |
+| **TASK-402** | `command/ICommand.ts` | ICommand 接口 v13.0: forward/invert(document, pool) 传文档现场 + serialize 内嵌 deletedText |
+| **TASK-403** | `command/commands/` | Run 模型: InsertTextCommand 字符串插入 + 相邻同样式合并; DeleteRangeCommand serialize 内嵌被删文本; normalizeParagraph() 合并相邻同样式 TextNode |
 | **TASK-404** | `state/CommandUndoRedoStack.ts` | 实现命令驱动的撤销重做栈 (maxDepth=100)；渐进迁移: 与旧快照式栈并行运行 |
 | **TASK-405** | `command/CommandManager.ts` | 实现 CommandManager：接收 Command → forward(doc) → StatePatch → DirtyTracker → EventBus.emit |
 
@@ -550,11 +508,11 @@ function useEditorRef(): React.MutableRefObject<Editor | null>  // 获取 Ref
 
 | 任务 | 说明 |
 |------|------|
-| **TASK-421** | `layout/ParagraphBridge.ts` | 实现 `paragraphToLineElements()`: Paragraph.children → LineElement[] 转换桥，供 LineBreaker 使用 |
-| **TASK-422** | Draw.recomputeLayout() 通过 ParagraphBridge → LineBreaker.breakLines() — 替换内联换行逻辑 |
-| **TASK-423** | Draw 渲染改用 PageBreaker.breakPages() — 替代简单分页，获得孤行/寡行控制 |
-| **TASK-424** | 实现 CoordinateSystem 类 (docToCanvas/screenToDoc/docToScreen/getCanvasTransform) |
-| **TASK-425** | Draw.render() 统一使用 CoordinateSystem 替代分散的 `clientToDoc()` / `this.dpr` / `this.scrollTop` 换算 |
+| **TASK-421** | LineBreaker 契约重定义: 输入直接为 InlineNode[] + ParagraphStyle, 删除 LineElement/page_break/separator/control/latex 残留类型 |
+| **TASK-422** | 增量分页算法: PageStartTable + incrementalRepaginate() + 早停机制 + 百页单字符编辑收敛到 1~2 页 |
+| **TASK-423** | 行高统一收口: LineHeightResolver = FontMetrics(ascent+descent+lineGap) × size/upem × lineHeight, 删除 TextMeasurer 启发式 |
+| **TASK-424** | 测量缓存修正: (char, fontKey) 粒度 + 容量 10000 + kerning 仅 Latin + document.fonts.check() 缺字检测 |
+| **TASK-425** | detectScript 修复: \p{Script=Han/Latin/Hiragana/Katakana/Hangul} Unicode Property, 删手写码点表 |
 
 ### 3.5 P0 — 渐进迁移路径
 
@@ -581,9 +539,9 @@ function useEditorRef(): React.MutableRefObject<Editor | null>  // 获取 Ref
 | 任务 | 说明 |
 |------|------|
 | **TASK-441** | BaseNode 增加 `metadata?: Record<string, unknown>` 扩展字段 (含 locked / undeletable / annotations / tags) |
-| **TASK-442** | FlowBody 双模标准化: 强制 page.body 使用 FlowBody；实现 `arrayToFlowBody()` 转换器 |
-| **TASK-443** | 实现 `getBodyBlocks()` 统一访问器 (所有访问 page.body 的代码必须使用) |
-| **TASK-444** | 实现 `validateDocumentTree()` 运行时校验器 (id 唯一性/必需字段/SmartTextNode 结构) |
+| **TASK-442** | modelVersion 4.0 breaking upgrader: DocumentTree 去分页化 (pages→body) + children 全部 ID 化 + 移除 Page/PageBody 类型 |
+| **TASK-443** | ImageNode 完整模型 + MinIO 上传链路 + EditorSecurityConfig.file 权限串联 |
+| **TASK-444** | dataType 补 S2 + ElementMeta.privacy 脱敏链路 (maskChar/maskRule + 渲染层按用户权限打码) |
 | **TASK-445** | 实现 `isDeletable()` 函数 (EditorMode ∩ metadata.undeletable) + Delete/Backspace 集成 |
 | **TASK-446** | 实现 `isEditable()` 增强: 加入 L4 undeletable 不影响编辑性, L5 locked+undeletable 完全冻结 |
 
@@ -694,7 +652,20 @@ function useEditorRef(): React.MutableRefObject<Editor | null>  // 获取 Ref
 | **TASK-614** | 多实例支持: 全局共享(FontManager/HarfBuzz) vs 实例私有(EventBus/LayoutCache/Renderer/CoordinateSystem) |
 | **TASK-615** | 标准扩展点清单: registerNodeType/Particle/Command/QCRule/ToolbarItem/ContextMenuItem/SmartTextRenderer/Loader + editor.use() |
 
-### 3.18 P3 — 协作与远期
+### 3.19 P0 — SDK 交付基线 (v8.0 新增)
+
+| 任务 | 说明 |
+|------|------|
+| **TASK-621** | 生命周期契约: Disposable 接口 + 所有模块 dispose() + Editor.pause/resume/destroy + 生命周期钩子 |
+| **TASK-622** | 错误体系: EditorErrorCode + safeRenderParticle 节点级容错 + editor.onError 统一入口 |
+| **TASK-623** | 数据兼容承诺: 向后兼容(静默升级) + 向前兼容(未知字段保留+降级展示) + 兼容周期(门诊15年/住院30年) |
+| **TASK-624** | 主题定制: EditorTheme + 4 种内置预设(标准/护眼/打印/深色) + editor.setTheme() |
+| **TASK-625** | 性能分级: EditorPerformanceConfig + 4 种模式(quality/balanced/performance/readonly) |
+| **TASK-626** | 安全沙箱: EditorSecurityConfig(network/file/data/script) + 默认最小权限 + XSS 过滤 |
+| **TASK-627** | 诊断体系: setLogLevel + dumpDiagnostics + showPerfPanel |
+| **TASK-628** | 国际化: LocaleMessages + editor.setLocale/getLocale + 运行时切换 + 第三方部分覆盖 |
+
+### 3.20 P3 — 协作与远期
 
 | 任务 | 说明 |
 |------|------|
