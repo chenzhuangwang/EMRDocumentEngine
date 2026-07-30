@@ -95,7 +95,7 @@ SpringBoot 3.3+ / Mybatis-Plus 3.5+ / MySQL 8.0 / Redis 7.x / Maven 3.9+
 | **TASK-423** | `interaction/ClipboardHandler.ts` | 从 Draw.ts 提取 copy/cut/paste + 选择性粘贴 |
 | **TASK-424** | `interaction/MouseHandler.ts` | 提取 mousedown/move/up → cursor/selection → emit EventBus |
 | **TASK-425** | `interaction/KeyboardHandler.ts` | 提取 keydown → 快捷键注册表 → CommandManager.execute() |
-| **TASK-426** | `render/Draw.ts` | 重构: 仅保留 render + recomputeLayout + 3 层 Canvas 编排；EventBus 监听 |
+| **TASK-426** | `render/Draw.ts` | 重构 (v20.2): 移除 recomputeLayout; Draw 退化为纯渲染消费者 (输入 SLIFPage[], 驱动 LayeredRenderer); EventBus 监听 |
 
 ### 3.4 渐进迁移路径
 
@@ -116,6 +116,17 @@ SpringBoot 3.3+ / Mybatis-Plus 3.5+ / MySQL 8.0 / Redis 7.x / Maven 3.9+
 | **TASK-442** | `document/DocumentModel.ts` | children 全部迁移到 string[]；新增 ImageNode/BookmarkNode/CrossReferenceNode/FieldNode/FootnoteRef/FootnoteContent/CommentMarker/SeparatorNode/SectionBreak |
 | **TASK-443** | `layout/LayoutCache.ts` | inlineCache/blockCache/pageCache 三级缓存 + isValid/invalidate/clearAll |
 | **TASK-444** | `render/LayeredRenderer.ts` | static/content/interact 三层 Canvas；视口+overscan 1页；水印离屏 pattern；光标 setInterval |
+
+### 3.6 P0 — 核心排版链路集成 (MVP 前提, 不可推迟)
+
+> **v20.15 修正**: 当前 Draw.ts 使用内联简化换行和固定高度分页——这**不是真正的分页系统**。LineBreaker/PageBreaker 集成是 MVP 的前提条件，不是 P2 "增强"。
+
+| 任务 | 说明 |
+|------|------|
+| **TASK-445** | LineBreaker 集成: paragraphToLineElements() → breakLines() → 替换 Draw.ts 内联换行逻辑 |
+| **TASK-446** | PageBreaker 集成: breakPages() + incrementalRepaginate() 替换固定高度分页；孤行/寡行控制生效 |
+| **TASK-447** | 集成验证: 100 页文档分页计算 < 3s (架构 §17.1)；分页结果与 Word 对比 (同页面设置下内容分布一致) |
+| **TASK-448** | **SLIF 前后端对拍黄金测试**: 同一 DocumentTree → LayoutEngine 产出 SLIF → 前端 Canvas 渲染坐标 vs 后端 PDFBox 渲染坐标逐 item 比对 (x/y/width/height)。允许误差 ≤ 1px @ 96dpi。覆盖: 纯中文 / 中英混排 / 表格 / 图片 / 列表 / 分节符。**字体度量一致 ≠ 排版结果一致, 这是"0 像素偏移"承诺的唯一验证手段**。CI 门禁, 失败禁止合并 |
 
 ---
 
@@ -224,8 +235,7 @@ SpringBoot 3.3+ / Mybatis-Plus 3.5+ / MySQL 8.0 / Redis 7.x / Maven 3.9+
 
 | 任务 | 说明 |
 |------|------|
-| **TASK-486** | LineBreaker 集成到 recomputeLayout: 脏 Paragraph → paragraphToLineElements → breakLines → 更新 PageItem |
-| **TASK-487** | PageBreaker 集成: breakPages + incrementalRepaginate；孤行/寡行控制 |
+| **TASK-486** | 行高统一: LineHeightResolver = FontMetrics × size/upem × lineHeight；删 TextMeasurer 启发式 |
 | **TASK-488** | 行高统一: LineHeightResolver = FontMetrics × size/upem × lineHeight；删 TextMeasurer 启发式 |
 | **TASK-489** | 测量缓存修正: (char,fontKey) 粒度 + 容量 10000 + kerning 仅 Latin |
 
@@ -439,7 +449,8 @@ SpringBoot 3.3+ / Mybatis-Plus 3.5+ / MySQL 8.0 / Redis 7.x / Maven 3.9+
 
 | 任务 | 说明 |
 |------|------|
-| **TASK-711** | Yjs CRDT 集成: Y.Doc 运行时模型 + DocumentTree 快照序列化 |
+| **TASK-710** | **Yjs 投影路径 Spike** (P0, MVP 完成后立即执行): 最小原型验证 NodePoolProjection.observeDeep → applyInsert/Delete/Update → NodePool 映射。百页文档远端插入 1 字符必须 O(1) 投影。覆盖 Table 嵌套 / move / 级联回收边界 case。**Spike 通过后才启动 TASK-711**。架构 R1 (§17.6) |
+| **TASK-711** | Yjs CRDT 集成: Y.Doc 运行时模型 + DocumentTree 快照序列化 (依赖 TASK-710 通过) |
 | **TASK-712** | WebSocket 协作通道 (Stomp + JWT 认证) + Awareness 光标同步 (500ms) |
 | **TASK-713** | 离线重连: 本地 Command 积累 + sync_request 增量同步 |
 

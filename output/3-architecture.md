@@ -1,8 +1,11 @@
 # 架构设计文档 - 文档编辑器引擎
 
-> 版本: v20.1 | 日期: 2026-07-29 | 阶段: docs
+> 版本: v20.17 | 日期: 2026-07-30 | 阶段: docs
 >
-> **v20.1 变更**: 组件边界+数据流修复 —— 3.1 Draw 退化为纯渲染消费者, LayoutEngine 独立; 3.2 批注锚点 baseVersion+重锚定; 3.3 6项性能修正 (build O(n²)→O(n)/补pool参数/HitTestIndex增量/光标层优化/布局Worker/QC增量索引)
+> **v20.17 变更 (里程碑: 接口收敛)**:
+> ICommand 全文档签名统一为 CommandContext: §6.2/6.3/6.3b/6.4/6.5/8.3/附录F 全部重写;
+> §6.4 execute() 改为先 forward 成功后入栈; §8.3 tryMerge 删除 (合并逻辑归 §6.4);
+> 附录 F 与 §6.1 逐字一致; invert? 返回 ICommand | null
 
 ---
 
@@ -120,9 +123,9 @@ TextMeasurer 依赖 ITextShaper 接口，不感知底层实现。
 
 ### 1.3 ModelA → ModelD 架构演进
 
-| 维度       | ModelA        | ModelD || ModelD                      |
+| 维度       | ModelA              | ModelD (重构后)       | ModelD (目标架构)                      |
 | ---------- | ------------------- | --------------------- | -------------------------------------- |
-| 文档模型   | 扁平 `IElement[]` | 树形 `DocumentTree` | 树形 + metadata 扩展                   |
+| 文档模型   | 扁平 `IElement[]`   | 树形 `DocumentTree`   | 树形 + metadata 扩展                   |
 | 运行时状态 | 散落 Draw.ts        | 散落 Draw.ts          | **独立 EditorRuntimeState**      |
 | 编辑驱动   | 内联方法调用        | 内联方法调用          | **Command 命令模式**             |
 | 撤销/重做  | HistoryManager      | 内联 JSON 快照        | **UndoRedoStack + Command 增量** |
@@ -161,7 +164,7 @@ interface DocumentTree {
   /** 唯一正文 (替代 pages: Page[]) */
   body: FlowBody
   /** 页眉/页脚 — 布局引擎在每页渲染时引用 */
-  header?: BlockNode[]; footer?: BlockNode[]
+  header?: string[]; footer?: string[]  // header/footer BlockNode ID[] (v20.4: 统一 ID 引用)
   metadata?: Record<string, unknown>
 }
 // pages: Page[] 降级为布局引擎输出 (SLIFPage[])
@@ -363,7 +366,10 @@ function traversePool(pool: NodePool, rootId: string, visitor: (node: BaseNode, 
 const NodeType = {
   DOCUMENT: 'document', PARAGRAPH: 'paragraph', TABLE: 'table',
   ROW: 'row', CELL: 'cell', TEXT: 'text', SMART_TEXT: 'smarttext',
-  IMAGE: 'image',
+  IMAGE: 'image', SEPARATOR: 'separator', SECTION_BREAK: 'section_break',
+  BOOKMARK: 'bookmark', CROSS_REFERENCE: 'cross_reference', FIELD: 'field',
+  FOOTNOTE_REF: 'footnote_ref', FOOTNOTE_CONTENT: 'footnote_content',
+  COMMENT_MARKER: 'comment_marker',
 } as const
 
 // ================================================================
@@ -518,7 +524,7 @@ takeSnapshot(tree) → JSON; restoreSnapshot(json) → DocumentTree
 
 ```
 v10.0 直接删除 PageBody = BlockNode[] | FlowBody union。
-所有 header/footer 从 BlockNode[] 改为 Paragraph[] | Table[] | ImageNode[]（类型明确）。
+所有 header/footer 从 BlockNode[] 改为 string[]（ID 引用, v20.4: 统一 ID 化）。header/footer 节点同样注册到 NodePool 和 buildNodePool 的 rootIds 中。
 所有代码中 getBodyBlocks() 防御调用移除。
 旧数据 upgrader: wrapArrayToFlowBody() (v3.0→v4.0 breaking upgrader 中执行)
 ```
@@ -537,8 +543,8 @@ interface SectionBreak extends BaseNode {
   /** 下一节的页面设置 (为空则继承文档级 pageSetup) */
   nextPageSetup?: Partial<PageSetup>
   /** 下一节的页眉/页脚 (为空则继承文档级 header/footer) */
-  nextHeader?: BlockNode[]
-  nextFooter?: BlockNode[]
+  nextHeader?: string[]   // header BlockNode ID[] (v20.4: 统一 ID 引用, 注册到 NodePool)
+  nextFooter?: string[]
   /** 下一节页码起始值 (为空则接续上一节) */
   nextPageNumberStart?: number
   /** 下一节首页是否不同 */
@@ -587,8 +593,7 @@ interface CrossReferenceNode extends BaseNode, TextStyle {
 //   3. 将 displayText 中的 {page} 占位符替换为实际页码
 //   4. 页码变化时标记该 CrossReferenceNode 所在区域为渲染脏
 
-// 书签和交叉引用存储在 body.children 中 (InlineNode 级别)
-type InlineNode = TextNode | SmartTextNode | ImageNode | BookmarkNode | CrossReferenceNode
+// 书签和交叉引用存储在 body.children 中 (InlineNode 级别, 统一定义见 §2.2)
 ```
 
 ### 2.9 动态字段节点 (FieldNode)
@@ -632,7 +637,7 @@ interface FieldNode extends BaseNode, TextStyle {
 //   'author_name'  — 文档加载时计算一次
 //   'print_date'   — 打印时固化 (resolved → 写入 TextNode, 移除 FieldNode)
 
-type InlineNode = TextNode | SmartTextNode | ImageNode | BookmarkNode | CrossReferenceNode | FieldNode | FootnoteRef
+// FieldNode/FootnoteRef 属于 InlineNode (统一定义见 §2.2)
 ```
 
 ### 2.10 列表与编号
@@ -696,8 +701,9 @@ interface FootnoteRef extends BaseNode, TextStyle {
   type: 'footnote_ref'
   /** 引用的脚注内容 ID (指向 FootnoteContent 节点) */
   footnoteId: string
-  /** 脚注编号 (布局引擎分配, 每页从 1 开始或全文连续) */
-  number?: number
+  /** 脚注编号 — 运行时缓存, 不持久化 (v20.5: 布局引擎分配, 序列化时丢弃)
+   *   编号取决于分页结果(每页编号/连续编号), 属于布局产物而非存储模型 */
+  number?: number  // excluded from JSON serialization
 }
 
 /** 脚注内容节点 — 存储在 FlowBody 末尾的专门区域 */
@@ -811,8 +817,7 @@ interface SeparatorNode extends BaseNode {
   alignment?: 'left' | 'center' | 'right'
 }
 
-// BlockNode 类型扩展:
-type BlockNode = Paragraph | Table | ImageNode | SeparatorNode
+// SeparatorNode 属于 BlockNode (统一定义见 §2.2)
 
 // 渲染: SeparatorParticle → 在所在行中心绘制水平线
 // 默认样式: solid, 1px, #D1D5DB, full-width
@@ -875,7 +880,7 @@ interface CommentEntry {
 
 interface CommentThread {
   // ... 现有字段
-  /** 创建时的文档版本 (用于协作重锚定, v20.1) */
+  /** 创建时的文档版本 (指向 t_document.version, 非 model_version, 用于协作重锚定, v20.1) */
   baseVersion: number
   /** 重锚定状态 */
   anchorStatus: 'valid' | 'reanchored' | 'degraded'
@@ -1740,18 +1745,103 @@ function isEditable(
 5. **旧栈废弃**: UndoRedoStack（快照版）@deprecated，Ctrl+Z 由 CommandManager 仲裁
 6. **位置分层契约 (v19.4)**: Command 对外签名统一为 `(paragraphPath: string[], charOffset: number)`——字符级偏移。`forward()` 内部第一步强制经 `pool.resolveCharOffset()` 落到 `(textNodeId, localOffset)`，所有树操作只作用于解析后的节点级坐标。**数组下标只允许存在于 forward/invert 函数体内部，禁止出现在任何接口签名、构造函数参数、serialize() 载荷中**。违反此规则的代码在 Run 模型下必然越界。
 
-### 6.1 命令接口
+### 6.1 命令接口 — CommandContext 联合上下文 (v20.8)
+
+**问题**: Phase 1 的 `forward(doc, pool)` 与 Phase 2 的 `forward(ydoc, origin)` 签名互斥，所有 Command 实现类在切换时需全部重写。这正是要规避的大规模重构。
+
+**方案**: 从 Phase 1 起就使用 `CommandContext` 联合类型。Command 实现类处理两态分支，Phase 1→2 切换时**接口签名不变，CommandManager 切换注入的 context**。
 
 ```typescript
+/** 命令执行上下文 — Phase 1 单用户 vs Phase 2 CRDT 的统一入口 */
+type CommandContext =
+  | { mode: 'local'; doc: DocumentTree; pool: NodePool }     // Phase 1
+  | { mode: 'collab'; ydoc: Y.Doc; origin: string }          // Phase 2
+
 interface ICommand {
   readonly type: string; readonly id: string
   readonly timestamp: number; readonly author: string
-  forward(document: DocumentTree, pool: NodePool): StatePatch | null
-  /** 传入当前文档现场，逆操作从文档中提取数据，不依赖实例状态 */
-  invert(document: DocumentTree, pool: NodePool): ICommand
+
+  /** 统一入口 — 根据 context.mode 分发到 local/collab 实现 */
+  forward(ctx: CommandContext): StatePatch | null
+
+  /** 仅在 local 模式有效 — collab 模式下 Y.UndoManager 接管撤销 */
+  invert?(ctx: CommandContext): ICommand  // optional: collab 模式返回 null
+
   serialize(): SerializedCommand
 }
+
+// Phase 1 调用: command.forward({ mode: 'local', doc, pool })
+// Phase 2 调用: command.forward({ mode: 'collab', ydoc, origin: localUserId })
+// 重写成本: CommandManager 一处切换 context, Command 实现类不变
 ```
+
+**Command 实现类两态分支示例**:
+
+```typescript
+class InsertTextCommand extends PositionalCommand {
+  forward(ctx: CommandContext): StatePatch | null {
+    if (ctx.mode === 'local') {
+      // Phase 1: 操作 DocumentTree + NodePool
+      const { doc, pool } = ctx
+      // ... 现有 local 实现 ...
+    } else {
+      // Phase 2: 操作 Y.Doc
+      const { ydoc, origin } = ctx
+      ydoc.transact(() => {
+        // ... Y.Doc 操作 ...
+      }, origin)
+    }
+  }
+}
+```
+
+**重写成本估算 (v20.8 坦诚)**:
+
+| 阶段切换 | 修改范围 | 成本 |
+|----------|----------|------|
+| CommandManager | 1 处: 注入 context 从 local → collab | O(1) |
+| Command 实现类 | ~8 个类: 每个增加 `if (ctx.mode === 'collab')` 分支 | O(n) per class |
+| invert() | collab 模式返回 null, Y.UndoManager 接管 | 删除调用点 |
+| 总成本 | 不可为零, 但**接口签名稳定**——不强制在 Phase 1 时预先编写 collab 分支 | 可接受 |
+
+#### ICommand 生命周期与不可变契约 (v20.9)
+
+**问题**: `DeleteRangeCommand.deletedText` / `FormatTextCommand.oldStyles` 是 `forward()` 执行时填充的实例字段。`invert()` 依赖"同一实例先 forward 后 invert"。但 ICommand 同时又声明为"不可变纯数据"——实例字段在 forward 前后状态不同。
+
+**澄清**: "不可变"指**命令入栈后**（`forward()` 执行完成并将 snapshot 写入实例字段后，这些字段即为 frozen）。`serialize()` 将这些 snapshot 嵌入载荷，`deserialize()` 从载荷恢复 snapshot，使 invert 可以脱离 forward 时序。
+
+```typescript
+interface ICommand {
+  // ... 基本字段
+
+  /** 执行操作并填充内部快照 (deletedText/oldStyles 等).
+   *  调用后实例字段 frozen, 不可再次 forward. */
+  forward(ctx: CommandContext): StatePatch | null
+
+  /** 从 forward 后的快照构造逆操作.
+   *  前置条件: forward() 已在此实例上调用, 或使用 deserialize() 从载荷恢复. */
+  invert?(ctx: CommandContext): ICommand
+
+  /** 序列化为传输载荷 (含快照: deletedText/oldStyles 等) */
+  serialize(): SerializedCommand
+
+  /** 从序列化载荷恢复命令 (含快照, 可直接 invert, 不依赖 forward 时序).
+   *  每个 Command 子类必须实现自己的静态工厂. */
+  static deserialize(data: SerializedCommand): ICommand
+}
+
+// 使用模式:
+//   A. 运行时 undo: cmd.forward(ctx) → undoStack.push(cmd) → cmd.invert(ctx)
+//      (同一实例, forward 填充快照 → invert 读取快照)
+//   B. 协作重放: serialized = cmd.serialize() → 发送到远端 →
+//      remoteCmd = InsertTextCommand.deserialize(serialized) →
+//      remoteCmd.invert(ctx)  // 从载荷恢复, 无需 forward()
+//   C. 文档比较: savedCmd = deserialize(loadedSerialized) →
+//      savedCmd.invert(ctx)  // 从历史记录恢复逆操作
+```
+
+**"不可变纯数据"的生命周期**:
+`构造函数` → 纯参数入栈 | `forward()` → 填充快照 (一次写入) | frozen → `serialize()` 读取 | `deserialize()` 从载荷恢复 (纯数据重建)
 
 ### 6.2 Run 模型文本存储 — 字符偏移语义修正 (v19.4)
 
@@ -1765,7 +1855,9 @@ interface ICommand {
 class InsertTextCommand extends PositionalCommand {
   readonly type = 'insert-text'
 
-  forward(doc: DocumentTree, pool: NodePool): StatePatch {
+  forward(ctx: CommandContext): StatePatch {  // v20.8: 统一签名
+    if (ctx.mode !== 'local') return null     // collab 分支在 Phase 2 实现
+    const { doc, pool } = ctx
     const para = pool.nodes.get(this.path[this.path.length - 1]) as Paragraph
     if (!para) return null
 
@@ -1808,7 +1900,7 @@ class InsertTextCommand extends PositionalCommand {
     return { cursor: { paragraphPath: this.path, offset: this.offset + [...this.text].length } }
   }
 
-  invert(doc: DocumentTree, pool: NodePool): ICommand {
+  invert?(ctx: CommandContext): ICommand | null {
     return new DeleteRangeCommand(generateId(), Date.now(), this.author,
       this.path, this.offset, this.offset + [...this.text].length)
   }
@@ -1864,7 +1956,9 @@ function normalizeParagraph(para: Paragraph, pool: NodePool): void {
 class DeleteRangeCommand extends PositionalCommand {
   readonly type = 'delete-range'
 
-  forward(doc: DocumentTree, pool: NodePool): StatePatch {
+  forward(ctx: CommandContext): StatePatch {
+    if (ctx.mode !== 'local') return null
+    const { doc, pool } = ctx
     const para = pool.nodes.get(this.path[this.path.length - 1]) as Paragraph
     if (!para) return null
 
@@ -1927,7 +2021,7 @@ class DeleteRangeCommand extends PositionalCommand {
     return { cursor: { paragraphPath: this.path, offset: this.startOffset } }
   }
 
-  invert(doc: DocumentTree, pool: NodePool): ICommand {
+  invert?(ctx: CommandContext): ICommand | null {
     // 逆操作: 在 startOffset (字符偏移) 处插入被删文本
     return new InsertTextCommand(generateId(), Date.now(), this.author, this.path, this.startOffset, this.deletedText)
   }
@@ -1950,7 +2044,7 @@ class FormatTextCommand extends PositionalCommand {
   readonly type = 'format-text'
   private oldStyles: Map<string, Partial<TextStyle>> = new Map()  // nodeId → 旧样式快照
 
-  forward(doc: DocumentTree, pool: NodePool): StatePatch {
+  forward(ctx: CommandContext): StatePatch {
     for (const nodeId of this.nodeIds) {
       const node = pool.nodes.get(nodeId) as TextNode | null
       if (!node) continue
@@ -1964,7 +2058,7 @@ class FormatTextCommand extends PositionalCommand {
     return { invalidation: 'node' }  // 仅样式变更, 不影响布局/分页
   }
 
-  invert(doc: DocumentTree, pool: NodePool): ICommand {
+  invert?(ctx: CommandContext): ICommand | null {
     // 逆操作: 将每个节点的样式恢复为旧值
     return new FormatTextCommand(generateId(), Date.now(), this.author,
       this.nodeIds,
@@ -1983,7 +2077,7 @@ class FormatPainterCommand extends PositionalCommand {
   readonly type = 'format-painter'
   private oldStyles: Map<string, Partial<TextStyle>> = new Map()
 
-  forward(doc: DocumentTree, pool: NodePool): StatePatch {
+  forward(ctx: CommandContext): StatePatch {
     for (const nodeId of this.targetNodeIds) {
       const node = pool.nodes.get(nodeId) as TextNode | null
       if (!node) continue
@@ -1994,7 +2088,7 @@ class FormatPainterCommand extends PositionalCommand {
     return { invalidation: 'node' }
   }
 
-  invert(doc: DocumentTree, pool: NodePool): ICommand {
+  invert?(ctx: CommandContext): ICommand | null {
     return new FormatTextCommand(generateId(), Date.now(), this.author,
       this.targetNodeIds, Object.fromEntries(this.oldStyles))
   }
@@ -2040,18 +2134,22 @@ class CommandUndoRedoStack {
   private undoStack: ICommand[] = []
   private readonly MERGE_WINDOW_MS = 500
 
-  execute(command: ICommand, doc: DocumentTree, pool: NodePool): StatePatch | null {
-    // 尝试合并
+  execute(command: ICommand, ctx: CommandContext): StatePatch | null {
+    // Step 1: 先执行 forward (若抛异常, 栈不受影响)
+    const patch = command.forward(ctx)
+    if (!patch) return null  // forward 失败, 不入栈
+
+    // Step 2: forward 成功后入栈
     const last = this.undoStack[this.undoStack.length - 1]
     if (last && this.canMerge(last, command)) {
       const merged = (last as MergeableCommand).mergeWith(command)
-      this.undoStack[this.undoStack.length - 1] = merged  // 替换栈顶（栈本身可变，命令不可变）
+      this.undoStack[this.undoStack.length - 1] = merged
     } else {
       this.undoStack.push(command)
     }
     if (this.undoStack.length > this.maxDepth) this.undoStack.shift()
     this.redoStack = []
-    return command.forward(doc, pool)
+    return patch
   }
 
   private canMerge(last: ICommand, next: ICommand): boolean {
@@ -2082,7 +2180,7 @@ class CommandUndoRedoStack {
 │  - eventBus: EventBus                                     │
 │                                                           │
 │  execute(cmd): StatePatch | null                          │
-│    → cmd.forward(doc, pool)                               │
+│    → cmd.forward({ mode: "local", doc, pool })                               │
 │    → undoStack.execute(cmd)                               │
 │    → dirtyTracker.mark(...)                               │
 │    → eventBus.emit('document:changed')                    │
@@ -2811,15 +2909,24 @@ diff 管线:
 
 **问题**: 之前只提出"拆分为 EventHandler/IMEHandler/ClipboardHandler"，但模块职责、通信方式、依赖方向没有定义。
 
-**方案**: 通过 EventBus 解耦，各 Handler 独立模块，Draw 仅保留渲染编排。
+**方案 (v20.2 — 与 §7.3 对齐)**: EventBus 解耦，各 Handler 独立模块。LayoutEngine 独立负责布局计算，Draw 退化为纯渲染消费者。
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                        Draw (渲染编排器)                          │
-│  render(document, state, dirtyTracker) → Canvas                  │
-│  recomputeLayout(document, dirtyTracker) → PageItem[]            │
+│                    LayoutEngine (layout/)                         │
+│  recomputeLayout(document, dirtyTracker) → SLIFPage[]            │
 │                                                                   │
-│  依赖: DocumentTree, EditorRuntimeState, ParticleRegistry        │
+│  依赖: DocumentTree, NodePool, LineBreaker, PageBreaker          │
+│  不依赖: Canvas, Draw, LayeredRenderer                           │
+└──────────┬───────────────────────────────────────────────────────┘
+           │ SLIFPage[]
+           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                     Draw (渲染消费者)                             │
+│  render(slifPages, state, dirtyTracker) → 调度 LayeredRenderer   │
+│                                                                   │
+│  依赖: SLIFPage[], EditorRuntimeState, LayeredRenderer           │
+│  不依赖: DocumentTree, NodePool, LineBreaker, PageBreaker        │
 │  不依赖: 任何 Handler (通过 EventBus 接收事件)                    │
 └──────────────────────────────────────────────────────────────────┘
          ▲                            ▲
@@ -2838,6 +2945,11 @@ diff 管线:
 └──────────────────────┘    └─────────────────────┘
 ```
 
+**Draw 与 LayoutEngine/LayeredRenderer 的职责**: 
+- LayoutEngine: `layout/` 层，无 Canvas 依赖，产出 SLIFPage[] (§7.3)
+- Draw: `render/` 层编排器，接收 SLIFPage[] → 调用 LayeredRenderer 三层 Canvas
+- LayeredRenderer: 静态/内容/交互三层 Canvas 的具体操作，被 Draw 驱动
+
 #### EventBus 接口
 
 ```typescript
@@ -2850,11 +2962,25 @@ type EngineEvent =
   | 'selection:changed'     // 选区变更
   | 'mode:changed'          // 编辑器模式切换
   | 'scale:changed'         // 缩放比例变更
+  | 'yjs:synced'            // Y.Doc 增量已同步到 NodePool
+
+/** 事件载荷映射 — 每种事件的类型化载荷 (v20.13) */
+interface EventPayloadMap {
+  'render:request':     []                                          // 无载荷, 仅触发重绘
+  'layout:changed':     [slifPages: SLIFPage[]]                      // 布局引擎产出
+  'state:changed':      [patch: StatePatch]                          // 状态变更详情
+  'document:changed':   [doc: DocumentTree]                          // 文档变更后完整快照
+  'cursor:moved':       [cursor: CursorState]                        // 新光标位置
+  'selection:changed':  [selection: SelectionState]                  // 新选区
+  'mode:changed':       [mode: EditorMode]                           // 新模式
+  'scale:changed':      [scale: number]                              // 新缩放比例
+  'yjs:synced':         []                                          // Y.Doc 同步完成
+}
 
 interface EventBus {
-  on(event: EngineEvent, handler: (...args: any[]) => void): void
-  off(event: EngineEvent, handler: (...args: any[]) => void): void
-  emit(event: EngineEvent, ...args: any[]): void
+  on<E extends keyof EventPayloadMap>(event: E, handler: (...args: EventPayloadMap[E]) => void): void
+  off<E extends keyof EventPayloadMap>(event: E, handler: (...args: EventPayloadMap[E]) => void): void
+  emit<E extends keyof EventPayloadMap>(event: E, ...args: EventPayloadMap[E]): void
 }
 ```
 
@@ -2873,13 +2999,21 @@ interface EventBus {
 ```
 Handler → CommandManager → DocumentTree + EditorRuntimeState
 Handler → EventBus (emit)
-Draw ← EventBus (listen)
-Draw → DocumentTree + EditorRuntimeState (readonly)
+LayoutEngine ← EventBus (listen: 'layout:changed')
+LayoutEngine → DocumentTree + NodePool (readonly) —— 布局计算, 不碰 Canvas
+Draw ← EventBus (listen: 'render:request')
+Draw → SLIFPage[] (由 LayoutEngine 产出, readonly)
+Draw → LayeredRenderer (驱动三层 Canvas)
+Draw → CoordinateSystem (readonly)
+
+禁止: Draw → DocumentTree (布局已在 LayoutEngine 完成)
+禁止: Draw → DocumentTree + EditorRuntimeState (readonly)
 Draw → ParticleRegistry (readonly)
 Draw → CoordinateSystem (readonly)
 
 禁止: Draw → Handler (反向依赖)
 禁止: HandlerA → HandlerB (Handler 间不直接通信，通过 CommandManager 中转)
+禁止: Draw → DocumentTree (布局已在 LayoutEngine 完成, v20.2)
 ```
 
 ### 8.2 选区模型增强
@@ -2943,18 +3077,7 @@ class CommandUndoRedoStack {
   }
 
   /** 自动合并: 同类连续操作 (如连续打字) 合并为一条历史 */
-  private tryMerge(command: ICommand): boolean {
-    const last = this.undoStack[this.undoStack.length - 1]
-    if (!last) return false
-    // 同类型 + 同时戳窗口内 + 同作者 → 合并
-    if (last.type === command.type &&
-        command.timestamp - last.timestamp < this.MERGE_WINDOW_MS &&
-        last.author === command.author) {
-      (last as MergeableCommand).merge(command)
-      return true
-    }
-    return false
-  }
+  /** @deprecated v20.17: 合并逻辑统一在 §6.4 CommandUndoRedoStack.execute() 中, §8.3 不再重复定义 */
 }
 
 /** 可合并的命令接口 (v19.15: 统一为不可变语义, 与 §6.4 mergeWith 一致) */
@@ -3081,7 +3204,7 @@ interface PluginContext {
   /** 注册命令 (用于插件自定义操作) */
   registerCommand(type: string, commandCtor: new (...args: any[]) => ICommand): void
   /** 监听引擎事件 */
-  on(event: EngineEvent, handler: (...args: any[]) => void): void
+  on<E extends keyof EventPayloadMap>(event: E, handler: (...args: EventPayloadMap[E]) => void): void
   /** 注入工具栏/菜单项 */
   registerToolbarItem(group: string, item: ToolbarItem): void
   registerContextMenuItem(item: ContextMenuItem): void
@@ -3251,35 +3374,104 @@ class QCEngine {
   private readonly DEBOUNCE_MS = 1000
   private worker: Worker | null = null  // Web Worker
 
-  /** 构建 HDSD 索引 (v20.1: 增量维护 —— 由 NodePool.nodeVersions 驱动, 仅更新脏节点) */
-  private buildIndex(doc: DocumentTree, pool: NodePool): Map<string, SmartTextNode[]> {
-    const index = new Map<string, SmartTextNode[]>()
-    traversePool(pool, doc.id, (node) => {
-      if (node.type === 'smarttext') {
-        const st = node as SmartTextNode
-        const key = st.element.code.internal
-        if (!index.has(key)) index.set(key, [])
-        index.get(key)!.push(st)
+  // ================================================================
+  // 增量索引 (v20.3: 真正增量, 非全量 traverse)
+  // ================================================================
+  /** HDSD编码 → SmartTextNode 列表 (持久化, 跨 check 调用共享) */
+  private hdsdIndex = new Map<string, SmartTextNode[]>()
+  /** 上次构建时的 nodeVersion 快照 (nodeId → version) */
+  private indexVersions = new Map<string, number>()
+  /** 索引是否已初始化 (首次全量) */
+  private indexReady = false
+
+  /** 增量更新索引 (由 NodePool.nodeVersions 驱动, 仅处理脏节点) */
+  private updateIndex(pool: NodePool, dirtyNodeIds: Set<string>): void {
+    if (!this.indexReady) {
+      // 首次调用: 全量构建 baseline
+      this.hdsdIndex.clear()
+      this.indexVersions.clear()
+      // traversePool 从 body/header/footer/footnotes/endnotes 五个根遍历
+      const roots = [pool.rootIds.body, ...(pool.rootIds.header ?? []),
+                     ...(pool.rootIds.footer ?? []), ...(pool.rootIds.footnotes ?? []),
+                     ...(pool.rootIds.endnotes ?? [])]
+      for (const rootId of roots) {
+        traversePool(pool, rootId, (node) => {
+          if (node.type === 'smarttext') {
+            const st = node as SmartTextNode
+            const key = st.element.code.internal
+            if (!this.hdsdIndex.has(key)) this.hdsdIndex.set(key, [])
+            this.hdsdIndex.get(key)!.push(st)
+            this.indexVersions.set(st.id, pool.getNodeVersion(st.id))
+          }
+        })
       }
-    })
-    return index
+      this.indexReady = true
+      return
+    }
+
+    // 增量: 仅重建版本号发生变化的 SmartTextNode 索引条目
+    for (const nodeId of dirtyNodeIds) {
+      const node = pool.nodes.get(nodeId)
+      if (node?.type !== 'smarttext') continue
+      const currentVersion = pool.getNodeVersion(nodeId)
+      if (this.indexVersions.get(nodeId) === currentVersion) continue  // 未变, 跳过
+
+      const st = node as SmartTextNode
+      const oldKey = [...this.hdsdIndex.entries()]
+        .find(([, list]) => list.some(n => n.id === nodeId))?.[0]
+      const newKey = st.element.code.internal
+
+      // 从旧编码条目中移除
+      if (oldKey && oldKey !== newKey) {
+        const oldList = this.hdsdIndex.get(oldKey)
+        if (oldList) {
+          const filtered = oldList.filter(n => n.id !== nodeId)
+          if (filtered.length) this.hdsdIndex.set(oldKey, filtered)
+          else this.hdsdIndex.delete(oldKey)
+        }
+      }
+
+      // 更新或添加到新编码条目
+      if (newKey) {
+        const newList = this.hdsdIndex.get(newKey) ?? []
+        const existing = newList.findIndex(n => n.id === nodeId)
+        if (existing >= 0) newList[existing] = st
+        else newList.push(st)
+        this.hdsdIndex.set(newKey, newList)
+      }
+
+      this.indexVersions.set(nodeId, currentVersion)
+    }
   }
 
-  /** 编辑后延迟执行 */
-  scheduleCheck(doc: DocumentTree, pool: NodePool): void {
+  /** 规则集变更时强制全量重建 */
+  invalidateIndex(): void { this.indexReady = false }
+
+  // ================================================================
+  /** 编辑后延迟执行 (由 CommandManager.execute 后触发) */
+  scheduleCheck(pool: NodePool, dirtyNodeIds: Set<string>): void {
     if (this.debounceTimer) clearTimeout(this.debounceTimer)
-    this.debounceTimer = setTimeout(() => this.check(doc, pool), this.DEBOUNCE_MS)
+    this.debounceTimer = setTimeout(() => this.check(pool, dirtyNodeIds), this.DEBOUNCE_MS)
   }
 
-  async check(doc: DocumentTree, pool: NodePool): Promise<QCResult> {
-    const index = this.buildIndex(doc, pool)
+  async check(pool: NodePool, dirtyNodeIds: Set<string>): Promise<QCResult> {
+    // 增量更新索引 (仅脏节点)
+    this.updateIndex(pool, dirtyNodeIds)
     // JSONLogic 规则在 Web Worker 中执行 (纯函数, 可序列化)
     const findings = (await Promise.all(
-      this.rules.map(rule => rule.check(doc, pool, index, this.dictCache))
+      this.rules.map(rule => rule.check(pool, this.hdsdIndex, this.dictCache))
     )).flat()
     return { findings, score: new QCScorer().score(findings, this.rules), timestamp: Date.now() }
   }
 }
+
+/** 触发方与生命周期:
+ *  CommandManager.execute() → StatePatch.invalidation === 'node'(SmartTextNode变更)
+ *    → DirtyTracker.queryDirtySmartTextNodes() → Set<string>
+ *    → QCEngine.scheduleCheck(pool, dirtyNodeIds)
+ *  indexReady === false 时, updateIndex 先执行全量 baseline
+ * 规则集(QRule[])变更时调用 invalidateIndex() 强制全量重建
+ */
 
 // 评分修正:
 class QCScorer {
@@ -3373,12 +3565,18 @@ CREATE TABLE t_user_role (
 --   2. JWT role='admin' 旁路全部权限
 ```
 
-### 12.1.2 并发编辑锁
+### 12.1.2 并发编辑锁 (v20.11 — Phase 1 独占, Phase 2 废弃)
+
+**与 F13.1 多人协作的分工**: Redis 编辑锁解决的是**冲突保存**问题（"谁在编辑这份文档、防止同时保存覆盖"），Yjs CRDT 解决的是**并发编辑**问题（"多人在同一文档内各写各的"）——两者处于不同层级。Phase 1 无 Yjs，编辑锁是必需的（防止两份 PUT 互相覆盖）；Phase 2 Yjs 接管后编辑锁**废弃**（CRDT 自动合并编辑，乐观锁 version 字段在 SnapshotBridge PUT 时仍校验）。
 
 ```sql
+-- Phase 1 (单用户): 使用编辑锁防止并发打开同一文档
 -- Redis: SET doc_lock:{documentId} {userId} NX EX 30
 -- 心跳: 前端每 15s PUT /api/v1/documents/{id}/lock/heartbeat 续期 30s
 -- 释放: 正常关闭/401/页面卸载时 DELETE lock key
+
+-- Phase 2 (协作): 编辑锁废弃——多人同时编辑由 Yjs CRDT 保证一致性
+-- 仅保留 t_document_lock 表用于"谁正在编辑"的状态展示 (非互斥)
 
 CREATE TABLE t_document_lock (
     document_id VARCHAR(64) PRIMARY KEY,
@@ -3386,7 +3584,8 @@ CREATE TABLE t_document_lock (
     locked_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
     expires_at  DATETIME NOT NULL
 );
--- 持久化备份 (Redis 重启后恢复)
+-- Phase 1: 互斥锁 (SET NX)
+-- Phase 2: 状态记录 (仅记录在线编辑者, 不互斥)
 ```
 
 **409 冲突前端三选一**:
@@ -3415,6 +3614,42 @@ AES-256-GCM 字段级加密:
         encryptedDEK=AES_WRAP(KEK, DEK) → 存 encryption_key
   读取: DEK=AES_UNWRAP(KEK, encryptedDEK) → plaintext=AES_GCM_DECRYPT(DEK, ciphertext)
   轮换: KEK 版本化, t_document 记录 kek_version, 批量异步轮换
+```
+
+#### 加密与校验/QC 的管线顺序 (v20.6)
+
+**问题**: 加密后 `text` 是 Base64 密文，dataType='N'/'D' 的格式校验和 QC 规则(数值范围/日期逻辑)在密文上无法执行。
+
+**管线顺序**:
+
+```
+写入 (前端 → 后端):
+  SmartTextNode.text (明文)
+    → 前端 validateDocumentTree() [明文可校验 dataType/maxLength 等]
+    → 前端 QCEngine.check() [明文, 完整 QC 规则]
+    → 加密层: AES_GCM(DEK, text) → ciphertext
+    → PUT /api/v1/documents/{id} [密文入 JSON]
+    → 后端 JSON_SCHEMA_VALID [跳过 privacy=true 字段, 只校验结构]
+    → 后端 QC [跳过加密字段, 标注 skippedInQC]
+
+读取 (后端 → 前端):
+  GET → 后端 JSON_SCHEMA_VALID 可通过(结构不变)
+    → 前端接收密文
+    → 解密层: AES_GCM_DECRYPT(DEK, ciphertext) → text (明文)
+    → 前端 QCEngine.check() [解密后明文, QC 规则正常执行]
+```
+
+**密钥访问权限**:
+
+| 角色 | KEK 访问 | 解密能力 | QC/校验能力 |
+|------|----------|----------|------------|
+| 前端(编辑者) | 通过 API 获取 DEK | 可解密 | 加密前后均可 |
+| 后端 API 层 | 持有 KEK | 可解密 DEK | 仅结构校验 |
+| QC 服务 | **不持有 KEK** | 不可解密 | 仅非加密字段 |
+| AI MCP Server | 继承当前用户权限 | 按用户级别 | 同用户 |
+
+**设计决策**: 后端不解密。加密字段在服务端是 opaque blob，QC 和校验对其跳过。医疗合规要求敏感数据的纯文本只在持有 KEK 的客户端内存中存在。后端 QC 服务若需校验加密字段(如"出院日期≥入院日期")，通过标注 `skippedInQC` 提示前端在解密后重新执行受影响的规则。
+
 ```
 
 ### 12.1.4 PDF 许可证与选型
@@ -3675,6 +3910,37 @@ CREATE TABLE t_audit_log (
     INDEX idx_action (action),
     INDEX idx_created_at (created_at)
 );
+```
+
+#### 三版本概念关系 (v20.7)
+
+系统中存在三个独立的"版本号"，容易混淆：
+
+```
+t_document.version (INT, 乐观锁)
+  │ 每次 PUT 成功 +1. 用于并发冲突检测.
+  │ CommentThread.baseVersion 指向这个版本.
+  │ OfflineReconnect.stateVector 对标这个版本.
+  │
+  ▼
+model_version (VARCHAR, 语义化模型版本)
+  │ 仅 ModelD schema 破坏性变更时更新.
+  │ 用于 ensureLatestModel() 升级器链选择. 不随编辑递增.
+  │ DDL DEFAULT '4.0.0'.
+  │
+  ▼
+NodePool._structureVersion (内部计数)
+  │ 仅内存. 节点增删时 ++. 用于 LayoutCache 失效. 不持久化.
+```
+
+| 版本 | 存储 | 递增时机 | 用途 |
+|------|------|----------|------|
+| `t_document.version` | DB INT | 每次 PUT 成功 | 乐观锁、CommentThread 锚定、离线 sv |
+| `model_version` | DB VARCHAR(10) | Schema 破坏性变更 | 升级器链选择 |
+| `_structureVersion` | 内存 number | 节点增删 | LayoutCache 失效 |
+
+**CommentThread.baseVersion = t_document.version**。重锚定: baseVersion → currentVersion 区间 diff → 计算锚点位移。离线重连 sv = 断线时的 t_document.version。
+
 ```
 
 ### 12.4 REST API 设计
@@ -4097,36 +4363,9 @@ const aiUndoManager = new Y.UndoManager([ydoc.getArray('body')], {
 })
 ```
 
-**ICommand 降级** (v19.7):
+**ICommand 跨阶段兼容** (v20.8):
 
-ICommand 接口保留，但语义降级为"编辑语义封装 + Y.transact 包装器"：
-
-```typescript
-interface ICommand {
-  readonly type: string; readonly id: string
-  readonly timestamp: number; readonly author: string
-
-  /** 执行编辑操作——内部直接操作 Y.Doc (通过 Y.transact) */
-  forward(ydoc: Y.Doc, origin: string): void
-
-  /** @deprecated v19.7: CRDT 模式下不再使用 invert, 撤销由 Y.UndoManager 接管 */
-  invert?: never  // 标记为不可用
-
-  serialize(): SerializedCommand  // 保留, 用于审计日志和离线重放
-}
-
-class InsertTextCommand implements ICommand {
-  forward(ydoc: Y.Doc, origin: string): void {
-    ydoc.transact(() => {
-      // 直接操作 Y.Doc 的 Y.Map / Y.Array 类型
-      // 不需要 NodePool.resolveCharOffset — Y.Doc 内部处理位置
-      const yPara = ydoc.getMap(this.paragraphId)
-      const yChildren = yPara.get('children') as Y.Array<string>
-      // ... 操作 Y.Doc
-    }, origin)
-  }
-}
-```
+ICommand 接口使用 `CommandContext` 联合类型（详见 §6.1）。Phase 1 注入 `{mode:'local', doc, pool}`，Phase 2 注入 `{mode:'collab', ydoc, origin}`。接口签名稳定，切换时 CommandManager 一处变更。此处不再重复定义。
 
 **两个阶段的并行策略**:
 
@@ -4169,9 +4408,71 @@ WebSocket 报文:
   - WebSocket 定期广播 (500ms throttle)
   - 其他用户光标在 InteractLayer 上渲染为彩色竖线 + 用户名标签
 ```
+
+### 13.4 保存与协作的衔接 — 快照桥 (v20.10)
+
+**问题**: §13.2 AutoSaveManager 防抖 3s PUT 全量 DocumentTree vs §13.3 Yjs 增量同步 + y-redis update log。两条流水线各自完整，拼起来是断的——Phase 2 协作模式下 `t_document.content` 何时、由谁、以什么频率更新？
+
+**衔接设计**:
+
+```
+Phase 2 数据流:
+  Y.Doc (内存) ← y-redis pub/sub → 远端实例
+      │
+      ├─→ [实时] Yjs update → y-redis 持久化 update log (真正的协作持久层)
+      │
+      └─→ [周期性] 快照桥: 每 30s 或 用户 Ctrl+S / 失焦
+            Y.Doc.toJSON() → DocumentTree → encryptFields() → PUT /api/v1/documents/{id}
+            (t_document.content 为周期性快照, 非实时真相)
 ```
 
-## 14. 部署架构 (v19.8 补多实例协作拓扑)
+**频率与触发**:
+
+| 触发条件 | Phase 1 (单用户) | Phase 2 (协作) |
+|----------|-----------------|----------------|
+| 编辑后防抖 | 3s → IndexedDB + PUT | **30s** → PUT (降频, y-redis 已是持久层) |
+| Ctrl+S | 立即 PUT | 立即 PUT (快照落盘) |
+| 失焦/blur | 立即 PUT | PUT |
+| beforeunload | 立即 PUT | PUT + y-redis flush |
+| 定时后台 | — | 每 5min 自动快照 (防止 y-redis log 无限增长) |
+
+**Y.Doc ↔ DocumentTree 转换** (快照桥实现):
+
+```typescript
+class SnapshotBridge {
+  /** Y.Doc → DocumentTree (用于 PUT 保存) */
+  static ydocToTree(ydoc: Y.Doc): DocumentTree {
+    // Y.Doc.toJSON() 返回的是 Yjs 内部 JSON 结构，需要映射为 DocumentTree
+    const raw = ydoc.toJSON()
+    const flatNodes = YjsFlattener.flatten(raw) // Yjs 嵌套 → 扁平 Map
+    // 注意: Y.Doc 中的节点已包含 header/footer/footnotes/endnotes
+    return buildTreeFromFlat(flatNodes)
+  }
+
+  /** DocumentTree → Y.Doc (用于文档加载时初始化 Y.Doc) */
+  static treeToYdoc(tree: DocumentTree): Y.Doc {
+    const ydoc = new Y.Doc()
+    const flatNodes = DocumentFlattener.flatten(tree) // 树 → 扁平
+    // applyUpdate 导入完整文档
+    Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(ydoc))
+    return ydoc
+  }
+}
+```
+
+**t_document.content 的角色转变**:
+
+| 阶段 | content 角色 | 更新频率 |
+|------|-------------|----------|
+| Phase 1 | **真相源** | 3s 防抖 PUT |
+| Phase 2 | **周期性快照** (真相在 y-redis update log) | 30s / Ctrl+S / 5min |
+
+**为什么不能关掉 AutoSave PUT**: 
+- 模板/导出/质控/版本历史等非协作消费者直接读 `t_document.content`
+- y-redis update log 只存 N 天 (可配置, 默认 7 天), 需要定期快照持久化到 MySQL
+- 文档列表 API 需要展示文档元数据 (标题/状态/最后编辑时间), 不需要完整 Y.Doc 重建
+
+```
 
 ### Phase 1 — MVP 单实例
 
@@ -4458,32 +4759,46 @@ interface BusinessMetrics {
 | 100 页分页计算   | `PageBreaker.breakPages()` 调用 | `IPage[]` 返回                                       | `performance.measure('page-break', ...)`                                                 |
 | 自动保存响应     | `AutoSaveManager.save()` 调用   | API 响应解析完成 (或 IndexedDB 写入完成)               | 分别计时 IndexedDB 和 API 两段                                                             |
 
+### 17.6 关键架构风险 (v20.14)
+
+| # | 风险 | 等级 | 应对 | 验证节点 |
+|---|------|------|------|----------|
+| R1 | **Yjs 投影路径未验证**: NodePoolProjection (§13.3.2) 的 observeDeep → applyInsert/Delete/Update → NodePool children 同步 + 级联回收的映射复杂度极高。Y.Array delta 与树形 children 的语义对齐（Table 嵌套、move 操作）容易出边界 bug。一旦失败，§2 整套模型设计需回炉 | **高** | MVP 完成后立即做 spike (2-3天): 最小原型验证"百页文档远端插入 1 字符 → O(1) 投影"是否成立。spike 通过后再启动 Phase 2 协作功能开发 | MVP 完成后 |
+| R2 | 字体度量跨端一致性 | 高 | FontMetricsParser §3.1b + golden test (TS/Java bit 级一致) | CI 门禁 |
+| R3 | **排版结果未跨端验证**: 字体度量一致 ≠ 排版结果一致。LineBreaker/PageBreaker 的 JS 实现与 Java 实现的换行策略可能有细微差异，即使 FontMetrics bit 级一致，累积误差也可能导致跨页断点漂移 | 高 | SLIF 对拍黄金测试 (TASK-448): Canvas x 坐标 vs PDF x 坐标逐 item 比对, ≤1px | CI 门禁, MVP 完成前 |
+
 ## 18. 打印 / 导出链路
 
-### 18.1 实现方案
+### 18.1 统一导出链路 — SLIF 单一渲染源 (v20.12)
+
+**已废弃的方案** (文档中删除):
+- ~~前端 Canvas.toDataURL('image/png') → 后端组装 PDF~~ (像素位图, 不可缩放, 字体模糊)
+- ~~后端接收 DocumentTree JSON → 独立排版~~ (§18.3 已明确"后端不做独立排版")
+
+**唯一正确解**: 前端 LayoutEngine 产出 SLIF JSON (§7.3-§7.7) → 后端 iText/PDFBox 按 SLIF 坐标精确定位。布局计算结果只产生一次（前端 LayoutEngine），后端仅做格式转换。前后端共享同一份字体度量（FontMetricsParser §3.1b）和同一份页面设置（PageSetup §2.1）。
 
 ```
-导出实现: 前端 Canvas 渲染 → 后端格式转换
-
-  前端:
-    Canvas.toDataURL('image/png')  → 页面级 PNG 图像
-    DocumentTree → JSON 文本导出
-
-  后端:
-    PNG 图像 + JSON 文本 → 组装为 PDF (通过 iText / Apache PDFBox)
-    DocumentTree JSON → HTML 模板 (通过 FreeMarker / Thymeleaf)
-    DocumentTree JSON → TXT 纯文本提取
+LayoutEngine (前端)
+    │
+    ├─→ SLIF JSON ─→ 后端 PDF 导出 (Apache PDFBox 按坐标精确放置)
+    │               ─→ 后端 HTML 导出 (Thymeleaf 按坐标生成绝对定位 div)
+    │               ─→ 后端 OFD 导出 (suwell/ofdrw)
+    │
+    ├─→ DocumentTree JSON ─→ JSON 导出 (Blob 下载)
+    │                      ─→ TXT 导出 (遍历 TextNode.text 拼接)
+    │
+    └─→ Canvas.toDataURL('image/png') ─→ PNG 导出 (当前页截图, 仅用于快速预览)
 ```
 
-### 18.2 各格式导出链路
+### 18.2 各格式导出定位
 
-| 格式 | 实现位置       | 方案                                                      |
-| ---- | -------------- | --------------------------------------------------------- |
-| JSON | 前端           | `JSON.stringify(DocumentTree)` → Blob 下载             |
-| PNG  | 前端           | `Canvas.toDataURL()` — 当前页 → Blob 下载             |
-| PDF  | **后端** | 接收 DocumentTree JSON → iText 服务端渲染 → 返回 PDF 流 |
-| HTML | **后端** | 接收 DocumentTree JSON → Thymeleaf 模板渲染 → 返回 HTML |
-| TXT  | 前端或后端     | 遍历 DocumentTree 提取所有 TextNode.text → 拼接          |
+| 格式 | 数据源 | 实现位置 | 说明 |
+|------|--------|----------|------|
+| JSON | DocumentTree | 前端 | `JSON.stringify` → Blob 下载 |
+| PDF | **SLIF** | 后端 | Apache PDFBox 按 SLIF 坐标精确放置 + 嵌入字体文件 |
+| HTML | **SLIF** | 后端 | Thymeleaf 按 SLIF 坐标生成绝对定位 |
+| PNG | Canvas 快照 | 前端 | 仅当前页预览, 非正式导出 |
+| TXT | DocumentTree | 前端/后端 | 遍历提取 TextNode.text |
 
 ### 18.3 排版一致性保障 (v19.9 修正)
 
@@ -5356,17 +5671,19 @@ function saveDocument(doc: DocumentTree): string {
 }
 ```
 
-### 附录 F: 核心接口契约骨架
+### 附录 F: 核心接口契约骨架 (v20.17 — 与 §6.1 逐字一致)
 
 ```typescript
 // 编译时强制约束 — 实现者必须遵守，调用方依赖这些契约
+// 权威定义见 §6.1, 此处为速查副本
 
-/** ICommand — 不可变纯数据, invert 传入文档现场 */
+/** ICommand — CommandContext 联合上下文, forward 后快照 frozen */
 interface ICommand {
   readonly type: string; readonly id: string; readonly timestamp: number; readonly author: string
-  forward(document: DocumentTree, pool: NodePool): StatePatch | null
-  invert(document: DocumentTree, pool: NodePool): ICommand
+  forward(ctx: CommandContext): StatePatch | null
+  invert?(ctx: CommandContext): ICommand | null  // collab 模式返回 null
   serialize(): SerializedCommand
+  static deserialize(data: SerializedCommand): ICommand
 }
 
 /** IParticle — 所有可渲染元素的统一接口 */
@@ -5437,4 +5754,3 @@ interface IInputComposer {
  *   - 若用节点 ID, B 的 delete 目标是特定 Paragraph ID, 不受 A 的插入影响
  */
 ```
-                | BookmarkNode | CrossReferenceNode | FieldNode | FootnoteRef
