@@ -1,8 +1,8 @@
 # 架构设计文档 - 文档编辑器引擎
 
-> 版本: v20.33 | 日期: 2026-07-30 | 阶段: docs
+> 版本: v20.34 | 日期: 2026-07-30 | 阶段: docs
 >
-> **v20.33 变更**: Spec 内部缺陷修复 —— 删 TASK-488 重复行; TASK-710 移入 Phase2门禁节; TASK-442 去重引用 TASK-501~508; TASK-106 标注 @deprecated; TASK-447 补 Word 对比测量口径
+> **v20.34 变更**: P1 收尾 —— P1-1 四条流水线时序图; P1-2 EditorProvider→Zustand桥; P1-3 产品/SDK双默认; P1-5 paragraphPath 末段语义纠正; P1-7 MVP 限定10页验收
 
 ---
 
@@ -2252,8 +2252,42 @@ class CommandUndoRedoStack {
 //   'paragraph_and_downstream' → markParagraphDirty + markRectDirty(后续)
 //   'flowbody'|'table'|'page_setup'|'full' → dirtyTracker.markFullLayout()
 //   详见 §7.3 InvalidationScope → 动作映射表
-           │
-    ┌──────┴──────┐
+
+// ================================================================
+// 四条流水线汇合时序图 (v20.34, 修复 P1-1)
+// ================================================================
+//
+// CommandManager.execute(cmd)
+//   │
+//   ├─→ cmd.forward(ctx) → StatePatch { cursor?, selection?, invalidation }
+//   │
+//   ├─→ dispatchInvalidation(invalidation)
+//   │     ├─ 'node'   → dirtyTracker.markSmartTextDirty
+//   │     ├─ 'paragraph' → dirtyTracker.markParagraphDirty
+//   │     └─ 'flowbody'|'full' → dirtyTracker.markFullLayout
+//   │
+//   ├─→ eventBus.emit('document:changed', { invalidation, dirtyNodeIds })
+//   │     │
+//   │     ├─→ AutoSaveManager.onContentChanged()
+//   │     │     读取 CommandManager.getDocument() 获取最新 DocumentTree 快照
+//   │     │     → debounce 3s → PUT /api/v1/documents/{id}
+//   │     │     SaveStatus 状态机: debounce→saving→saved|error|conflict
+//   │     │
+//   │     ├─→ QCEngine.scheduleCheck(pool, dirtyTracker.queryDirtySmartTextNodes())
+//   │     │     → debounce 1s → check() → QCResult → emit 'qc:completed'
+//   │     │
+//   │     └─→ LayoutEngine (via 'document:changed' listener)
+//   │           → 读取 DirtyTracker → incrementalLayout → SLIFPage[]
+//   │
+//   └─→ eventBus.emit('state:changed', patch)
+//         │
+//         └─→ EditorProvider (React 桥, §20.2)
+//               → Zustand store.runtime = { ...store.runtime, ...patch }
+//               → React re-render (Toolbar/StatusBar)
+//
+// AutoSaveManager 通过 CommandManager.getDocument() 获取 document,
+// 不再依赖 event 载荷传输完整 DocumentTree (修复 P1-1 链断裂).
+// ================================================================
     ▼             ▼
   Handler 构造命令   EventBus 通知 Draw 重绘
   (不触碰栈)        (不触碰栈)
@@ -4339,27 +4373,24 @@ NodePool._structureVersion (内部计数)
 
 **CommentThread.baseVersion = t_document.version**。重锚定: baseVersion → currentVersion 区间 diff → 计算锚点位移。离线重连 sv = 断线时的 t_document.version。
 
-```
-
 ### 12.4 REST API 设计
 
-```
-# 文档管理
+#### 文档管理
 GET    /api/v1/documents              # 文档列表（分页、筛选）
 POST   /api/v1/documents              # 创建文档
 GET    /api/v1/documents/{id}         # 获取文档详情
 PUT    /api/v1/documents/{id}         # 更新文档 (Header: X-Expected-Version: N)
 DELETE /api/v1/documents/{id}         # 删除文档
 
-# 文档权限
+#### 文档权限
 GET    /api/v1/documents/{id}/permissions        # 获取文档权限列表
 POST   /api/v1/documents/{id}/permissions        # 授予权限
 DELETE /api/v1/documents/{id}/permissions/{uid}  # 撤销权限
 
-# 审计日志
+#### 审计日志
 GET    /api/v1/documents/{id}/audit-logs          # 操作日志 (分页)
 
-# 协作 (WebSocket)
+#### 协作 (WebSocket)
 WS     /ws/documents/{id}                         # 文档协作通道
 ```
 
@@ -4439,7 +4470,7 @@ Layer 2: fixtures/corrupt-dup-id.json / corrupt-orphan-ref.json / corrupt-cycle.
 ```
 ```
 
-#### 12.6.3 modelVersion 版本兼容策略
+### 12.6.3 modelVersion 版本兼容策略
 
 ```typescript
 // 唯一升级入口 — loadDocument (与附录 E 语义化版本规则一致)
@@ -5368,7 +5399,13 @@ src/engine/          ← 内核 (零 UI 框架依赖)
 src/editor-react/    ← React 组件封装包 (依赖 engine)
   ├── EditorProvider.tsx     — React Context 桥接
   ├── Toolbar.tsx / Sidebar.tsx / ...
-  └── 完整 UI 组件
+└── 编辑器状态桥 (v20.34, 修复 P1-2)
+    EditorProvider 订阅 EventBus:
+      'state:changed' → Zustand store.runtime = { ...prev, ...patch }
+      'document:changed' → Zustand store.isDirty = true
+      'qc:completed' → Zustand store.qcResult = result
+      AutoSaveManager.onSaveStatusChange → Zustand store.saveStatus
+    这是 engine → UI 的唯一数据通道, 每个 React 组件通过 useStore() 读取
 
 外部集成方:
   纯 JS / Vue / Electron → import { Editor } from '@emr/engine'
