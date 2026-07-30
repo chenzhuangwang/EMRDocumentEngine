@@ -48,7 +48,7 @@ SpringBoot 3.3+ / Mybatis-Plus 3.5+ / MySQL 8.0 / Redis 7.x / Maven 3.9+
 | TASK-103 | `layout/TextMeasurer.ts` — Canvas measureText + LRU 缓存 | ✅ |
 | TASK-104 | `layout/LineBreaker.ts` — CJK+英文混排换行引擎 (待集成) | ✅ |
 | TASK-105 | `layout/PageBreaker.ts` — 分页引擎 (孤行/寡行控制, 待集成) | ✅ |
-| TASK-106 | `state/Position.ts` — 位置计算器 (存根, 待集成) | ⚠️ |
+| TASK-106 | `state/Position.ts` — 位置计算器 (存根, @deprecated v20.33: 由 TASK-491 CoordinateSystem 替代后删除) | ⚠️ |
 | TASK-107 | `render/particles/TextParticle.ts` — 文本粒子渲染器 | ✅ |
 
 ### 2.2 编辑器入口 + React UI ✅
@@ -113,7 +113,7 @@ SpringBoot 3.3+ / Mybatis-Plus 3.5+ / MySQL 8.0 / Redis 7.x / Maven 3.9+
 | 任务 | 目标文件 | 说明 |
 |------|----------|------|
 | **TASK-441** | `document/NodePool.ts` | nodes Map + structureVersion + nodeVersions + O(1) 查找 + insertChild/removeChild 统一入口 |
-| **TASK-442** | `document/DocumentModel.ts` | children 全部迁移到 string[]；新增 ImageNode/BookmarkNode/CrossReferenceNode/FieldNode/FootnoteRef/FootnoteContent/CommentMarker/SeparatorNode/SectionBreak |
+| **TASK-442** | `document/DocumentModel.ts` | children 迁移 string[] + ImageNode；具体节点类型扩充见 TASK-501~508 |
 | **TASK-443** | `layout/LayoutCache.ts` | inlineCache/blockCache/pageCache 三级缓存 + isValid/invalidate/clearAll |
 | **TASK-444** | `render/LayeredRenderer.ts` | static/content/interact 三层 Canvas；视口+overscan 1页；水印离屏 pattern；光标 setInterval |
 
@@ -125,7 +125,7 @@ SpringBoot 3.3+ / Mybatis-Plus 3.5+ / MySQL 8.0 / Redis 7.x / Maven 3.9+
 |------|------|
 | **TASK-445** | LineBreaker 集成: paragraphToLineElements() → breakLines() → 替换 Draw.ts 内联换行逻辑 |
 | **TASK-446** | PageBreaker 集成: breakPages() + incrementalRepaginate() 替换固定高度分页；孤行/寡行控制生效 |
-| **TASK-447** | 集成验证: 100 页文档分页计算 < 3s (架构 §17.1)；分页结果与 Word 对比 (同页面设置下内容分布一致) |
+| **TASK-447** | 集成验证: 100 页分页 < 3s (§17.1)；分页 Word 对比: 同页面设置下随机抽检 10 页, 每页首行文本 + 关键断点(表格/图片)处逐行比对, 文本一致性 100% |
 | **TASK-448** | **SLIF 前后端对拍黄金测试**: 同一 DocumentTree → LayoutEngine 产出 SLIF → 前端 Canvas 渲染坐标 vs 后端 PDFBox 渲染坐标逐 item 比对 (x/y/width/height)。允许误差 ≤ 1px @ 96dpi。覆盖: 纯中文 / 中英混排 / 表格 / 图片 / 列表 / 分节符。**字体度量一致 ≠ 排版结果一致, 这是"0 像素偏移"承诺的唯一验证手段**。CI 门禁, 失败禁止合并 |
 
 ---
@@ -195,7 +195,7 @@ SpringBoot 3.3+ / Mybatis-Plus 3.5+ / MySQL 8.0 / Redis 7.x / Maven 3.9+
 
 | 任务 | 说明 |
 |------|------|
-| **TASK-470** | `render/LayeredRenderer.ts` + `components/toolbar/HeaderFooterToolbar.tsx` | 页眉页脚编辑模式: 双击进入 (Renderer 切换 static 层可编辑)、正文变灰 (content 层半透明)、上下文工具栏; UIUX §6.1 |
+| **TASK-470** | `render/LayeredRenderer.ts` + `components/toolbar/HeaderFooterToolbar.tsx` | 页眉页脚编辑模式: 双击 → content 层激活页眉区域渲染 + interact 层接管点击命中 (v20.23: 不动 static 层语义); 正文 content 层半透明; 上下文工具栏; UIUX §6.1 |
 | **TASK-471** | `components/toolbar/HeaderFooterToolbar.tsx` — 首页不同/奇偶页不同/页码/日期/关闭 |
 
 ### 4.10 格式刷与格式清除
@@ -236,7 +236,6 @@ SpringBoot 3.3+ / Mybatis-Plus 3.5+ / MySQL 8.0 / Redis 7.x / Maven 3.9+
 | 任务 | 说明 |
 |------|------|
 | **TASK-486** | 行高统一: LineHeightResolver = FontMetrics × size/upem × lineHeight；删 TextMeasurer 启发式 |
-| **TASK-488** | 行高统一: LineHeightResolver = FontMetrics × size/upem × lineHeight；删 TextMeasurer 启发式 |
 | **TASK-489** | 测量缓存修正: (char,fontKey) 粒度 + 容量 10000 + kerning 仅 Latin |
 
 ### 5.3 坐标 + 命中检测
@@ -445,11 +444,11 @@ SpringBoot 3.3+ / Mybatis-Plus 3.5+ / MySQL 8.0 / Redis 7.x / Maven 3.9+
 | **TASK-701** | 表格样式: 边框线型/底纹/对齐 + 列宽拖拽 UI |
 | **TASK-702** | MergeMatrix.buildMergeMatrix() + 跨页断表 (表头重复 + minRowsBeforeBreak + 续表标记) |
 
-### 12.2 协作
+### 12.2 Phase 2 门禁 — Yjs Spike (前置条件)
 
-| 任务 | 说明 |
-|------|------|
-| **TASK-710** | **Yjs 投影路径 Spike** (P0, MVP 完成后立即执行): 最小原型验证 NodePoolProjection.observeDeep → applyInsert/Delete/Update → NodePool 映射。百页文档远端插入 1 字符必须 O(1) 投影。覆盖 Table 嵌套 / move / 级联回收边界 case。**Spike 通过后才启动 TASK-711**。架构 R1 (§17.6) |
+| **TASK-710** | **Yjs 投影路径 Spike** (P0, MVP 完成后立即执行): 最小原型验证 NodePoolProjection.observeDeep → applyInsert/Delete/Update → NodePool 映射。百页文档远端插入 1 字符必须 O(1) 投影。覆盖 Table 嵌套 / move / 级联回收边界 case。**Spike 通过后才启动 §12.3 协作任务**。架构 R1 (§17.6) |
+
+### 12.3 协作
 | **TASK-711** | Yjs CRDT 集成: Y.Doc 运行时模型 + DocumentTree 快照序列化 (依赖 TASK-710 通过) |
 | **TASK-712** | WebSocket 协作通道 (Stomp + JWT 认证) + Awareness 光标同步 (500ms) |
 | **TASK-713** | 离线重连: 本地 Command 积累 + sync_request 增量同步 |
@@ -512,4 +511,4 @@ SpringBoot 3.3+ / Mybatis-Plus 3.5+ / MySQL 8.0 / Redis 7.x / Maven 3.9+
 10. **权限**: `isEditable()` 全模式 × 节点级组合测试通过
 11. **架构对齐**: 新增类型/接口与架构文档定义一致
 12. **PRD 对齐**: 任务覆盖所有 MVP + P0 功能需求
-13. **位置分层**: Command 接口签名与 serialize() 载荷中不得出现数组下标 (架构 v19.4 §6 规则 6)；所有位置字段为 `(paragraphPath: string[], charOffset: number)` 字符偏移；forward() 内部强制经 `resolveCharOffset()` 转换后再操作节点
+13. **位置分层**: Command 接口签名与 serialize() 载荷中不得出现数组下标 (架构 v19.4 §6 规则 6)；所有位置字段为 `(paragraphPath, charOffset)`；forward() 内部强制经 resolveCharOffset() 转换后再操作节点。**invert 返回 null 的命令禁止合入** (v20.28)——每个命令必须有可构造的逆操作

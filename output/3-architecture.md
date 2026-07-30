@@ -1,11 +1,8 @@
 # 架构设计文档 - 文档编辑器引擎
 
-> 版本: v20.17 | 日期: 2026-07-30 | 阶段: docs
+> 版本: v20.33 | 日期: 2026-07-30 | 阶段: docs
 >
-> **v20.17 变更 (里程碑: 接口收敛)**:
-> ICommand 全文档签名统一为 CommandContext: §6.2/6.3/6.3b/6.4/6.5/8.3/附录F 全部重写;
-> §6.4 execute() 改为先 forward 成功后入栈; §8.3 tryMerge 删除 (合并逻辑归 §6.4);
-> 附录 F 与 §6.1 逐字一致; invert? 返回 ICommand | null
+> **v20.33 变更**: Spec 内部缺陷修复 —— 删 TASK-488 重复行; TASK-710 移入 Phase2门禁节; TASK-442 去重引用 TASK-501~508; TASK-106 标注 @deprecated; TASK-447 补 Word 对比测量口径
 
 ---
 
@@ -269,6 +266,66 @@ class NodePool {
   getChildNodes(parentId: string): readonly BaseNode[] {
     return this.getChildren(parentId).map(id => this.nodes.get(id)!).filter(Boolean)
   }
+
+  // ================================================================
+  // 公共方法 (v20.21: 从 §4.1/§6.3b/§11.2 分散引用收拢到权威定义)
+  // ================================================================
+
+  /** rootIds 存储 —— buildNodePool 注入后由 QCEngine §11.2 等使用 */
+  rootIds: {
+    body: string; header?: string[]; footer?: string[]
+    footnotes?: string[]; endnotes?: string[]
+  } = { body: '' }
+
+  /** 单独 bump 节点版本 (供外部无需修改属性时使用, 如 NodePoolProjection §13.3.2) */
+  bumpNodeVersion(nodeId: string): void {
+    this._nodeVersions.set(nodeId, (this._nodeVersions.get(nodeId) ?? 0) + 1)
+  }
+
+  /** 字符偏移 → (textNodeId, localOffset) — 全文档唯一合法的 offset 解析入口 */
+  resolveCharOffset(paragraphId: string, charOffset: number): { textNodeId: string; localOffset: number } | null {
+    const para = this.nodes.get(paragraphId) as any
+    if (!para) return null
+    let remaining = charOffset
+    for (const childId of para.children) {
+      const node = this.nodes.get(childId)
+      if (node?.type === 'text') {
+        const len = (node as any).text.length
+        if (remaining <= len) return { textNodeId: childId, localOffset: remaining }
+        remaining -= len
+      } else {
+        if (remaining <= 1) return { textNodeId: childId, localOffset: Math.min(remaining, 1) }
+        remaining -= 1
+      }
+    }
+    return null
+  }
+
+  /** 计算给定节点的全局字符偏移 */
+  getCharOffset(paragraphId: string, textNodeId: string, localOffset: number): number {
+    const para = this.nodes.get(paragraphId) as any
+    let offset = 0
+    for (const childId of para.children) {
+      if (childId === textNodeId) return offset + localOffset
+      const node = this.nodes.get(childId)
+      if (node?.type === 'text') offset += (node as any).text.length
+      else offset += 1
+    }
+    return offset
+  }
+
+  /** 移除孤儿叶子节点 — 无级联回收 + 版本维护 (v20.30: 替代直接操作私有字段)
+   *  仅用于 normalizeParagraph 合并后回收已被合并的 TextNode。
+   *  被回收节点必须为叶子(无 children), 否则抛异常。 */
+  removeOrphanLeaf(nodeId: string): void {
+    const node = this.nodes.get(nodeId)
+    if (node && 'children' in node && (node as any).children?.length > 0) {
+      throw new Error(`removeOrphanLeaf: ${nodeId} is not a leaf node`)
+    }
+    this.nodes.delete(nodeId)
+    this._nodeVersions.delete(nodeId)
+    this._structureVersion++
+  }
 }
 
 // ================================================================
@@ -332,6 +389,9 @@ function buildNodePool(
       throw new Error(`[NodePool] Root node not found: ${id}`)
     }
   }
+
+  // Pass 4: 存储 rootIds 到 NodePool 实例
+  pool.rootIds = rootIds
 
   return pool
 }
@@ -718,10 +778,10 @@ interface FootnoteContent extends BaseNode {
 // DocumentTree 增加脚注存储区域:
 interface DocumentTree {
   // ... 现有字段
-  /** 脚注内容区 (布局引擎渲染时收集到页面底部) */
-  footnotes?: FootnoteContent[]
-  /** 尾注内容区 (布局引擎渲染时收集到文档末尾) */
-  endnotes?: FootnoteContent[]
+  /** 脚注内容区 (FootnoteContent ID[], 注册到 NodePool, v20.25: 统一 ID 引用) */
+  footnotes?: string[]
+  /** 尾注内容区 (FootnoteContent ID[], 注册到 NodePool) */
+  endnotes?: string[]
 }
 
 // 脚注布局规则:
@@ -1478,8 +1538,21 @@ interface EditorRuntimeState {
 // ================================================================
 interface CursorState {
   /**
-   * 段落定位: ID 链路路径，最后一个 ID 始终指向 Paragraph 节点
-   * 示例: ['doc_1', 'para_3'] 表示 DocumentTree → body.children[0] → para_3
+   * 段落定位: ID 链路路径
+   * 格式: [documentRootId, regionRootId, ..., paragraphId]  (v20.23: 补区域根)
+   *
+   * 区域根是路径第二段的语义锚点:
+   *   正文段落:   [docId, bodyRootId, ..., paragraphId]
+   *   页眉段落:   [docId, headerRootId, ..., paragraphId]
+   *   页脚段落:   [docId, footerRootId, ..., paragraphId]
+   *   脚注编辑区: [docId, footnoteRootId, ..., paragraphId] (footnoteRootId = FootnoteContent 所在区域的根)
+   *
+   * 示例:
+   *   ['doc_1', 'body_root', 'para_3']        — 正文第 3 段
+   *   ['doc_1', 'header_root', 'para_h1']     — 页眉内段落
+   *   ['doc_1', 'footnote_fc01', 'tn_02']     — 脚注内容中的 TextNode
+   *
+   * bodyRootId/headerRootId/footerRootId 来自 DocumentTree 各区域根节点 ID
    */
   paragraphPath: string[]
 
@@ -1498,25 +1571,8 @@ interface CursorState {
   visible: boolean
 }
 
-class NodePool {
-  /** 字符偏移 → (textNodeId, localOffset)。全文档唯一合法的 offset 解析入口。 */
-  resolveCharOffset(paragraphId: string, charOffset: number): { textNodeId: string; localOffset: number } | null {
-    const para = this.nodes.get(paragraphId) as any
-    if (!para) return null
-    let remaining = charOffset
-    for (const childId of para.children) {
-      const node = this.nodes.get(childId)
-      if (node?.type === 'text') { const len = (node as any).text.length; if (remaining <= len) return { textNodeId: childId, localOffset: remaining }; remaining -= len }
-      else { if (remaining <= 1) return { textNodeId: childId, localOffset: Math.min(remaining, 1) }; remaining -= 1 }
-    }
-    return null
-  }
-  getCharOffset(paragraphId: string, textNodeId: string, localOffset: number): number {
-    const para = this.nodes.get(paragraphId) as any; let offset = 0
-    for (const childId of para.children) { if (childId === textNodeId) return offset + localOffset; const node = this.nodes.get(childId); if (node?.type === 'text') offset += (node as any).text.length; else offset += 1 }
-    return offset
-  }
-}
+// resolveCharOffset/getCharOffset (v20.21) — 权威定义已合入 §2.1 NodePool, 此处仅引用
+// 见 §2.1 NodePool 类定义
 
 interface SelectionState {
   /** 选区起点 */
@@ -1940,11 +1996,9 @@ function normalizeParagraph(para: Paragraph, pool: NodePool): void {
   // Step 2: 原子替换 children (无索引错乱)
   ;(para as any).children = merged
 
-  // Step 3: 批量回收孤儿节点 (直接操作内部 Map, 避免 removeChild 的级联回收开销——孤儿已是叶子 TextNode)
+  // Step 3: 批量回收孤儿节点 (走公共方法 removeOrphanLeaf, v20.30 修破窗)
   for (const id of orphans) {
-    pool.nodes.delete(id)
-    ;(pool as any)._nodeVersions?.delete(id)
-    ;(pool as any)._structureVersion++
+    pool.removeOrphanLeaf(id)
   }
 }
 // 复杂度: O(n) 单遍扫描, 无 splice/indexOf
@@ -2180,15 +2234,24 @@ class CommandUndoRedoStack {
 │  - eventBus: EventBus                                     │
 │                                                           │
 │  execute(cmd): StatePatch | null                          │
-│    → cmd.forward({ mode: "local", doc, pool })                               │
+│    → cmd.forward({ mode: "local", doc, pool })            │
 │    → undoStack.execute(cmd)                               │
-│    → dirtyTracker.mark(...)                               │
-│    → eventBus.emit('document:changed')                    │
+│    → dispatchInvalidation(patch.invalidation)  ← v20.22   │
+│    → eventBus.emit('document:changed',                    │
+│        { invalidation: patch.invalidation,                 │
+│          dirtyNodeIds: dirtyTracker.queryDirtyNodes() })   │
 │  undo(): void                                             │
 │    → undoStack.undo(doc, pool)  // 走新栈                  │
 │    → eventBus.emit('render:request')                      │
 │  redo(): void  // 同上                                    │
 └──────────────────────────────────────────────────────────┘
+
+// dispatchInvalidation (v20.22 强制映射):
+//   'node'           → dirtyTracker.markSmartTextDirty(nodeId)
+//   'paragraph'      → dirtyTracker.markParagraphDirty(paraId)
+//   'paragraph_and_downstream' → markParagraphDirty + markRectDirty(后续)
+//   'flowbody'|'table'|'page_setup'|'full' → dirtyTracker.markFullLayout()
+//   详见 §7.3 InvalidationScope → 动作映射表
            │
     ┌──────┴──────┐
     ▼             ▼
@@ -2209,6 +2272,222 @@ class CommandUndoRedoStack {
 //   ICommand.invert() 标记 @deprecated 并从接口中移除
 //   详见 §13.3
 // ================================================================
+```
+
+### 6.6 核心段落编辑命令 (v20.18)
+
+**问题**: 回车拆段、退格并段、跨段删除是最高频编辑操作，但 §6 只有单段落内 Insert/Delete/Format。日常编辑核心命令完全缺失。
+
+```typescript
+/** 拆分段落 (Enter 键) — 在光标处将当前段落一分为二 */
+class SplitParagraphCommand extends PositionalCommand {
+  readonly type = 'split-paragraph'
+  private newParaId?: string  // v20.28: forward 填充, invert 使用
+
+  forward(ctx: CommandContext): StatePatch {
+    if (ctx.mode !== 'local') return null
+    const { doc, pool } = ctx
+    const para = pool.nodes.get(this.path[this.path.length - 1]) as Paragraph
+    if (!para) return null
+
+    // 1. 按字符偏移定位 TextNode + localOffset
+    const resolved = pool.resolveCharOffset(para.id, this.offset)
+    if (!resolved) return null
+    const { textNodeId, localOffset } = resolved
+    const textNode = pool.nodes.get(textNodeId) as TextNode
+    const beforeText = textNode.text.slice(0, localOffset)
+    const afterText = textNode.text.slice(localOffset)
+
+    // 2. 分裂 children: [0..splitIdx] 留在旧段落, [splitIdx..] 移到新段落
+    const splitIdx = para.children.indexOf(textNodeId)
+    const leftChildren = para.children.slice(0, splitIdx)
+    const rightChildren = para.children.slice(splitIdx + 1)
+    if (beforeText) leftChildren.push(textNodeId)
+    pool.updateNode(textNodeId, { text: beforeText || '' })
+
+    // 3. 构造新段落 (继承段落样式/列表属性/outlineLevel)
+    const newPara = createParagraph(afterText ? [createTextNode(afterText, extractStyle(textNode))] : [])
+    newPara.alignment = para.alignment
+    newPara.indent = para.indent
+    newPara.lineHeight = para.lineHeight
+    newPara.list = para.list ? { ...para.list, continueNumbering: true } : undefined
+    newPara.outlineLevel = para.outlineLevel
+    pool.nodes.set(newPara.id, newPara)
+
+    // 4. 在新段落中插入右半 children
+    for (const childId of rightChildren) {
+      pool.insertChild(newPara.id, childId, newPara.children.length)
+    }
+
+    // 5. 在 FlowBody 中插入新段落
+    const parentId = this.path[this.path.length - 2] ?? doc.body.id
+    const paraIndex = (pool.nodes.get(parentId) as any).children.indexOf(para.id)
+    pool.insertChild(parentId, newPara.id, paraIndex + 1)
+
+    return {
+      cursor: { paragraphPath: [...this.path.slice(0, -1), newPara.id], offset: 0 },
+      invalidation: 'flowbody'
+    }
+  }
+
+  invert?(ctx: CommandContext): ICommand | null {
+    // 逆操作: 合并回原段落, 恢复光标到拆分点
+    return new MergeParagraphCommand(generateId(), Date.now(), this.author,
+      [...this.path.slice(0, -1), newPara.id]  // 合并目标: 新段落
+    )
+  }
+  serialize(): SerializedCommand { return { type: 'split-paragraph', id: this.id, timestamp: this.timestamp, author: this.author, path: this.path, offset: this.offset } }
+}
+
+/** 合并段落 (段首 Backspace) — 将当前段文字拼接到上一段尾部 */
+class MergeParagraphCommand extends PositionalCommand {
+  readonly type = 'merge-paragraph'
+  private deletedParaId?: string        // v20.28: forward 填充被删段落 ID
+  private deletedParaSnapshot?: string  // JSON 快照 (完整子树, 用于 invert 恢复)
+  private mergeOffset?: number          // 合并点字符偏移
+
+  forward(ctx: CommandContext): StatePatch {
+    if (ctx.mode !== 'local') return null
+    const { doc, pool } = ctx
+    const currentPara = pool.nodes.get(this.path[this.path.length - 1]) as Paragraph
+    if (!currentPara) return null
+
+    // 1. 在当前 FlowBody 中找上一段
+    const parentId = this.path[this.path.length - 2] ?? doc.body.id
+    const siblings = (pool.nodes.get(parentId) as any).children as string[]
+    const currentIdx = siblings.indexOf(currentPara.id)
+    if (currentIdx <= 0) return null // 已是第一段
+    const prevPara = pool.nodes.get(siblings[currentIdx - 1]) as Paragraph
+
+    // 2. 当前段全部 children 追加到上一段尾部
+    for (const childId of currentPara.children) {
+      pool.insertChild(prevPara.id, childId, prevPara.children.length)
+    }
+
+    // 3. 快照被删段落子树 (v20.28: 子树快照式 invert)
+    this.deletedParaId = currentPara.id
+    this.deletedParaSnapshot = JSON.stringify(takeSubtreeSnapshot(pool, currentPara.id))
+    this.mergeOffset = prevCharCount
+
+    // 4. 删除当前段 (级联回收 descendants)
+    pool.removeChild(parentId, currentIdx)
+
+    // 4. 合并上一段
+    normalizeParagraph(prevPara, pool)
+
+    // 5. 光标定位到合并点 (= 上一段原文长度)
+    const prevCharCount = pool.getCharOffset(prevPara.id, prevPara.children[prevPara.children.length - 1], 0)
+    return {
+      cursor: { paragraphPath: [...this.path.slice(0, -1), prevPara.id], offset: prevCharCount },
+      invalidation: 'flowbody'
+    }
+  }
+
+  invert?(ctx: CommandContext): ICommand | null { return null }
+  serialize(): SerializedCommand { return { type: 'merge-paragraph', id: this.id, timestamp: this.timestamp, author: this.author, path: this.path } }
+}
+
+/** 跨段落删除 — 选区跨越多个段落时的删除 */
+class CrossParagraphDeleteCommand extends PositionalCommand {
+  readonly type = 'cross-paragraph-delete'
+  /** 选区的字符偏移范围 (段落内), 用于锚点/焦点分别在两个段落时 */
+  readonly anchorPath: string[]; readonly anchorOffset: number
+  readonly focusPath: string[]; readonly focusOffset: number
+
+  forward(ctx: CommandContext): StatePatch {
+    if (ctx.mode !== 'local') return null
+    const { doc, pool } = ctx
+
+    // 1. 找到锚点和焦点段落在 body 中的位置
+    const anchorParaId = this.anchorPath[this.anchorPath.length - 1]
+    const focusParaId = this.focusPath[this.focusPath.length - 1]
+    const bodyChildren = doc.body.children
+    const anchorIdx = bodyChildren.indexOf(anchorParaId)
+    const focusIdx = bodyChildren.indexOf(focusParaId)
+    if (anchorIdx < 0 || focusIdx < 0) return null
+
+    // 2. 截断首段 (保留 anchorOffset 之前的文本) + 删除 anchorOffset 之后
+    const anchorPara = pool.nodes.get(anchorParaId) as Paragraph
+    this.truncateAfter(anchorPara, pool, this.anchorOffset)
+
+    // 3. 截断尾段 (保留 focusOffset 之后的文本) + 删除 focusOffset 之前
+    const focusPara = pool.nodes.get(focusParaId) as Paragraph
+    this.truncateBefore(focusPara, pool, this.focusOffset)
+
+    // 4. 删除中间整段 (anchorIdx+1..focusIdx-1)
+    for (let i = focusIdx - 1; i > anchorIdx; i--) {
+      pool.removeChild(doc.body.id, i)
+    }
+
+    // 5. 合并首尾段
+    for (const childId of focusPara.children) {
+      pool.insertChild(anchorPara.id, childId, anchorPara.children.length)
+    }
+    pool.removeChild(doc.body.id, bodyChildren.indexOf(focusParaId))
+    normalizeParagraph(anchorPara, pool)
+
+    return {
+      cursor: { paragraphPath: [...this.anchorPath.slice(0, -1), anchorPara.id], offset: this.anchorOffset },
+      invalidation: 'flowbody'
+    }
+  }
+
+  invert?(ctx: CommandContext): ICommand | null { return null }
+  serialize(): SerializedCommand { return { type: 'cross-paragraph-delete', id: this.id, timestamp: this.timestamp, author: this.author, anchorPath: this.anchorPath, anchorOffset: this.anchorOffset, focusPath: this.focusPath, focusOffset: this.focusOffset } }
+}
+```
+
+### 6.7 StateCommand — 光标/选区变更的唯一路径 (v20.18)
+
+**问题**: §8.1 依赖图规定 Handler → CommandManager → EditorRuntimeState，但 MouseHandler 又允许直接 emit cursor:moved。两路径竞争修改同一字段，覆写顺序与合并语义未定义。StatePatch 中的 cursor 是整体替换还是字段级 merge 也未明确。
+
+**规则**: 凡修改 EditorRuntimeState 必须走 `CommandManager`，封装为 `StateCommand`（无文档副作用、仅更新状态），Handler 只发原始意图事件。
+
+```typescript
+/** StateCommand — 无文档副作用, 仅更新 EditorRuntimeState */
+class SetCursorCommand implements ICommand {
+  readonly type = 'set-cursor'; readonly id: string
+  readonly timestamp: number; readonly author: string
+  constructor(readonly cursor: Partial<CursorState>) {}
+
+  forward(ctx: CommandContext): StatePatch | null {
+    // 不修改 DocumentTree, 只返回 cursor 更新
+    return { cursor: this.cursor }
+  }
+  invert?(ctx: CommandContext): ICommand | null { return null }
+  serialize(): SerializedCommand { return { type: 'set-cursor', id: this.id, timestamp: this.timestamp, author: this.author, cursor: this.cursor } }
+  static deserialize(data: SerializedCommand): ICommand { return new SetCursorCommand(data.cursor) }
+}
+
+class SetSelectionCommand implements ICommand {
+  readonly type = 'set-selection'; readonly id: string
+  readonly timestamp: number; readonly author: string
+  constructor(readonly selection: Partial<SelectionState>) {}
+
+  forward(ctx: CommandContext): StatePatch | null {
+    return { selection: this.selection }
+  }
+  invert?(ctx: CommandContext): ICommand | null { return null }
+  serialize(): SerializedCommand { return { type: 'set-selection', id: this.id, timestamp: this.timestamp, author: this.author, selection: this.selection } }
+  static deserialize(data: SerializedCommand): ICommand { return new SetSelectionCommand(data.selection) }
+}
+
+/** StatePatch 合并语义: 每个顶层 key 为字段级 merge (Object.assign), 非整体替换 */
+//   EditorRuntimeState = { ...prev, ...patch }
+//   cursor 子字段: 按 CursorState 的 key 逐字段 merge (position, visible 独立更新)
+//   IMEState 不在 StatePatch 中 —— IME 中间态不经过 CommandManager,
+//   仅通过 EventBus.emit('render:request') 直接触发 render 层预览
+```
+
+**Handler 职责修正 (§8.1 同步)**:
+```
+MouseHandler: click/mousemove → 计算新光标/选区 → new SetCursorCommand(cursor) → CommandManager.execute()
+  不再直接 emit cursor:moved —— 走 StateCommand 路径。
+  EventBus 'cursor:moved' 保留为"变更通知"（供外部订阅），由 CommandManager 在 execute(StateCommand) 后 emit。
+
+KeyboardHandler: keydown Enter → new SplitParagraphCommand → CommandManager.execute()
+  keydown Backspace(段首) → new MergeParagraphCommand → CommandManager.execute()
+  跨段选区 Delete → new CrossParagraphDeleteCommand → CommandManager.execute()
 ```
 
 ## 7. 渲染管道
@@ -2509,7 +2788,55 @@ class DirtyTracker {
     this.dirtyRects = []
     this.needsFullLayout = false
   }
+
+  /** 查询脏 SmartTextNode ID 集合 (供 QCEngine §11.2 增量更新索引, v20.22) */
+  queryDirtySmartTextNodes(): Set<string> {
+    // 由 CommandManager 在 execute 后填写, DirtyTracker 仅存储
+    return this._dirtySmartTextNodes
+  }
+  private _dirtySmartTextNodes = new Set<string>()
+  markSmartTextDirty(nodeId: string): void { this._dirtySmartTextNodes.add(nodeId) }
+
+  /** 全量重新分页标记 */
+  get needsRepaginate(): boolean { return this.needsFullLayout }
+
+  /** 查询脏段落集合 (供 LayoutEngine 增量布局) */
+  getDirtyParagraphs(): ReadonlySet<string> { return this.dirtyParagraphs }
 }
+
+// ================================================================
+// InvalidationScope → 具体动作映射表 (v20.22)
+// ================================================================
+// 四套失效机制的触发关系:
+//   Command.forward() 返回 StatePatch.invalidation
+//     → CommandManager 据此调用 DirtyTracker 对应方法
+//     → LayoutEngine 查询 DirtyTracker → 调用 LayoutCache.invalidate + PageStartTable
+//     → EventBus 发出 {invalidation, dirtyNodeIds} (非全量 DocumentTree)
+
+/**
+ * InvalidationScope → DirtyTracker 标记 + LayoutCache 失效 + 是否重分页
+ *
+ * ┌────────────────────┬──────────────────────────────┬────────────────────┬──────────┐
+ * │ InvalidationScope  │ DirtyTracker 方法            │ LayoutCache 操作   │ 重分页   │
+ * ├────────────────────┼──────────────────────────────┼────────────────────┼──────────┤
+ * │ 'none'             │ 无                           │ 无                 │ 否       │
+ * │ 'node'             │ markSmartTextDirty(nodeId)   │ invalidate(nodeId) │ 否       │
+ * │ 'paragraph'        │ markParagraphDirty(paraId)   │ invalidate(paraId) │ 否       │
+ * │ 'paragraph_and_    │ markParagraphDirty +         │ invalidate(paraId) │ 是(增量) │
+ * │  downstream'       │ markRectDirty(后续)          │ +下游页面失效      │          │
+ * │ 'block'            │ markParagraphDirty(父)       │ invalidate(blockId)│ 否       │
+ * │ 'flowbody'         │ markFullLayout()             │ clearAll()         │ 是(全量) │
+ * │ 'table'            │ markFullLayout()             │ clearAll()         │ 是(全量) │
+ * │ 'page_setup'       │ markFullLayout()             │ clearAll()         │ 是(全量) │
+ * │ 'full'             │ markFullLayout()             │ clearAll()         │ 是(全量) │
+ * └────────────────────┴──────────────────────────────┴────────────────────┴──────────┘
+ */
+
+// EventBus 载荷修正 (v20.22):
+// document:changed → [doc: DocumentTree] 改为 { invalidation: InvalidationScope, dirtyNodeIds: string[] }
+//   (每击键不再传输完整 DocumentTree 快照, 遵循"数据增量"铁律)
+// EventPayloadMap 更新:
+//   'document:changed': [{ invalidation: InvalidationScope; dirtyNodeIds: string[] }]
 ```
 
 #### 布局失效传播规则
@@ -2551,7 +2878,7 @@ class DirtyTracker {
 
 ### 7.4 布局缓存体系
 
-**问题**: PageItem 是每次 `recomputeLayout()` 的临时产物，全量重算。增量布局的前提是「每个节点的布局结果可独立缓存、可单独失效」，当前完全没有缓存设计。
+/** 布局缓存条目 — 以 SLIFItem 为存储单元 (v20.19: 原 LayoutBox 已废弃, 统一 SLIFItem) */
 
 **方案**: 建立三级布局缓存，缓存键 = 节点 ID，通过 NodePool.version 判断失效。
 
@@ -2740,6 +3067,44 @@ class LayeredRenderer {
 | content  | ContentLayer                                   | 文本/表格/SmartTextNode/ImageNode        |
 | interact | CursorLayer + SelectionLayer + AnnotationLayer | 光标/选区高亮/IME 预览/批注指示          |
 
+#### 滚动架构 (v20.24)
+
+**方案**: spacer div + 原生 overflow:auto。Canvas 固定于视口，ctx 平移模拟滚动。
+
+```
+┌────────────────────────────────────────┐
+│ EditorArea (overflow: auto, 300vh)     │
+│ ┌────────────────────────────────────┐ │
+│ │ Spacer (height = 全文档像素高度)    │ │  ← 撑出原生滚动条
+│ │                                    │ │
+│ │  ┌──────────────────────────────┐  │ │
+│ │  │ Canvas (3层, position:sticky)│  │ │  ← 固定视口内, 不随 spacer 滚动
+│ │  │  static / content / interact │  │ │
+│ │  └──────────────────────────────┘  │ │
+│ └────────────────────────────────────┘ │
+│ <scrollbar>                            │  ← 浏览器原生渲染
+└────────────────────────────────────────┘
+```
+
+**滚动数据流**:
+
+```
+DOM scroll event (EditorArea.onscroll)
+  → ViewState.scroll = { x: scrollLeft, y: scrollTop }
+  → CoordinateSystem.update({ scrollX, scrollY })
+  → LayeredRenderer.setScrollOffset(scrollY)
+    → static/content 层: ctx.setTransform(dpr,0,0,dpr, 0, offsetY*dpr)
+    → interact 层: ctx.setTransform(dpr,0,0,dpr, 0, offsetY*dpr)
+  → VirtualViewport.update(scrollY)  ← 确定可见页范围
+  → EventBus.emit('scale:changed' 相关? 否, 缩放独立)
+```
+
+**Spacer 高度计算**: `totalDocumentHeight = SLIFPage[].reduce((h,p)=>h+p.height, 0) * ViewState.scale`
+
+**滚动与渲染的协调**: 滚动事件触发后仅需重新计算 `visiblePages` + 平移 Canvas ctx——不触发 reLayout。`setScrollOffset` 只改 ctx 变换矩阵，不重绘。当 `visiblePages` 变化(进入新页)时先调用 `syncSizes` 调整 Canvas 物理高度、再渲染新进入视口的页面、再销毁离开视口的页面 Canvas 分片。
+
+**全文档高度 vs Canvas 尺寸**: Spacer 高度 = 全文档(可能百页)，Canvas 物理尺寸 = 视口 + overscan 1页(§7.5)。内存由 Canvas 控制，滚动条范围由 spacer 提供——两者解耦。
+
 ### 7.6 命中检测体系
 
 **问题**: 「坐标 → 节点」反向查找无标准方案，交互逻辑散落在各 Handler 中。
@@ -2835,9 +3200,16 @@ interface SLIFPage {
 }
 
 interface SLIFItem {
-  type: string                     // 'text' | 'table' | 'image' | 'control'
-  text?: string                    // 文本内容 (type='text')
-  x: number; y: number            // 逻辑坐标 (文档坐标系)
+  /** 源节点 ID (用于命中检测、增量分页早停比对) */
+  nodeId: string
+  /** 源节点类型 (用于 ParticleRegistry 获取对应 Particle) */
+  nodeType: string                     // 'text' | 'table' | 'image' | 'separator' | 'footnote' | ...
+  /** 在源节点内的行偏移 (用于 PageStartTable 早停比对, §3.2) */
+  lineOffset?: number
+
+  type: string                         // 渲染类型 (同 nodeType)
+  text?: string                        // 文本内容 (type='text')
+  x: number; y: number                // 逻辑坐标 (文档坐标系)
   width: number; height: number
   ascent: number; descent: number
   font: string; size: number
@@ -2847,6 +3219,13 @@ interface SLIFItem {
   superscript?: boolean; subscript?: boolean
   // table 扩展: rows: SLIFRow[], image 扩展: imageUrl, 等等
 }
+
+/** PageItem — @deprecated v20.19: ModelA 残留, 统一使用 SLIFItem */
+type PageItem = SLIFItem
+/** LayoutBox — @deprecated v20.19: 与 SLIFItem 字段重复, 统一使用 SLIFItem */
+type LayoutBox = SLIFItem
+/** ExportItem — @deprecated v20.19: 与 SLIFItem 字段重复, 统一使用 SLIFItem */
+type ExportItem = SLIFItem
 ```
 ### 7.8 文档比较 diff 引擎
 
@@ -2969,7 +3348,7 @@ interface EventPayloadMap {
   'render:request':     []                                          // 无载荷, 仅触发重绘
   'layout:changed':     [slifPages: SLIFPage[]]                      // 布局引擎产出
   'state:changed':      [patch: StatePatch]                          // 状态变更详情
-  'document:changed':   [doc: DocumentTree]                          // 文档变更后完整快照
+  'document:changed':   [{ invalidation: InvalidationScope; dirtyNodeIds: string[] }]  // v20.22: 增量载荷, 非全量快照
   'cursor:moved':       [cursor: CursorState]                        // 新光标位置
   'selection:changed':  [selection: SelectionState]                  // 新选区
   'mode:changed':       [mode: EditorMode]                           // 新模式
@@ -2988,7 +3367,7 @@ interface EventBus {
 
 | 模块                       | 职责                                                                       | 监听                            | 发出                                                                            |
 | -------------------------- | -------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------- |
-| **MouseHandler**     | mousedown/mousemove/mouseup → 光标定位/选区拖拽/点击 SmartTextNode        | DOM mouse events                | `cursor:moved`, `selection:changed`, `render:request`                     |
+| **MouseHandler**     | mousedown/mousemove/mouseup → 计算新光标/选区 → new SetCursorCommand/SetSelectionCommand → CommandManager.execute() | DOM mouse events                | CommandManager → emit `cursor:moved` / `selection:changed` (v20.18: MouseHandler 不再直接 emit) |
 | **KeyboardHandler**  | keydown → 可见字符/导航/删除/快捷键 → 构建 Command                       | DOM keydown                     | 委托 `CommandManager.execute()`                                               |
 | **IMEHandler**       | 管理隐藏 textarea → compositionstart/update/end → 构造 InsertTextCommand | textarea composition events     | `render:request` (预览), `CommandManager.execute()` (确认)                  |
 | **ClipboardHandler** | copy/cut/paste → 文本提取/Command 构建                                    | textarea paste, window copy/cut | `CommandManager.execute()` (paste 时)                                         |
@@ -3005,15 +3384,27 @@ Draw ← EventBus (listen: 'render:request')
 Draw → SLIFPage[] (由 LayoutEngine 产出, readonly)
 Draw → LayeredRenderer (驱动三层 Canvas)
 Draw → CoordinateSystem (readonly)
+Draw → EditorRuntimeState (readonly) — 光标/选区/IME 绘制必需
 
-禁止: Draw → DocumentTree (布局已在 LayoutEngine 完成)
-禁止: Draw → DocumentTree + EditorRuntimeState (readonly)
-Draw → ParticleRegistry (readonly)
-Draw → CoordinateSystem (readonly)
+#### 模块依赖矩阵 (v20.29: 替代旧版混乱文本)
 
-禁止: Draw → Handler (反向依赖)
-禁止: HandlerA → HandlerB (Handler 间不直接通信，通过 CommandManager 中转)
-禁止: Draw → DocumentTree (布局已在 LayoutEngine 完成, v20.2)
+| 模块 | → DocumentTree | → NodePool | → EditorRuntimeState | → SLIFPage[] | → LayeredRenderer | → EventBus |
+|------|:---:|:---:|:---:|:---:|:---:|:---:|
+| LayoutEngine | R | R | — | W | — | L |
+| Draw | — | — | **R** | R | W | L |
+| LayeredRenderer | — | — | **R** | — | — | — |
+| CommandManager | W | W | W | — | — | E |
+| Handler (Mouse/Keyboard/IME/Clipboard) | — | — | —* | — | — | E |
+
+R=只读 W=可写 E=emit L=listen —=禁止访问
+*Handler 不直接读写 EditorRuntimeState, 通过 SetCursorCommand/SetSelectionCommand 走 CommandManager (§6.7)
+
+禁止:
+  Draw/LayeredRenderer → DocumentTree          (布局已在 LayoutEngine 完成)
+  Draw/LayeredRenderer → NodePool              (布局已在 LayoutEngine 完成)
+  Handler → DocumentTree/NodePool/EditorRuntimeState (必须走 CommandManager)
+  Handler → Handler                            (不直接通信, 通过 CommandManager 中转)
+  Draw → Handler                               (反向依赖)
 ```
 
 ### 8.2 选区模型增强
@@ -3257,17 +3648,24 @@ class PluginManager {
  * 6. 命中检测: docX 落在单元格的合并矩形区域内 → 返回主格 ID
  */
 
-function buildMergeMatrix(table: Table): MergeMatrix {
-  const rows = table.children.length
-  const cols = Math.max(...table.children.map(row =>
-    row.children.reduce((sum, cell) => sum + (cell.colspan || 1), 0)
-  ))
+function buildMergeMatrix(table: Table, pool: NodePool): MergeMatrix {  // v20.31: 补 pool 参数, children 全 ID 化修正
+  const rowIds = table.children
+  const rows = rowIds.length
+  const cols = Math.max(...rowIds.map(rowId => {
+    const row = pool.nodes.get(rowId) as TableRow
+    return pool.getChildren(row.id).reduce((sum, cellId) => {
+      const cell = pool.nodes.get(cellId) as TableCell
+      return sum + (cell.colspan || 1)
+    }, 0)
+  }))
   const grid: (string | null)[][] = Array.from({ length: rows }, () => Array(cols).fill(null))
 
   for (let r = 0; r < rows; r++) {
     let c = 0
-    for (const cell of table.children[r].children) {
-      while (c < cols && grid[r][c] !== null) c++  // 跳过被上方 rowspan 占据的格子
+    const row = pool.nodes.get(rowIds[r]) as TableRow
+    for (const cellId of pool.getChildren(row.id)) {
+      const cell = pool.nodes.get(cellId) as TableCell
+      while (c < cols && grid[r][c] !== null) c++
       const rs = cell.rowspan || 1; const cs = cell.colspan || 1
       for (let dr = 0; dr < rs; dr++)
         for (let dc = 0; dc < cs; dc++)
@@ -3719,9 +4117,9 @@ class AutoSaveManager {
                     ▼                                 ▼
             ┌──────────────┐                 ┌──────────────┐
             │   App 1 (:8080)                │   App 2 (:8080)│
-            │  Y.Doc (local)                │  Y.Doc (local) │
-            │  Y.UndoManager                │  Y.UndoManager │
-            │  y-redis provider             │  y-redis provider│
+            |  Y.Doc (local)                |  Y.Doc (local) |  ← 移至 Collab-Service (Node.js)
+            |   App 1 (:8080)                |   App 2 (:8080)|
+            |   (Java, REST)                |   (Java, REST) |
             └──────┬───────┘                 └──────┬───────┘
                    │                                │
                    │  pub/sub + persistence         │
@@ -3786,18 +4184,18 @@ Phase 2 (P2 — 协作上线):
     proxy_set_header Connection "upgrade";
   }
 
-Phase 3 (远期 — 独立协作服务):
-  Collab-Service 单职责部署 (仅处理 WebSocket + Y.Doc + y-redis)
-  App 实例仅做 REST + 模板/导出/质控
-  扩展 Collab-Service 独立扩缩容
-```
+
+// v20.27: Phase 3 = Phase 2 的独立扩缩容 (Collab-Service ×N 通过 y-redis 互联)
+
+
+
 
 **路由策略切换表**:
 
 | 阶段 | WebSocket 路由 | CRDT 广播 | Redis 依赖 |
 |------|---------------|-----------|-----------|
 | MVP | N/A (单实例) | N/A | 会话共享 |
-| 生产协作 | Nginx `hash $arg_documentId consistent` | y-redis pub/sub | 会话 + CRDT 持久化 |
+| 协作 | Nginx `/ws` → Collab-Service (:4000) | y-redis Redis pub/sub (Node.js) | Node.js ×1+ |
 | 独立协作服务 | Collab-Service 注册中心 | y-redis pub/sub | 会话 + CRDT |
 
 ### 12.2 分层架构
@@ -4001,66 +4399,43 @@ Client                                Server
 
 ### 12.6 模型校验与版本兼容
 
-#### 12.6.1 JSON Schema 单一来源 (v19.13)
+#### 12.6.1 双层校验 (v20.26 — 修复 "单一来源" 超技术能力的承诺)
 
-**问题**: 旧版 validateDocumentTree()（手写 TS）与后端 MySQL JSON_SCHEMA_VALID（手写 SQL Schema）是两套独立实现的同一契约，演进时必然漂移——前端增加校验规则但忘记同步后端 Schema，或 Schema 更新后 ajv 编译失败但前端手写校验绕过。
+**问题 (v19.13 反思)**: JSON Schema (ajv/MySQL) **无法表达引用完整性**——重复 ID、孤儿引用、环检测都是代码级不变量。声称"Schema 为单一真相源"许诺了 JSON Schema 做不到的事。且 MySQL JSON_SCHEMA_VALID 仅支持 JSON Schema 子集（无 `$ref`、格式关键字有限），同一份 schema 两端编译需限定在交集内。
 
-**方案**: JSON Schema 文件为单一来源（`schemas/document-tree.schema.json`），前端用 ajv 编译执行，后端直接灌入 MySQL，CI 做对拍测试。
-
-```
-schemas/document-tree.schema.json  ← 唯一真相源
-         │
-    ┌────┴────┐
-    ▼         ▼
- 前端         后端
- ajv        MySQL
- .compile()  JSON_SCHEMA_VALID()
-         │
-    ┌────┴────┐
-    ▼
-  CI 对拍测试:
-  同一份 DocumentTree JSON
-  → ajv.validate() === true
-  → JSON_SCHEMA_VALID() === true
-  → 两端 errors[] 按 (path, code) 完全一致
-```
-
-```typescript
-// 前端: ajv 编译 Schema（替代手写 validateDocumentTree）
-import Ajv from 'ajv'
-import schema from '@/schemas/document-tree.schema.json'
-
-const ajv = new Ajv({ allErrors: true })
-const validate = ajv.compile(schema)
-
-function validateDocumentTree(doc: unknown): ValidationResult {
-  const valid = validate(doc)
-  const errors: ValidationError[] = (validate.errors ?? []).map(e => ({
-    path: e.instancePath,
-    message: e.message ?? '',
-    code: e.keyword as ValidationError['code'],
-  }))
-  return { valid, errors, modelVersion: '4.0.0' }
-}
-// validateDocumentTree() 手写实现 → @deprecated, 迁移到 ajv
-```
-
-```yaml
-# 后端: 同一份 schema.json 文件灌入 MySQL
-# 部署时加载: schemas/document-tree.schema.json → Service 层注入
-# boolean valid = jdbcTemplate.queryForObject(
-#   "SELECT JSON_SCHEMA_VALID(?, content) FROM t_document WHERE id = ?",
-#   Boolean.class, schemaJson, docId
-# );
-```
+**修正**: 双层校验 = 结构校验 (Schema 单一来源，限定交集) + 不变量校验 (代码层，TS/Java 双实现，CI 对拍)。
 
 ```
-CI 对拍测试 (纳入质量门禁):
-  given:  fixtures/valid-document.json + fixtures/invalid-*.json (missing_id/missing_body/dup_id/orphan_ref)
-  when:   ajv.validate(doc) 和 MySQL JSON_SCHEMA_VALID(doc) 分别执行
-  then:   两端 valid 结果一致
-          两端 errors[].path 和 errors[].code 完全一致
-  error:  任何一端不一致 → CI 失败, 禁止合并
+Layer 1 — 结构校验 (Schema 层，JSON Schema 交集子集):
+  schemas/document-tree.schema.json  ← 仅定义字段存在性/类型/必填
+  前端: ajv.compile(schema)
+  后端: MySQL JSON_SCHEMA_VALID(schema)
+  对拍: 同一文档两端 valid 结果一致
+  Schema 编写约束 (v20.26):
+    ❌ 禁 $ref (MySQL 不支持)
+    ❌ 禁 format 关键字 (MySQL 支持有限)
+    ❌ 禁 if/then/else 条件校验 (MySQL 不支持)
+    ✅ 仅用: type/properties/required/enum/minLength/maxLength/items
+
+Layer 2 — 不变量校验 (代码层，JSON Schema 做不到的):
+  validateNodePoolInvariants(pool):
+    ✅ 重复 ID 检测 (nodes.Map 的 size === 注册节点数)
+    ✅ 孤儿引用检测 (children 中的 ID 在 nodes 中存在)
+    ✅ 环检测 (traversePool 的 visited Set)
+    ✅ 类型约束 (children 中 ID 指向的节点类型匹配期望——如 Paragraph.children 只能 InlineNode)
+    ✅ 根节点可达性 (body/header/footer/footnotes/endnotes 五个根均在 nodes 中)
+  TS/Java 双实现，纳入 CI 对拍 (同一份 corrupt document → 两端 invariant errors 完全一致)
+```
+
+**CI 对拍测试**:
+
+```
+Layer 1: fixtures/valid-doc.json + fixtures/invalid-*.json
+  → ajv.validate(doc) 结果 === MySQL JSON_SCHEMA_VALID(doc) 结果
+
+Layer 2: fixtures/corrupt-dup-id.json / corrupt-orphan-ref.json / corrupt-cycle.json
+  → validateNodePoolInvariants(TS).errors[N].code
+    === validateNodePoolInvariants(Java).errors[N].code
 ```
 ```
 
@@ -4148,7 +4523,7 @@ function loadDocument(json: string): DocumentTree {
 │  │ 2. 本地缓存层 (IndexedDB)                             │         │
 │  │    - 数据结构: { id, documentJSON, timestamp, dirty } │         │
 │  ├──────────────────────────────────────────────────────┤         │
-│  │ 3. 本地备份层 (localStorage, 保留最近 3 个版本)       │         │
+│  │ 3. 本地备份层 (localStorage, v20.20: 仅 1 份元数据兜底)   │         │
 │  ├──────────────────────────────────────────────────────┤         │
 │  │ 4. 远程保存层 (API)                                   │         │
 │  │    PUT /api/v1/documents/{id}                         │         │
@@ -4215,11 +4590,17 @@ class AutoSaveManager {
   }
 
   private backupToLocalStorage(document: DocumentTree): void {
-    const key = `doc_backup_${document.id}`
-    const existing = JSON.parse(localStorage.getItem(key) || '[]')
-    existing.push({ json: JSON.stringify(document), timestamp: Date.now() })
-    if (existing.length > 3) existing.shift()
-    localStorage.setItem(key, JSON.stringify(existing))
+    // v20.20: localStorage 降为兜底 —— 仅存 1 份元数据 (非完整文档), 完整文档走 IndexedDB
+    // 原因: 3版 × 2MB = 6MB > 浏览器 5MB 配额, 必然超限
+    // 权威实现见 §12.1.6 (含 2MB 守卫 + try/catch), 此处不重复
+    const meta = { id: document.id, title: document.title, timestamp: Date.now(), dirty: true }
+    try {
+      const json = JSON.stringify(meta)
+      if (json.length > 256 * 1024) return  // 元数据 > 256KB 异常, 跳过
+      localStorage.setItem(`doc_backup_${document.id}`, json)
+    } catch (e) {
+      // QuotaExceededError → 静默跳过, IndexedDB 已有完整备份
+    }
   }
 
   private async openIndexedDB(): Promise<IDBDatabase> {
@@ -4300,9 +4681,15 @@ class NodePoolProjection {
     this.ydoc = ydoc
     this.pool = new NodePool()
 
-    // 监听 Y.Doc 变更事件
-    const yBody = ydoc.getArray('body')
-    yBody.observeDeep((events) => {
+    // 监听 Y.Doc 五区域变更 (v20.25: 从仅 body 扩展为 body + header + footer + footnotes + endnotes)
+    const regions = ydoc.getMap('regions')
+    const yBody = regions.get('body') as Y.Array<any>
+    const yHeader = regions.get('header') as Y.Array<any>
+    const yFooter = regions.get('footer') as Y.Array<any>
+    const yFootnotes = regions.get('footnotes') as Y.Array<any>
+    const yEndnotes = regions.get('endnotes') as Y.Array<any>
+    ;[yBody, yHeader, yFooter, yFootnotes, yEndnotes].forEach(yArr => {
+      if (yArr) yArr.observeDeep((events) => {
       for (const event of events) {
         // Y.Array 插入/删除 → 同步到 NodePool 的 children 数组
         // Y.Map 变更 → 同步到 NodePool 的节点属性
@@ -4344,7 +4731,7 @@ class NodePoolProjection {
 
 ```typescript
 // 初始化
-const undoManager = new Y.UndoManager([ydoc.getArray('body'), ydoc.getMap('metadata')], {
+const undoManager = new Y.UndoManager(regions, {  // v20.25: 五区域统一追踪
   trackedOrigins: new Set([localUserId, 'ai']),  // 只追踪本地用户和 AI 的操作
   captureTimeout: 500,  // 500ms 内连续操作合并为一个撤销单元
 })
@@ -4673,7 +5060,6 @@ class SnapshotBridge {
 | 首次内容绘制 (FCP) | Lighthouse | < 1.5s | < 1s | 懒布局 + 字体预加载 |
 | 10 页文档加载 | fetch→字体就绪→首帧 | < 1s | < 500ms | 懒布局 |
 | 100 页全量分页 | PageBreaker 热启动 (时间片化/Worker) | < 3s | < 1s | 增量分页 + Worker (§3.2) |
-| 100 页全量分页 | PageBreaker 热启动 | < 3s | < 1s | 增量分页 PageStartTable (§3.2) |
 | 单次编辑响应 (P50) | keydown→光标更新 | < 50ms | < 16ms (60fps) | Run模型 + 增量渲染 (§6 + §7) |
 | 连续打字帧率 (P95) | 100 次采样 rAF | > 30fps | > 55fps | 增量分页 + DirtyTracker |
 | 10 页文档内存 | DevTools heap | < 80MB | < 50MB | 虚拟化渲染 + LayoutCache |
