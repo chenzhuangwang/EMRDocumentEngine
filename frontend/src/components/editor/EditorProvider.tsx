@@ -1,10 +1,9 @@
 // ============================================================
-// 编辑器提供者 - 桥接 React 和 Canvas 引擎
+// 编辑器提供者 (ModelD) - 桥接 React 和 Canvas 引擎
 // ============================================================
 
 import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react'
-import { Editor } from '@/engine'
-import type { IEditorOption, IElement } from '@/engine'
+import { Editor, type DocumentTree } from '@/engine'
 
 interface EditorContextValue {
   editorRef: React.MutableRefObject<Editor | null>
@@ -15,35 +14,26 @@ const EditorContext = createContext<EditorContextValue | null>(null)
 interface EditorProviderProps {
   children: ReactNode
   containerRef: React.RefObject<HTMLDivElement>
-  data?: { header?: IElement[]; main?: IElement[]; footer?: IElement[] }
-  options?: Partial<IEditorOption>
+  document?: DocumentTree
 }
 
-export function EditorProvider({ children, containerRef, data, options }: EditorProviderProps) {
+export function EditorProvider({ children, containerRef, document }: EditorProviderProps) {
   const editorRef = useRef<Editor | null>(null)
 
   useEffect(() => {
     if (!containerRef.current) return
-
-    const editor = new Editor(containerRef.current, data, options)
+    const editor = new Editor(containerRef.current, document)
     editorRef.current = editor
-
-    // Auto-focus the canvas so it can receive keyboard events
-    const timer = setTimeout(() => editor.focus(), 100)
-
-    return () => {
-      clearTimeout(timer)
-      editor.destroy()
-      editorRef.current = null
-    }
+    // 自动聚焦以激活键盘输入
+    editor.focus()
+    return () => { editor.destroy(); editorRef.current = null }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync external data changes into the editor (e.g. async-loaded document)
   useEffect(() => {
-    if (editorRef.current && data) {
-      editorRef.current.setValue(data)
+    if (editorRef.current && document) {
+      editorRef.current.setDocument(document)
     }
-  }, [data])
+  }, [document])
 
   return (
     <EditorContext.Provider value={{ editorRef }}>
@@ -59,8 +49,6 @@ export function useEditor(): Editor | null {
 
 export function useEditorRef(): React.MutableRefObject<Editor | null> {
   const context = useContext(EditorContext)
-  if (!context) {
-    throw new Error('useEditorRef must be used within EditorProvider')
-  }
+  if (!context) throw new Error('useEditorRef must be used within EditorProvider')
   return context.editorRef
 }

@@ -1,5 +1,5 @@
 // ============================================================
-// 编辑器主页面
+// 编辑器主页面 (ModelD)
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -8,254 +8,89 @@ import { EditorLayout } from '@/components/layout/EditorLayout'
 import { EditorProvider, useEditorRef } from '@/components/editor/EditorProvider'
 import { ExportDialog } from '@/components/dialogs/ExportDialog'
 import { useEditorStore } from '@/store'
-import { documentApi, type DocumentDetail } from '@/services/api'
-import {
-  EditorMode,
-  PageMode,
-  createBlankDocument,
-} from '@/engine'
-import type { Editor } from '@/engine'
-
-/** Helper: open file picker and insert selected image into the document. */
-function pickAndInsertImage(editor: Editor, onDirty: (d: boolean) => void): void {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = 'image/*'
-  input.onchange = () => {
-    const file = input.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      const src = reader.result as string
-      // Insert at a reasonable display size — cap to 400px wide, maintain aspect ratio
-      const displayWidth = 400
-      const displayHeight = 300
-      editor.insertImage(src, displayWidth, displayHeight)
-      onDirty(true)
-    }
-    reader.readAsDataURL(file)
-  }
-  input.click()
-}
 
 export default function EditorPage() {
-  const { id } = useParams<{ id: string }>()
+  const { id: _id } = useParams<{ id: string }>()
   const containerRef = useRef<HTMLDivElement>(null)
   const [documentTitle, setDocumentTitle] = useState('未命名文档')
-  const [loading, setLoading] = useState(false)
-  const setDocument = useEditorStore((s) => s.setDocument)
+  const [loading] = useState(false)
+  const _setStoreDoc = useEditorStore((s) => s.setDocument)
   const setDirty = useEditorStore((s) => s.setDirty)
   const setSaveStatus = useEditorStore((s) => s.setSaveStatus)
 
-  // 加载文档
-  useEffect(() => {
-    if (id && id !== 'new') {
-      loadDocument(id)
-    } else {
-      // 新建文档
-      const newDoc = createBlankDocument('未命名文档', '当前用户')
-      setDocument({
-        id: newDoc.id,
-        title: newDoc.title,
-        content: {
-          header: newDoc.header,
-          main: newDoc.main,
-          footer: newDoc.footer,
-        },
-        pageSetup: {
-          width: newDoc.pageSetup.width,
-          height: newDoc.pageSetup.height,
-          marginTop: newDoc.pageSetup.marginTop,
-          marginBottom: newDoc.pageSetup.marginBottom,
-          marginLeft: newDoc.pageSetup.marginLeft,
-          marginRight: newDoc.pageSetup.marginRight,
-          orientation: newDoc.pageSetup.orientation,
-        },
-        metadata: {
-          author: newDoc.metadata.author,
-          createdAt: newDoc.metadata.createdAt,
-          updatedAt: newDoc.metadata.updatedAt,
-          version: newDoc.metadata.version,
-          status: newDoc.metadata.status,
-        },
-      })
-    }
-  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function loadDocument(docId: string) {
-    setLoading(true)
-    try {
-      const res = await documentApi.getById(docId)
-      const doc: DocumentDetail = res.data.data
-      setDocument(doc)
-      setDocumentTitle(doc.title)
-    } catch (err) {
-      console.error('加载文档失败:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // 保存文档
   const handleSave = useCallback(async () => {
-    console.log('保存文档')
-    const doc = useEditorStore.getState().document
-    if (!doc) return
-
     setSaveStatus('saving')
     try {
-      // await documentApi.update(doc.id, {
-      //   title: documentTitle,
-      //   content: doc.content,
-      // })
-      console.log('保存文档:', doc)
+      // TODO: connect to backend API
       setSaveStatus('saved')
       setDirty(false)
     } catch (err) {
       console.error('保存失败:', err)
       setSaveStatus('error')
     }
-  }, [documentTitle, setSaveStatus, setDirty])
+  }, [setSaveStatus, setDirty])
 
-  // Ctrl+S 快捷键保存
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault()
-        handleSave()
-      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSave() }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleSave])
 
   if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-gray-400">加载中...</div>
-      </div>
-    )
+    return <div className="h-full flex items-center justify-center"><div className="text-gray-400">加载中...</div></div>
   }
 
   return (
-    <EditorProvider
-      containerRef={containerRef}
-      options={{
-        mode: EditorMode.EDIT,
-        pageMode: PageMode.PAGING,
-      }}
-    >
+    <EditorProvider containerRef={containerRef}>
       <EditorPageInner
         containerRef={containerRef}
         documentTitle={documentTitle}
         onTitleChange={setDocumentTitle}
         onSave={handleSave}
-        onDirty={setDirty}
       />
     </EditorProvider>
   )
 }
 
-// ---- 内部组件：必须在 EditorProvider 内部才能用 useEditorRef ----
-
 function EditorPageInner({
-  containerRef,
-  documentTitle,
-  onTitleChange,
-  onSave,
-  onDirty,
+  containerRef, documentTitle, onTitleChange, onSave,
 }: {
   containerRef: React.RefObject<HTMLDivElement>
   documentTitle: string
-  onTitleChange: (title: string) => void
+  onTitleChange: (t: string) => void
   onSave: () => void
-  onDirty: (dirty: boolean) => void
 }) {
   const editorRef = useEditorRef()
   const [exportOpen, setExportOpen] = useState(false)
 
-  // 格式化操作 — 对接引擎实时生效
-  const handleFormat = useCallback((action: string, value?: unknown) => {
-    const editor = editorRef.current
-    if (!editor) return
-
+  const handleFormat = useCallback((action: string, _value?: unknown) => {
+    const ed = editorRef.current; if (!ed) return
     switch (action) {
-      case 'undo':          editor.undo(); break
-      case 'redo':          editor.redo(); break
-      case 'bold':          editor.toggleBold(); break
-      case 'italic':        editor.toggleItalic(); break
-      case 'underline':     editor.toggleUnderline(); break
-      case 'strikeout':     editor.toggleStrikeout(); break
-      case 'superscript':   editor.toggleSuperscript(); break
-      case 'subscript':     editor.toggleSubscript(); break
-      case 'font':          editor.setFont(value as string); break
-      case 'fontSize':      editor.setFontSize(value as number); break
-      case 'color':         editor.setTextColor(value as string); break
-      case 'alignLeft':
-      case 'alignCenter':
-      case 'alignRight':
-      case 'alignJustify':  editor.setAlignment(action); break
-      case 'unorderedList': editor.toggleUnorderedList(); break
-      case 'orderedList':   editor.toggleOrderedList(); break
-      case 'indent':        editor.increaseIndent(); break
-      case 'outdent':       editor.decreaseIndent(); break
-      default:
-        console.warn('[EditorPage] Unknown format action:', action)
-    }
-    onDirty(true)
-  }, [editorRef, onDirty])
-
-  // 元素插入 — 对接引擎插入元素
-  const handleInsert = useCallback((elementType: string) => {
-    const editor = editorRef.current
-    if (!editor) return
-
-    switch (elementType) {
-      case 'table':
-        editor.insertTable(3, 3)
-        onDirty(true)
+      case 'undo': ed.undo(); break
+      case 'redo': ed.redo(); break
+      // TODO: v20.34 通过 execCommand(FormatTextCommand) 实现, 需先获取 selection
+      case 'bold': case 'italic': case 'underline':
+      case 'font': case 'fontSize': case 'color':
         break
-      case 'input':
-      case 'select':
-      case 'date':
-      case 'checkbox':
-      case 'radio':
-      case 'number':
-      case 'textarea':
-        editor.insertControl(elementType)
-        onDirty(true)
-        break
-      case 'image':
-        pickAndInsertImage(editor, onDirty)
-        break
-      default:
-        console.warn('[EditorPage] Unknown insert type:', elementType)
-    }
-  }, [editorRef, onDirty])
-
-  // 导出
-  const handleExport = useCallback((format: string) => {
-    const editor = editorRef.current
-    if (!editor) return
-
-    const value = editor.getValue()
-    switch (format) {
-      case 'json':
-        downloadJson(value)
-        break
-      case 'pdf':
-      case 'word':
-        alert(`${format.toUpperCase()} 导出功能需要后端服务支持`)
-        break
-      default:
-        console.warn('[EditorPage] Unknown export format:', format)
     }
   }, [editorRef])
-
-  // 打印
-  const handlePrint = useCallback(() => {
-    window.print()
-  }, [])
+  const handleInsert = useCallback((type: string) => {
+    // TODO: v20.34 通过 execCommand 实现表格插入
+    void type
+  }, [editorRef])
+  const handleExport = useCallback((format: string) => {
+    if (format === 'json' && editorRef.current) {
+      const json = JSON.stringify(editorRef.current.getDocument(), null, 2)
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = window.document.createElement('a')
+      a.href = url; a.download = `document-${Date.now()}.json`; a.click()
+      URL.revokeObjectURL(url)
+    }
+  }, [editorRef])
+  const handlePrint = useCallback(() => window.print(), [])
 
   return (
     <EditorLayout
@@ -267,30 +102,8 @@ function EditorPageInner({
       onExportClick={() => setExportOpen(true)}
       onPrint={handlePrint}
     >
-      {/* Canvas 编辑器容器 */}
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-hidden bg-[#E5E7EB] relative"
-        style={{ minHeight: 0 }}
-      />
-
-      {/* Dialogs (Spec TASK-304) */}
-      <ExportDialog
-        open={exportOpen}
-        onOpenChange={setExportOpen}
-        onExport={handleExport}
-      />
+      <div ref={containerRef} className="flex-1 bg-[#E5E7EB] relative overflow-hidden" style={{ minHeight: '400px' }} />
+      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} onExport={handleExport} />
     </EditorLayout>
   )
-}
-
-/** Download content as a JSON file. */
-function downloadJson(value: unknown): void {
-  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `document-${Date.now()}.json`
-  a.click()
-  URL.revokeObjectURL(url)
 }
