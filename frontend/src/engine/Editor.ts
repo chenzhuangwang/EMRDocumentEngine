@@ -6,6 +6,7 @@ import { EventBus } from './interaction/EventBus'
 import { CommandManager } from './command/CommandManager'
 import { InputComposer } from './interaction/IMEHandler'
 import { KeyboardHandler } from './interaction/KeyboardHandler'
+import { MouseHandler } from './interaction/MouseHandler'
 import type { ICommand } from './command/ICommand'
 import { generateCommandId } from './command/ICommand'
 import { InsertTextCommand } from './command/commands/InsertTextCommand'
@@ -30,6 +31,7 @@ export class Editor {
   private store: EditorStore
   private inputComposer: InputComposer
   private keyboardHandler: KeyboardHandler
+  private mouseHandler: MouseHandler
   private listeners: EditorListener[] = []
   private _clickToFocus: (e: MouseEvent) => void
 
@@ -58,6 +60,7 @@ export class Editor {
     this.store = new EditorStore(this.doc)
     this.inputComposer = new InputComposer(container)
     this.keyboardHandler = new KeyboardHandler(this, container)
+    this.mouseHandler = new MouseHandler(this, container)
     this.commandManager = new CommandManager(
       this.eventBus,
       () => this.doc,
@@ -79,7 +82,17 @@ export class Editor {
       this.draw.render(this.pool, this.store.state.runtime)
     })
 
-    // IME 输入法: compositionend → InsertTextCommand
+    // IME 输入法: compositionstart → 更新候选窗位置
+    this.inputComposer.onCompositionStart(() => {
+      const rect = this.draw.getCaretClientRect(this.pool, this.store.state.runtime)
+      if (rect) this.inputComposer.updateCursorRect(rect)
+    })
+
+    // IME 输入法: compositionupdate → 跟随光标移动
+    this.inputComposer.onCompositionUpdate((_text) => {
+      const rect = this.draw.getCaretClientRect(this.pool, this.store.state.runtime)
+      if (rect) this.inputComposer.updateCursorRect(rect)
+    })
     this.inputComposer.onCompositionEnd((text) => {
       let cursor = this.store.state.runtime.cursor
       // 空文档 → 自动创建段落 (与 KeyboardHandler 保持一致)
@@ -100,13 +113,14 @@ export class Editor {
 
     // 初始布局 + 首帧渲染
     this.draw.recomputeLayout(this.pool)
-    this.draw.render(this.pool, this.store.state.runtime)
 
-    // 初始化光标
+    // 初始化光标 — 必须在 render() 之前, 确保首帧即绘制光标
     const cursorPath = this.doc.body.children.length > 0
       ? [this.doc.id, this.doc.body.children[0]]
       : []
     setCursor(this.store, cursorPath, 0)
+
+    this.draw.render(this.pool, this.store.state.runtime)
 
     // 点击容器 → 命中检测 + 更新光标 + 聚焦
     this._clickToFocus = (e: MouseEvent) => {
@@ -124,11 +138,9 @@ export class Editor {
     const screenX = e.clientX - rect.left
     const screenY = e.clientY - rect.top + this.draw.getCoordinateSystem().transform.scrollY
 
-    // 找到点击所在的页面
     const pages = this.draw.getPages()
     if (pages.length === 0) return
 
-    // 计算 pageIndex 和 page-local Y
     let pageIndex = 0
     let localY = screenY
     for (let i = 0; i < pages.length; i++) {
@@ -139,22 +151,22 @@ export class Editor {
     const page = pages[pageIndex]
     if (!page) return
 
-    // 从 A4 居中偏移还原文档坐标
     const viewportW = this.container.clientWidth
     const offsetX = Math.max(0, (viewportW - page.width) / 2)
     const docX = screenX - offsetX
     const docY = localY
 
-    // 命中检测
+    // 命中检测 — 可能返回 null (空段落无 SLIF items)
     const nodeId = this.draw.getHitTestIndex().hitTest(docX, docY, pageIndex)
-    if (!nodeId) return
 
-    // 反查 nodeId 所属段落 + 字符偏移
-    const para = this.findParagraphContaining(nodeId)
-    if (!para) return
-
-    const offset = this.computeOffsetAtX(para, docX, page)
-    setCursor(this.store, [this.doc.id, para.id], offset)
+    if (nodeId) {
+      const para = this.findParagraphContaining(nodeId)
+      if (para) {
+        const offset = this.computeOffsetAtX(para, docX, page)
+        setCursor(this.store, [this.doc.id, para.id], offset)
+      }
+    }
+    // 无论命中与否都重绘 — 空段落也需要显示光标
     this.draw.render(this.pool, this.store.state.runtime)
   }
 
@@ -229,6 +241,7 @@ export class Editor {
     this.listeners = []
     this.container.removeEventListener('click', this._clickToFocus)
     this.keyboardHandler.destroy()
+    this.mouseHandler.destroy()
     this.inputComposer.destroy()
     this.draw.destroy()
   }

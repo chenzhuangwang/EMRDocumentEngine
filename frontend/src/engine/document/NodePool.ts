@@ -37,32 +37,33 @@ export class NodePool {
 
   // ---- 子节点操作 (唯一合法入口, 铁律 3) ----
 
-  insertChild(parentId: string, childId: string, index: number): void {
+  /** 解析节点的 children 数组 — 兼容 DocumentTree (body.children) 和普通节点 (children) */
+  private resolveChildren(parentId: string): string[] {
     const parent = this.nodes.get(parentId)
-    if (!parent || !('children' in parent)) {
-      throw new Error(`Parent ${parentId} not found or has no children`)
+    if (!parent) throw new Error(`Parent ${parentId} not found`)
+    const p = parent as Record<string, unknown>
+    // DocumentTree: children 在 body 上
+    if (p.body && typeof p.body === 'object') {
+      const b = p.body as Record<string, unknown>
+      if (Array.isArray(b.children)) return b.children as string[]
     }
-    const children = (parent as Record<string, unknown>).children as string[]
-    // 检查重复: 该 ID 是否已在此父节点的 children 数组中
+    // 普通节点: children 直接在节点上
+    if (Array.isArray(p.children)) return p.children as string[]
+    throw new Error(`Parent ${parentId} has no children array`)
+  }
+
+  insertChild(parentId: string, childId: string, index: number): void {
+    const children = this.resolveChildren(parentId)
     if (children.includes(childId)) {
       throw new Error(`Duplicate ID in parent ${parentId}: ${childId}`)
     }
     children.splice(index, 0, childId)
-    // 若节点尚未注册到池中, 也算重复 (同 ID 不同节点)
-    if (this.nodes.has(childId)) {
-      // 允许: 先注册再插入是合法模式
-    }
     this._structureVersion++
   }
 
   removeChild(parentId: string, index: number): string {
-    const parent = this.nodes.get(parentId)
-    if (!parent || !('children' in parent)) {
-      throw new Error(`Parent ${parentId} not found or has no children`)
-    }
-    const children = (parent as Record<string, unknown>).children as string[]
+    const children = this.resolveChildren(parentId)
     const removedId = children.splice(index, 1)[0]
-    // 级联回收后代
     const descendantIds = this.collectDescendants(removedId)
     for (const id of descendantIds) {
       this.nodes.delete(id)
@@ -73,11 +74,7 @@ export class NodePool {
   }
 
   moveChild(parentId: string, fromIndex: number, toIndex: number): void {
-    const parent = this.nodes.get(parentId)
-    if (!parent || !('children' in parent)) {
-      throw new Error(`Parent ${parentId} not found or has no children`)
-    }
-    const children = (parent as Record<string, unknown>).children as string[]
+    const children = this.resolveChildren(parentId)
     const [moved] = children.splice(fromIndex, 1)
     children.splice(toIndex, 0, moved)
     this._structureVersion++
@@ -116,8 +113,7 @@ export class NodePool {
   // ---- 查询 ----
 
   getChildren(parentId: string): readonly string[] {
-    const parent = this.nodes.get(parentId)
-    return ((parent as Record<string, unknown> | undefined)?.children as string[]) ?? []
+    try { return this.resolveChildren(parentId) } catch { return [] }
   }
 
   getChildNodes(parentId: string): readonly BaseNode[] {

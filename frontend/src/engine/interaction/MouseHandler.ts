@@ -1,313 +1,115 @@
-// ============================================================
-// MouseHandler — 鼠标事件处理器 (Spec TASK-205)
+// ================================================================
+// MouseHandler — 鼠标拖拽选区 (架构 §8.2, v20.34)
 //
-// 从 Draw.ts 抽离全部鼠标监听、坐标换算、元素命中检测、
-// 拖拽选区、控件交互代码。Draw.ts 通过 MouseContext 接口
-// 提供数据访问和状态修改能力，MouseHandler 不直接操作 Canvas。
-// ============================================================
+// 状态机: idle → mousedown(记录起点) → mousemove(更新选区) → mouseup(确认)
+// 单击不拖拽 → 不触发选区, 由 Editor.handleClick 处理光标定位
+// ================================================================
 
-import type { IElement, ITd, IPosition } from '../document/DocumentModel'
-import { DEFAULT_PAGE_SETUP, ElementType, EditorMode, ZoneType } from '../document/DocumentModel'
-import type { ZoneSnapshot } from '../command/CommandManager'
-
-// ============================================================
-// MouseContext — MouseHandler 与 Draw 的通信接口
-// ============================================================
-
-export interface MouseContext {
-  // ---- 坐标/尺寸 ----
-  readonly canvas: HTMLCanvasElement
-  readonly container: HTMLElement
-  readonly dpr: number
-  readonly scale: number
-  readonly mode: string
-
-  // ---- 滚动/位置 ----
-  scrollTop: number
-  readonly positionList: IPosition[]
-
-  // ---- 方法：坐标与查表 ----
-  getIndexByCoord(x: number, y: number): number
-  elementAtGlobal(idx: number): IElement | undefined
-  zoneFromY(y: number): ZoneType
-  globalToCursorIndex(globalIdx: number): number
-  getZoneElements(): IElement[]
-
-  // ---- 方法：状态修改 ----
-  setCursorIndex(idx: number): void
-  setActiveZone(zone: ZoneType): void
-  setFocusedControl(el: IElement | null): void
-  setFocusedCell(cell: { tableEl: IElement; td: ITd } | null): void
-  getFocusedControl(): IElement | null
-  getFocusedCell(): { tableEl: IElement; td: ITd } | null
-
-  // ---- 选区 ----
-  readonly isSelecting: boolean
-  startDrag(idx: number): void
-  extendTo(idx: number): void
-  endDrag(): void
-  clearRange(): void
-
-  // ---- 命令/历史 ----
-  saveBefore(): ZoneSnapshot
-  commitZoneEdit(desc: string, before: ZoneSnapshot): void
-  updateElementInZone(el: IElement): void
-
-  // ---- 渲染与 IME ----
-  requestRender(): void
-  positionProxy(): void
-  focusIME(): void
-  emitContentChange(els: IElement[]): void
-}
-
-// ============================================================
-// MouseHandler
-// ============================================================
+import type { Editor } from '../Editor'
 
 export class MouseHandler {
-  private ctx: MouseContext
+  private editor: Editor
+  private container: HTMLElement
+  private dragStartX = 0
+  private dragStartY = 0
+  private dragging = false
+  private readonly DRAG_THRESHOLD = 3 // px, 超过此阈值才视为拖拽
 
-  // Bound event handlers for add/remove
-  private boundWheel: (e: WheelEvent) => void
-  private boundMouseDown: (e: MouseEvent) => void
-  private boundMouseMove: (e: MouseEvent) => void
-  private boundMouseUp: (e: MouseEvent) => void
-  private boundDoubleClick: (e: MouseEvent) => void
-
-  // Scroll/tracking
-  private prevIdx: number | undefined
-
-  constructor(ctx: MouseContext) {
-    this.ctx = ctx
-    this.boundWheel = this.onWheel.bind(this)
-    this.boundMouseDown = this.onMouseDown.bind(this)
-    this.boundMouseMove = this.onMouseMove.bind(this)
-    this.boundMouseUp = this.onMouseUp.bind(this)
-    this.boundDoubleClick = this.onDoubleClick.bind(this)
+  constructor(editor: Editor, container: HTMLElement) {
+    this.editor = editor
+    this.container = container
+    container.addEventListener('mousedown', this.onMouseDown)
+    window.addEventListener('mousemove', this.onMouseMove)
+    window.addEventListener('mouseup', this.onMouseUp)
   }
 
-  /** Attach all mouse/wheel listeners. Call once after construction. */
-  bind(): void {
-    this.ctx.canvas.addEventListener('wheel', this.boundWheel, { passive: false })
-    this.ctx.canvas.addEventListener('mousedown', this.boundMouseDown)
-    this.ctx.canvas.addEventListener('dblclick', this.boundDoubleClick)
-    window.addEventListener('mousemove', this.boundMouseMove)
-    window.addEventListener('mouseup', this.boundMouseUp)
+  private onMouseDown = (e: MouseEvent) => {
+    this.dragStartX = e.clientX
+    this.dragStartY = e.clientY
+    this.dragging = false
   }
 
-  /** Remove all listeners. Call on destroy. */
-  unbind(): void {
-    this.ctx.canvas.removeEventListener('wheel', this.boundWheel)
-    this.ctx.canvas.removeEventListener('mousedown', this.boundMouseDown)
-    this.ctx.canvas.removeEventListener('dblclick', this.boundDoubleClick)
-    window.removeEventListener('mousemove', this.boundMouseMove)
-    window.removeEventListener('mouseup', this.boundMouseUp)
-  }
-
-  // ---- Coordinate conversion ----
-
-  /** Convert client (viewport) coordinates to document coordinates. */
-  clientToDoc(clientX: number, clientY: number): { x: number; y: number } {
-    const { canvas, dpr, scale, scrollTop } = this.ctx
-    const rect = canvas.getBoundingClientRect()
-
-    const cssX = clientX - rect.left
-    const cssY = clientY - rect.top
-
-    const bufToCssX = rect.width > 0 ? canvas.width / rect.width : 1
-    const bufToCssY = rect.height > 0 ? canvas.height / rect.height : 1
-
-    const bufX = cssX * bufToCssX
-    const bufY = cssY * bufToCssY
-
-    const docX = bufX / (dpr * scale)
-    const docY = bufY / (dpr * scale) + scrollTop
-
-    return { x: docX, y: docY }
-  }
-
-  // ---- Wheel ----
-
-  onWheel(e: WheelEvent): void {
-    e.preventDefault()
-    const setup = DEFAULT_PAGE_SETUP
-    const { scale, container, positionList, scrollTop } = this.ctx
-    // Derive pageCount from the last position's pageIndex (avoid reading Draw's private field)
-    let pageCount = 1
-    if (positionList.length > 0) {
-      pageCount = (positionList[positionList.length - 1]?.pageIndex ?? 0) + 1
-    }
-    const totalHeight = pageCount * (setup.height + 20)
-    const maxScroll = Math.max(0, totalHeight - container.clientHeight / (scale || 1))
-    this.ctx.scrollTop = Math.max(0, Math.min(maxScroll, scrollTop + e.deltaY))
-    this.ctx.requestRender()
-  }
-
-  /** Handle container resize — auto-scale delegatd to Draw.onResize. */
-  onResize(): void {
-    // The caller (Draw) handles auto-scale logic since scale is on Draw.options.
-  }
-
-  // ---- Table hit testing ----
-
-  private hitTestTable(
-    tableEl: IElement,
-    clickX: number,
-    clickY: number,
-  ): { td: ITd; cx: number; cy: number; cw: number; ch: number } | null {
-    const trList = tableEl.trList
-    if (!trList) return null
-
-    let maxCols = 0
-    for (const tr of trList) {
-      let colCount = 0
-      for (const td of tr.tdList) colCount += td.colspan || 1
-      if (colCount > maxCols) maxCols = colCount
+  private onMouseMove = (e: MouseEvent) => {
+    if (!this.dragging) {
+      // 超过阈值才开始拖拽选区
+      const dx = Math.abs(e.clientX - this.dragStartX)
+      const dy = Math.abs(e.clientY - this.dragStartY)
+      if (dx < this.DRAG_THRESHOLD && dy < this.DRAG_THRESHOLD) return
+      this.dragging = true
     }
 
-    const contentW = DEFAULT_PAGE_SETUP.width - DEFAULT_PAGE_SETUP.marginLeft - DEFAULT_PAGE_SETUP.marginRight
-    const colWidths = new Array(maxCols).fill(Math.round(contentW / maxCols))
+    // 实时更新选区终点并重绘
+    const store = this.editor.getStore()
+    const cursor = store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
 
-    let ry = 0
-    for (let ri = 0; ri < trList.length; ri++) {
-      const tr = trList[ri]
-      const rowH = tr.height || 30
-      let cxAcc = 0
-      let ci = 0
-      for (const td of tr.tdList) {
-        const colspan = td.colspan || 1
-        let cw = 0
-        for (let s = 0; s < colspan && ci + s < maxCols; s++) cw += colWidths[ci + s]
-        let ch = 0
-        const rowspan = td.rowspan || 1
-        for (let s = 0; s < rowspan && ri + s < trList.length; s++) {
-          ch += trList[ri + s]?.height || 30
-        }
+    // 计算选区结束位置 (复用 Editor 的命中检测逻辑)
+    const rect = this.container.getBoundingClientRect()
+    const screenX = e.clientX - rect.left
+    const screenY = e.clientY - rect.top + this.editor.getDraw().getCoordinateSystem().transform.scrollY
 
-        if (clickX >= cxAcc && clickX < cxAcc + cw && clickY >= ry && clickY < ry + ch) {
-          return { td, cx: cxAcc, cy: ry, cw, ch }
-        }
-        cxAcc += cw
-        ci += colspan
-      }
-      ry += rowH
+    const pages = this.editor.getDraw().getPages()
+    if (pages.length === 0) return
+
+    let pageIndex = 0; let localY = screenY
+    for (let i = 0; i < pages.length; i++) {
+      if (localY < pages[i].height) { pageIndex = i; break }
+      localY -= pages[i].height; pageIndex = i
     }
-    return null
-  }
+    const page = pages[pageIndex]
+    if (!page) return
 
-  // ---- Control click handling ----
+    const viewportW = this.container.clientWidth
+    const offsetX = Math.max(0, (viewportW - page.width) / 2)
+    const docX = screenX - offsetX
+    const docY = localY
 
-  private handleControlClick(el: IElement): void {
-    const ctrl = el.control
-    if (!ctrl) return
+    const nodeId = this.editor.getDraw().getHitTestIndex().hitTest(docX, docY, pageIndex)
+    if (!nodeId) return
 
-    if (ctrl.controlType === 'checkbox' || ctrl.controlType === 'radio') {
-      const _b = this.ctx.saveBefore()
-      ctrl.checked = !ctrl.checked
-      this.ctx.updateElementInZone(el)
-      this.ctx.requestRender()
-      this.ctx.emitContentChange(this.ctx.getZoneElements())
-      this.ctx.commitZoneEdit('toggle ' + ctrl.controlType, _b)
-      return
-    }
+    // 计算选区终点的字符偏移
+    const pool = this.editor.getPool()
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const para = pool.nodes.get(paraId) as unknown as { children: string[] } | undefined
+    if (!para) return
 
-    const focusable = ['input', 'textarea', 'number', 'date', 'select']
-    if (focusable.includes(ctrl.controlType)) {
-      this.ctx.setFocusedControl(el)
-      this.ctx.positionProxy()
-      this.ctx.requestRender()
-      setTimeout(() => this.ctx.focusIME(), 0)
-    }
-  }
-
-  // ---- Mouse Events ----
-
-  onMouseDown(e: MouseEvent): void {
-    if (this.ctx.mode === EditorMode.READONLY || this.ctx.mode === EditorMode.PRINT) return
-
-    const { x, y } = this.clientToDoc(e.clientX, e.clientY)
-    const yZone = this.ctx.zoneFromY(y)
-
-    if (yZone === ZoneType.MAIN) {
-      this.ctx.setActiveZone(ZoneType.MAIN)
-    }
-
-    const globalIdx = this.ctx.getIndexByCoord(x, y)
-    const clickedEl = globalIdx < this.ctx.positionList.length
-      ? this.ctx.elementAtGlobal(globalIdx)
-      : undefined
-
-    // Table cell hit-testing
-    if (clickedEl && clickedEl.type === ElementType.TABLE && clickedEl.trList) {
-      const tablePos = this.ctx.positionList[globalIdx]
-      if (tablePos) {
-        const cell = this.hitTestTable(clickedEl, x - tablePos.x, y - tablePos.y)
-        if (cell) {
-          this.ctx.setFocusedCell({ tableEl: clickedEl, td: cell.td })
-          this.ctx.setFocusedControl(null)
-          this.ctx.positionProxy()
-          this.ctx.requestRender()
-          setTimeout(() => this.ctx.focusIME(), 0)
-          return
+    let endOffset = 0; let accumulated = 0
+    for (const childId of para.children) {
+      const item = page.items.find(it => it.nodeId === childId)
+      const text = (pool.nodes.get(childId) as unknown as { text?: string })?.text || ''
+      if (item) {
+        const charWidth = item.width / Math.max(text.length, 1)
+        if (docX <= item.x + item.width) {
+          const charIdx = Math.round((docX - item.x) / charWidth)
+          endOffset = accumulated + Math.max(0, Math.min(charIdx, text.length))
+          break
         }
       }
+      accumulated += text.length
     }
 
-    // Control hit-testing
-    if (clickedEl && clickedEl.type === ElementType.CONTROL && clickedEl.control) {
-      this.handleControlClick(clickedEl)
-      return
+    // 更新选区状态
+    const storeInternal = store as unknown as { _state: { runtime: { selection: { anchor: unknown; focus: unknown; active: boolean; granularity: string } } } }
+    storeInternal._state.runtime.selection = {
+      anchor: { paragraphPath: cursor.paragraphPath, offset: cursor.offset, visible: false },
+      focus: { paragraphPath: cursor.paragraphPath, offset: endOffset, visible: false },
+      active: endOffset !== cursor.offset,
+      granularity: 'character',
     }
 
-    // Clicked outside any control/table cell — unfocus
-    this.ctx.setFocusedControl(null)
-    this.ctx.setFocusedCell(null)
-
-    const index = this.ctx.globalToCursorIndex(globalIdx)
-    const zoneMax = this.ctx.getZoneElements().length
-    const clamped = index < 0 ? 0 : index > zoneMax ? zoneMax : index
-
-    this.ctx.startDrag(clamped)
-    this.ctx.setCursorIndex(clamped)
-    this.ctx.requestRender()
-    this.ctx.positionProxy()
-    setTimeout(() => this.ctx.focusIME(), 0)
+    // 重绘选区
+    this.editor.getDraw().render(this.editor.getPool(), store.state.runtime)
   }
 
-  onMouseMove(e: MouseEvent): void {
-    if (!this.ctx.isSelecting) return
-
-    const { x, y } = this.clientToDoc(e.clientX, e.clientY)
-    let index = this.ctx.globalToCursorIndex(this.ctx.getIndexByCoord(x, y))
-    const zoneMax = this.ctx.getZoneElements().length
-    if (index < 0) index = 0
-    if (index > zoneMax) index = zoneMax
-
-    // Only extend/rerender when index actually changes
-    if (this.prevIdx !== index) {
-      this.prevIdx = index
-      this.ctx.extendTo(index)
-      this.ctx.setCursorIndex(index)
-      this.ctx.requestRender()
-    }
+  private onMouseUp = () => {
+    this.dragging = false
   }
 
-  onMouseUp(_e: MouseEvent): void {
-    if (!this.ctx.isSelecting) return
-    this.prevIdx = undefined as any
-    this.ctx.endDrag()
-    this.ctx.requestRender()
-  }
+  isDragging(): boolean { return this.dragging }
 
-  onDoubleClick(e: MouseEvent): void {
-    if (this.ctx.mode === EditorMode.READONLY || this.ctx.mode === EditorMode.PRINT) return
-    const { x, y } = this.clientToDoc(e.clientX, e.clientY)
-    this.ctx.setActiveZone(this.ctx.zoneFromY(y))
-    const globalIdx = this.ctx.getIndexByCoord(x, y)
-    this.ctx.setCursorIndex(this.ctx.globalToCursorIndex(globalIdx))
-    this.ctx.clearRange()
-    this.ctx.requestRender()
-    this.ctx.positionProxy()
-    setTimeout(() => this.ctx.focusIME(), 0)
+  destroy(): void {
+    this.container.removeEventListener('mousedown', this.onMouseDown)
+    window.removeEventListener('mousemove', this.onMouseMove)
+    window.removeEventListener('mouseup', this.onMouseUp)
   }
 }
