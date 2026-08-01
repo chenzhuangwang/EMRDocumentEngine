@@ -46,6 +46,16 @@ export class InsertNodesCommand extends PositionalCommand {
   }
   readonly offset: number
 
+  // undo 快照
+  private _snapshot: {
+    rightText: string
+    rightStyle: TextStyle | undefined
+    rightChildren: string[]
+    currentParaChildren: string[]
+    truncatedTextNodeId: string | null
+    originalText: string
+  } | null = null
+
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
     const { pool } = ctx
@@ -59,6 +69,16 @@ export class InsertNodesCommand extends PositionalCommand {
     // ================================================================
     // Step 1: 光标处拆分当前段落
     // ================================================================
+    // 先保存撤销快照
+    this._snapshot = {
+      rightText: '',
+      rightStyle: undefined,
+      rightChildren: [],
+      currentParaChildren: [...currentPara.children],
+      truncatedTextNodeId: null,
+      originalText: '',
+    }
+
     let rightText = ''
     let rightStyle: TextStyle | undefined
     const rightChildren: string[] = []
@@ -68,6 +88,8 @@ export class InsertNodesCommand extends PositionalCommand {
       const textNode = pool.nodes.get(resolved.textNodeId) as unknown as
         { text: string; font?: string; size?: number; bold?: boolean; italic?: boolean } | undefined
       if (textNode) {
+        this._snapshot.truncatedTextNodeId = resolved.textNodeId
+        this._snapshot.originalText = textNode.text
         rightText = textNode.text.slice(resolved.localOffset)
         // 仅当有右侧文本时才截断原节点
         if (rightText.length > 0) {
@@ -83,6 +105,11 @@ export class InsertNodesCommand extends PositionalCommand {
         }
       }
     }
+
+    // 完成快照: 记录拆分后的右侧数据
+    this._snapshot.rightText = rightText
+    this._snapshot.rightStyle = rightStyle
+    this._snapshot.rightChildren = [...rightChildren]
 
     // ================================================================
     // Step 2: 反序列化粘贴段落, 批量插入
@@ -183,10 +210,13 @@ export class InsertNodesCommand extends PositionalCommand {
     return para
   }
 
-  invert(_ctx: CommandContext): ICommand | null {
-    // 粘贴撤销需删除多个段落, 实现较复杂, 暂返回 null
-    // 后续可通过复合命令 (MacroCommand) 实现
-    return null
+  invert(ctx: CommandContext): ICommand | null {
+    if (this.insertedParaIds.length === 0 || !this._snapshot) return null
+    // 返回一个执行反向操作的命令: 删除插入的段落 + 恢复原状
+    return new UndoPasteCommand(
+      generateCommandId(), Date.now(), this.author,
+      this.path, this.insertedParaIds, this._snapshot,
+    )
   }
 
   serialize(): SerializedCommand {
@@ -195,5 +225,55 @@ export class InsertNodesCommand extends PositionalCommand {
       author: this.author, path: this.path, offset: this.offset,
       text: JSON.stringify(this.nodes),
     }
+  }
+}
+
+// ================================================================
+// UndoPasteCommand — 粘贴撤销: 删除插入段落 + 恢复原段落
+// ================================================================
+class UndoPasteCommand implements ICommand {
+  readonly type = 'undo-paste'
+  readonly id: string
+  readonly timestamp: number
+  readonly author: string
+  private path: string[]
+  private paraIds: string[]
+  private snapshot: {
+    currentParaChildren: string[]
+    truncatedTextNodeId: string | null
+    originalText: string
+  }
+
+  constructor(id: string, ts: number, author: string, path: string[], paraIds: string[], snapshot: { currentParaChildren: string[]; truncatedTextNodeId: string | null; originalText: string }) {
+    this.id = id; this.timestamp = ts; this.author = author
+    this.path = path; this.paraIds = paraIds; this.snapshot = snapshot
+  }
+
+  forward(ctx: CommandContext): StatePatch | null {
+    if (ctx.mode !== 'local') return null
+    const { pool } = ctx
+
+    // 1. 从 body 中移除所有插入的段落 (从后往前避免索引漂移)
+    const parentId = this.path.length >= 2 ? this.path[this.path.length - 2] : pool.rootIds.body
+    const siblings = [...pool.getChildren(parentId)]
+    for (const id of [...this.paraIds].reverse()) {
+      const idx = siblings.indexOf(id)
+      if (idx >= 0) { pool.removeChild(parentId, idx); siblings.splice(idx, 1) }
+    }
+
+    // 2. 恢复原段落 children
+    const currentPara = pool.nodes.get(this.path[this.path.length - 1]) as { children: string[] } | undefined
+    if (currentPara) currentPara.children = [...this.snapshot.currentParaChildren]
+
+    // 3. 恢复被截断的文本节点
+    if (this.snapshot.truncatedTextNodeId) {
+      pool.updateNode(this.snapshot.truncatedTextNodeId, { text: this.snapshot.originalText } as Partial<unknown>)
+    }
+
+    return { invalidation: 'flowbody' }
+  }
+
+  serialize(): SerializedCommand {
+    return { type: 'undo-paste', id: this.id, timestamp: this.timestamp, author: this.author }
   }
 }
