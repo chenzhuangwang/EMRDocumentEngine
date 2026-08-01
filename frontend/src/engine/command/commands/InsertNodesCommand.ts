@@ -23,7 +23,6 @@ import {
   SerializedCommand, PositionalCommand, generateCommandId,
 } from '../ICommand'
 import type { SerializedPara, SerializedChild } from './ClipboardManager'
-import { DeleteRangeCommand } from './DeleteRangeCommand'
 
 /** 文本样式字段 (过滤掉 id/type/children) */
 const TEXT_STYLE_KEYS = [
@@ -178,13 +177,9 @@ export class InsertNodesCommand extends PositionalCommand {
   }
 
   invert(_ctx: CommandContext): ICommand | null {
-    if (this.insertedParaIds.length === 0) return null
-    const firstId = this.insertedParaIds[0]
-    return new DeleteRangeCommand(
-      generateCommandId(), Date.now(), this.author,
-      [...this.path.slice(0, -1), firstId], 0,
-      Number.MAX_SAFE_INTEGER,
-    )
+    // 粘贴撤销需删除多个段落, 实现较复杂, 暂返回 null
+    // 后续可通过复合命令 (MacroCommand) 实现
+    return null
   }
 
   serialize(): SerializedCommand {

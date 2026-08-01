@@ -69,7 +69,22 @@ export class KeyboardHandler {
     if (e.key === 'Delete') {
       e.preventDefault()
       if (cursor.paragraphPath.length === 0) return
-      ed.execCommand(new DeleteRangeCommand(id, ts, author, cursor.paragraphPath, cursor.offset, cursor.offset + 1))
+      const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+      const para = ed.getPool().nodes.get(paraId) as { children?: string[] } | undefined
+      // 检查光标是否在段落末尾
+      let totalLen = 0
+      if (para?.children) {
+        for (const cid of para.children) {
+          const n = ed.getPool().nodes.get(cid) as { type?: string; text?: string } | undefined
+          totalLen += n?.type === 'text' ? (n.text || '').length : 1
+        }
+      }
+      if (cursor.offset >= totalLen) {
+        // 段尾 Delete → 合并下一段
+        ed.execCommand(new MergeParagraphCommand(id, ts, author, cursor.paragraphPath))
+      } else {
+        ed.execCommand(new DeleteRangeCommand(id, ts, author, cursor.paragraphPath, cursor.offset, cursor.offset + 1))
+      }
       return
     }
 
