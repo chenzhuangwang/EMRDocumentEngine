@@ -90,24 +90,17 @@ export class LayoutEngine {
         const para = block as unknown as Paragraph
         const elements: LineElement[] = []
 
-        // 列表标记: 在段落开头插入 bullet/number 文本节点
+        // 列表标记: 拼到第一个文本节点前面, 避免与内容重叠
+        let listMarker = ''
         if (para.list) {
           const listType = para.list.type
           const level = para.list.level || 1
           const indent = '  '.repeat(level - 1)
-          let marker = ''
           if (listType === 'bullet') {
-            marker = indent + '• ' // bullet: •
+            listMarker = indent + '• '
           } else if (listType === 'ordered') {
-            // 编号: 计算当前段落在同级列表中的序号
             const orderNum = this.computeListNumber(para.id, pool, doc, level)
-            marker = indent + orderNum + '. '
-          }
-          if (marker) {
-            elements.push({
-              id: para.id + '_list_marker', type: 'text', value: marker,
-              font: 'SimSun', size: 16,
-            })
+            listMarker = indent + orderNum + '. '
           }
         }
 
@@ -117,8 +110,11 @@ export class LayoutEngine {
           const childType = (child as unknown as Record<string, unknown>).type as string
           if (childType === 'text' || childType === 'smarttext') {
             const tn = child as unknown as TextNode
+            // 列表标记合并到第一个文本节点
+            const value = listMarker ? listMarker + tn.text : tn.text
+            if (listMarker) listMarker = '' // 仅首节点添加
             elements.push({
-              id: tn.id, type: childType, value: tn.text,
+              id: tn.id, type: childType, value,
               font: tn.font, size: tn.size, bold: tn.bold, italic: tn.italic,
               color: tn.color,
             })
