@@ -1,5 +1,5 @@
 import type { DocumentTree, BaseNode, Paragraph } from './document/DocumentModel'
-import { createDocument, createParagraph } from './document/ElementFormatter'
+import { createDocument, createParagraph, extractStyle } from './document/ElementFormatter'
 import { NodePool, buildNodePool } from './document/NodePool'
 import { Draw } from './render/Draw'
 import { EventBus } from './interaction/EventBus'
@@ -124,9 +124,26 @@ export class Editor {
         setCursor(this.store, path, 0)
         cursor = this.store.state.runtime.cursor
       }
+      // 获取光标处文本样式 (段尾回退到末尾节点)
+      let activeStyle: import('./document/DocumentModel').TextStyle | undefined
+      const resolved = this.pool.resolveCharOffset(cursor.paragraphPath[cursor.paragraphPath.length - 1], cursor.offset)
+      if (resolved) {
+        const tn = this.pool.nodes.get(resolved.textNodeId) as unknown as Record<string, unknown> | undefined
+        if (tn) activeStyle = extractStyle(tn as unknown as import('./document/DocumentModel').TextNode)
+      } else {
+        const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+        const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+        if (para?.children) {
+          for (let i = para.children.length - 1; i >= 0; i--) {
+            const n = this.pool.nodes.get(para.children[i]) as { type?: string } | undefined
+            if (n?.type === 'text') { activeStyle = extractStyle(n as unknown as import('./document/DocumentModel').TextNode); break }
+          }
+        }
+      }
+
       const cmd = new InsertTextCommand(
         generateCommandId(), Date.now(), 'user',
-        cursor.paragraphPath, cursor.offset, text,
+        cursor.paragraphPath, cursor.offset, text, activeStyle,
       )
       this.commandManager.execute(cmd)
     })

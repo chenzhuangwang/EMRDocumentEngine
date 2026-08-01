@@ -7,6 +7,7 @@
 
 import type { Editor } from '../Editor'
 import { createParagraph } from '../document/ElementFormatter'
+import { extractStyle } from '../document/ElementFormatter'
 import { InsertTextCommand } from '../command/commands/InsertTextCommand'
 import { DeleteRangeCommand } from '../command/commands/DeleteRangeCommand'
 import { SplitParagraphCommand } from '../command/commands/SplitParagraphCommand'
@@ -114,7 +115,31 @@ export class KeyboardHandler {
         storeInternal._state.runtime.cursor = { paragraphPath: path, offset: 0, visible: true }
       }
 
-      ed.execCommand(new InsertTextCommand(id, ts, author, path, offset, e.key))
+      // 获取光标处文本样式, 使新输入继承当前格式
+      let activeStyle: import('../document/DocumentModel').TextStyle | undefined
+      if (path.length > 0) {
+        const pool = ed.getPool()
+        const paraId = path[path.length - 1]
+        const resolved = pool.resolveCharOffset(paraId, offset)
+        if (resolved) {
+          const tn = pool.nodes.get(resolved.textNodeId) as unknown as Record<string, unknown> | undefined
+          if (tn) activeStyle = extractStyle(tn as unknown as import('../document/DocumentModel').TextNode)
+        } else {
+          // 光标在段尾 → 取最后一个 text node 的样式
+          const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+          if (para?.children) {
+            for (let i = para.children.length - 1; i >= 0; i--) {
+              const n = pool.nodes.get(para.children[i]) as { type?: string } | undefined
+              if (n?.type === 'text') {
+                activeStyle = extractStyle(n as unknown as import('../document/DocumentModel').TextNode)
+                break
+              }
+            }
+          }
+        }
+      }
+
+      ed.execCommand(new InsertTextCommand(id, ts, author, path, offset, e.key, activeStyle))
     }
   }
 
