@@ -64,9 +64,10 @@ export class Draw {
   getPool(): NodePool | null { return this.pool }
   getState(): EditorRuntimeState | null { return this._state }
 
-  recomputeLayout(pool: NodePool): SLIFPage[] {
+  recomputeLayout(pool: NodePool, _invalidation?: string): SLIFPage[] {
     if (!this.document) return []
     this.pool = pool
+    // 当前统一全量布局; invalidation scope 预留用于未来增量优化
     this.pages = this.layoutEngine.fullLayout(this.document, pool)
     this.hitTestIndex.rebuild(this.pages)
     return this.pages

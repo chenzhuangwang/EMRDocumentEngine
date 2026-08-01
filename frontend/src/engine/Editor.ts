@@ -83,13 +83,13 @@ export class Editor {
     })
 
     // document:changed → 重布局 + 重绘 (唯一渲染入口)
-    this.eventBus.on('document:changed', () => {
+    this.eventBus.on('document:changed', (payload: { invalidation: import('./command/ICommand').InvalidationScope }) => {
       const t0 = performance.now()
-      this.draw.recomputeLayout(this.pool)
+      this.draw.recomputeLayout(this.pool, payload.invalidation)
       const t1 = performance.now()
       const cursor = this.store.state.runtime.cursor
       console.debug(
-        `[Editor] document:changed → recomputeLayout ${(t1 - t0).toFixed(1)}ms, ` +
+        `[Editor] document:changed(${payload.invalidation}) → recomputeLayout ${(t1 - t0).toFixed(1)}ms, ` +
         `cursor=(${cursor.paragraphPath.join('/')}, offset=${cursor.offset}), ` +
         `bodyChildren=[${this.doc.body.children.join(',')}]`
       )
