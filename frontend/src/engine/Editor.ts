@@ -252,18 +252,18 @@ export class Editor {
   /** 根据文档坐标 X 计算段落内的字符偏移 */
   private computeOffsetAtX(para: Paragraph, docX: number, page: import('./layout/SLIF').SLIFPage): number {
     let accumulated = 0
-
-    // 列表标记: SLIF 文本含标记前缀, 需要从 offset 中减掉
     const markerLen = this.getListMarkerLen(para)
 
     for (const childId of para.children) {
       const item = page.items.find(it => it.nodeId === childId)
       const text = (this.pool.nodes.get(childId) as unknown as { text?: string })?.text || ''
       if (item) {
-        const charWidth = item.width / Math.max(text.length, 1)
+        // item.text 含标记前缀, 用 item 文本长度计算 charWidth
+        const itemTextLen = item.text?.length || 1
+        const charWidth = item.width / itemTextLen
         if (docX <= item.x + item.width) {
           const charIdx = Math.round((docX - item.x) / charWidth)
-          return Math.max(0, accumulated + Math.max(0, Math.min(charIdx, text.length)) - markerLen)
+          return Math.max(0, accumulated + Math.max(0, Math.min(charIdx, itemTextLen)) - markerLen)
         }
       }
       accumulated += text.length

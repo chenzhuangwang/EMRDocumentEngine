@@ -184,10 +184,11 @@ export class MouseHandler {
       const item = page.items.find(it => it.nodeId === childId)
       const text = (pool.nodes.get(childId) as unknown as { text?: string })?.text || ''
       if (item) {
-        const charWidth = item.width / Math.max(text.length, 1)
+        const itemTextLen = item.text?.length || 1
+        const charWidth = item.width / itemTextLen
         if (docX <= item.x + item.width) {
           const charIdx = Math.round((docX - item.x) / charWidth)
-          return Math.max(0, accumulated + Math.max(0, Math.min(charIdx, text.length)) - markerLen)
+          return Math.max(0, accumulated + Math.max(0, Math.min(charIdx, itemTextLen)) - markerLen)
         }
       }
       accumulated += text.length
