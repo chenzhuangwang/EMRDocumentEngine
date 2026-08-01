@@ -89,6 +89,28 @@ export class LayoutEngine {
       if (blockType === 'paragraph') {
         const para = block as unknown as Paragraph
         const elements: LineElement[] = []
+
+        // 列表标记: 在段落开头插入 bullet/number 文本节点
+        if (para.list) {
+          const listType = para.list.type
+          const level = para.list.level || 1
+          const indent = '  '.repeat(level - 1)
+          let marker = ''
+          if (listType === 'bullet') {
+            marker = indent + '• ' // bullet: •
+          } else if (listType === 'ordered') {
+            // 编号: 计算当前段落在同级列表中的序号
+            const orderNum = this.computeListNumber(para.id, pool, doc, level)
+            marker = indent + orderNum + '. '
+          }
+          if (marker) {
+            elements.push({
+              id: para.id + '_list_marker', type: 'text', value: marker,
+              font: 'SimSun', size: 16,
+            })
+          }
+        }
+
         for (const childId of para.children) {
           const child = pool.nodes.get(childId)
           if (!child) continue
@@ -203,6 +225,19 @@ export class LayoutEngine {
   }
 
   getPages(): SLIFPage[] { return this.pages }
+
+  /** 计算有序列表编号: 统计前面同类型同级别段落数 + 1 */
+  private computeListNumber(paraId: string, pool: import('../document/NodePool').NodePool, doc: DocumentTree, level: number): number {
+    let count = 0
+    for (const bid of doc.body.children) {
+      if (bid === paraId) return count + 1
+      const b = pool.nodes.get(bid) as Record<string, unknown> | undefined
+      const bl = b?.list as { type?: string; level?: number } | undefined
+      if (bl?.type === 'ordered' && (bl?.level || 1) === level) count++
+      else count = 0 // 非同级有序列表 → 重置计数
+    }
+    return 1
+  }
 
   getVisiblePages(scrollY: number, viewportHeight: number): { start: number; end: number } {
     const dpr = this.coordSystem.transform.dpr
