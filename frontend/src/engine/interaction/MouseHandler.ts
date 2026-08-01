@@ -169,6 +169,17 @@ export class MouseHandler {
   private computeOffsetAtX(para: Paragraph, docX: number, page: SLIFPage): number {
     let accumulated = 0
     const pool = this.editor.getPool()
+
+    // 列表标记长度
+    const p = para as unknown as { list?: { type: string; level?: number } }
+    let markerLen = 0
+    if (p.list) {
+      const lvl = p.list.level || 1
+      const indent = '  '.repeat(lvl - 1)
+      if (p.list.type === 'bullet') markerLen = (indent + '• ').length
+      else if (p.list.type === 'ordered') markerLen = (indent + '99. ').length
+    }
+
     for (const childId of para.children) {
       const item = page.items.find(it => it.nodeId === childId)
       const text = (pool.nodes.get(childId) as unknown as { text?: string })?.text || ''
@@ -176,12 +187,12 @@ export class MouseHandler {
         const charWidth = item.width / Math.max(text.length, 1)
         if (docX <= item.x + item.width) {
           const charIdx = Math.round((docX - item.x) / charWidth)
-          return accumulated + Math.max(0, Math.min(charIdx, text.length))
+          return Math.max(0, accumulated + Math.max(0, Math.min(charIdx, text.length)) - markerLen)
         }
       }
       accumulated += text.length
     }
-    return accumulated
+    return Math.max(0, accumulated - markerLen)
   }
 
   destroy(): void {

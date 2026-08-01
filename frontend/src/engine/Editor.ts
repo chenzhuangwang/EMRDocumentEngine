@@ -252,7 +252,10 @@ export class Editor {
   /** 根据文档坐标 X 计算段落内的字符偏移 */
   private computeOffsetAtX(para: Paragraph, docX: number, page: import('./layout/SLIF').SLIFPage): number {
     let accumulated = 0
-    // 遍历段落 children, 用 SLIF page items 的位置信息估算
+
+    // 列表标记: SLIF 文本含标记前缀, 需要从 offset 中减掉
+    const markerLen = this.getListMarkerLen(para)
+
     for (const childId of para.children) {
       const item = page.items.find(it => it.nodeId === childId)
       const text = (this.pool.nodes.get(childId) as unknown as { text?: string })?.text || ''
@@ -260,12 +263,23 @@ export class Editor {
         const charWidth = item.width / Math.max(text.length, 1)
         if (docX <= item.x + item.width) {
           const charIdx = Math.round((docX - item.x) / charWidth)
-          return accumulated + Math.max(0, Math.min(charIdx, text.length))
+          return Math.max(0, accumulated + Math.max(0, Math.min(charIdx, text.length)) - markerLen)
         }
       }
       accumulated += text.length
     }
-    return accumulated
+    return Math.max(0, accumulated - markerLen)
+  }
+
+  /** 列表标记长度 (bullet="• ", ordered="99. ") */
+  private getListMarkerLen(para: Paragraph): number {
+    const p = para as unknown as { list?: { type: string; level?: number } }
+    if (!p.list) return 0
+    const lvl = p.list.level || 1
+    const indent = '  '.repeat(lvl - 1)
+    if (p.list.type === 'bullet') return (indent + '• ').length
+    if (p.list.type === 'ordered') return (indent + '99. ').length
+    return 0
   }
 
   /** 计算段落内所有文本节点的总字符数 */
