@@ -64,6 +64,7 @@ function EditorPageInner({
   const [exportOpen, setExportOpen] = useState(false)
   const [wordCount, setWordCount] = useState(0)
   const [pageCount, setPageCount] = useState(1)
+  const [templates, setTemplates] = useState<{ name: string; items: { id: string; name: string; description?: string }[] }[]>([])
   const setDirty = useEditorStore((s) => s.setDirty)
   const setSaveStatus = useEditorStore((s) => s.setSaveStatus)
 
@@ -206,18 +207,27 @@ function EditorPageInner({
     }
   }, [editorRef, onTitleChange])
 
+  // 从后端加载模板列表
+  useEffect(() => {
+    templateApi.list().then(res => {
+      const items = res.data.data || []
+      setTemplates([{ name: '医疗文书', items: items.map((t: { id: string; name: string; description?: string }) => ({ id: t.id, name: t.name, description: t.description })) }])
+    }).catch(() => { /* 加载失败, 保持空列表 */ })
+  }, [])
+
   return (
     <EditorLayout
       documentTitle={documentTitle}
       onTitleChange={onTitleChange}
       onSave={handleSave}
       onFormat={handleFormat}
-      onInsert={() => {}}
+      onInsert={(type: string) => { console.debug('[EditorPage] insert element:', type) }}
       onExportClick={() => setExportOpen(true)}
       onPrint={() => window.print()}
       wordCount={wordCount}
       pageCount={pageCount}
       onTemplateSelect={handleTemplateSelect}
+      templates={templates}
     >
       <div ref={containerRef} className="flex-1 bg-[#E5E7EB] relative overflow-hidden" style={{ minHeight: '400px' }} />
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} onExport={handleExport} />

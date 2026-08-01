@@ -26,6 +26,7 @@ interface SidebarProps {
   templates?: TemplateCategory[]
   onTemplateSelect?: (templateId: string) => void
   onNewTemplate?: () => void
+  onElementClick?: (type: string) => void
 }
 
 interface TemplateCategory {
@@ -33,7 +34,7 @@ interface TemplateCategory {
   items: { id: string; name: string; description?: string }[]
 }
 
-export function Sidebar({ templates = [], onTemplateSelect, onNewTemplate }: SidebarProps) {
+export function Sidebar({ templates = [], onTemplateSelect, onNewTemplate, onElementClick }: SidebarProps) {
   const sidebarTab = useUIStore((s) => s.sidebarTab)
   const setSidebarTab = useUIStore((s) => s.setSidebarTab)
 
@@ -82,7 +83,7 @@ export function Sidebar({ templates = [], onTemplateSelect, onNewTemplate }: Sid
             onNewTemplate={onNewTemplate}
           />
         )}
-        {sidebarTab === 'elements' && <ElementPalette />}
+        {sidebarTab === 'elements' && <ElementPalette onClick={onElementClick} />}
         {sidebarTab === 'pages' && <PageThumbnails />}
       </div>
     </aside>
@@ -181,7 +182,7 @@ function TemplateList({
 
 // ---- 元素面板 ----
 
-function ElementPalette() {
+function ElementPalette({ onClick }: { onClick?: (type: string) => void }) {
   const elements = [
     { type: 'control-input', label: '文本输入', icon: <Type size={16} /> },
     { type: 'control-select', label: '下拉选择', icon: <ChevronRight size={16} /> },
@@ -200,6 +201,7 @@ function ElementPalette() {
           key={el.type}
           className="sidebar-item cursor-grab active:cursor-grabbing"
           draggable
+          onClick={() => onClick?.(el.type)}
         >
           <span className="text-gray-400">{el.icon}</span>
           <span className="text-sm">{el.label}</span>

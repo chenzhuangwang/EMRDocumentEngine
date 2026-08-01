@@ -23,6 +23,7 @@ interface EditorLayoutProps {
   pageIndex?: number
   pageCount?: number
   onTemplateSelect?: (id: string) => void
+  templates?: { name: string; items: { id: string; name: string; description?: string }[] }[]
 }
 
 export function EditorLayout({
@@ -38,6 +39,7 @@ export function EditorLayout({
   pageIndex = 1,
   pageCount = 1,
   onTemplateSelect,
+  templates,
 }: EditorLayoutProps) {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
@@ -65,7 +67,7 @@ export function EditorLayout({
         {/* 侧边栏 */}
         {sidebarOpen && (
           <Sidebar
-            templates={DEFAULT_TEMPLATES}
+            templates={templates || DEFAULT_TEMPLATES}
             onTemplateSelect={onTemplateSelect}
           />
         )}
