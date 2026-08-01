@@ -8,7 +8,7 @@ import { EditorLayout } from '@/components/layout/EditorLayout'
 import { EditorProvider, useEditorRef } from '@/components/editor/EditorProvider'
 import { ExportDialog } from '@/components/dialogs/ExportDialog'
 import { useEditorStore } from '@/store'
-import { documentApi } from '@/services/api'
+import { documentApi, templateApi } from '@/services/api'
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -190,6 +190,22 @@ function EditorPageInner({
     }
   }, [editorRef])
 
+  const handleTemplateSelect = useCallback(async (templateId: string) => {
+    const ed = editorRef.current
+    if (!ed) return
+    try {
+      const res = await templateApi.getById(templateId)
+      const detail = res.data.data
+      if (detail) {
+        const doc = JSON.parse(detail.content)
+        ed.setDocument(doc)
+        onTitleChange(detail.title || '未命名文档')
+      }
+    } catch (err) {
+      console.error('加载模板失败:', err)
+    }
+  }, [editorRef, onTitleChange])
+
   return (
     <EditorLayout
       documentTitle={documentTitle}
@@ -201,6 +217,7 @@ function EditorPageInner({
       onPrint={() => window.print()}
       wordCount={wordCount}
       pageCount={pageCount}
+      onTemplateSelect={handleTemplateSelect}
     >
       <div ref={containerRef} className="flex-1 bg-[#E5E7EB] relative overflow-hidden" style={{ minHeight: '400px' }} />
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} onExport={handleExport} />

@@ -22,6 +22,7 @@ interface EditorLayoutProps {
   wordCount?: number
   pageIndex?: number
   pageCount?: number
+  onTemplateSelect?: (id: string) => void
 }
 
 export function EditorLayout({
@@ -36,6 +37,7 @@ export function EditorLayout({
   wordCount = 0,
   pageIndex = 1,
   pageCount = 1,
+  onTemplateSelect,
 }: EditorLayoutProps) {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
@@ -64,6 +66,7 @@ export function EditorLayout({
         {sidebarOpen && (
           <Sidebar
             templates={DEFAULT_TEMPLATES}
+            onTemplateSelect={onTemplateSelect}
           />
         )}
 
