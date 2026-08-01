@@ -146,6 +146,9 @@ function EditorPageInner({
       case 'bold': ed.toggleFormat({ bold: true }); break
       case 'italic': ed.toggleFormat({ italic: true }); break
       case 'underline': ed.toggleFormat({ underline: true }); break
+      case 'strikeout': ed.toggleFormat({ strikeout: true }); break
+      case 'superscript': ed.toggleFormat({ superscript: true }); break
+      case 'subscript': ed.toggleFormat({ subscript: true }); break
       case 'font': ed.toggleFormat({ font: String(_value ?? 'SimSun') }); break
       case 'fontSize': ed.toggleFormat({ size: Number(_value ?? 16) }); break
       case 'color': ed.toggleFormat({ color: String(_value ?? '#000000') }); break

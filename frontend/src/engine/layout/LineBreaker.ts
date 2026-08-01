@@ -15,6 +15,9 @@ export interface LineElement {
   italic?: boolean
   color?: string
   underline?: boolean
+  strikeout?: boolean
+  superscript?: boolean
+  subscript?: boolean
   imageData?: { width?: number; height?: number; wrapType?: string }
   control?: { width?: number }
 }

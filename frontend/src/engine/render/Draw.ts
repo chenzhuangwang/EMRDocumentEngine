@@ -193,6 +193,7 @@ export class Draw {
             id: item.nodeId, type: item.type, value: item.text || '',
             font: item.font, size: item.size, bold: item.bold, italic: item.italic,
             color: item.color, underline: item.underline,
+            strikeout: item.strikeout, superscript: item.superscript, subscript: item.subscript,
           }, item.x, pageY + item.y, {})
         }
       }
