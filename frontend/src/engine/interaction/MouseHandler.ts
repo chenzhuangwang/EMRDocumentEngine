@@ -160,7 +160,7 @@ export class MouseHandler {
     for (const [, node] of this.editor.getPool().nodes) {
       if (node.type === 'paragraph') {
         const para = node as unknown as Paragraph
-        if (para.children.includes(nodeId)) return para
+        if (para.children.includes(nodeId) || nodeId === node.id) return para
       }
     }
     return null

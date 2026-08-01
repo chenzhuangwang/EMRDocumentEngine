@@ -20,15 +20,18 @@ interface EditorProviderProps {
 export function EditorProvider({ children, containerRef, document }: EditorProviderProps) {
   const editorRef = useRef<Editor | null>(null)
 
+  // 创建 Editor (仅一次)
   useEffect(() => {
     if (!containerRef.current) return
     const editor = new Editor(containerRef.current, document)
     editorRef.current = editor
-    // 自动聚焦以激活键盘输入
     editor.focus()
+    // 如果 document 在 Editor 创建前就已就绪, 立即加载
+    if (document) editor.setDocument(document)
     return () => { editor.destroy(); editorRef.current = null }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // document 变更时重新加载
   useEffect(() => {
     if (editorRef.current && document) {
       editorRef.current.setDocument(document)
