@@ -9,6 +9,19 @@ import { EditorProvider, useEditorRef } from '@/components/editor/EditorProvider
 import { ExportDialog } from '@/components/dialogs/ExportDialog'
 import { useEditorStore } from '@/store'
 import { documentApi, templateApi } from '@/services/api'
+import { generateCommandId } from '@/engine/command/ICommand'
+import { InsertTextCommand } from '@/engine/command/commands/InsertTextCommand'
+
+const PLACEHOLDER_MAP: Record<string, string> = {
+  'control-input': '[文本输入]',
+  'control-select': '[下拉选择]',
+  'control-date': '[日期选择]',
+  'control-checkbox': '[复选框]',
+  'control-radio': '[单选框]',
+  'control-number': '[数字输入]',
+  'table': '[表格]',
+  'image': '[图片]',
+}
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -221,7 +234,14 @@ function EditorPageInner({
       onTitleChange={onTitleChange}
       onSave={handleSave}
       onFormat={handleFormat}
-      onInsert={(type: string) => { console.debug('[EditorPage] insert element:', type) }}
+      onInsert={(type: string) => {
+        const ed = editorRef.current
+        if (!ed) return
+        const placeholder = PLACEHOLDER_MAP[type] || `[${type}]`
+        const cursor = ed.getStore().state.runtime.cursor
+        if (cursor.paragraphPath.length === 0) return
+        ed.execCommand(new InsertTextCommand(generateCommandId(), Date.now(), 'user', cursor.paragraphPath, cursor.offset, placeholder))
+      }}
       onExportClick={() => setExportOpen(true)}
       onPrint={() => window.print()}
       wordCount={wordCount}
