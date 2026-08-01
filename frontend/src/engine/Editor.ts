@@ -10,6 +10,10 @@ import { MouseHandler } from './interaction/MouseHandler'
 import type { ICommand } from './command/ICommand'
 import { generateCommandId } from './command/ICommand'
 import { InsertTextCommand } from './command/commands/InsertTextCommand'
+import { InsertNodesCommand } from './command/commands/InsertNodesCommand'
+import { FormatTextCommand } from './command/commands/FormatTextCommand'
+import { ParagraphStyleCommand } from './command/commands/ParagraphStyleCommand'
+import { ClipboardManager } from './command/ClipboardManager'
 import { EditorStore } from './state/EditorStore'
 import type { EditorRuntimeState } from './state/EditorRuntimeState'
 
@@ -32,6 +36,7 @@ export class Editor {
   private inputComposer: InputComposer
   private keyboardHandler: KeyboardHandler
   private mouseHandler: MouseHandler
+  private clipboard: ClipboardManager
   private listeners: EditorListener[] = []
   private _clickToFocus: (e: MouseEvent) => void
 
@@ -61,6 +66,7 @@ export class Editor {
     this.inputComposer = new InputComposer(container)
     this.keyboardHandler = new KeyboardHandler(this, container)
     this.mouseHandler = new MouseHandler(this, container)
+    this.clipboard = new ClipboardManager()
     this.commandManager = new CommandManager(
       this.eventBus,
       () => this.doc,
@@ -139,8 +145,8 @@ export class Editor {
     // 点击容器 → 命中检测 + 更新光标 + 聚焦
     // 若刚结束拖拽则跳过, 避免覆盖选区
     this._clickToFocus = (e: MouseEvent) => {
-      if (this.mouseHandler.wasDragging()) return
       this.inputComposer.focus()
+      if (this.mouseHandler.wasDragging()) return
       this.handleClick(e)
     }
     container.addEventListener('click', this._clickToFocus)
@@ -298,6 +304,136 @@ export class Editor {
   redo(): void { this.commandManager.redo() }
   canUndo(): boolean { return this.commandManager.canUndo() }
   canRedo(): boolean { return this.commandManager.canRedo() }
+
+  /** 复制: 选区范围 → 深度克隆 → 内存剪贴板 + 系统剪贴板 */
+  copy(): void {
+    console.debug('[Editor] copy() called')
+    const runtime = this.store.state.runtime
+    const sel = runtime.selection
+    const cursor = runtime.cursor
+
+    if (sel.active) {
+      this.clipboard.copy(
+        sel.anchor.paragraphPath, sel.anchor.offset,
+        sel.focus.paragraphPath, sel.focus.offset,
+        this.doc, this.pool,
+      )
+    } else if (cursor.paragraphPath.length > 0) {
+      // 无选区: 复制光标所在整段
+      const para = this.pool.nodes.get(cursor.paragraphPath[cursor.paragraphPath.length - 1])
+      if (para) {
+        const len = this.getParagraphTextLength(para as unknown as Paragraph)
+        this.clipboard.copy(
+          cursor.paragraphPath, 0,
+          cursor.paragraphPath, len,
+          this.doc, this.pool,
+        )
+      }
+    }
+  }
+
+  /** 粘贴: 通过 InsertNodesCommand 执行 (支持 undo/redo) */
+  paste(): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+
+    const data = this.clipboard.paste()
+    if (!data || data.nodes.length === 0) {
+      // 内存剪贴板为空 → 尝试从系统剪贴板读取纯文本兜底
+      this.pasteFromSystem()
+      return
+    }
+
+    const cmd = new InsertNodesCommand(
+      generateCommandId(), Date.now(), 'user',
+      cursor.paragraphPath, cursor.offset,
+      data.nodes,
+    )
+    this.commandManager.execute(cmd)
+  }
+
+  /** 从系统剪贴板读取纯文本 → 构造 ClipboardData → InsertNodesCommand */
+  private async pasteFromSystem(): Promise<void> {
+    try {
+      const text = await navigator.clipboard?.readText()
+      if (text) {
+        this.clipboard.setPlainText(text)
+        const data = this.clipboard.paste()
+        if (data && data.nodes.length > 0 && this.store.state.runtime.cursor.paragraphPath.length > 0) {
+          const cursor = this.store.state.runtime.cursor
+          const cmd = new InsertNodesCommand(
+            generateCommandId(), Date.now(), 'user',
+            cursor.paragraphPath, cursor.offset,
+            data.nodes,
+          )
+          this.commandManager.execute(cmd)
+        }
+      }
+    } catch { /* 权限拒绝或非 HTTPS, 忽略 */ }
+  }
+
+  /** 切换光标处文本样式 (bold/italic/underline) → FormatTextCommand */
+  toggleFormat(style: Partial<import('./document/DocumentModel').TextStyle>): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
+    if (!resolved) return
+
+    const textNode = this.pool.nodes.get(resolved.textNodeId) as unknown as
+      { bold?: boolean; italic?: boolean; underline?: boolean } | undefined
+    if (!textNode) return
+
+    // Toggle: 如果已有该样式则移除, 否则添加
+    const changes: Record<string, unknown> = {}
+    for (const [key, val] of Object.entries(style)) {
+      if (val === true && textNode[key as keyof typeof textNode]) {
+        changes[key] = false  // toggle off
+      } else {
+        changes[key] = val    // toggle on
+      }
+    }
+
+    const cmd = new FormatTextCommand(
+      generateCommandId(), Date.now(), 'user',
+      [resolved.textNodeId],
+      changes as Partial<import('./document/DocumentModel').TextStyle>,
+    )
+    this.commandManager.execute(cmd)
+  }
+
+  /** 设置光标所在段落的格式 (对齐/缩进/列表) */
+  setParagraphStyle(style: Partial<import('./document/DocumentModel').ParagraphStyle>): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const cmd = new ParagraphStyleCommand(
+      generateCommandId(), Date.now(), 'user',
+      paraId, style,
+    )
+    this.commandManager.execute(cmd)
+  }
+
+  /** 全选: 选区覆盖整篇文档所有段落 */
+  selectAll(): void {
+    const bodyChildren = this.doc.body.children
+    if (bodyChildren.length === 0) return
+    const firstParaId = bodyChildren[0]
+    const lastParaId = bodyChildren[bodyChildren.length - 1]
+    const lastPara = this.pool.nodes.get(lastParaId) as unknown as { children?: string[] } | undefined
+    const totalLen = lastPara ? this.getParagraphTextLength(lastPara as unknown as Paragraph) : 0
+    const si = this.store as unknown as {
+      _state: { runtime: { selection: { anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean }; active: boolean; granularity: string } } }
+    }
+    si._state.runtime.selection = {
+      anchor: { paragraphPath: [this.doc.id, firstParaId], offset: 0, visible: false },
+      focus: { paragraphPath: [this.doc.id, lastParaId], offset: totalLen, visible: false },
+      active: true,
+      granularity: 'character',
+    }
+    this.draw.render(this.pool, this.store.state.runtime)
+  }
 
   getEventBus(): EventBus { return this.eventBus }
   getDraw(): Draw { return this.draw }

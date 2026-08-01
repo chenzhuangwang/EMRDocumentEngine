@@ -33,6 +33,15 @@ export class KeyboardHandler {
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); ed.undo(); return }
     if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); ed.redo(); return }
 
+    // Ctrl+C: 复制选区
+    if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); ed.copy(); return }
+    // Ctrl+V: 粘贴
+    if ((e.ctrlKey || e.metaKey) && e.key === 'v') { e.preventDefault(); ed.paste(); return }
+    // Ctrl+X: 剪切
+    if ((e.ctrlKey || e.metaKey) && e.key === 'x') { e.preventDefault(); ed.copy(); return }
+    // Ctrl+A: 全选
+    if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); ed.selectAll(); return }
+
     const id = generateCommandId()
     const ts = Date.now()
 

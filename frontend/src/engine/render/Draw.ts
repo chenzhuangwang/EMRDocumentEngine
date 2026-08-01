@@ -198,10 +198,10 @@ export class Draw {
     ictx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ictx.clearRect(0, 0, viewportW, viewportH)
 
-    // --- 选区高亮 (文字下方) ---
+    // --- 选区高亮 (文字下方, 统一包围盒) ---
     const selection = runtimeState.selection
     if (selection.active) {
-      this.renderSelection(pool, selection, offsetX, visible, pageHeight, ictx)
+      this.renderSelectionUnified(pool, selection, offsetX, visible, pageHeight, ictx)
     }
 
     // --- 光标 (文字上方) ---
@@ -210,9 +210,10 @@ export class Draw {
   }
 
   // ================================================================
-  // 选区渲染 — 支持单段落/跨段落/正反向拖拽
+  // 选区渲染 — 逐 SLIF item 独立底色, 每行宽度跟随内容 (阶梯样式)
+  // 首段/末段按 offset 裁剪, 中间段全画
   // ================================================================
-  private renderSelection(
+  private renderSelectionUnified(
     pool: NodePool,
     selection: EditorRuntimeState['selection'],
     offsetX: number,
@@ -222,80 +223,94 @@ export class Draw {
   ): void {
     const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1] || ''
     const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1] || ''
-    const samePara = anchorParaId === focusParaId
 
     const bodyChildren = pool.getChildren(pool.rootIds.body)
     const aIdx = bodyChildren.indexOf(anchorParaId)
     const fIdx = bodyChildren.indexOf(focusParaId)
-
-    if (aIdx < 0 || fIdx < 0) {
-      if (samePara) {
-        const ss = Math.min(selection.anchor.offset, selection.focus.offset)
-        const se = Math.max(selection.anchor.offset, selection.focus.offset)
-        if (ss < se) this.renderSelectionInPara(anchorParaId, ss, se, offsetX, visible, pageHeight, pool, ictx)
-      }
-      return
-    }
+    if (aIdx < 0 || fIdx < 0) return
 
     const lo = Math.min(aIdx, fIdx)
     const hi = Math.max(aIdx, fIdx)
+    const samePara = lo === hi
 
-    for (let pi = lo; pi <= hi; pi++) {
-      const pid = bodyChildren[pi]
-      if (!pid) continue
-      let pStart = 0
-      let pEnd = Infinity
+    // 首段/末段的选区 offset — 标准化为 loOff <= hiOff
+    const anchorOff = selection.anchor.offset
+    const focusOff = selection.focus.offset
+    const selMin = Math.min(anchorOff, focusOff)
+    const selMax = Math.max(anchorOff, focusOff)
 
-      if (samePara) {
-        pStart = Math.min(selection.anchor.offset, selection.focus.offset)
-        pEnd = Math.max(selection.anchor.offset, selection.focus.offset)
-      } else if (pi === lo) {
-        if (pid === anchorParaId) { pStart = selection.anchor.offset }
-        else { pStart = selection.focus.offset }
-      } else if (pi === hi) {
-        if (pid === anchorParaId) { pEnd = selection.anchor.offset }
-        else { pEnd = selection.focus.offset }
-      }
+    // 追踪每个段落的累计字符偏移
+    const paraOffsets = new Map<string, number>()
 
-      if (pStart < pEnd) {
-        this.renderSelectionInPara(pid, pStart, pEnd, offsetX, visible, pageHeight, pool, ictx)
-      }
-    }
-  }
+    ictx.fillStyle = 'rgba(59, 130, 246, 0.2)'
 
-  private renderSelectionInPara(
-    paraId: string, selStart: number, selEnd: number,
-    offsetX: number, visible: { start: number; end: number },
-    pageHeight: number, pool: NodePool, ictx: CanvasRenderingContext2D,
-  ): void {
-    let selAccum = 0
     for (let i = visible.start; i <= visible.end; i++) {
       const sp = this.pages[i]
       if (!sp) continue
       const spY = (i - visible.start) * pageHeight
       for (const item of sp.items) {
-        if (this.findItemParagraph(item.nodeId, pool) !== paraId) continue
+        const itemParaId = this.findItemParagraph(item.nodeId, pool)
+        if (!itemParaId) continue
+        const pi = bodyChildren.indexOf(itemParaId)
+        if (pi < lo || pi > hi) continue
+
+        // 该 item 在段落内的字符偏移范围
+        const itemStart = paraOffsets.get(itemParaId) ?? 0
         const tLen = item.text?.length || 0
-        const itemEnd = selAccum + tLen
-        if (selStart < itemEnd && selEnd > selAccum) {
-          const localS = Math.max(0, selStart - selAccum)
-          const localE = Math.min(tLen, selEnd - selAccum)
-          const charW = tLen > 0 ? item.width / tLen : 0
-          ictx.fillStyle = 'rgba(59, 130, 246, 0.25)'
-          ictx.fillRect(offsetX + item.x + localS * charW, spY + item.y,
-            (localE - localS) * charW, item.ascent + item.descent)
+        const itemEnd = itemStart + tLen
+        const charW = tLen > 0 ? item.width / tLen : 0
+
+        // ---- 第一层: item 级筛选 ----
+        let include = true
+        if (samePara) {
+          include = itemEnd > selMin && itemStart < selMax
+        } else if (pi === lo) {
+          // 首段: 锚点 offset = (aIdx===lo ? anchorOff : focusOff)
+          const loOff = aIdx === lo ? anchorOff : focusOff
+          include = itemEnd > loOff
+        } else if (pi === hi) {
+          // 末段: 锚点 offset = (aIdx===hi ? anchorOff : focusOff)
+          const hiOff = aIdx === hi ? anchorOff : focusOff
+          include = itemStart < hiOff
         }
-        selAccum += tLen
+
+        if (!include) { paraOffsets.set(itemParaId, itemEnd); continue }
+
+        // ---- 第二层: item 内像素裁剪 ----
+        let localStart = 0
+        let localEnd = tLen || 1  // 空段落占位至少 1 个单位宽度
+
+        if (samePara) {
+          localStart = Math.max(0, selMin - itemStart)
+          localEnd = Math.min(tLen, selMax - itemStart)
+        } else if (pi === lo) {
+          const loOff = aIdx === lo ? anchorOff : focusOff
+          localStart = Math.max(0, loOff - itemStart)
+          localEnd = tLen || 1
+        } else if (pi === hi) {
+          const hiOff = aIdx === hi ? anchorOff : focusOff
+          localStart = 0
+          localEnd = Math.min(tLen || 1, hiOff - itemStart)
+        }
+
+        const dx = localStart * charW
+        const dw = tLen > 0
+          ? (localEnd - localStart) * charW
+          : item.ascent + item.descent  // 空段落用高度作为最小宽度
+
+        ictx.fillRect(offsetX + item.x + dx, spY + item.y, dw, item.ascent + item.descent)
+
+        paraOffsets.set(itemParaId, itemEnd)
       }
     }
   }
 
-  /** 查找 SLIF item 所属段落 ID */
+  /** 查找 SLIF item 所属段落 ID (保留, 供选区渲染使用) */
   private findItemParagraph(nodeId: string, pool: NodePool): string | null {
     for (const [, node] of pool.nodes) {
       if (node.type === 'paragraph') {
         const para = node as unknown as { children: string[] }
-        if (para.children.includes(nodeId)) return node.id
+        if (para.children.includes(nodeId) || nodeId === node.id) return node.id
       }
     }
     return null

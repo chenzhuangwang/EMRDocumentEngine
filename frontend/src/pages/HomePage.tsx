@@ -10,7 +10,7 @@ import {
   Search,
   FolderOpen,
   Clock,
-  MoreVertical,
+  Trash2,
 } from 'lucide-react'
 import { documentApi, type DocumentListItem } from '@/services/api'
 import { formatDate, cn } from '@/lib/utils'
@@ -80,6 +80,17 @@ export default function HomePage() {
 
   const handleOpenDocument = (id: string) => {
     navigate(`/editor/${id}`)
+  }
+
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('确定删除该文档？')) return
+    try {
+      await documentApi.delete(id)
+      setDocuments(prev => prev.filter(d => d.id !== id))
+    } catch (err) {
+      console.error('删除失败:', err)
+    }
   }
 
   return (
@@ -184,13 +195,11 @@ export default function HomePage() {
                       </td>
                       <td className="px-4 py-3">
                         <button
-                          className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            // 更多操作
-                          }}
+                          className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
+                          onClick={(e) => handleDelete(doc.id, e)}
+                          title="删除"
                         >
-                          <MoreVertical size={14} />
+                          <Trash2 size={14} />
                         </button>
                       </td>
                     </tr>

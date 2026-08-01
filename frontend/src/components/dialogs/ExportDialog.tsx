@@ -4,7 +4,7 @@
 
 import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { X, FileText, FileJson, FileCode, Download, Check } from 'lucide-react'
+import { X, FileText, FileJson, FileCode, Download, Check, AlignLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ExportFormat {
@@ -36,6 +36,13 @@ const FORMATS: ExportFormat[] = [
     description: '纯静态网页，可在浏览器中直接查看',
     icon: <FileCode size={22} />,
     available: false,
+  },
+  {
+    id: 'txt',
+    label: '纯文本',
+    description: '仅导出文字内容，不含样式和格式',
+    icon: <AlignLeft size={22} />,
+    available: true,
   },
   {
     id: 'json',

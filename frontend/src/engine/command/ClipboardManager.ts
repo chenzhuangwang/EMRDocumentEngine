@@ -1,0 +1,216 @@
+// ================================================================
+// ClipboardManager — 编辑器内存剪贴板 (重构 v2)
+//
+// 复制: 复用与选区渲染一致的 offset 范围计算 → 段落级深度克隆
+//   - 段落内按 offset 裁剪文本节点 (同 renderSelectionUnified 算法)
+//   - 深度克隆保留全部字段: text, style, smarttext element meta, image
+//   - 所有克隆节点生成全新 UUID
+//   - 纯文本同步写入系统剪贴板
+//
+// 粘贴: 返回结构化节点数据 → InsertNodesCommand 消费
+// ================================================================
+
+import type { BaseNode } from '../document/DocumentModel'
+import type { DocumentTree } from '../document/DocumentModel'
+import type { NodePool } from '../document/NodePool'
+import { generateId } from '../document/DocumentModel'
+
+// ---- 类型 ----
+
+export interface ClipboardData {
+  nodes: SerializedPara[]
+  plainText: string
+}
+
+export interface SerializedPara {
+  type: string
+  id: string
+  style: Record<string, unknown>
+  children: SerializedChild[]
+}
+
+export interface SerializedChild {
+  type: string
+  id: string
+  [key: string]: unknown
+}
+
+// ---- 剪贴板 ----
+
+export class ClipboardManager {
+  private data: ClipboardData | null = null
+
+  hasData(): boolean { return this.data !== null }
+
+  /**
+   * 复制: 遍历选区范围内的段落 → 按 offset 裁剪 → 深度克隆
+   *
+   * 范围计算: 与 renderSelectionUnified 完全一致
+   *   body 段落顺序 bodyChildren → aIdx/fIdx → lo/hi
+   *   同段落: clipStart=min(anchor,focus), clipEnd=max(anchor,focus)
+   *   跨段落: 首段 clipStart=loOff/clipEnd=∞, 末段 clipStart=0/clipEnd=hiOff
+   */
+  copy(
+    anchorPath: string[], anchorOffset: number,
+    focusPath: string[], focusOffset: number,
+    doc: DocumentTree, pool: NodePool,
+  ): void {
+    if (anchorPath.length === 0 || focusPath.length === 0) return
+
+    const bodyChildren = pool.getChildren(pool.rootIds.body)
+    const aId = anchorPath[anchorPath.length - 1]
+    const fId = focusPath[focusPath.length - 1]
+    const aIdx = bodyChildren.indexOf(aId)
+    const fIdx = bodyChildren.indexOf(fId)
+    if (aIdx < 0 || fIdx < 0) return
+
+    const lo = Math.min(aIdx, fIdx)
+    const hi = Math.max(aIdx, fIdx)
+    const samePara = lo === hi
+    const loOff = aIdx === lo ? anchorOffset : focusOffset
+    const hiOff = aIdx === hi ? anchorOffset : focusOffset
+
+    const nodes: SerializedPara[] = []
+    const plainParts: string[] = []
+
+    for (let pi = lo; pi <= hi; pi++) {
+      const paraId = bodyChildren[pi]
+      if (!paraId) continue
+      const para = pool.nodes.get(paraId) as unknown as Record<string, unknown> | undefined
+      if (!para || para.type !== 'paragraph') continue
+
+      let clipStart = 0
+      let clipEnd = Infinity
+      if (samePara) {
+        clipStart = Math.min(anchorOffset, focusOffset)
+        clipEnd = Math.max(anchorOffset, focusOffset)
+      } else if (pi === lo) { clipStart = loOff }
+      else if (pi === hi) { clipEnd = hiOff }
+
+      const result = this.cloneParagraph(para, pool, clipStart, clipEnd)
+      if (result && result.serialized.children.length > 0) {
+        nodes.push(result.serialized)
+        plainParts.push(result.plainText)
+      }
+    }
+
+    // 仅当有有效段落数据时才写入内存剪贴板
+    const plainText = plainParts.join('\n')
+    if (nodes.length > 0) {
+      this.data = { nodes, plainText }
+      console.debug(`[Clipboard] copy: ${nodes.length} paragraphs, plainText="${plainText.slice(0, 80)}"`)
+    } else {
+      console.debug('[Clipboard] copy: no nodes selected, memory clipboard NOT set')
+    }
+
+    // 系统剪贴板: 使用局部 plainText 而非 this.data.plainText, 防止 null 引用
+    try { navigator.clipboard?.writeText(plainText) } catch { /* 忽略 */ }
+  }
+
+  /**
+   * 深度克隆单个段落, 按字符偏移裁剪文本/非文本节点
+   *
+   * clipStart/clipEnd 在函数入口立即标准化为 lo/hi,
+   * 防御外部调用方 anchor/focus 颠倒传入
+   */
+  private cloneParagraph(
+    para: Record<string, unknown>,
+    pool: NodePool,
+    clipStart: number,
+    clipEnd: number,
+  ): { serialized: SerializedPara; plainText: string } | null {
+    // 防御标准化: lo <= hi 恒成立, 区间为 [lo, hi)
+    const lo = Math.min(clipStart, clipEnd)
+    const hi = Math.max(clipStart, clipEnd)
+    console.debug(`[Clipboard] cloneParagraph: raw=(${clipStart},${clipEnd}) normalized=(${lo},${hi})`)
+
+    const sp: SerializedPara = {
+      type: 'paragraph',
+      id: generateId(),
+      style: {},
+      children: [],
+    }
+
+    // 段落样式全量复制
+    for (const k of ['alignment', 'indent', 'lineHeight', 'list', 'outlineLevel',
+      'spaceBefore', 'spaceAfter']) {
+      if (k in para) sp.style[k] = para[k]
+    }
+
+    let plainText = ''
+    let charOffset = 0
+    const children = (para as { children?: string[] }).children ?? []
+
+    for (const childId of children) {
+      const child = pool.nodes.get(childId) as unknown as Record<string, unknown> | undefined
+      if (!child) continue
+
+      // 计算该 child 的偏移区间 [itemStart, itemEnd)
+      const itemStart = charOffset
+      const itemEnd = itemStart + (child.type === 'text' || child.type === 'smarttext'
+        ? ((child.text as string) || '').length
+        : 1) // 非文本节点占 1 偏移单位
+
+      // 交集判断: [itemStart, itemEnd) 与 [lo, hi) 无重叠 → 跳过
+      if (itemEnd <= lo || itemStart >= hi) {
+        console.debug(`[Clipboard] SKIP child type=${child.type} [${itemStart},${itemEnd}) vs [${lo},${hi})`)
+        charOffset = itemEnd
+        continue
+      }
+      console.debug(`[Clipboard] HIT  child type=${child.type} [${itemStart},${itemEnd}) vs [${lo},${hi})`)
+
+      if (child.type === 'text' || child.type === 'smarttext') {
+        const fullText = (child.text as string) || ''
+        const len = fullText.length
+        const localS = Math.max(0, lo - itemStart)   // 截取起点 (相对)
+        const localE = Math.min(len, hi - itemStart)  // 截取终点 (相对)
+        const clippedText = fullText.slice(localS, localE)
+
+        const cc: SerializedChild = { type: child.type as string, id: generateId(), text: clippedText }
+        for (const k of ['font', 'size', 'bold', 'italic', 'underline', 'underlineStyle',
+          'strikeout', 'color', 'highlight', 'superscript', 'subscript', 'letterSpacing']) {
+          if (k in child) cc[k] = child[k]
+        }
+        if (child.element) cc.element = child.element
+        sp.children.push(cc)
+        plainText += clippedText
+      } else {
+        // 非文本节点: 有交集 → 完整克隆
+        const cc: SerializedChild = { type: child.type as string, id: generateId() }
+        for (const k of Object.keys(child)) {
+          if (k !== 'id' && k !== 'metadata') cc[k] = child[k]
+        }
+        sp.children.push(cc)
+        console.debug(`[Clipboard] cloneParagraph: non-text type=${child.type} at [${itemStart},${itemEnd})`)
+      }
+
+      charOffset = itemEnd
+    }
+
+    console.debug(
+      `[Clipboard] cloneParagraph: result children=${sp.children.length} plainText="${plainText.slice(0, 50)}"`
+    )
+
+    // 空结果 → 返回 null, 防止空段落污染剪贴板
+    if (sp.children.length === 0) return null
+    return { serialized: sp, plainText }
+  }
+
+  /** 粘贴: 返回结构化数据 (再次刷新 UUID 由 InsertNodesCommand 负责) */
+  paste(): { nodes: SerializedPara[]; plainText: string } | null {
+    if (!this.data) return null
+    return { nodes: this.data.nodes, plainText: this.data.plainText }
+  }
+
+  /** 从纯文本构造剪贴板 (外部粘贴兜底) */
+  setPlainText(text: string): void {
+    if (!text) { this.data = null; return }
+    const sp: SerializedPara = {
+      type: 'paragraph', id: generateId(), style: {},
+      children: [{ type: 'text', id: generateId(), text, font: 'SimSun', size: 16 }],
+    }
+    this.data = { nodes: [sp], plainText: text }
+  }
+
+  clear(): void { this.data = null }
+}

@@ -19,6 +19,9 @@ interface EditorLayoutProps {
   onInsert?: (elementType: string) => void
   onExportClick?: () => void
   onPrint?: () => void
+  wordCount?: number
+  pageIndex?: number
+  pageCount?: number
 }
 
 export function EditorLayout({
@@ -30,6 +33,9 @@ export function EditorLayout({
   onInsert,
   onExportClick,
   onPrint,
+  wordCount = 0,
+  pageIndex = 1,
+  pageCount = 1,
 }: EditorLayoutProps) {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
@@ -65,9 +71,9 @@ export function EditorLayout({
         <div className="flex-1 flex flex-col min-w-0">
           {children}
           <StatusBar
-            pageIndex={1}
-            pageCount={1}
-            wordCount={0}
+            pageIndex={pageIndex}
+            pageCount={pageCount}
+            wordCount={wordCount}
             onlineCount={onlineUsers}
           />
         </div>
