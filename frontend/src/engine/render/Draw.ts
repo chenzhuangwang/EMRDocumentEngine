@@ -101,6 +101,16 @@ export class Draw {
     let charCount = 0
 
     if (para) {
+      // 列表标记偏移: 标记已拼入首节点, 光标需要跳过标记
+      const paraNode = pool.nodes.get(paraId) as unknown as { list?: { type: string; level?: number } } | undefined
+      let listMarkerLen = 0
+      if (paraNode?.list) {
+        const lvl = paraNode.list.level || 1
+        const indent = '  '.repeat(lvl - 1)
+        if (paraNode.list.type === 'bullet') listMarkerLen = (indent + '• ').length
+        else if (paraNode.list.type === 'ordered') listMarkerLen = (indent + '99. ').length // 保守估计最大宽度
+      }
+
       for (let i = visible.start; i <= visible.end; i++) {
         const page = this.pages[i]
         if (!page) continue
@@ -108,8 +118,9 @@ export class Draw {
         for (const item of page.items) {
           if (para.children.includes(item.nodeId) || item.nodeId === paraId) {
             const textLen = item.text?.length || 0
-            if (offset <= charCount + textLen) {
-              const localOff = offset - charCount
+            const adjustedOffset = offset + listMarkerLen
+            if (adjustedOffset <= charCount + textLen) {
+              const localOff = adjustedOffset - charCount
               const charW = textLen > 0 ? item.width / textLen : 0
               caretX = offsetX + item.x + localOff * charW
               caretY = pageY + item.y
