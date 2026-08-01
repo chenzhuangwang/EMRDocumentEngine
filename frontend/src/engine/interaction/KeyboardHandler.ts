@@ -80,8 +80,14 @@ export class KeyboardHandler {
         }
       }
       if (cursor.offset >= totalLen) {
-        // 段尾 Delete → 合并下一段
-        ed.execCommand(new MergeParagraphCommand(id, ts, author, cursor.paragraphPath))
+        // 段尾 Delete → 合并下一段 (把下一段并入当前段)
+        const doc = ed.getDocument()
+        const siblings = doc.body.children
+        const idx = siblings.indexOf(paraId)
+        if (idx >= 0 && idx < siblings.length - 1) {
+          // MergeParagraphCommand 把 path 段并入前一段 → 传下一段的 path
+          ed.execCommand(new MergeParagraphCommand(id, ts, author, [...cursor.paragraphPath.slice(0, -1), siblings[idx + 1]]))
+        }
       } else {
         ed.execCommand(new DeleteRangeCommand(id, ts, author, cursor.paragraphPath, cursor.offset, cursor.offset + 1))
       }
