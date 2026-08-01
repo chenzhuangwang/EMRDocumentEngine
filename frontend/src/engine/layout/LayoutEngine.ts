@@ -116,7 +116,7 @@ export class LayoutEngine {
             elements.push({
               id: tn.id, type: childType, value,
               font: tn.font, size: tn.size, bold: tn.bold, italic: tn.italic,
-              color: tn.color,
+              color: tn.color, underline: tn.underline,
             })
           } else if (childType === 'image') {
             const img = child as unknown as Record<string, unknown>
@@ -199,6 +199,8 @@ export class LayoutEngine {
             height: charHeight,
             ascent: line.maxAscent, descent: line.maxDescent,
             font: el.font || 'SimSun', size: el.size || 16,
+            bold: el.bold, italic: el.italic,
+            color: el.color, underline: el.underline,
           })
         }
         y += line.height
