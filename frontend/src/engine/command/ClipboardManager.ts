@@ -88,7 +88,7 @@ export class ClipboardManager {
       else if (pi === hi) { clipEnd = hiOff }
 
       const result = this.cloneParagraph(para, pool, clipStart, clipEnd)
-      if (result && result.serialized.children.length > 0) {
+      if (result) {
         nodes.push(result.serialized)
         plainParts.push(result.plainText)
       }
@@ -191,8 +191,8 @@ export class ClipboardManager {
       `[Clipboard] cloneParagraph: result children=${sp.children.length} plainText="${plainText.slice(0, 50)}"`
     )
 
-    // 空结果 → 返回 null, 防止空段落污染剪贴板
-    if (sp.children.length === 0) return null
+    // 空段落返回含空 children 的序列化段落 (代表一个空行)
+    // 不再返回 null, 避免选区中的空行被丢弃
     return { serialized: sp, plainText }
   }
 
