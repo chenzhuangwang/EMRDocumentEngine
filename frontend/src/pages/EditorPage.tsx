@@ -80,8 +80,9 @@ function EditorPageInner({
   const [templates, setTemplates] = useState<{ name: string; items: { id: string; name: string; description?: string }[] }[]>([])
   const setDirty = useEditorStore((s) => s.setDirty)
   const setSaveStatus = useEditorStore((s) => s.setSaveStatus)
+  const setParaStyle = useEditorStore((s) => s.setParagraphStyle)
 
-  // 字数统计 — 订阅 contentChange 事件
+  // 字数统计 + 段落样式 — 订阅 contentChange 事件
   useEffect(() => {
     const editor = editorRef.current
     if (!editor) return
@@ -99,6 +100,7 @@ function EditorPageInner({
       }
       setWordCount(count)
       setPageCount(editor.getDraw().getPages().length)
+      setParaStyle(editor.getParagraphStyle())
     }
     editor.on('contentChange', update)
     update() // 初始计算

@@ -16,6 +16,7 @@ interface EditorState {
   saveStatus: 'saved' | 'saving' | 'unsaved' | 'error'
   onlineUsers: number
   validationResults: ValidationResult[]
+  paragraphStyle: { alignment?: string; listType?: string; indent?: number } | null
 
   setMode: (mode: string) => void
   setPageMode: (mode: string) => void
@@ -24,6 +25,7 @@ interface EditorState {
   setSaveStatus: (status: 'saved' | 'saving' | 'unsaved' | 'error') => void
   setOnlineUsers: (count: number) => void
   setValidationResults: (results: ValidationResult[]) => void
+  setParagraphStyle: (style: { alignment?: string; listType?: string; indent?: number } | null) => void
 }
 
 
@@ -50,6 +52,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   setSaveStatus: (saveStatus) => set({ saveStatus }),
   setOnlineUsers: (onlineUsers) => set({ onlineUsers }),
   setValidationResults: (validationResults) => set({ validationResults }),
+  setParagraphStyle: (paragraphStyle) => set({ paragraphStyle }),
 }))
 
 // ---- 用户状态 ----

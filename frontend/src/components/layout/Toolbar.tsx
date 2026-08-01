@@ -13,6 +13,7 @@ import {
 import { useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { cn } from '@/lib/utils'
+import { useEditorStore } from '@/store'
 
 interface ToolbarProps {
   onFormat?: (action: string, value?: unknown) => void
@@ -58,6 +59,7 @@ interface ControlItem {
 
 // ================================================================
 export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarProps) {
+  const paraStyle = useEditorStore((s) => s.paragraphStyle)
   return (
     <div className="h-toolbar bg-white border-b border-gray-100 flex items-center px-3 gap-0.5 flex-shrink-0 overflow-x-auto select-none">
       {/* 组1：历史操作 */}
@@ -126,13 +128,13 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarP
 
       {/* 组6：段落格式 */}
       <ToolbarGroup>
-        <ToolbarButton title="左对齐" onClick={() => onFormat?.('alignLeft')}>
+        <ToolbarButton title="左对齐" active={paraStyle?.alignment === 'left' || !paraStyle?.alignment} onClick={() => onFormat?.('alignLeft')}>
           <AlignLeft size={16} />
         </ToolbarButton>
-        <ToolbarButton title="居中" onClick={() => onFormat?.('alignCenter')}>
+        <ToolbarButton title="居中" active={paraStyle?.alignment === 'center'} onClick={() => onFormat?.('alignCenter')}>
           <AlignCenter size={16} />
         </ToolbarButton>
-        <ToolbarButton title="右对齐" onClick={() => onFormat?.('alignRight')}>
+        <ToolbarButton title="右对齐" active={paraStyle?.alignment === 'right'} onClick={() => onFormat?.('alignRight')}>
           <AlignRight size={16} />
         </ToolbarButton>
         <ToolbarButton title="两端对齐" onClick={() => onFormat?.('alignJustify')}>

@@ -432,6 +432,20 @@ export class Editor {
     this.commandManager.execute(cmd)
   }
 
+  /** 获取光标所在段落的格式 (供 Toolbar active 状态) */
+  getParagraphStyle(): { alignment?: string; listType?: string; indent?: number } | null {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return null
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const para = this.pool.nodes.get(paraId) as Record<string, unknown> | undefined
+    if (!para) return null
+    return {
+      alignment: para.alignment as string | undefined,
+      listType: para.list ? (para.list as { type: string }).type : undefined,
+      indent: para.indent as number | undefined,
+    }
+  }
+
   /** 全选: 选区覆盖整篇文档所有段落 */
   selectAll(): void {
     const bodyChildren = this.doc.body.children
