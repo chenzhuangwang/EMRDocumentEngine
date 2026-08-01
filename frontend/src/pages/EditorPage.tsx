@@ -154,8 +154,16 @@ function EditorPageInner({
       case 'alignCenter': ed.setParagraphStyle({ alignment: 'center' }); break
       case 'alignRight': ed.setParagraphStyle({ alignment: 'right' }); break
       case 'alignJustify': ed.setParagraphStyle({ alignment: 'justify' }); break
-      case 'unorderedList': ed.setParagraphStyle({ list: { type: 'bullet', level: 1 } }); break
-      case 'orderedList': ed.setParagraphStyle({ list: { type: 'ordered', level: 1 } }); break
+      case 'unorderedList': {
+        const ps = ed.getParagraphStyle()
+        ed.setParagraphStyle({ list: ps?.listType === 'bullet' ? undefined : { type: 'bullet', level: 1 } as unknown as import('@/engine').ListStyle })
+        break
+      }
+      case 'orderedList': {
+        const ps = ed.getParagraphStyle()
+        ed.setParagraphStyle({ list: ps?.listType === 'ordered' ? undefined : { type: 'ordered', level: 1 } as unknown as import('@/engine').ListStyle })
+        break
+      }
       case 'indent': {
         const para = ed.getDocument().body.children.find(c => {
           const p = ed.getPool().nodes.get(c) as { indent?: number } | undefined
