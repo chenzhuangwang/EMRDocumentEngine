@@ -1,69 +1,82 @@
 // ============================================================
-// 引擎统一导出
+// 引擎统一导出 (ModelD v20.34)
 // ============================================================
 
 export { Editor } from './Editor'
-export { EventBus } from './EventBus'
 export { Draw } from './render/Draw'
 export { TextMeasurer, textMeasurer } from './layout/TextMeasurer'
 export { LineBreaker } from './layout/LineBreaker'
 export { PageBreaker } from './layout/PageBreaker'
 export { TextParticle } from './render/particles/TextParticle'
 export { Position } from './state/Position'
-export { HistoryManager } from './state/HistoryManager'
-export { RangeManager } from './state/RangeManager'
-export { KeyboardHandler } from './interaction/KeyboardHandler'
-export { IMEHandler } from './interaction/IMEHandler'
-export { MouseHandler } from './interaction/MouseHandler'
-export type { KeyboardContext } from './interaction/KeyboardHandler'
-export type { IMEContext } from './interaction/IMEHandler'
-export type { MouseContext } from './interaction/MouseHandler'
-// Command system (Spec TASK-202)
-export { CommandManager } from './command/CommandManager'
-export { ZoneEditCommand, ControlEditCommand, TableCellEditCommand } from './command/commands'
-export type { ICommand, ICommandContext, ZoneSnapshot } from './command/CommandManager'
+export { CoordinateSystem } from './state/CoordinateSystem'
+export { NodePool, buildNodePool, traversePool } from './document/NodePool'
+
+// EventBus
+export { EventBus } from './interaction/EventBus'
+export type { EventPayloadMap, EngineEvent } from './interaction/EventBus'
+
+// Layout
+export { LayoutEngine } from './layout/LayoutEngine'
+export type { LayoutConfig } from './layout/LayoutEngine'
+export type { SLIFItem, SLIFPage, SLIF } from './layout/SLIF'
+export { resolveLineHeight, DEFAULT_FONT_METRICS } from './layout/FontMetrics'
+export type { FontMetrics } from './layout/FontMetrics'
+export { LayoutCache } from './layout/LayoutCache'
+
+// Render
+export { LayeredRenderer } from './render/LayeredRenderer'
+export type { WatermarkConfig } from './render/LayeredRenderer'
+export { HitTestIndex } from './render/HitTestIndex'
+
+// EditorRuntimeState
 export {
-  ElementType,
-  ControlType,
-  EditorMode,
-  PageMode,
-  RowFlex,
-  ZoneType,
-  DEFAULT_PAGE_SETUP,
-  DEFAULT_EDITOR_OPTIONS,
-  DEFAULT_FONT_CONFIG,
-  generateElementId,
-  createTextElement,
-  createPageBreakElement,
-  createControlElement,
-  createBlankDocument,
-  createDocumentFromTemplate,
-} from './document/DocumentModel'
-export {
-  formatElementList,
-  unzipElementList,
-  zipElementList,
-} from './document/ElementFormatter'
+  createDefaultRuntimeState,
+} from './state/EditorRuntimeState'
 export type {
-  IElement,
-  ITr,
-  ITd,
-  IControl,
-  IControlOption,
-  IImageData,
-  IDataBinding,
-  IValidation,
-  IRevision,
-  IPermission,
-  IPageSetup,
-  IDocument,
-  IDocumentMetadata,
-  IPosition,
-  IPageOffset,
-  ILine,
-  IPage,
-  IDrawPayload,
-  IEditorOption,
-  IFontConfig,
-  EditorEventMap,
+  CursorState, SelectionState, SelectionGranularity,
+  ViewState, EditorMode, PageMode, IMEState, HistoryState,
+  EditorRuntimeState,
+} from './state/EditorRuntimeState'
+
+// Command
+export type {
+  ICommand, CommandContext, StatePatch, SerializedCommand,
+  MergeableCommand, InvalidationScope,
+} from './command/ICommand'
+export { PositionalCommand, generateCommandId } from './command/ICommand'
+export { InsertTextCommand } from './command/commands/InsertTextCommand'
+export { DeleteRangeCommand } from './command/commands/DeleteRangeCommand'
+export { normalizeParagraph } from './command/commands/ParagraphUtils'
+export { CommandUndoRedoStack } from './command/CommandUndoRedoStack'
+export { CommandManager, DirtyTracker } from './command/CommandManager'
+
+// ModelD — 树形文档模型
+export {
+  NodeType,
+  DEFAULT_PAGE_SETUP,
+  generateId,
+  resetIdCounter,
 } from './document/DocumentModel'
+export type {
+  TextStyle, ParagraphStyle, ListStyle,
+  ElementCode, ElementFormat, PrivacyConfig, ElementMeta,
+  BaseNode, TextNode, SmartTextNode, ImageNode,
+  BookmarkNode, CrossReferenceNode, FieldNode, FieldType,
+  FootnoteRef, FootnoteContent, CommentMarker,
+  InlineNode, Paragraph, Table, ColumnDefinition,
+  TablePageBreakRule, TableRow, TableCell,
+  SeparatorNode, SectionBreak,
+  BlockNode, BodyChild, FlowBody,
+  CommentEntry, CommentThread,
+  PageSetup, DocumentTree,
+} from './document/DocumentModel'
+
+// ModelD — 工具
+export {
+  createDocument, createParagraph, createTextNode, createSmartTextNode,
+  createImageNode, createTable, createTableRow, createTableCell,
+  createSimpleTable, createSeparatorNode, createSectionBreak,
+  insertAt, removeAt, findById, findByDE, findByInternal,
+  takeSnapshot, restoreSnapshot, extractStyle, sameStyle,
+} from './document/ElementFormatter'

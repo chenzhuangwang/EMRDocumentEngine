@@ -1,68 +1,38 @@
 // ============================================================
-// 文档编辑器引擎 - 数据模型定义
-// 参考: canvas-editor IElement + DCWriter 自研DOM模型
+// ModelD — 树形文档数据模型 (架构 §2.1-§2.2 权威定义, v20.34)
+//
+// 存储去分页化: DocumentTree → body: FlowBody → BlockNode[]
+// children 全 ID 化: children: string[] (NodePool ID 引用)
+// 路径体系统一: string[] (ID 链路), 废弃 TreePath
 // ============================================================
 
-// ---- 枚举类型 ----
+// ---- 节点类型常量 ----
 
-export enum ElementType {
-  TEXT = 'text',
-  IMAGE = 'image',
-  TABLE = 'table',
-  CONTROL = 'control',
-  PAGE_BREAK = 'page_break',
-  SEPARATOR = 'separator',
-  HYPERLINK = 'hyperlink',
-  LATEX = 'latex',
-  BARCODE = 'barcode',
-  QRCODE = 'qrcode',
-}
+export const NodeType = {
+  DOCUMENT: 'document',
+  PARAGRAPH: 'paragraph',
+  TABLE: 'table',
+  ROW: 'row',
+  CELL: 'cell',
+  TEXT: 'text',
+  SMART_TEXT: 'smarttext',
+  IMAGE: 'image',
+  SEPARATOR: 'separator',
+  SECTION_BREAK: 'section_break',
+  BOOKMARK: 'bookmark',
+  CROSS_REFERENCE: 'cross_reference',
+  FIELD: 'field',
+  FOOTNOTE_REF: 'footnote_ref',
+  FOOTNOTE_CONTENT: 'footnote_content',
+  COMMENT_MARKER: 'comment_marker',
+} as const
+export type NodeType = (typeof NodeType)[keyof typeof NodeType]
 
-export enum ControlType {
-  INPUT = 'input',
-  SELECT = 'select',
-  DATE = 'date',
-  CHECKBOX = 'checkbox',
-  RADIO = 'radio',
-  NUMBER = 'number',
-  TEXTAREA = 'textarea',
-}
+// ================================================================
+// 样式
+// ================================================================
 
-export enum EditorMode {
-  EDIT = 'edit',
-  READONLY = 'readonly',
-  FORM = 'form',
-  DESIGN = 'design',
-  CLEAN = 'clean',
-  PRINT = 'print',
-}
-
-export enum PageMode {
-  PAGING = 'paging',
-  LINKAGE = 'linkage',
-}
-
-export enum RowFlex {
-  LEFT = 'LEFT',
-  CENTER = 'CENTER',
-  RIGHT = 'RIGHT',
-  JUSTIFY = 'JUSTIFY',
-}
-
-export enum ZoneType {
-  HEADER = 'header',
-  MAIN = 'main',
-  FOOTER = 'footer',
-}
-
-// ---- 接口定义 ----
-
-export interface IElement {
-  id: string
-  type: ElementType
-  value: string
-
-  // 文本样式
+export interface TextStyle {
   font?: string
   size?: number
   bold?: boolean
@@ -75,107 +45,263 @@ export interface IElement {
   superscript?: boolean
   subscript?: boolean
   letterSpacing?: number
+}
 
-  // 段落样式
-  rowFlex?: RowFlex
-  rowMargin?: number
-  lineHeight?: number
+export interface ParagraphStyle {
+  alignment?: 'left' | 'center' | 'right' | 'justify'
   indent?: number
-
-  // 特有属性
-  trList?: ITr[]
-  control?: IControl
-  imageData?: IImageData
-
-  // 留痕与权限
-  revision?: IRevision
-  permission?: IPermission
-  validation?: IValidation
-
-  // 业务扩展
-  extension?: Record<string, unknown>
+  lineHeight?: number
+  spaceBefore?: number
+  spaceAfter?: number
+  /** 列表属性 */
+  list?: ListStyle
+  /** 大纲级别 (0=正文, 1-6=Heading 1-6) */
+  outlineLevel?: number
 }
 
-export interface ITr {
-  height: number
-  tdList: ITd[]
+export interface ListStyle {
+  type: 'bullet' | 'ordered'
+  level: number
+  numberStyle?: 'decimal' | 'lower_alpha' | 'upper_alpha' | 'lower_roman' | 'upper_roman' | 'cjk_ideographic'
+  bulletChar?: string
+  startAt?: number
+  continueNumbering?: boolean
 }
 
-export interface ITd {
+// ================================================================
+// ElementMeta — SmartTextNode 的国标医疗元数据
+// ================================================================
+
+export interface ElementCode {
+  internal: string
+  dataElement: string
+}
+
+export interface ElementFormat {
+  dataType: 'S1' | 'S2' | 'S3' | 'N' | 'D'
+  showType?: 'AN' | 'N'
+  minLength?: number
+  maxLength?: number
+  dictionary?: string
+}
+
+export interface PrivacyConfig {
+  enabled: boolean
+  maskChar: string
+  maskRule: 'full' | 'partial'
+}
+
+export interface ElementMeta {
+  code: ElementCode
+  name: string
+  labels?: string[]
+  format?: ElementFormat
+  required?: boolean
+  readonly?: boolean
+  privacy?: PrivacyConfig
+}
+
+// ================================================================
+// 基础节点 (铁律 1: 节点本身不存储 parentId)
+// ================================================================
+
+export interface BaseNode {
+  id: string
+  type: NodeType
+  metadata?: Record<string, unknown>
+}
+
+// ---- 内联节点 ----
+
+export interface TextNode extends BaseNode, TextStyle {
+  type: typeof NodeType.TEXT
+  text: string
+}
+
+export interface SmartTextNode extends BaseNode, TextStyle {
+  type: typeof NodeType.SMART_TEXT
+  text: string
+  element: ElementMeta
+}
+
+export interface ImageNode extends BaseNode {
+  type: typeof NodeType.IMAGE
+  src?: string
+  objectKey?: string
   width: number
+  height: number
+  naturalWidth?: number
+  naturalHeight?: number
+  wrapMode: 'inline' | 'square' | 'top-bottom'
+}
+
+export interface BookmarkNode extends BaseNode {
+  type: typeof NodeType.BOOKMARK
+  name: string
+  targetId: string
+  targetOffset?: number
+}
+
+export interface CrossReferenceNode extends BaseNode, TextStyle {
+  type: typeof NodeType.CROSS_REFERENCE
+  refType: 'bookmark' | 'heading' | 'footnote' | 'page_number'
+  targetRef: string
+  displayText: string
+}
+
+export type FieldType =
+  | 'current_date' | 'current_time' | 'page_number' | 'total_pages'
+  | 'author_name' | 'document_title' | 'last_saved_date' | 'print_date'
+
+export interface FieldNode extends BaseNode, TextStyle {
+  type: typeof NodeType.FIELD
+  fieldType: FieldType
+  format?: string
+  cachedValue?: string
+  cachedVersion?: number
+}
+
+export interface FootnoteRef extends BaseNode, TextStyle {
+  type: typeof NodeType.FOOTNOTE_REF
+  footnoteId: string
+  /** 运行时缓存, 不持久化 (v20.5) */
+  number?: number
+}
+
+export type InlineNode =
+  | TextNode
+  | SmartTextNode
+  | ImageNode
+  | BookmarkNode
+  | CrossReferenceNode
+  | FieldNode
+  | FootnoteRef
+
+// ---- 块级节点 + 特殊 ----
+
+export interface Paragraph extends BaseNode, ParagraphStyle {
+  type: typeof NodeType.PARAGRAPH
+  children: string[]
+}
+
+export interface Table extends BaseNode {
+  type: typeof NodeType.TABLE
+  columns: ColumnDefinition[]
+  children: string[]
+  pageBreak?: TablePageBreakRule
+}
+
+export interface ColumnDefinition {
+  width: number
+  minWidth?: number
+  mode?: 'fixed' | 'percentage' | 'auto'
+}
+
+export interface TablePageBreakRule {
+  repeatHeader?: boolean
+  minRowsBeforeBreak?: number
+  continuationLabel?: string
+}
+
+export interface TableRow extends BaseNode {
+  type: typeof NodeType.ROW
+  height?: number
+  children: string[]
+}
+
+export interface TableCell extends BaseNode {
+  type: typeof NodeType.CELL
   colspan?: number
   rowspan?: number
-  value: IElement[]
-  isHeader?: boolean
+  children: string[]
   backgroundColor?: string
   verticalAlign?: 'top' | 'middle' | 'bottom'
-  borderColor?: string
+  isHeader?: boolean
 }
 
-export interface IControl {
-  controlType: ControlType
-  placeholder?: string
-  options?: IControlOption[]
-  multiple?: boolean
-  min?: number
-  max?: number
-  maxLength?: number
-  readonly?: boolean
-  required?: boolean
-  dataBinding?: IDataBinding
-  value?: string
-  checked?: boolean
+export interface SeparatorNode extends BaseNode {
+  type: typeof NodeType.SEPARATOR
+  lineStyle?: 'solid' | 'dashed' | 'dotted' | 'double'
   width?: number
+  color?: string
+  widthMode?: 'full' | 'fixed'
+  fixedWidth?: number
+  alignment?: 'left' | 'center' | 'right'
 }
 
-export interface IControlOption {
-  label: string
-  value: string
+export interface SectionBreak extends BaseNode {
+  type: typeof NodeType.SECTION_BREAK
+  breakType: 'next_page' | 'continuous' | 'even_page' | 'odd_page'
+  nextPageSetup?: Partial<PageSetup>
+  nextHeader?: string[]
+  nextFooter?: string[]
+  nextPageNumberStart?: number
+  nextFirstPageDifferent?: boolean
 }
 
-export interface IImageData {
-  src: string
-  width: number
-  height: number
-  originalWidth: number
-  originalHeight: number
-  wrapType?: 'inline' | 'square' | 'top-bottom'
+export interface FootnoteContent extends BaseNode {
+  type: typeof NodeType.FOOTNOTE_CONTENT
+  refId: string
+  children: string[]
 }
 
-export interface IDataBinding {
-  source: string
-  property: string
-  expression?: string
+export interface CommentMarker extends BaseNode {
+  type: typeof NodeType.COMMENT_MARKER
+  threadId: string
+  rangeStart: { path: string[]; offset: number }
+  rangeEnd: { path: string[]; offset: number }
 }
 
-export interface IValidation {
-  required?: boolean
-  pattern?: string
-  min?: number
-  max?: number
-  maxLength?: number
-  message?: string
-}
+export type BlockNode = Paragraph | Table | ImageNode | SeparatorNode
+export type BodyChild = BlockNode | SectionBreak
 
-export interface IRevision {
-  type: 'insert' | 'delete' | 'modify'
+// ---- CommentThread (独立存后端) ----
+
+export interface CommentEntry {
+  id: string
   author: string
-  timestamp: number
-  oldValue?: string
-  style?: {
-    color?: string
-    underlineStyle?: string
-  }
+  content: string
+  createdAt: number
+  editedAt?: number
 }
 
-export interface IPermission {
-  level: number
-  creatorId: string
-  editable: boolean
-  deletable: boolean
+export interface CommentThread {
+  id: string
+  rangeStart: { path: string[]; offset: number }
+  rangeEnd: { path: string[]; offset: number }
+  author: string
+  createdAt: number
+  status: 'open' | 'resolved' | 'reopened'
+  /** 创建时的乐观锁版本号, 指向 t_document.version (v20.7) */
+  baseVersion: number
+  anchorStatus: 'valid' | 'reanchored' | 'degraded'
+  comments: CommentEntry[]
 }
 
-export interface IPageSetup {
+// ================================================================
+// 正文模式
+// ================================================================
+
+export interface FlowBody {
+  mode: 'flow'
+  children: string[]
+}
+
+// ================================================================
+// 页面设置 & 文档
+// ================================================================
+
+export interface WatermarkConfig {
+  type: 'text' | 'image' | 'tile'
+  text?: string
+  fontSize?: number
+  color?: string
+  opacity?: number
+  rotation?: number
+  spacing?: number
+}
+
+export interface PageSetup {
   width: number
   height: number
   marginTop: number
@@ -183,218 +309,44 @@ export interface IPageSetup {
   marginLeft: number
   marginRight: number
   orientation: 'portrait' | 'landscape'
-  headerHeight?: number
-  footerHeight?: number
+  watermark?: WatermarkConfig
 }
 
-export interface IDocument {
+export interface DocumentTree {
+  type: typeof NodeType.DOCUMENT
   id: string
   title: string
-  templateId?: string
-  header: IElement[]
-  main: IElement[]
-  footer: IElement[]
-  pageSetup: IPageSetup
-  metadata: IDocumentMetadata
+  pageSetup: PageSetup
+  body: FlowBody
+  header?: string[]
+  footer?: string[]
+  footnotes?: string[]
+  endnotes?: string[]
+  metadata?: Record<string, unknown>
 }
 
-export interface IDocumentMetadata {
-  author: string
-  createdAt: string
-  updatedAt: string
-  version: number
-  status: 'draft' | 'published' | 'archived'
-  tags?: string[]
-}
+// ================================================================
+// 默认值
+// ================================================================
 
-// ---- 渲染相关接口 ----
-
-export interface IPosition {
-  index: number
-  pageIndex: number
-  rowIndex: number
-  x: number
-  y: number
-  width: number
-  height: number
-  ascent: number
-  descent: number
-}
-
-export interface IPageOffset {
-  x: number
-  y: number
-  pageIndex: number
-}
-
-export interface ILine {
-  elements: IElement[]
-  width: number
-  height: number
-  maxAscent: number
-  maxDescent: number
-}
-
-export interface IPage {
-  pageIndex: number
-  lines: ILine[]
-  headerLines: ILine[]
-  footerLines: ILine[]
-  totalHeight: number
-}
-
-export interface IDrawPayload {
-  isCompute?: boolean
-  isSetCursor?: boolean
-  isSubmitHistory?: boolean
-  isLazy?: boolean
-}
-
-export interface IEditorOption {
-  pageSetup?: Partial<IPageSetup>
-  scale?: number
-  defaultFont?: string
-  defaultSize?: number
-  defaultColor?: string
-  historyMaxRecordCount?: number
-  wordBreak?: 'break-all' | 'break-word' | 'keep-all'
-  mode?: EditorMode
-  pageMode?: PageMode
-  readOnly?: boolean
-  disabled?: boolean
-}
-
-export interface IFontConfig {
-  font: string
-  size: number
-  bold?: boolean
-  italic?: boolean
-  letterSpacing?: number
-}
-
-// ---- 编辑器事件 ----
-
-export interface EditorEventMap {
-  contentChange: { type: 'contentChange'; elements: IElement[] }
-  modeChange: { type: 'modeChange'; mode: EditorMode }
-  pageChange: { type: 'pageChange'; pageIndex: number; total: number }
-  save: { type: 'save'; document: IDocument }
-  selectionChange: { type: 'selectionChange'; range: { start: number; end: number } | null }
-  scroll: { type: 'scroll'; scrollTop: number }
-}
-
-// ---- 默认值 ----
-
-export const DEFAULT_PAGE_SETUP: IPageSetup = {
-  width: 794,       // A4 宽度 (210mm)
-  height: 1123,     // A4 高度 (297mm)
-  marginTop: 72,    // 上边距 2.54cm
+export const DEFAULT_PAGE_SETUP: PageSetup = {
+  width: 794,
+  height: 1123,
+  marginTop: 72,
   marginBottom: 72,
-  marginLeft: 90,   // 左边距 3.17cm
+  marginLeft: 90,
   marginRight: 90,
   orientation: 'portrait',
-  headerHeight: 50,
-  footerHeight: 40,
 }
 
-export const DEFAULT_EDITOR_OPTIONS: IEditorOption = {
-  pageSetup: DEFAULT_PAGE_SETUP,
-  scale: 1,
-  defaultFont: 'SimSun',
-  defaultSize: 16,
-  defaultColor: '#000000',
-  historyMaxRecordCount: 100,
-  wordBreak: 'break-all',
-  mode: EditorMode.EDIT,
-  pageMode: PageMode.PAGING,
+// ================================================================
+// ID 生成器
+// ================================================================
+
+let _nodeIdCounter = 0
+export function generateId(): string {
+  return `nd_${Date.now().toString(36)}_${(++_nodeIdCounter).toString(36)}`
 }
-
-export const DEFAULT_FONT_CONFIG: IFontConfig = {
-  font: 'SimSun',
-  size: 16,
-}
-
-// ---- 元素工厂 ----
-
-let elementIdCounter = 0
-
-export function generateElementId(): string {
-  return `el_${Date.now()}_${++elementIdCounter}`
-}
-
-export function createTextElement(value: string, overrides?: Partial<IElement>): IElement {
-  return {
-    id: generateElementId(),
-    type: ElementType.TEXT,
-    value,
-    size: DEFAULT_FONT_CONFIG.size,
-    font: DEFAULT_FONT_CONFIG.font,
-    ...overrides,
-  }
-}
-
-export function createPageBreakElement(): IElement {
-  return {
-    id: generateElementId(),
-    type: ElementType.PAGE_BREAK,
-    value: '',
-  }
-}
-
-export function createControlElement(
-  controlType: ControlType,
-  overrides?: Partial<IElement>
-): IElement {
-  return {
-    id: generateElementId(),
-    type: ElementType.CONTROL,
-    value: '',
-    size: DEFAULT_FONT_CONFIG.size,
-    font: DEFAULT_FONT_CONFIG.font,
-    control: {
-      controlType,
-      placeholder: '',
-    },
-    ...overrides,
-  }
-}
-
-export function createBlankDocument(title: string, author: string): IDocument {
-  const now = new Date().toISOString()
-  return {
-    id: `doc_${Date.now()}`,
-    title,
-    header: [],
-    main: [createTextElement('')],
-    footer: [],
-    pageSetup: { ...DEFAULT_PAGE_SETUP },
-    metadata: {
-      author,
-      createdAt: now,
-      updatedAt: now,
-      version: 1,
-      status: 'draft',
-    },
-  }
-}
-
-export function createDocumentFromTemplate(
-  template: IDocument,
-  title: string,
-  author: string
-): IDocument {
-  const now = new Date().toISOString()
-  return {
-    ...template,
-    id: `doc_${Date.now()}`,
-    title,
-    templateId: template.id,
-    metadata: {
-      author,
-      createdAt: now,
-      updatedAt: now,
-      version: 1,
-      status: 'draft',
-    },
-  }
+export function resetIdCounter(): void {
+  _nodeIdCounter = 0
 }

@@ -107,8 +107,10 @@ export class KeyboardHandler {
       if (sel.active && !this.isSelectionCollapsed(sel)) {
         this.deleteSelection(ed, sel)
       }
-      let path = cursor.paragraphPath
-      let offset = cursor.offset
+      // 从 store 重新读取光标 (deleteSelection 可能已更新)
+      const cur = store.state.runtime.cursor
+      let path = cur.paragraphPath
+      let offset = cur.offset
 
       // 空文档 → 首次输入自动创建段落
       if (path.length === 0) {

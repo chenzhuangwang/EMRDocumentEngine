@@ -1,38 +1,18 @@
 // ============================================================
-// TextParticle — 文本粒子渲染器 (Spec TASK-107)
-//
-// 将文本元素的字体构建、颜色计算、高亮背景、上下标偏移、
-// 下划线、删除线等绘制逻辑封装为独立可复用的渲染类。
+// TextParticle — 文本粒子渲染器
 // ============================================================
 
-import type { IElement, IEditorOption } from '../../document/DocumentModel'
-
-/** 修订状态 → 文字颜色映射 */
 const REVISION_COLORS: Record<string, string> = {
-  insert: '#16A34A',
-  delete: '#DC2626',
-  modify: '#2563EB',
+  insert: '#16A34A', delete: '#DC2626', modify: '#2563EB',
 }
 
 export class TextParticle {
-  /**
-   * 将单个文本/超链接/LaTeX 粒子渲染到 Canvas 上下文。
-   *
-   * 注意：此方法直接修改 ctx.font、ctx.fillStyle、ctx.strokeStyle 等
-   * 全局状态，调用方应在需要时自行 save/restore。
-   *
-   * @param ctx        Canvas 2D 上下文
-   * @param el         待渲染的文本元素
-   * @param x          文档坐标 X（元素左上角）
-   * @param y          文档坐标 Y（元素基线参考点）
-   * @param options    编辑器配置（提供默认字体/字号/颜色）
-   */
   static render(
     ctx: CanvasRenderingContext2D,
-    el: IElement,
+    el: { id: string; type: string; value: string; font?: string; size?: number; bold?: boolean; italic?: boolean; color?: string; underline?: boolean; underlineStyle?: string; strikeout?: boolean; superscript?: boolean; subscript?: boolean; highlight?: string; revision?: { type: string } },
     x: number,
     y: number,
-    options: Partial<IEditorOption> = {},
+    options: { defaultColor?: string; defaultFont?: string; defaultSize?: number } = {},
   ): void {
     const fontSize = el.size || options.defaultSize || 16
     const fontFamily = el.font || options.defaultFont || 'SimSun'

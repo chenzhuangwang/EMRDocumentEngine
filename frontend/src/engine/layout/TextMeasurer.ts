@@ -2,7 +2,13 @@
 // 文本测量器 - 使用 Canvas measureText API
 // ============================================================
 
-import type { IFontConfig } from '../document/DocumentModel'
+export interface FontConfig {
+  font: string
+  size: number
+  bold?: boolean
+  italic?: boolean
+  letterSpacing?: number
+}
 
 export class TextMeasurer {
   private canvas: HTMLCanvasElement
@@ -17,7 +23,7 @@ export class TextMeasurer {
     this.cache = new Map()
   }
 
-  private buildFontString(config: IFontConfig): string {
+  private buildFontString(config: FontConfig): string {
     const parts: string[] = []
     if (config.bold) parts.push('bold')
     if (config.italic) parts.push('italic')
@@ -26,11 +32,11 @@ export class TextMeasurer {
     return parts.join(' ')
   }
 
-  private getCacheKey(text: string, config: IFontConfig): string {
+  private getCacheKey(text: string, config: FontConfig): string {
     return `${text}|${config.font}|${config.size}|${config.bold}|${config.italic}`
   }
 
-  measure(text: string, config: IFontConfig): TextMetrics {
+  measure(text: string, config: FontConfig): TextMetrics {
     const key = this.getCacheKey(text, config)
     if (this.cache.has(key)) {
       // Move to end (most recently used)
@@ -53,7 +59,7 @@ export class TextMeasurer {
     return metrics
   }
 
-  measureWidth(text: string, config: IFontConfig): number {
+  measureWidth(text: string, config: FontConfig): number {
     return this.measure(text, config).width
   }
 
@@ -61,7 +67,7 @@ export class TextMeasurer {
    * 将文本按指定宽度分割为多行
    * 支持 CJK 字符在任意位置断行，英文按单词断行
    */
-  splitTextToWidth(text: string, maxWidth: number, config: IFontConfig): string[] {
+  splitTextToWidth(text: string, maxWidth: number, config: FontConfig): string[] {
     if (!text) return ['']
     if (maxWidth <= 0) return [text]
 
@@ -96,7 +102,7 @@ export class TextMeasurer {
    * 测量多字符元素的完整宽度
    */
   measureElementWidth(element: { value: string; size?: number; font?: string; bold?: boolean; italic?: boolean; letterSpacing?: number }): number {
-    const config: IFontConfig = {
+    const config: FontConfig = {
       font: element.font || 'SimSun',
       size: element.size || 16,
       bold: element.bold,
@@ -113,21 +119,21 @@ export class TextMeasurer {
   /**
    * 获取字体行高（近似值）
    */
-  getLineHeight(config: IFontConfig): number {
+  getLineHeight(config: FontConfig): number {
     return config.size * 1.5
   }
 
   /**
    * 获取字体 ascent（基线以上高度，近似值）
    */
-  getAscent(config: IFontConfig): number {
+  getAscent(config: FontConfig): number {
     return config.size * 0.8
   }
 
   /**
    * 获取字体 descent（基线以下高度，近似值）
    */
-  getDescent(config: IFontConfig): number {
+  getDescent(config: FontConfig): number {
     return config.size * 0.2
   }
 

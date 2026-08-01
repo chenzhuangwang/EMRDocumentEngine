@@ -2,8 +2,26 @@
 // 分页引擎 - 精确分页计算 (含孤行/寡行控制)
 // ============================================================
 
-import type { ILine, IPage, IPageSetup } from '../document/DocumentModel'
+import type { PageSetup } from '../document/DocumentModel'
 import { DEFAULT_PAGE_SETUP } from '../document/DocumentModel'
+
+/** 布局内部类型 — 换行后的单行 */
+export interface ILine {
+  elements: { id: string; type: string; value?: string; size?: number; font?: string }[]
+  width: number
+  height: number
+  maxAscent: number
+  maxDescent: number
+}
+
+/** 布局内部类型 — 分页后的页面 */
+export interface IPage {
+  pageIndex: number
+  lines: ILine[]
+  headerLines: ILine[]
+  footerLines: ILine[]
+  totalHeight: number
+}
 
 /** Minimum lines of a paragraph that must stay together (avoid orphans/widows). */
 const MIN_PARAGRAPH_LINES = 2
@@ -21,13 +39,13 @@ export class PageBreaker {
     lines: ILine[],
     headerLines: ILine[],
     footerLines: ILine[],
-    pageSetup: IPageSetup = DEFAULT_PAGE_SETUP
+    pageSetup: PageSetup = DEFAULT_PAGE_SETUP
   ): IPage[] {
     const pages: IPage[] = []
 
     // Compute actual header/footer heights from the lines, with configured minimums
-    const actualHeaderH = headerLines.reduce((h, l) => h + l.height, 0) || (pageSetup.headerHeight || 50)
-    const actualFooterH = footerLines.reduce((h, l) => h + l.height, 0) || (pageSetup.footerHeight || 40)
+    const actualHeaderH = headerLines.reduce((h, l) => h + l.height, 0) || 50
+    const actualFooterH = footerLines.reduce((h, l) => h + l.height, 0) || 40
 
     const pageContentHeight =
       pageSetup.height -

@@ -1,113 +1,148 @@
 // ============================================================
-// 词法分析器 - 将 IElement[] 展开为可排版的原子单位
+// ElementFormatter — 节点工厂 + 树操作 + 快照 (架构 §2.4, v20.34)
+//
+// 存储去分页化, 树操作统一走 NodePool
 // ============================================================
 
-import { ElementType } from '../document/DocumentModel'
-import type { IElement } from '../document/DocumentModel'
-import { generateElementId } from '../document/DocumentModel'
+import type {
+  DocumentTree, Paragraph, TextNode, SmartTextNode,
+  ImageNode, Table, TableRow, TableCell, SeparatorNode,
+  SectionBreak, PageSetup, TextStyle, ParagraphStyle,
+  ElementMeta, ColumnDefinition, FlowBody,
+} from './DocumentModel'
+import { NodeType, generateId, DEFAULT_PAGE_SETUP } from './DocumentModel'
+import { NodePool } from './NodePool'
 
-/**
- * 格式化元素列表：
- * 1. 为没有 ID 的元素生成 ID
- * 2. 注入零宽字符用于光标锚定
- * 3. 确保文档至少有一个元素
- */
-export function formatElementList(elements: IElement[]): IElement[] {
-  if (elements.length === 0) {
-    return [{ id: generateElementId(), type: ElementType.TEXT, value: '' }]
+// ================================================================
+// 工厂函数
+// ================================================================
+
+export function createDocument(title: string, body?: FlowBody, pageSetup?: PageSetup): DocumentTree {
+  return {
+    type: NodeType.DOCUMENT, id: generateId(), title,
+    pageSetup: pageSetup ?? { ...DEFAULT_PAGE_SETUP },
+    body: body ?? { mode: 'flow', children: [] },
   }
-  return elements.map(el => ({
-    ...el,
-    id: el.id || generateElementId(),
-  }))
 }
 
-/**
- * 将元素列表展开（拆分多字符为单字符）
- */
-export function unzipElementList(elements: IElement[]): IElement[] {
-  const result: IElement[] = []
+export function createParagraph(children?: string[], style?: ParagraphStyle): Paragraph {
+  return { type: NodeType.PARAGRAPH, id: generateId(), children: children ?? [], ...style }
+}
 
-  for (const el of elements) {
-    switch (el.type) {
-      case ElementType.TEXT:
-      case ElementType.HYPERLINK: {
-        const chars = [...el.value]
-        if (chars.length === 0) {
-          // 空文本元素保留一个零宽字符
-          result.push({ ...el, id: el.id || generateElementId(), value: '​' })
-        } else {
-          chars.forEach((char, idx) => {
-            result.push({
-              ...el,
-              id: idx === 0 ? (el.id || generateElementId()) : generateElementId(),
-              value: char,
-            })
-          })
-        }
-        break
-      }
-      case ElementType.PAGE_BREAK:
-      case ElementType.SEPARATOR:
-      case ElementType.TABLE:
-      case ElementType.IMAGE:
-      case ElementType.CONTROL:
-      case ElementType.LATEX:
-        result.push({ ...el, id: el.id || generateElementId() })
-        break
-      default:
-        result.push({ ...el, id: el.id || generateElementId() })
+export function createTextNode(text: string, style?: TextStyle): TextNode {
+  return { type: NodeType.TEXT, id: generateId(), text, ...style }
+}
+
+export function createSmartTextNode(text: string, element: ElementMeta, style?: TextStyle): SmartTextNode {
+  return { type: NodeType.SMART_TEXT, id: generateId(), text, element, ...style }
+}
+
+export function createImageNode(objectKey: string, width: number, height: number, wrap: 'inline' | 'square' | 'top-bottom' = 'inline'): ImageNode {
+  return { type: NodeType.IMAGE, id: generateId(), objectKey, width, height, wrapMode: wrap }
+}
+
+export function createTable(columns: ColumnDefinition[] = [], rows?: TableRow[]): Table {
+  const id = generateId()
+  return { type: NodeType.TABLE, id, columns, children: (rows ?? []).map(r => r.id) }
+}
+
+export function createTableRow(cells?: TableCell[], height?: number): TableRow {
+  const id = generateId()
+  return { type: NodeType.ROW, id, height, children: (cells ?? []).map(c => c.id) }
+}
+
+export function createTableCell(blockIds?: string[], opts?: Partial<TableCell>): TableCell {
+  return { type: NodeType.CELL, id: generateId(), children: blockIds ?? [], ...opts }
+}
+
+export function createSimpleTable(rows: number, cols: number): Table {
+  const tableId = generateId()
+  const allNodes: Record<string, object> = {}
+  const rowIds: string[] = []
+
+  for (let r = 0; r < rows; r++) {
+    const cellIds: string[] = []
+    for (let c = 0; c < cols; c++) {
+      const cell = createTableCell([])
+      cellIds.push(cell.id)
+      allNodes[cell.id] = cell
+    }
+    const row = createTableRow()
+    row.children = cellIds
+    allNodes[row.id] = row
+    rowIds.push(row.id)
+  }
+
+  const table: Table = {
+    type: NodeType.TABLE, id: tableId,
+    columns: Array.from({ length: cols }, () => ({ width: 100 / cols, mode: 'percentage' as const })),
+    children: rowIds,
+  }
+  return table
+}
+
+export function createSeparatorNode(style?: Partial<SeparatorNode>): SeparatorNode {
+  return { type: NodeType.SEPARATOR, id: generateId(), ...style }
+}
+
+export function createSectionBreak(breakType: SectionBreak['breakType']): SectionBreak {
+  return { type: NodeType.SECTION_BREAK, id: generateId(), breakType }
+}
+
+// ================================================================
+// 树操作 — 基于 NodePool
+// ================================================================
+
+export function insertAt(pool: NodePool, parentId: string, childId: string, index: number): boolean {
+  try { pool.insertChild(parentId, childId, index); return true } catch { return false }
+}
+
+export function removeAt(pool: NodePool, parentId: string, index: number): boolean {
+  try { pool.removeChild(parentId, index); return true } catch { return false }
+}
+
+export function findById(pool: NodePool, id: string): object | undefined {
+  return pool.nodes.get(id)
+}
+
+export function findByDE(pool: NodePool, deCode: string): SmartTextNode[] {
+  const results: SmartTextNode[] = []
+  for (const node of pool.nodes.values()) {
+    if ((node.type as string) === 'smarttext' && (node as SmartTextNode).element?.code?.dataElement === deCode) {
+      results.push(node as SmartTextNode)
     }
   }
-
-  return result
+  return results
 }
 
-/**
- * 将展开的元素列表压缩回原始结构（合并相邻同样式元素）
- */
-export function zipElementList(elements: IElement[]): IElement[] {
-  if (elements.length === 0) return []
-
-  const result: IElement[] = []
-  let current = { ...elements[0] }
-
-  for (let i = 1; i < elements.length; i++) {
-    const el = elements[i]
-
-    if (canMerge(current, el)) {
-      current.value += el.value
-    } else {
-      result.push(current)
-      current = { ...el }
+export function findByInternal(pool: NodePool, internalCode: string): SmartTextNode[] {
+  const results: SmartTextNode[] = []
+  for (const node of pool.nodes.values()) {
+    if ((node.type as string) === 'smarttext' && (node as SmartTextNode).element?.code?.internal === internalCode) {
+      results.push(node as SmartTextNode)
     }
   }
-
-  result.push(current)
-  return result
+  return results
 }
 
-/**
- * 判断两个元素是否可以合并
- */
-function canMerge(a: IElement, b: IElement): boolean {
-  return (
-    a.type === b.type &&
-    a.type === ElementType.TEXT &&
-    a.font === b.font &&
-    a.size === b.size &&
-    a.bold === b.bold &&
-    a.italic === b.italic &&
-    a.underline === b.underline &&
-    a.underlineStyle === b.underlineStyle &&
-    a.strikeout === b.strikeout &&
-    a.color === b.color &&
-    a.highlight === b.highlight &&
-    a.superscript === b.superscript &&
-    a.subscript === b.subscript &&
-    a.rowFlex === b.rowFlex &&
-    a.rowMargin === b.rowMargin &&
-    a.lineHeight === b.lineHeight &&
-    a.indent === b.indent
-  )
+// ================================================================
+// 快照 + 样式工具
+// ================================================================
+
+export function takeSnapshot(tree: DocumentTree): string { return JSON.stringify(tree) }
+export function restoreSnapshot(json: string): DocumentTree { return JSON.parse(json) as DocumentTree }
+
+export function extractStyle(node: TextNode): TextStyle {
+  return {
+    font: node.font, size: node.size, bold: node.bold, italic: node.italic,
+    color: node.color, underline: node.underline, strikeout: node.strikeout,
+    underlineStyle: node.underlineStyle, highlight: node.highlight,
+    superscript: node.superscript, subscript: node.subscript, letterSpacing: node.letterSpacing,
+  }
+}
+
+export function sameStyle(a: TextStyle, b: TextStyle): boolean {
+  return a.font === b.font && a.size === b.size && a.bold === b.bold &&
+    a.italic === b.italic && a.color === b.color &&
+    a.underline === b.underline && a.strikeout === b.strikeout
 }

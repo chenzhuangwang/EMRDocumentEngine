@@ -3,14 +3,13 @@
 // ============================================================
 
 import { create } from 'zustand'
-import type { EditorMode, PageMode } from '@/engine'
 import type { DocumentDetail, UserInfo } from '@/services/api'
 
 // ---- 编辑器状态 ----
 
 interface EditorState {
-  mode: EditorMode
-  pageMode: PageMode
+  mode: string
+  pageMode: string
   documentId: string | null
   document: DocumentDetail | null
   isDirty: boolean
@@ -18,14 +17,15 @@ interface EditorState {
   onlineUsers: number
   validationResults: ValidationResult[]
 
-  setMode: (mode: EditorMode) => void
-  setPageMode: (mode: PageMode) => void
+  setMode: (mode: string) => void
+  setPageMode: (mode: string) => void
   setDocument: (doc: DocumentDetail | null) => void
   setDirty: (dirty: boolean) => void
   setSaveStatus: (status: 'saved' | 'saving' | 'unsaved' | 'error') => void
   setOnlineUsers: (count: number) => void
   setValidationResults: (results: ValidationResult[]) => void
 }
+
 
 export interface ValidationResult {
   elementId: string
@@ -34,8 +34,8 @@ export interface ValidationResult {
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
-  mode: 'edit' as EditorMode,
-  pageMode: 'paging' as PageMode,
+  mode: 'edit',
+  pageMode: 'paging',
   documentId: null,
   document: null,
   isDirty: false,

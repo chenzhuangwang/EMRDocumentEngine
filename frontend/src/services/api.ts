@@ -84,11 +84,9 @@ export interface DocumentDetail {
   id: string
   title: string
   templateId?: string
-  content: {
-    header: unknown[]
-    main: unknown[]
-    footer: unknown[]
-  }
+  /** DocumentTree JSON (v20.34, ModelD 去分页化) */
+  content: string
+  modelVersion?: string
   pageSetup: {
     width: number
     height: number
@@ -98,13 +96,8 @@ export interface DocumentDetail {
     marginRight: number
     orientation: string
   }
-  metadata: {
-    author: string
-    createdAt: string
-    updatedAt: string
-    version: number
-    status: string
-  }
+  /** v20.34: 元数据统一为 Record, 不再预设固定结构 */
+  metadata?: Record<string, unknown>
 }
 
 export const documentApi = {

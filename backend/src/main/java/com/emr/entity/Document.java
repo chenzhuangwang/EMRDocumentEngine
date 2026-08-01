@@ -16,9 +16,18 @@ public class Document {
     private String templateId;
 
     /**
-     * JSON content: { header: [], main: [], footer: [] }
+     * JSON content: DocumentTree (v20.34 去分页化, body: FlowBody)
      */
     private String content;
+
+    /** 文档模型版本号 (用于兼容升级, 架构 v20.10: 统一 '4.0.0') */
+    private String modelVersion;
+
+    /** 加密后 DEK (AES-WRAP 包裹, 架构 §12.1.3) */
+    private String encryptionKey;
+
+    /** KEK 版本号 (密钥轮换, 架构 §12.1.3) */
+    private Integer kekVersion;
 
     private String status;
 
