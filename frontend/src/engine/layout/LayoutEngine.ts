@@ -124,12 +124,19 @@ export class LayoutEngine {
             height: defaultSize,
             maxAscent: defaultSize * 0.8,
             maxDescent: defaultSize * 0.2,
+            alignment: para.alignment,
+            indent: para.indent,
           })
         } else {
           const lines = lineBreaker.breakLines(elements, {
             maxWidth: contentWidth, wordBreak: 'break-all',
             defaultFont: 'SimSun', defaultSize: 16,
           })
+          // 标记每行的段落对齐/缩进
+          for (const line of lines) {
+            line.alignment = para.alignment
+            line.indent = para.indent
+          }
           allLines.push(...lines)
         }
       }
@@ -158,10 +165,19 @@ export class LayoutEngine {
         for (const el of line.elements) {
           if (el.type === 'section_break' || el.type === 'footnote_ref') continue
           const charHeight = measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || 16 })
+
+          // 计算 X 偏移: 基础 marginLeft + 缩进 + 对齐
+          let itemX = this.config.marginLeft + (line.indent ?? 0)
+          if (line.alignment === 'center') {
+            itemX = this.config.marginLeft + (contentWidth - line.width) / 2 + (line.indent ?? 0)
+          } else if (line.alignment === 'right') {
+            itemX = this.config.marginLeft + contentWidth - line.width
+          }
+
           items.push({
             nodeId: el.id, nodeType: el.type, type: el.type,
             text: el.value,
-            x: this.config.marginLeft, y, width: line.width / line.elements.length,
+            x: itemX, y, width: line.width / line.elements.length,
             height: charHeight,
             ascent: line.maxAscent, descent: line.maxDescent,
             font: el.font || 'SimSun', size: el.size || 16,

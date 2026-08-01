@@ -2,15 +2,45 @@
 // 换行引擎 - CJK + 英文混排断行
 // ============================================================
 
-import type { IElement, ILine, IFontConfig } from '../document/DocumentModel'
-import { ElementType } from '../document/DocumentModel'
 import { TextMeasurer } from './TextMeasurer'
+
+/** 换行器输入元素的简化接口 */
+export interface LineElement {
+  id: string
+  type: string
+  value: string
+  font?: string
+  size?: number
+  bold?: boolean
+  italic?: boolean
+  color?: string
+  imageData?: { width?: number; height?: number; wrapType?: string }
+  control?: { width?: number }
+}
+
+export interface FontConfig {
+  font: string
+  size: number
+  bold?: boolean
+  italic?: boolean
+  letterSpacing?: number
+}
 
 export interface LineBreakOptions {
   maxWidth: number
   wordBreak: 'break-all' | 'break-word' | 'keep-all'
   defaultFont: string
   defaultSize: number
+}
+
+export interface ILine {
+  elements: LineElement[]
+  width: number
+  height: number
+  maxAscent: number
+  maxDescent: number
+  alignment?: 'left' | 'center' | 'right' | 'justify'
+  indent?: number
 }
 
 export class LineBreaker {
@@ -23,9 +53,9 @@ export class LineBreaker {
   /**
    * 将展开后的元素列表断行为多行
    */
-  breakLines(elements: IElement[], options: LineBreakOptions): ILine[] {
+  breakLines(elements: LineElement[], options: LineBreakOptions): ILine[] {
     const lines: ILine[] = []
-    let currentLineElements: IElement[] = []
+    let currentLineElements: LineElement[] = []
     let currentLineWidth = 0
     let maxAscent = 0
     let maxDescent = 0
@@ -35,7 +65,7 @@ export class LineBreaker {
       if (!el) continue
 
       // 强制分页符 / 换行符
-      if (el.type === ElementType.PAGE_BREAK) {
+      if (el.type === 'page_break') {
         if (currentLineElements.length > 0) {
           lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
           currentLineElements = []
@@ -48,7 +78,7 @@ export class LineBreaker {
         continue
       }
 
-      if (el.type === ElementType.SEPARATOR) {
+      if (el.type === 'separator') {
         if (currentLineElements.length > 0) {
           lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
           currentLineElements = []
@@ -63,7 +93,7 @@ export class LineBreaker {
       }
 
       // Image: block-level by default (wrapType !== 'inline' → own line)
-      if (el.type === ElementType.IMAGE && el.imageData?.wrapType !== 'inline') {
+      if (el.type === 'image' && el.imageData?.wrapType !== 'inline') {
         if (currentLineElements.length > 0) {
           lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
           currentLineElements = []
@@ -82,7 +112,7 @@ export class LineBreaker {
       const descent = el.size ? el.size * 0.2 : options.defaultSize * 0.2
 
       // Newline character forces a line break (keep it in line for position tracking)
-      if (el.type === ElementType.TEXT && el.value === '\n') {
+      if (el.type === 'text' && el.value === '\n') {
         currentLineElements.push(el)
         // Use default line metrics when current line has no visible content (consecutive \n)
         const lineAscent = maxAscent > 0 ? maxAscent : options.defaultSize * 0.8
@@ -126,29 +156,24 @@ export class LineBreaker {
   /**
    * 计算元素渲染宽度
    */
-  private getElementWidth(el: IElement, options: LineBreakOptions): number {
+  private getElementWidth(el: LineElement, options: LineBreakOptions): number {
     switch (el.type) {
-      case ElementType.TEXT:
-      case ElementType.HYPERLINK: {
+      case 'text':
+      case 'hyperlink': {
         const config = this.getElementFontConfig(el, options)
         return this.measurer.measureWidth(el.value || '', config)
       }
 
-      case ElementType.CONTROL: {
-        // 控件宽度：优先用配置宽度，否则默认 120px
+      case 'control': {
         return el.control?.width || 120
       }
-
-      case ElementType.IMAGE: {
+      case 'image': {
         return el.imageData?.width || 100
       }
-
-      case ElementType.TABLE: {
-        // 表格占满行宽
+      case 'table': {
         return options.maxWidth
       }
-
-      case ElementType.LATEX: {
+      case 'latex': {
         return 200 // LaTeX 公式默认宽度
       }
 
@@ -157,7 +182,7 @@ export class LineBreaker {
     }
   }
 
-  private getElementFontConfig(el: IElement, options: LineBreakOptions): IFontConfig {
+  private getElementFontConfig(el: LineElement, options: LineBreakOptions): FontConfig {
     return {
       font: el.font || options.defaultFont,
       size: el.size || options.defaultSize,
@@ -167,7 +192,7 @@ export class LineBreaker {
   }
 
   private createLine(
-    elements: IElement[],
+    elements: LineElement[],
     width: number,
     maxAscent: number,
     maxDescent: number
