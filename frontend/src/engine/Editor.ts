@@ -403,32 +403,57 @@ export class Editor {
     } catch { /* 权限拒绝或非 HTTPS, 忽略 */ }
   }
 
-  /** 切换光标处文本样式 (bold/italic/underline) → FormatTextCommand */
+  /** 切换文本样式 (bold/italic/underline) → FormatTextCommand, 支持选区 */
   toggleFormat(style: Partial<import('./document/DocumentModel').TextStyle>): void {
+    const selection = this.store.state.runtime.selection
     const cursor = this.store.state.runtime.cursor
-    if (cursor.paragraphPath.length === 0) return
 
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-    const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
-    if (!resolved) return
+    let nodeIds: string[] = []
 
-    const textNode = this.pool.nodes.get(resolved.textNodeId) as unknown as
-      { bold?: boolean; italic?: boolean; underline?: boolean } | undefined
-    if (!textNode) return
+    if (selection.active && selection.anchor.paragraphPath.join('.') === selection.focus.paragraphPath.join('.')) {
+      // 同段落选区: 收集选区范围内所有 text node
+      const paraId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
+      const start = Math.min(selection.anchor.offset, selection.focus.offset)
+      const end = Math.max(selection.anchor.offset, selection.focus.offset)
+      if (start < end) {
+        const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+        if (para?.children) {
+          let offset = 0
+          for (const cid of para.children) {
+            const n = this.pool.nodes.get(cid) as { type?: string; text?: string } | undefined
+            const len = n?.type === 'text' ? ((n.text as string) || '').length : 1
+            if (offset + len > start && offset < end && n?.type === 'text') {
+              nodeIds.push(cid)
+            }
+            offset += len
+          }
+        }
+      }
+    }
 
-    // Toggle: 如果已有该样式则移除, 否则添加
+    if (nodeIds.length === 0) {
+      // 无选区或跨段落 → 只格式化光标处节点
+      if (cursor.paragraphPath.length === 0) return
+      const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+      const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
+      if (!resolved) return
+      nodeIds = [resolved.textNodeId]
+    }
+
+    // Toggle: 读首个节点已有样式决定方向
+    const firstNode = this.pool.nodes.get(nodeIds[0]) as unknown as { bold?: boolean; italic?: boolean; underline?: boolean } | undefined
     const changes: Record<string, unknown> = {}
     for (const [key, val] of Object.entries(style)) {
-      if (val === true && textNode[key as keyof typeof textNode]) {
-        changes[key] = false  // toggle off
+      if (val === true && firstNode?.[key as keyof typeof firstNode]) {
+        changes[key] = false
       } else {
-        changes[key] = val    // toggle on
+        changes[key] = val
       }
     }
 
     const cmd = new FormatTextCommand(
       generateCommandId(), Date.now(), 'user',
-      [resolved.textNodeId],
+      nodeIds,
       changes as Partial<import('./document/DocumentModel').TextStyle>,
     )
     this.commandManager.execute(cmd)
