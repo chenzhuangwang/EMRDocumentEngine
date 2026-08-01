@@ -67,17 +67,31 @@ export class Editor {
       () => this.pool,
     )
 
-    // 状态变更 → 更新 Store + 重绘光标
+    // 状态变更 → 仅更新 Store, 不渲染
+    // 渲染统一由 document:changed 在 recomputeLayout 后触发
+    // 确保 render() 始终使用最新的 SLIF 布局 + 最新的光标状态
     this.eventBus.on('state:changed', (patch) => {
-      if (patch.cursor) this.store.updateRuntime({ cursor: { ...this.store.state.runtime.cursor, ...patch.cursor } })
+      if (patch.cursor) this.store.updateRuntime({ cursor: { ...this.store.state.runtime.cursor, ...patch.cursor, visible: true } })
       if (patch.selection) this.store.updateRuntime({ selection: { ...this.store.state.runtime.selection, ...patch.selection } })
       this.store.setDirty(true)
-      // 光标位置变化 → 立即重绘
+    })
+
+    // document:changed → 重布局 + 重绘 (唯一渲染入口)
+    this.eventBus.on('document:changed', () => {
+      const t0 = performance.now()
+      this.draw.recomputeLayout(this.pool)
+      const t1 = performance.now()
+      const cursor = this.store.state.runtime.cursor
+      console.debug(
+        `[Editor] document:changed → recomputeLayout ${(t1 - t0).toFixed(1)}ms, ` +
+        `cursor=(${cursor.paragraphPath.join('/')}, offset=${cursor.offset}), ` +
+        `bodyChildren=[${this.doc.body.children.join(',')}]`
+      )
       this.draw.render(this.pool, this.store.state.runtime)
     })
 
-    // document:changed → 重布局 + 重绘
-    this.eventBus.on('document:changed', () => {
+    // render:request (undo/redo 等) → 使用当前的 pool 和 state
+    this.eventBus.on('render:request', () => {
       this.draw.recomputeLayout(this.pool)
       this.draw.render(this.pool, this.store.state.runtime)
     })
@@ -123,7 +137,9 @@ export class Editor {
     this.draw.render(this.pool, this.store.state.runtime)
 
     // 点击容器 → 命中检测 + 更新光标 + 聚焦
+    // 若刚结束拖拽则跳过, 避免覆盖选区
     this._clickToFocus = (e: MouseEvent) => {
+      if (this.mouseHandler.wasDragging()) return
       this.inputComposer.focus()
       this.handleClick(e)
     }
@@ -156,7 +172,7 @@ export class Editor {
     const docX = screenX - offsetX
     const docY = localY
 
-    // 命中检测 — 可能返回 null (空段落无 SLIF items)
+    // 命中检测 — 可能返回 null (空段落/点击在内容下方)
     const nodeId = this.draw.getHitTestIndex().hitTest(docX, docY, pageIndex)
 
     if (nodeId) {
@@ -165,8 +181,37 @@ export class Editor {
         const offset = this.computeOffsetAtX(para, docX, page)
         setCursor(this.store, [this.doc.id, para.id], offset)
       }
+    } else {
+      // 未命中 → 判断点击位置相对于内容的位置
+      const lastItemBottom = this.getPageContentBottom(page)
+      const firstItemTop = this.getPageContentTop(page)
+
+      if (lastItemBottom >= 0 && docY > lastItemBottom) {
+        // 点击在所有内容下方 → 光标移到最后一个段落末尾
+        const bodyChildren = this.doc.body.children
+        if (bodyChildren.length > 0) {
+          const lastParaId = bodyChildren[bodyChildren.length - 1]
+          const lastPara = this.pool.nodes.get(lastParaId) as unknown as Paragraph | undefined
+          if (lastPara) {
+            const endOffset = this.getParagraphTextLength(lastPara)
+            setCursor(this.store, [this.doc.id, lastParaId], endOffset)
+          }
+        }
+      } else if (firstItemTop >= 0 && docY < firstItemTop) {
+        // 点击在所有内容上方 → 光标移到第一个段落开头
+        const bodyChildren = this.doc.body.children
+        if (bodyChildren.length > 0) {
+          setCursor(this.store, [this.doc.id, bodyChildren[0]], 0)
+        }
+      }
+      // 行间空白 (在内容范围内但未命中任何 item) → 光标保持原位, 不移动
     }
-    // 无论命中与否都重绘 — 空段落也需要显示光标
+
+    // 单击清空选区
+    const si = this.store as unknown as { _state: { runtime: { selection: { active: boolean } } } }
+    si._state.runtime.selection.active = false
+
+    // 无论命中与否都重绘
     this.draw.render(this.pool, this.store.state.runtime)
   }
 
@@ -198,6 +243,37 @@ export class Editor {
       accumulated += text.length
     }
     return accumulated
+  }
+
+  /** 计算段落内所有文本节点的总字符数 */
+  private getParagraphTextLength(para: Paragraph): number {
+    let len = 0
+    for (const childId of para.children) {
+      const node = this.pool.nodes.get(childId)
+      if (node && (node as unknown as { type: string }).type === 'text') {
+        len += ((node as unknown as { text: string }).text || '').length
+      } else {
+        len += 1
+      }
+    }
+    return len
+  }
+
+  /** 获取页面中最后一个 SLIF item 的底部 Y 坐标, 无内容返回 -1 */
+  private getPageContentBottom(page: import('./layout/SLIF').SLIFPage): number {
+    if (page.items.length === 0) return -1
+    let maxBottom = 0
+    for (const item of page.items) {
+      const bottom = item.y + item.ascent + item.descent
+      if (bottom > maxBottom) maxBottom = bottom
+    }
+    return maxBottom
+  }
+
+  /** 获取页面中第一个 SLIF item 的顶部 Y 坐标, 无内容返回 -1 */
+  private getPageContentTop(page: import('./layout/SLIF').SLIFPage): number {
+    if (page.items.length === 0) return -1
+    return page.items[0].y
   }
 
   getDocument(): DocumentTree { return this.doc }

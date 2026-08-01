@@ -1,19 +1,27 @@
 // ================================================================
-// MouseHandler — 鼠标拖拽选区 (架构 §8.2, v20.34)
+// MouseHandler — 鼠标拖拽选区, 支持跨段落/跨行 (架构 §8.2, v20.34)
 //
-// 状态机: idle → mousedown(记录起点) → mousemove(更新选区) → mouseup(确认)
-// 单击不拖拽 → 不触发选区, 由 Editor.handleClick 处理光标定位
+// Selection 模型: anchor/focus 各自独立 paragraphPath + offset
+// 同段落: offset 直接比较; 跨段落: 锚点段选中到尾, 终点段从0选中
 // ================================================================
 
 import type { Editor } from '../Editor'
+import type { Paragraph } from '../document/DocumentModel'
+import type { SLIFPage } from '../layout/SLIF'
 
 export class MouseHandler {
   private editor: Editor
   private container: HTMLElement
+  private dragging = false
+  private dragMoved = false
+
+  // 选区锚点 — mousedown 时记录, 整个拖拽期间不变
+  private anchorParaPath: string[] = []
+  private anchorOffset = 0
+
+  // 鼠标按下位置 (用于阈值判定)
   private dragStartX = 0
   private dragStartY = 0
-  private dragging = false
-  private readonly DRAG_THRESHOLD = 3 // px, 超过此阈值才视为拖拽
 
   constructor(editor: Editor, container: HTMLElement) {
     this.editor = editor
@@ -23,81 +31,92 @@ export class MouseHandler {
     window.addEventListener('mouseup', this.onMouseUp)
   }
 
+  /** click 事件到来时检查: 拖拽过就不要重复处理光标 */
+  wasDragging(): boolean {
+    if (this.dragMoved) { this.dragMoved = false; return true }
+    return false
+  }
+
   private onMouseDown = (e: MouseEvent) => {
+    this.dragging = true
+    this.dragMoved = false
     this.dragStartX = e.clientX
     this.dragStartY = e.clientY
-    this.dragging = false
+
+    // 命中检测 → 设置光标 + 记录选区锚点
+    const result = this.hitTest(e.clientX, e.clientY)
+    if (!result) return
+
+    const store = this.editor.getStore()
+    const si = store as unknown as {
+      _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { active: boolean; anchor: { paragraphPath: string[] }; focus: { paragraphPath: string[] } } } }
+    }
+
+    // 更新光标到点击位置
+    si._state.runtime.cursor = {
+      paragraphPath: [...result.paraPath],
+      offset: result.offset,
+      visible: true,
+    }
+
+    // 清空选区, 记录新选区锚点
+    si._state.runtime.selection = {
+      anchor: { paragraphPath: [...result.paraPath], offset: result.offset, visible: false },
+      focus: { paragraphPath: [...result.paraPath], offset: result.offset, visible: false },
+      active: false,
+      granularity: 'character' as const,
+    }
+
+    this.anchorParaPath = [...result.paraPath]
+    this.anchorOffset = result.offset
+
+    this.editor.getDraw().render(this.editor.getPool(), store.state.runtime)
   }
 
   private onMouseMove = (e: MouseEvent) => {
-    if (!this.dragging) {
-      // 超过阈值才开始拖拽选区
+    if (!this.dragging) return
+
+    // 阈值判定
+    if (!this.dragMoved) {
       const dx = Math.abs(e.clientX - this.dragStartX)
       const dy = Math.abs(e.clientY - this.dragStartY)
-      if (dx < this.DRAG_THRESHOLD && dy < this.DRAG_THRESHOLD) return
-      this.dragging = true
+      if (dx < 3 && dy < 3) return
+      this.dragMoved = true
     }
 
-    // 实时更新选区终点并重绘
+    const result = this.hitTest(e.clientX, e.clientY)
+    if (!result) return
+
+    const focusParaPath = result.paraPath
+    const focusOffset = result.offset
+
     const store = this.editor.getStore()
-    const cursor = store.state.runtime.cursor
-    if (cursor.paragraphPath.length === 0) return
-
-    // 计算选区结束位置 (复用 Editor 的命中检测逻辑)
-    const rect = this.container.getBoundingClientRect()
-    const screenX = e.clientX - rect.left
-    const screenY = e.clientY - rect.top + this.editor.getDraw().getCoordinateSystem().transform.scrollY
-
-    const pages = this.editor.getDraw().getPages()
-    if (pages.length === 0) return
-
-    let pageIndex = 0; let localY = screenY
-    for (let i = 0; i < pages.length; i++) {
-      if (localY < pages[i].height) { pageIndex = i; break }
-      localY -= pages[i].height; pageIndex = i
+    const si = store as unknown as {
+      _state: { runtime: { selection: { anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean }; active: boolean; granularity: string } } }
     }
-    const page = pages[pageIndex]
-    if (!page) return
 
-    const viewportW = this.container.clientWidth
-    const offsetX = Math.max(0, (viewportW - page.width) / 2)
-    const docX = screenX - offsetX
-    const docY = localY
+    const samePara = this.anchorParaPath.join('.') === focusParaPath.join('.')
 
-    const nodeId = this.editor.getDraw().getHitTestIndex().hitTest(docX, docY, pageIndex)
-    if (!nodeId) return
-
-    // 计算选区终点的字符偏移
-    const pool = this.editor.getPool()
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-    const para = pool.nodes.get(paraId) as unknown as { children: string[] } | undefined
-    if (!para) return
-
-    let endOffset = 0; let accumulated = 0
-    for (const childId of para.children) {
-      const item = page.items.find(it => it.nodeId === childId)
-      const text = (pool.nodes.get(childId) as unknown as { text?: string })?.text || ''
-      if (item) {
-        const charWidth = item.width / Math.max(text.length, 1)
-        if (docX <= item.x + item.width) {
-          const charIdx = Math.round((docX - item.x) / charWidth)
-          endOffset = accumulated + Math.max(0, Math.min(charIdx, text.length))
-          break
-        }
+    if (samePara) {
+      // 同段落: offset 直接比较, start <= end
+      const start = Math.min(this.anchorOffset, focusOffset)
+      const end = Math.max(this.anchorOffset, focusOffset)
+      si._state.runtime.selection = {
+        anchor: { paragraphPath: [...this.anchorParaPath], offset: start, visible: false },
+        focus: { paragraphPath: [...focusParaPath], offset: end, visible: false },
+        active: start !== end,
+        granularity: 'character',
       }
-      accumulated += text.length
+    } else {
+      // 跨段落: anchor 保留下原始位置, focus 用当前段落+offset
+      si._state.runtime.selection = {
+        anchor: { paragraphPath: [...this.anchorParaPath], offset: this.anchorOffset, visible: false },
+        focus: { paragraphPath: [...focusParaPath], offset: focusOffset, visible: false },
+        active: true,
+        granularity: 'character',
+      }
     }
 
-    // 更新选区状态
-    const storeInternal = store as unknown as { _state: { runtime: { selection: { anchor: unknown; focus: unknown; active: boolean; granularity: string } } } }
-    storeInternal._state.runtime.selection = {
-      anchor: { paragraphPath: cursor.paragraphPath, offset: cursor.offset, visible: false },
-      focus: { paragraphPath: cursor.paragraphPath, offset: endOffset, visible: false },
-      active: endOffset !== cursor.offset,
-      granularity: 'character',
-    }
-
-    // 重绘选区
     this.editor.getDraw().render(this.editor.getPool(), store.state.runtime)
   }
 
@@ -105,7 +124,65 @@ export class MouseHandler {
     this.dragging = false
   }
 
-  isDragging(): boolean { return this.dragging }
+  /** 命中检测 — 返回段落路径 + 字符偏移 */
+  private hitTest(clientX: number, clientY: number): { paraPath: string[]; offset: number } | null {
+    const rect = this.container.getBoundingClientRect()
+    const screenX = clientX - rect.left
+    const screenY = clientY - rect.top + this.editor.getDraw().getCoordinateSystem().transform.scrollY
+
+    const pages = this.editor.getDraw().getPages()
+    if (pages.length === 0) return null
+
+    let pageIndex = 0; let localY = screenY
+    for (let i = 0; i < pages.length; i++) {
+      if (localY < pages[i].height) { pageIndex = i; break }
+      localY -= pages[i].height; pageIndex = i
+    }
+    const page = pages[pageIndex]
+    if (!page) return null
+
+    const viewportW = this.container.clientWidth
+    const offsetX = Math.max(0, (viewportW - page.width) / 2)
+    const docX = screenX - offsetX
+
+    const nodeId = this.editor.getDraw().getHitTestIndex().hitTest(docX, localY, pageIndex)
+    if (!nodeId) return null
+
+    const para = this.findParagraphContaining(nodeId)
+    if (!para) return null
+
+    const offset = this.computeOffsetAtX(para, docX, page)
+    const doc = this.editor.getDocument()
+    return { paraPath: [doc.id, para.id], offset }
+  }
+
+  private findParagraphContaining(nodeId: string): Paragraph | null {
+    for (const [, node] of this.editor.getPool().nodes) {
+      if (node.type === 'paragraph') {
+        const para = node as unknown as Paragraph
+        if (para.children.includes(nodeId)) return para
+      }
+    }
+    return null
+  }
+
+  private computeOffsetAtX(para: Paragraph, docX: number, page: SLIFPage): number {
+    let accumulated = 0
+    const pool = this.editor.getPool()
+    for (const childId of para.children) {
+      const item = page.items.find(it => it.nodeId === childId)
+      const text = (pool.nodes.get(childId) as unknown as { text?: string })?.text || ''
+      if (item) {
+        const charWidth = item.width / Math.max(text.length, 1)
+        if (docX <= item.x + item.width) {
+          const charIdx = Math.round((docX - item.x) / charWidth)
+          return accumulated + Math.max(0, Math.min(charIdx, text.length))
+        }
+      }
+      accumulated += text.length
+    }
+    return accumulated
+  }
 
   destroy(): void {
     this.container.removeEventListener('mousedown', this.onMouseDown)

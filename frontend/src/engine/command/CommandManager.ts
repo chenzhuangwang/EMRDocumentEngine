@@ -1,96 +1,138 @@
-// ============================================================
-// 命令系统 — ICommand 接口 + CommandManager
-// 符合 Spec TASK-202: 基于 ICommand 命令模式的 undo/redo
-// ============================================================
+// ================================================================
+// CommandManager — 命令编排器 (架构 §6.5, v20.34)
+//
+// 四条流水线汇合点:
+//   CommandManager.execute(cmd)
+//     → cmd.forward(ctx) → StatePatch
+//     → dispatchInvalidation(invalidation) → DirtyTracker
+//     → undoStack.execute(cmd, ctx)
+//     → eventBus.emit('document:changed', {invalidation, dirtyNodeIds})
+//     → eventBus.emit('state:changed', patch)
+// ================================================================
 
-import type { IElement } from '../document/DocumentModel'
-import { ZoneType } from '../document/DocumentModel'
+import type { ICommand, InvalidationScope, CommandContext } from './ICommand'
+import { CommandUndoRedoStack } from './CommandUndoRedoStack'
+import type { EventBus } from '../interaction/EventBus'
+import type { DocumentTree } from '../document/DocumentModel'
+import type { NodePool } from '../document/NodePool'
 
-// ---- Zone 快照 (命令的 undo/redo 数据载体) ----
+export class DirtyTracker {
+  private dirtyParagraphs = new Set<string>()
+  private _needsFullLayout = false
+  private _dirtyNodeIds = new Set<string>()
+  private _dirtySmartTextNodes = new Set<string>()
 
-export interface ZoneSnapshot {
-  header: IElement[]
-  main: IElement[]
-  footer: IElement[]
-  cursorIndex: number
-  activeZone: ZoneType
-}
+  markParagraphDirty(paragraphId: string): void { this.dirtyParagraphs.add(paragraphId) }
+  markFullLayout(): void { this._needsFullLayout = true }
+  markNodeDirty(nodeId: string): void { this._dirtyNodeIds.add(nodeId) }
+  markSmartTextDirty(nodeId: string): void { this._dirtySmartTextNodes.add(nodeId) }
 
-// ---- ICommand 接口 ----
-
-export interface ICommand {
-  /** 反向操作：撤销此命令对文档的修改 */
-  undo(ctx: ICommandContext): void
-  /** 正向操作：重新应用此命令对文档的修改 */
-  redo(ctx: ICommandContext): void
-  /** 可读描述 (调试用) */
-  readonly description: string
-}
-
-// ---- 命令上下文 (Command 通过此接口操作 Draw 状态) ----
-
-export interface ICommandContext {
-  get headerElements(): IElement[]
-  set headerElements(els: IElement[])
-  get mainElements(): IElement[]
-  set mainElements(els: IElement[])
-  get footerElements(): IElement[]
-  set footerElements(els: IElement[])
-  get cursorIndex(): number
-  set cursorIndex(idx: number)
-  get activeZone(): ZoneType
-  set activeZone(zone: ZoneType)
-  /** 清除控件/单元格焦点（undo/redo 后引用失效） */
-  clearFocused(): void
-}
-
-// ---- CommandManager — 命令栈管理器 ----
-
-export class CommandManager {
-  private undoStack: ICommand[] = []
-  private redoStack: ICommand[] = []
-  private maxRecords: number
-
-  constructor(maxRecords: number = 100) {
-    this.maxRecords = maxRecords
-  }
-
-  /** 执行命令并将其压入撤销栈 (命令应已通过 ctx 应用了效果) */
-  push(command: ICommand): void {
-    this.undoStack.push(command)
-    if (this.undoStack.length > this.maxRecords) {
-      this.undoStack.shift()
-    }
-    // 新命令使重做栈失效
-    this.redoStack = []
-  }
-
-  /** 撤销最近一条命令 */
-  undo(ctx: ICommandContext): ICommand | null {
-    const cmd = this.undoStack.pop()
-    if (!cmd) return null
-    this.redoStack.push(cmd)
-    cmd.undo(ctx)
-    return cmd
-  }
-
-  /** 重做最近一条撤销的命令 */
-  redo(ctx: ICommandContext): ICommand | null {
-    const cmd = this.redoStack.pop()
-    if (!cmd) return null
-    this.undoStack.push(cmd)
-    cmd.redo(ctx)
-    return cmd
-  }
-
-  canUndo(): boolean { return this.undoStack.length > 0 }
-  canRedo(): boolean { return this.redoStack.length > 0 }
-
-  getUndoCount(): number { return this.undoStack.length }
-  getRedoCount(): number { return this.redoStack.length }
+  get needsFullLayout(): boolean { return this._needsFullLayout }
+  getDirtyParagraphs(): ReadonlySet<string> { return this.dirtyParagraphs }
+  getDirtyNodeIds(): ReadonlySet<string> { return this._dirtyNodeIds }
+  queryDirtySmartTextNodes(): Set<string> { return this._dirtySmartTextNodes }
 
   clear(): void {
-    this.undoStack = []
-    this.redoStack = []
+    this.dirtyParagraphs.clear()
+    this._needsFullLayout = false
+    this._dirtyNodeIds.clear()
+    this._dirtySmartTextNodes.clear()
+  }
+}
+
+export class CommandManager {
+  readonly undoStack: CommandUndoRedoStack
+  readonly dirtyTracker: DirtyTracker
+  private eventBus: EventBus
+  private getDocument: () => DocumentTree
+  private getPool: () => NodePool
+
+  constructor(
+    eventBus: EventBus,
+    getDocument: () => DocumentTree,
+    getPool: () => NodePool,
+  ) {
+    this.eventBus = eventBus
+    this.getDocument = getDocument
+    this.getPool = getPool
+    this.undoStack = new CommandUndoRedoStack(100)
+    this.dirtyTracker = new DirtyTracker()
+  }
+
+  execute(command: ICommand): void {
+    const ctx: CommandContext = {
+      mode: 'local',
+      doc: this.getDocument(),
+      pool: this.getPool(),
+    }
+
+    const patch = this.undoStack.execute(command, ctx)
+    if (!patch) return
+
+    // 失效传播 (v20.22 强制映射)
+    this.dispatchInvalidation(patch.invalidation ?? 'paragraph')
+
+    // 顺序关键: 先更新光标状态, 再触发重布局+重绘
+    // 确保 document:changed 触发的 render() 使用的是最新光标位置
+    this.eventBus.emit('state:changed', patch)
+
+    this.eventBus.emit('document:changed', {
+      invalidation: patch.invalidation ?? 'paragraph',
+      dirtyNodeIds: [...this.dirtyTracker.getDirtyNodeIds()],
+    })
+
+    // 光标变更单独通知
+    if (patch.cursor) this.eventBus.emit('cursor:moved', {
+      paragraphPath: [],
+      offset: 0,
+      visible: true,
+      ...patch.cursor,
+    })
+  }
+
+  undo(): void {
+    const ctx: CommandContext = {
+      mode: 'local',
+      doc: this.getDocument(),
+      pool: this.getPool(),
+    }
+    const patch = this.undoStack.undo(ctx)
+    if (patch) {
+      this.eventBus.emit('state:changed', patch)
+      this.eventBus.emit('render:request')
+    }
+  }
+
+  redo(): void {
+    const ctx: CommandContext = {
+      mode: 'local',
+      doc: this.getDocument(),
+      pool: this.getPool(),
+    }
+    const patch = this.undoStack.redo(ctx)
+    if (patch) {
+      this.eventBus.emit('state:changed', patch)
+      this.eventBus.emit('render:request')
+    }
+  }
+
+  canUndo(): boolean { return this.undoStack.canUndo() }
+  canRedo(): boolean { return this.undoStack.canRedo() }
+
+  private dispatchInvalidation(scope: InvalidationScope): void {
+    switch (scope) {
+      case 'none': break
+      case 'node': break  // node-level handled by markNodeDirty externally
+      case 'paragraph':
+      case 'paragraph_and_downstream':
+        break  // paragraph dirty marked by command
+      case 'block':
+      case 'flowbody':
+      case 'table':
+      case 'page_setup':
+      case 'full':
+        this.dirtyTracker.markFullLayout()
+        break
+    }
   }
 }

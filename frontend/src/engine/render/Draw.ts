@@ -17,6 +17,8 @@ import { LayeredRenderer, type WatermarkConfig } from './LayeredRenderer'
 import { HitTestIndex } from './HitTestIndex'
 import { TextParticle } from './particles/TextParticle'
 
+interface CaretPos { x: number; y: number; h: number }
+
 export class Draw {
   private container: HTMLElement
   private coordSystem: CoordinateSystem
@@ -45,7 +47,6 @@ export class Draw {
 
     if (doc) this.setDocument(doc)
 
-    // 监听 EventBus: render 请求
     this.eventBus.on('render:request', () => this.render())
     this.eventBus.on('layout:changed', (pages: SLIFPage[]) => {
       this.pages = pages
@@ -53,21 +54,16 @@ export class Draw {
     })
   }
 
-  /** 设置文档 + 全量布局 */
   setDocument(doc: DocumentTree, pool?: NodePool): void {
     this.document = doc
     if (pool) this.pool = pool
   }
 
-  /** 更新运行时状态 */
-  setRuntimeState(state: EditorRuntimeState): void {
-    this._state = state
-  }
+  setRuntimeState(state: EditorRuntimeState): void { this._state = state }
 
   getPool(): NodePool | null { return this.pool }
   getState(): EditorRuntimeState | null { return this._state }
 
-  /** 全量重新布局 (应调用 layoutEngine.fullLayout) */
   recomputeLayout(pool: NodePool): SLIFPage[] {
     if (!this.document) return []
     this.pool = pool
@@ -76,8 +72,75 @@ export class Draw {
     return this.pages
   }
 
-  /** 主渲染入口 — 消费 SLIFPage[] 驱动 LayeredRenderer, 可选绘制光标 */
-  render(pool?: NodePool, runtimeState?: import('../state/EditorRuntimeState').EditorRuntimeState): void {
+  // ================================================================
+  // 光标坐标计算 — 共享方法, render() 和 getCaretClientRect() 复用
+  //
+  // 关键保护: 找不到目标段落包围盒时, 回退到上次已知正确位置,
+  // 绝不跳转到文档左上角 (offsetX+90, 72)
+  // ================================================================
+  private lastCaretPos: CaretPos = { x: 90, y: 72, h: 16 }
+
+  private computeCaretPos(
+    pool: NodePool,
+    paragraphPath: string[],
+    offset: number,
+    offsetX: number,
+    visible: { start: number; end: number },
+    pageHeight: number,
+  ): CaretPos {
+    const paraId = paragraphPath[paragraphPath.length - 1]
+    const para = pool.nodes.get(paraId) as unknown as { children: string[] } | undefined
+    const initialX = this.lastCaretPos.x
+    const initialY = this.lastCaretPos.y
+
+    let caretX = this.lastCaretPos.x
+    let caretY = this.lastCaretPos.y
+    let caretH = this.lastCaretPos.h
+    let found = false
+    let charCount = 0
+
+    if (para) {
+      for (let i = visible.start; i <= visible.end; i++) {
+        const page = this.pages[i]
+        if (!page) continue
+        const pageY = (i - visible.start) * pageHeight
+        for (const item of page.items) {
+          if (para.children.includes(item.nodeId) || item.nodeId === paraId) {
+            const textLen = item.text?.length || 0
+            if (offset <= charCount + textLen) {
+              const localOff = offset - charCount
+              const charW = textLen > 0 ? item.width / textLen : 0
+              caretX = offsetX + item.x + localOff * charW
+              caretY = pageY + item.y
+              caretH = item.ascent + item.descent
+              found = true
+              break
+            }
+            charCount += textLen
+          }
+        }
+        if (found) break
+      }
+    }
+
+    if (found) {
+      this.lastCaretPos = { x: caretX, y: caretY, h: caretH }
+    } else {
+      // 布局未就绪 → 保持上次位置, 不跳转文档起点
+      console.debug(
+        `[computeCaretPos] para=${paraId} offset=${offset} NOT FOUND in SLIF pages, ` +
+        `keeping lastCaretPos=(${initialX}, ${initialY})`
+      )
+    }
+
+    return { x: caretX, y: caretY, h: caretH }
+  }
+
+  // ================================================================
+  // 主渲染入口
+  // 顺序: 静态层(背景) → 内容层(文本) → interact层(选区→光标)
+  // ================================================================
+  render(pool?: NodePool, runtimeState?: EditorRuntimeState): void {
     if (this.pages.length === 0) return
 
     const viewportW = this.container.clientWidth
@@ -85,17 +148,15 @@ export class Draw {
     const dpr = this.coordSystem.transform.dpr
     const totalPages = this.pages.length
     const pageHeight = this.pages[0]?.height || 1123
-
-    this.renderer.syncSizes(viewportW, viewportH, dpr, pageHeight, totalPages)
-
-    // 计算可见页范围
-    const scrollY = this.coordSystem.transform.scrollY
-    const visible = this.layoutEngine.getVisiblePages(scrollY, viewportH)
-
     const pageWidth = this.pages[0]?.width || 794
     const offsetX = Math.max(0, (viewportW - pageWidth) / 2)
 
-    // 渲染静态层
+    this.renderer.syncSizes(viewportW, viewportH, dpr, pageHeight, totalPages)
+
+    const scrollY = this.coordSystem.transform.scrollY
+    const visible = this.layoutEngine.getVisiblePages(scrollY, viewportH)
+
+    // --- 静态层: 页面背景 ---
     {
       const sctx = this.renderer.getStaticCtx()
       if (sctx) {
@@ -105,7 +166,7 @@ export class Draw {
     }
     this.renderer.renderStatic(this.pages, visible)
 
-    // 渲染内容层
+    // --- 内容层: 文本粒子 ---
     const ctx = this.renderer.getContentCtx()
     if (ctx) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -114,110 +175,147 @@ export class Draw {
       for (let i = visible.start; i <= visible.end; i++) {
         const page = this.pages[i]
         if (!page) continue
-        const pageY = (i - visible.start) * page.height
+        const pageY = (i - visible.start) * pageHeight
         for (const item of page.items) {
-          const particleInput = {
+          TextParticle.render(ctx, {
             id: item.nodeId, type: item.type, value: item.text || '',
             font: item.font, size: item.size, bold: item.bold, italic: item.italic,
             color: item.color, underline: item.underline,
-          }
-          TextParticle.render(ctx, particleInput, item.x, pageY + item.y, {})
+          }, item.x, pageY + item.y, {})
         }
       }
     }
 
-    // 渲染光标 — interact 层
-    // 光标高度 = item.ascent + item.descent (文字实际视觉高度, 非 CSS 行距 1.5x)
+    // --- interact 层: 选区 + 光标 ---
     const ictx = this.renderer.getInteractCtx()
-    if (ictx && pool && runtimeState) {
-      const cursor = runtimeState.cursor
-      if (cursor.paragraphPath.length > 0 && cursor.visible) {
-        const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-        const para = pool.nodes.get(paraId) as unknown as { children: string[] } | undefined
-        if (para) {
-          let caretX = offsetX + 90
-          let caretY = 72
-          let caretH = 16
-          let charCount = 0
+    if (!ictx || !pool || !runtimeState) return
 
-          for (let i = visible.start; i <= visible.end; i++) {
-            const page = this.pages[i]
-            if (!page) continue
-            const pageY = (i - visible.start) * page.height
-            for (const item of page.items) {
-              if (para.children.includes(item.nodeId)) {
-                const textLen = item.text?.length || 0
-                if (cursor.offset <= charCount + textLen) {
-                  const localOff = cursor.offset - charCount
-                  const charW = textLen > 0 ? item.width / textLen : 0
-                  caretX = offsetX + item.x + localOff * charW
-                  caretY = pageY + item.y
-                  // 文字视觉高度 = ascent + descent (等于 fontSize)
-                  caretH = item.ascent + item.descent
-                  break
-                }
-                charCount += textLen
-              }
-            }
-            if (caretX > offsetX + 90) break
-          }
+    const cursor = runtimeState.cursor
+    if (cursor.paragraphPath.length === 0 || !cursor.visible) return
 
-          ictx.setTransform(dpr, 0, 0, dpr, 0, 0)
-          ictx.clearRect(0, 0, viewportW, viewportH)
+    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX, visible, pageHeight)
 
-          // 选区高亮 — 先于光标绘制, 在文字下方
-          const selection = runtimeState.selection
-          if (selection.active && selection.anchor.paragraphPath.join('.') === selection.focus.paragraphPath.join('.')) {
-            const selStart = Math.min(selection.anchor.offset, selection.focus.offset)
-            const selEnd = Math.max(selection.anchor.offset, selection.focus.offset)
-            if (selStart < selEnd) {
-              let selAccum = 0
-              for (let i = visible.start; i <= visible.end; i++) {
-                const sp = this.pages[i]
-                if (!sp) continue
-                const spY = (i - visible.start) * pageHeight
-                for (const item of sp.items) {
-                  if (para.children.includes(item.nodeId)) {
-                    const tLen = item.text?.length || 0
-                    const itemEnd = selAccum + tLen
-                    if (selStart < itemEnd && selEnd > selAccum) {
-                      const localS = Math.max(0, selStart - selAccum)
-                      const localE = Math.min(tLen, selEnd - selAccum)
-                      const charW = tLen > 0 ? item.width / tLen : 0
-                      const sx = offsetX + item.x + localS * charW
-                      const sw = (localE - localS) * charW
-                      ictx.fillStyle = 'rgba(59, 130, 246, 0.25)'
-                      ictx.fillRect(sx, spY + item.y, sw, item.ascent + item.descent)
-                    }
-                    selAccum += tLen
-                  }
-                }
-              }
-            }
-          }
+    ictx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ictx.clearRect(0, 0, viewportW, viewportH)
 
-          // 光标
-          ictx.fillStyle = '#000000'
-          ictx.fillRect(caretX, caretY, 2, caretH)
-        }
+    // --- 选区高亮 (文字下方) ---
+    const selection = runtimeState.selection
+    if (selection.active) {
+      this.renderSelection(pool, selection, offsetX, visible, pageHeight, ictx)
+    }
+
+    // --- 光标 (文字上方) ---
+    ictx.fillStyle = '#000000'
+    ictx.fillRect(caret.x, caret.y, 2, caret.h)
+  }
+
+  // ================================================================
+  // 选区渲染 — 支持单段落/跨段落/正反向拖拽
+  // ================================================================
+  private renderSelection(
+    pool: NodePool,
+    selection: EditorRuntimeState['selection'],
+    offsetX: number,
+    visible: { start: number; end: number },
+    pageHeight: number,
+    ictx: CanvasRenderingContext2D,
+  ): void {
+    const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1] || ''
+    const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1] || ''
+    const samePara = anchorParaId === focusParaId
+
+    const bodyChildren = pool.getChildren(pool.rootIds.body)
+    const aIdx = bodyChildren.indexOf(anchorParaId)
+    const fIdx = bodyChildren.indexOf(focusParaId)
+
+    if (aIdx < 0 || fIdx < 0) {
+      if (samePara) {
+        const ss = Math.min(selection.anchor.offset, selection.focus.offset)
+        const se = Math.max(selection.anchor.offset, selection.focus.offset)
+        if (ss < se) this.renderSelectionInPara(anchorParaId, ss, se, offsetX, visible, pageHeight, pool, ictx)
+      }
+      return
+    }
+
+    const lo = Math.min(aIdx, fIdx)
+    const hi = Math.max(aIdx, fIdx)
+
+    for (let pi = lo; pi <= hi; pi++) {
+      const pid = bodyChildren[pi]
+      if (!pid) continue
+      let pStart = 0
+      let pEnd = Infinity
+
+      if (samePara) {
+        pStart = Math.min(selection.anchor.offset, selection.focus.offset)
+        pEnd = Math.max(selection.anchor.offset, selection.focus.offset)
+      } else if (pi === lo) {
+        if (pid === anchorParaId) { pStart = selection.anchor.offset }
+        else { pStart = selection.focus.offset }
+      } else if (pi === hi) {
+        if (pid === anchorParaId) { pEnd = selection.anchor.offset }
+        else { pEnd = selection.focus.offset }
+      }
+
+      if (pStart < pEnd) {
+        this.renderSelectionInPara(pid, pStart, pEnd, offsetX, visible, pageHeight, pool, ictx)
       }
     }
   }
 
-  /** 坐标转换工具 */
+  private renderSelectionInPara(
+    paraId: string, selStart: number, selEnd: number,
+    offsetX: number, visible: { start: number; end: number },
+    pageHeight: number, pool: NodePool, ictx: CanvasRenderingContext2D,
+  ): void {
+    let selAccum = 0
+    for (let i = visible.start; i <= visible.end; i++) {
+      const sp = this.pages[i]
+      if (!sp) continue
+      const spY = (i - visible.start) * pageHeight
+      for (const item of sp.items) {
+        if (this.findItemParagraph(item.nodeId, pool) !== paraId) continue
+        const tLen = item.text?.length || 0
+        const itemEnd = selAccum + tLen
+        if (selStart < itemEnd && selEnd > selAccum) {
+          const localS = Math.max(0, selStart - selAccum)
+          const localE = Math.min(tLen, selEnd - selAccum)
+          const charW = tLen > 0 ? item.width / tLen : 0
+          ictx.fillStyle = 'rgba(59, 130, 246, 0.25)'
+          ictx.fillRect(offsetX + item.x + localS * charW, spY + item.y,
+            (localE - localS) * charW, item.ascent + item.descent)
+        }
+        selAccum += tLen
+      }
+    }
+  }
+
+  /** 查找 SLIF item 所属段落 ID */
+  private findItemParagraph(nodeId: string, pool: NodePool): string | null {
+    for (const [, node] of pool.nodes) {
+      if (node.type === 'paragraph') {
+        const para = node as unknown as { children: string[] }
+        if (para.children.includes(nodeId)) return node.id
+      }
+    }
+    return null
+  }
+
+  // ================================================================
+  // 公开 API
+  // ================================================================
+
   getCoordinateSystem(): CoordinateSystem { return this.coordSystem }
   getHitTestIndex(): HitTestIndex { return this.hitTestIndex }
   getPages(): SLIFPage[] { return this.pages }
 
+  hitTest(docX: number, docY: number, pageIndex: number): string | null {
+    return this.hitTestIndex.hitTest(docX, docY, pageIndex)
+  }
+
   /**
-   * 获取光标在视口中的包围盒矩形 — 供 IME 候选窗定位
-   *
-   * 返回光标视觉矩形 (视口 Client 坐标):
-   *   { left, top, width, height }  其中 bottom = top + height = 光标下沿
-   *
-   * 坐标公式:
-   *   screenX = canvasRect.left + (caretX - scrollX) * scale
-   *   screenY = canvasRect.top  + (caretY - scrollY) * scale
+   * 获取光标在视口中的 Client 矩形 — 供 IME 候选窗定位
+   * 复用 computeCaretPos, 加上 canvas.getBoundingClientRect() 转换
    */
   getCaretClientRect(
     pool: NodePool,
@@ -227,10 +325,6 @@ export class Draw {
     if (cursor.paragraphPath.length === 0) return null
     if (this.pages.length === 0) return null
 
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-    const para = pool.nodes.get(paraId) as unknown as { children: string[] } | undefined
-    if (!para) return null
-
     const viewportW = this.container.clientWidth
     const viewportH = this.container.clientHeight
     const scrollY = this.coordSystem.transform.scrollY
@@ -239,55 +333,22 @@ export class Draw {
     const pageHeight = this.pages[0]?.height || 1123
     const offsetX = Math.max(0, (viewportW - pageWidth) / 2)
 
-    // 光标在 Canvas 视口内的逻辑坐标 (CSS px, 含 A4 居中 + 可见页偏移)
-    let caretX = offsetX + 90
-    let caretY = 72
-    let caretH = 16
-    let charCount = 0
-
-    for (let i = visible.start; i <= visible.end; i++) {
-      const page = this.pages[i]
-      if (!page) continue
-      const pageY = (i - visible.start) * pageHeight
-      for (const item of page.items) {
-        if (para.children.includes(item.nodeId)) {
-          const textLen = item.text?.length || 0
-          if (cursor.offset <= charCount + textLen) {
-            const localOff = cursor.offset - charCount
-            const charW = textLen > 0 ? item.width / textLen : 0
-            caretX = offsetX + item.x + localOff * charW
-            caretY = pageY + item.y
-            caretH = item.ascent + item.descent
-            break
-          }
-          charCount += textLen
-        }
-      }
-      if (caretX > offsetX + 90) break
-    }
+    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX, visible, pageHeight)
 
     const canvas = this.renderer.getInteractCanvas()
     const canvasRect = canvas?.getBoundingClientRect() ?? this.container.getBoundingClientRect()
     const scale = this.coordSystem.transform.scale
 
-    // 视口 Client 坐标 = canvas 视口位置 + 光标逻辑偏移 * 缩放
     return {
-      left: canvasRect.left + caretX * scale,
-      top: canvasRect.top + caretY * scale,
+      left: canvasRect.left + caret.x * scale,
+      top: canvasRect.top + caret.y * scale,
       width: Math.max(2 * scale, 1),
-      height: caretH * scale,
+      height: caret.h * scale,
     }
   }
 
-  /** 命中检测 */
-  hitTest(docX: number, docY: number, pageIndex: number): string | null {
-    return this.hitTestIndex.hitTest(docX, docY, pageIndex)
-  }
-
-  /** 水印 */
   setWatermark(wm: WatermarkConfig): void { this.renderer.prepareWatermark(wm) }
 
-  /** 缩放 */
   setScale(scale: number): void {
     this.coordSystem.update({ scale })
     this.eventBus.emit('scale:changed', scale)
@@ -295,7 +356,6 @@ export class Draw {
 
   getScale(): number { return this.coordSystem.transform.scale }
 
-  /** 销毁 */
   destroy(): void {
     this.renderer.destroy()
     this.hitTestIndex.clear()
