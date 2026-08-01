@@ -129,11 +129,18 @@ export class InsertNodesCommand extends PositionalCommand {
     }
 
     // ================================================================
-    // Step 4: 光标定位 + 清空选区
-    // ================================================================
-    const cursorParaId = this.insertedParaIds[0] || currentPara.id
+    // Step 4: 光标定位到粘贴内容末尾 + 清空选区
+    const lastId = this.insertedParaIds[this.insertedParaIds.length - 1] || this.insertedParaIds[0] || currentPara.id
+    const lastPlaced = pool.nodes.get(lastId) as Paragraph | undefined
+    let endOffset = 0
+    if (lastPlaced) {
+      for (const cid of lastPlaced.children) {
+        const n = pool.nodes.get(cid) as { type?: string; text?: string } | undefined
+        endOffset += n?.type === 'text' ? ((n.text || '').length) : 1
+      }
+    }
     return {
-      cursor: { paragraphPath: [...this.path.slice(0, -1), cursorParaId], offset: 0 },
+      cursor: { paragraphPath: [...this.path.slice(0, -1), lastId], offset: endOffset },
       selection: {
         anchor: { paragraphPath: [], offset: 0, visible: false },
         focus: { paragraphPath: [], offset: 0, visible: false },
