@@ -54,50 +54,59 @@ export class KeyboardHandler {
       return
     }
 
-    // Backspace
+    // Backspace — 有选区则删选区, 无选区则删前一字符
     if (e.key === 'Backspace') {
       e.preventDefault()
-      if (cursor.paragraphPath.length === 0) return
-      if (cursor.offset > 0) {
-        ed.execCommand(new DeleteRangeCommand(id, ts, author, cursor.paragraphPath, cursor.offset - 1, cursor.offset))
-      } else {
-        ed.execCommand(new MergeParagraphCommand(id, ts, author, cursor.paragraphPath))
+      const sel = store.state.runtime.selection
+      if (sel.active && !this.isSelectionCollapsed(sel)) {
+        this.deleteSelection(ed, sel)
+      } else if (cursor.paragraphPath.length > 0) {
+        if (cursor.offset > 0) {
+          ed.execCommand(new DeleteRangeCommand(id, ts, author, cursor.paragraphPath, cursor.offset - 1, cursor.offset))
+        } else {
+          ed.execCommand(new MergeParagraphCommand(id, ts, author, cursor.paragraphPath))
+        }
       }
       return
     }
 
-    // Delete
+    // Delete — 有选区则删选区, 无选区则删后一字符
     if (e.key === 'Delete') {
       e.preventDefault()
-      if (cursor.paragraphPath.length === 0) return
-      const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-      const para = ed.getPool().nodes.get(paraId) as { children?: string[] } | undefined
-      // 检查光标是否在段落末尾
-      let totalLen = 0
-      if (para?.children) {
-        for (const cid of para.children) {
-          const n = ed.getPool().nodes.get(cid) as { type?: string; text?: string } | undefined
-          totalLen += n?.type === 'text' ? (n.text || '').length : 1
+      const sel = store.state.runtime.selection
+      if (sel.active && !this.isSelectionCollapsed(sel)) {
+        this.deleteSelection(ed, sel)
+      } else if (cursor.paragraphPath.length > 0) {
+        const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+        const para = ed.getPool().nodes.get(paraId) as { children?: string[] } | undefined
+        let totalLen = 0
+        if (para?.children) {
+          for (const cid of para.children) {
+            const n = ed.getPool().nodes.get(cid) as { type?: string; text?: string } | undefined
+            totalLen += n?.type === 'text' ? (n.text || '').length : 1
+          }
         }
-      }
-      if (cursor.offset >= totalLen) {
-        // 段尾 Delete → 合并下一段 (把下一段并入当前段)
-        const doc = ed.getDocument()
-        const siblings = doc.body.children
-        const idx = siblings.indexOf(paraId)
-        if (idx >= 0 && idx < siblings.length - 1) {
-          // MergeParagraphCommand 把 path 段并入前一段 → 传下一段的 path
-          ed.execCommand(new MergeParagraphCommand(id, ts, author, [...cursor.paragraphPath.slice(0, -1), siblings[idx + 1]]))
+        if (cursor.offset >= totalLen) {
+          const doc = ed.getDocument()
+          const siblings = doc.body.children
+          const idx = siblings.indexOf(paraId)
+          if (idx >= 0 && idx < siblings.length - 1) {
+            ed.execCommand(new MergeParagraphCommand(id, ts, author, [...cursor.paragraphPath.slice(0, -1), siblings[idx + 1]]))
+          }
+        } else {
+          ed.execCommand(new DeleteRangeCommand(id, ts, author, cursor.paragraphPath, cursor.offset, cursor.offset + 1))
         }
-      } else {
-        ed.execCommand(new DeleteRangeCommand(id, ts, author, cursor.paragraphPath, cursor.offset, cursor.offset + 1))
       }
       return
     }
 
-    // 可见字符
+    // 可见字符 — 有选区则替换选区内容
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
       e.preventDefault()
+      const sel = store.state.runtime.selection
+      if (sel.active && !this.isSelectionCollapsed(sel)) {
+        this.deleteSelection(ed, sel)
+      }
       let path = cursor.paragraphPath
       let offset = cursor.offset
 
@@ -140,6 +149,50 @@ export class KeyboardHandler {
       }
 
       ed.execCommand(new InsertTextCommand(id, ts, author, path, offset, e.key, activeStyle))
+    }
+  }
+
+  /** 选区是否折叠 (起止位置相同) */
+  private isSelectionCollapsed(sel: { anchor: { paragraphPath: string[]; offset: number }; focus: { paragraphPath: string[]; offset: number } }): boolean {
+    return sel.anchor.paragraphPath.join('.') === sel.focus.paragraphPath.join('.') && sel.anchor.offset === sel.focus.offset
+  }
+
+  /** 删除选区内容: 跨段落逐段删除 */
+  private deleteSelection(ed: Editor, sel: { anchor: { paragraphPath: string[]; offset: number }; focus: { paragraphPath: string[]; offset: number } }): void {
+    const doc = ed.getDocument()
+    const aId = sel.anchor.paragraphPath[sel.anchor.paragraphPath.length - 1]
+    const fId = sel.focus.paragraphPath[sel.focus.paragraphPath.length - 1]
+    const siblings = doc.body.children
+    const aIdx = siblings.indexOf(aId)
+    const fIdx = siblings.indexOf(fId)
+    if (aIdx < 0 || fIdx < 0) return
+    const lo = Math.min(aIdx, fIdx)
+    const hi = Math.max(aIdx, fIdx)
+    const loOff = aIdx === lo ? sel.anchor.offset : sel.focus.offset
+    const hiOff = aIdx === hi ? sel.anchor.offset : sel.focus.offset
+
+    // 从后往前删, 避免索引漂移
+    for (let pi = hi; pi >= lo; pi--) {
+      const paraId = siblings[pi]
+      if (!paraId) continue
+      const path = [...sel.anchor.paragraphPath.slice(0, -1), paraId]
+      if (pi === lo && pi === hi) {
+        const start = Math.min(loOff, hiOff)
+        const end = Math.max(loOff, hiOff)
+        if (end > start) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, start, end))
+      } else if (pi === hi) {
+        if (hiOff > 0) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, hiOff))
+      } else if (pi === lo) {
+        const para = ed.getPool().nodes.get(paraId) as { children?: string[] } | undefined
+        let totalLen = 0
+        if (para?.children) {
+          for (const cid of para.children) {
+            const n = ed.getPool().nodes.get(cid) as { type?: string; text?: string } | undefined
+            totalLen += n?.type === 'text' ? (n.text || '').length : 1
+          }
+        }
+        if (loOff < totalLen) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, loOff, totalLen))
+      }
     }
   }
 
