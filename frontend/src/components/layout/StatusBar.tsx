@@ -2,7 +2,7 @@
 // 状态栏
 // ============================================================
 
-import { FileText, Type, Wifi, WifiOff } from 'lucide-react'
+import { FileText, Type, Wifi, WifiOff, Minus, Plus } from 'lucide-react'
 import { useEditorStore } from '@/store'
 import { formatWordCount } from '@/lib/utils'
 
@@ -11,6 +11,10 @@ interface StatusBarProps {
   pageCount?: number
   wordCount?: number
   onlineCount?: number
+  /** 缩放比例 (0.25-4.0) */
+  scale?: number
+  /** 缩放变更回调 */
+  onScaleChange?: (scale: number) => void
 }
 
 export function StatusBar({
@@ -18,6 +22,8 @@ export function StatusBar({
   pageCount = 1,
   wordCount = 0,
   onlineCount = 0,
+  scale = 1,
+  onScaleChange,
 }: StatusBarProps) {
   const saveStatus = useEditorStore((s) => s.saveStatus)
 
@@ -36,7 +42,43 @@ export function StatusBar({
         </div>
       </div>
 
-      {/* 右侧：状态指示器 */}
+      {/* 中间: 缩放控制 */}
+      <div className="flex items-center gap-1">
+        <button
+          className="p-0.5 text-gray-400 hover:text-gray-600 rounded transition-colors disabled:opacity-30"
+          disabled={scale <= 0.25}
+          onClick={() => onScaleChange?.(Math.max(0.25, scale - 0.1))}
+          title="缩小"
+        >
+          <Minus size={12} />
+        </button>
+
+        <input
+          type="range"
+          className="w-20 h-1 accent-primary-500 cursor-pointer"
+          min={25} max={400} step={5}
+          value={Math.round(scale * 100)}
+          onChange={(e) => onScaleChange?.(Number(e.target.value) / 100)}
+          title={`缩放: ${Math.round(scale * 100)}%`}
+        />
+
+        <button
+          className="p-0.5 text-gray-400 hover:text-gray-600 rounded transition-colors disabled:opacity-30"
+          disabled={scale >= 4}
+          onClick={() => onScaleChange?.(Math.min(4, scale + 0.1))}
+          title="放大"
+        >
+          <Plus size={12} />
+        </button>
+
+        <span
+          className="text-xs text-gray-500 w-10 text-center tabular-nums cursor-pointer hover:text-primary-600"
+          onClick={() => onScaleChange?.(1)}
+          title="重置缩放"
+        >
+          {Math.round(scale * 100)}%
+        </span>
+      </div>
       <div className="flex items-center gap-4">
         {/* 保存状态 */}
         <SaveStatusIcon status={saveStatus} />

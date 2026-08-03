@@ -7,10 +7,14 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { EditorLayout } from '@/components/layout/EditorLayout'
 import { EditorProvider, useEditorRef } from '@/components/editor/EditorProvider'
 import { ExportDialog } from '@/components/dialogs/ExportDialog'
+import { FindReplaceDialog } from '@/components/dialogs/FindReplaceDialog'
+import { PrintDialog } from '@/components/dialogs/PrintDialog'
+import { PageSetupDialog } from '@/components/dialogs/PageSetupDialog'
 import { useEditorStore } from '@/store'
 import { documentApi, templateApi } from '@/services/api'
 import { generateCommandId } from '@/engine/command/ICommand'
 import { InsertTextCommand } from '@/engine/command/commands/InsertTextCommand'
+import { TOCGenerator } from '@/engine/render/TOCGenerator'
 
 const PLACEHOLDER_MAP: Record<string, string> = {
   'control-input': '[文本输入]',
@@ -75,12 +79,35 @@ function EditorPageInner({
   const editorRef = useEditorRef()
   const navigate = useNavigate()
   const [exportOpen, setExportOpen] = useState(false)
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false)
+  const [printOpen, setPrintOpen] = useState(false)
+  const [pageSetupOpen, setPageSetupOpen] = useState(false)
   const [wordCount, setWordCount] = useState(0)
   const [pageCount, setPageCount] = useState(1)
   const [templates, setTemplates] = useState<{ name: string; items: { id: string; name: string; description?: string }[] }[]>([])
   const setDirty = useEditorStore((s) => s.setDirty)
   const setSaveStatus = useEditorStore((s) => s.setSaveStatus)
   const setParaStyle = useEditorStore((s) => s.setParagraphStyle)
+  const setHfEdit = useEditorStore((s) => s.setHeaderFooterEdit)
+
+  // 页眉页脚事件桥接: EventBus → Zustand store
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    const bus = editor.getEventBus()
+    const handleDblClick = (section: 'header' | 'footer') => {
+      setHfEdit(true, section)
+    }
+    const handleBodyClick = () => {
+      setHfEdit(false)
+    }
+    bus.on('headerFooter:dblclick', handleDblClick)
+    bus.on('body:click', handleBodyClick)
+    return () => {
+      bus.off('headerFooter:dblclick', handleDblClick)
+      bus.off('body:click', handleBodyClick)
+    }
+  }, [editorRef, setHfEdit])
 
   // 字数统计 + 段落样式 — 订阅 contentChange 事件
   useEffect(() => {
@@ -133,6 +160,8 @@ function EditorPageInner({
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSave() }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); setFindReplaceOpen(true) }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'h') { e.preventDefault(); setFindReplaceOpen(true) }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -176,7 +205,11 @@ function EditorPageInner({
     const ed = editorRef.current
     if (!ed) return
     if (format === 'json') {
-      const json = JSON.stringify(ed.getDocument(), null, 2)
+      const doc = ed.getDocument()
+      const pool = ed.getPool()
+      const tocGen = new TOCGenerator()
+      const toc = tocGen.extractEntries(doc, pool)
+      const json = JSON.stringify({ ...doc, _toc: toc }, null, 2)
       const blob = new Blob([json], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = window.document.createElement('a')
@@ -243,7 +276,7 @@ function EditorPageInner({
         ed.execCommand(new InsertTextCommand(generateCommandId(), Date.now(), 'user', cursor.paragraphPath, cursor.offset, placeholder))
       }}
       onExportClick={() => setExportOpen(true)}
-      onPrint={() => window.print()}
+      onPrint={() => setPrintOpen(true)}
       wordCount={wordCount}
       pageCount={pageCount}
       onTemplateSelect={handleTemplateSelect}
@@ -251,6 +284,27 @@ function EditorPageInner({
     >
       <div ref={containerRef} className="flex-1 bg-[#E5E7EB] relative overflow-hidden" style={{ minHeight: '400px' }} />
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} onExport={handleExport} />
+      <FindReplaceDialog
+        open={findReplaceOpen}
+        onClose={() => setFindReplaceOpen(false)}
+      />
+      <PrintDialog
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        totalPages={pageCount}
+        onPrint={(settings) => {
+          console.debug('[EditorPage] print settings:', settings)
+          window.print()
+        }}
+      />
+      <PageSetupDialog
+        open={pageSetupOpen}
+        onClose={() => setPageSetupOpen(false)}
+        onApply={(values) => {
+          console.debug('[EditorPage] page setup values:', values)
+          setPageSetupOpen(false)
+        }}
+      />
     </EditorLayout>
   )
 }

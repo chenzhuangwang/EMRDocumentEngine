@@ -22,6 +22,8 @@ export interface SLIFItem {
   rows?: SLIFRow[]
   // image extension
   imageUrl?: string
+  /** 列表标记文本 (项目符号或编号), 由 Draw.ts 通过 ListParticle 独立渲染 */
+  listMarker?: string
 }
 
 export interface SLIFRow {
@@ -40,6 +42,14 @@ export interface SLIFPage {
   pageIndex: number
   width: number; height: number
   items: SLIFItem[]
+  /** 页眉渲染项 (y 坐标相对于页眉区顶部) */
+  headerItems?: SLIFItem[]
+  /** 页脚渲染项 (y 坐标相对于页脚区顶部) */
+  footerItems?: SLIFItem[]
+  /** 页眉区域高度 (px) */
+  headerHeight?: number
+  /** 页脚区域高度 (px) */
+  footerHeight?: number
 }
 
 export interface SLIF {

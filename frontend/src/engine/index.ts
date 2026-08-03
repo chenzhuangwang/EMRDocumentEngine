@@ -8,6 +8,8 @@ export { TextMeasurer, textMeasurer } from './layout/TextMeasurer'
 export { LineBreaker } from './layout/LineBreaker'
 export { PageBreaker } from './layout/PageBreaker'
 export { TextParticle } from './render/particles/TextParticle'
+export { SeparatorParticle } from './render/particles/SeparatorParticle'
+export { ListParticle } from './render/particles/ListParticle'
 export { Position } from './state/Position'
 export { CoordinateSystem } from './state/CoordinateSystem'
 export { NodePool, buildNodePool, traversePool } from './document/NodePool'
@@ -49,7 +51,20 @@ export { InsertTextCommand } from './command/commands/InsertTextCommand'
 export { DeleteRangeCommand } from './command/commands/DeleteRangeCommand'
 export { normalizeParagraph } from './command/commands/ParagraphUtils'
 export { CommandUndoRedoStack } from './command/CommandUndoRedoStack'
-export { CommandManager, DirtyTracker } from './command/CommandManager'
+export { CommandManager } from './command/CommandManager'
+export { DirtyTracker } from './layout/DirtyTracker'
+
+// FindReplace
+export { FindReplaceEngine } from './FindReplaceEngine'
+export type { FindOptions, MatchResult } from './FindReplaceEngine'
+
+// TOC
+export { TOCGenerator } from './render/TOCGenerator'
+export type { TOCEntry, TOCConfig } from './render/TOCGenerator'
+
+// Footnote
+export { FootnoteLayout } from './layout/FootnoteLayout'
+export type { FootnoteEntry, FootnoteConfig } from './layout/FootnoteLayout'
 
 // ModelD — 树形文档模型
 export {

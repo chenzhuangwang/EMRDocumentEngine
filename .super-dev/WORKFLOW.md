@@ -11,7 +11,7 @@
 
 - [x] 1. research    — 调研完成
 - [x] 2. docs        — v5.0 字体/度量补齐完成
-- [x] 3. docs_confirm — **待确认**
+- [x] 3. docs_confirm — v19.0 架构确认通过 (2026-08-03)
 - [x] 4. spec        — v5.0 任务规划完成 (66 项任务)
 - [x] 5. frontend    — Canvas 引擎 + React UI + ModelD 重构完成
 - [x] 6. backend     — SpringBoot API 脚手架

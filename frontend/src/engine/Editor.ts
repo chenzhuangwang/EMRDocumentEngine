@@ -16,6 +16,8 @@ import { ParagraphStyleCommand } from './command/commands/ParagraphStyleCommand'
 import { ClipboardManager } from './command/ClipboardManager'
 import { EditorStore } from './state/EditorStore'
 import type { EditorRuntimeState } from './state/EditorRuntimeState'
+import { FindReplaceEngine } from './FindReplaceEngine'
+import type { FindOptions, MatchResult } from './FindReplaceEngine'
 
 /** 辅助: 绕开 Readonly 直接写 store._state.runtime.cursor */
 type StoreInternal = { _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean } } } }
@@ -37,6 +39,7 @@ export class Editor {
   private keyboardHandler: KeyboardHandler
   private mouseHandler: MouseHandler
   private clipboard: ClipboardManager
+  private findReplace: FindReplaceEngine
   private listeners: EditorListener[] = []
   private _clickToFocus: (e: MouseEvent) => void
 
@@ -67,6 +70,7 @@ export class Editor {
     this.keyboardHandler = new KeyboardHandler(this, container)
     this.mouseHandler = new MouseHandler(this, container)
     this.clipboard = new ClipboardManager()
+    this.findReplace = new FindReplaceEngine()
     this.commandManager = new CommandManager(
       this.eventBus,
       () => this.doc,
@@ -607,8 +611,46 @@ export class Editor {
   setScale(scale: number): void { this.draw.setScale(scale) }
   getScale(): number { return this.draw.getScale() }
 
-  /** 聚焦编辑器 — 激活隐藏 textarea 以接收键盘/IME 事件 */
+  /** 聚焦编辑器 */
   focus(): void { this.inputComposer.focus() }
+
+  // ---- 查找替换 (委托 FindReplaceEngine) ----
+
+  findAll(query: string, options?: FindOptions): MatchResult[] {
+    return this.findReplace.findAll(query, this.doc, this.pool, options)
+  }
+
+  findNext(query: string, options?: FindOptions): MatchResult | null {
+    const cursor = this.store.state.runtime.cursor
+    return this.findReplace.findNext(query, cursor.paragraphPath, cursor.offset, this.doc, this.pool, options)
+  }
+
+  findPrevious(query: string, options?: FindOptions): MatchResult | null {
+    const cursor = this.store.state.runtime.cursor
+    return this.findReplace.findPrevious(query, cursor.paragraphPath, cursor.offset, this.doc, this.pool, options)
+  }
+
+  replace(query: string, replacement: string, result: MatchResult, options?: FindOptions): void {
+    const replaced = this.findReplace.replace(query, replacement, result, this.doc, this.pool, options)
+    if (replaced) {
+      const si = this.store as unknown as { _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean } } } }
+      si._state.runtime.cursor = { paragraphPath: replaced.paragraphPath, offset: replaced.offset, visible: true }
+      this.draw.render(this.pool, this.store.state.runtime)
+    }
+  }
+
+  replaceAll(query: string, replacement: string, options?: FindOptions): number {
+    const count = this.findReplace.replaceAll(query, replacement, this.doc, this.pool, options)
+    if (count > 0) {
+      this.draw.recomputeLayout(this.pool)
+      this.draw.render(this.pool, this.store.state.runtime)
+    }
+    return count
+  }
+
+  highlightAll(query: string, options?: FindOptions): MatchResult[] {
+    return this.findReplace.highlightAll(query, this.doc, this.pool, options)
+  }
 
   destroy(): void {
     this.listeners = []

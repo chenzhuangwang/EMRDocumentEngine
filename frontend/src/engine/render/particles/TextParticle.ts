@@ -1,10 +1,22 @@
 // ============================================================
-// TextParticle — 文本粒子渲染器
+// TextParticle — 文本粒子渲染器 (v5.0 / TASK-475)
+//
+// 新增: showInvisible 模式 — 空格→中点 / 换行→↵ / 制表符→→
 // ============================================================
 
 const REVISION_COLORS: Record<string, string> = {
   insert: '#16A34A', delete: '#DC2626', modify: '#2563EB',
 }
+
+/** 不可见字符映射 */
+const INVISIBLE_MAP: Record<string, string> = {
+  ' ':  '·',   // · (middle dot)
+  '\n': '↵',   // ↵ (carriage return arrow)
+  '\t': '→',   // → (right arrow)
+}
+
+/** 不可见字符的颜色 (淡蓝灰) */
+const INVISIBLE_COLOR = '#93C5FD'
 
 export class TextParticle {
   static render(
@@ -12,7 +24,7 @@ export class TextParticle {
     el: { id: string; type: string; value: string; font?: string; size?: number; bold?: boolean; italic?: boolean; color?: string; underline?: boolean; underlineStyle?: string; strikeout?: boolean; superscript?: boolean; subscript?: boolean; highlight?: string; revision?: { type: string } },
     x: number,
     y: number,
-    options: { defaultColor?: string; defaultFont?: string; defaultSize?: number } = {},
+    options: { defaultColor?: string; defaultFont?: string; defaultSize?: number; showInvisible?: boolean } = {},
   ): void {
     const fontSize = el.size || options.defaultSize || 16
     const fontFamily = el.font || options.defaultFont || 'SimSun'
@@ -49,7 +61,19 @@ export class TextParticle {
 
     // ---- 5. 文字绘制 ----
     if (el.value && el.value !== '​' && el.value !== '\n') {
-      ctx.fillText(el.value, x, textY)
+      // 不可见字符模式: 空格/制表符绘制为特殊符号
+      if (options.showInvisible) {
+        this.renderInvisible(ctx, el.value, x, textY, baseColor, fontSize)
+      } else {
+        ctx.fillText(el.value, x, textY)
+      }
+    } else if (el.value === '\n' && options.showInvisible) {
+      // 换行符可视化
+      ctx.save()
+      ctx.fillStyle = INVISIBLE_COLOR
+      ctx.font = `${fontSize * 0.7}px "${fontFamily}"`
+      ctx.fillText(INVISIBLE_MAP['\n'], x, textY)
+      ctx.restore()
     }
 
     // ---- 6. 下划线 ----
@@ -76,6 +100,34 @@ export class TextParticle {
       ctx.moveTo(x, sy)
       ctx.lineTo(x + tw, sy)
       ctx.stroke()
+    }
+  }
+
+  /** 不可见字符模式: 逐字符绘制, 空格/制表符用特殊符号代替 */
+  private static renderInvisible(
+    ctx: CanvasRenderingContext2D,
+    value: string,
+    x: number,
+    y: number,
+    normalColor: string,
+    _fontSize: number,
+  ): void {
+    const spaceWidth = ctx.measureText(' ').width
+
+    let cx = x
+    for (const ch of [...value]) {
+      const invisible = INVISIBLE_MAP[ch]
+      if (invisible) {
+        ctx.save()
+        ctx.fillStyle = INVISIBLE_COLOR
+        ctx.fillText(invisible, cx, y)
+        ctx.restore()
+        cx += ch === ' ' ? spaceWidth : ch === '\t' ? spaceWidth * 4 : ctx.measureText(invisible).width
+      } else {
+        ctx.fillStyle = normalColor
+        ctx.fillText(ch, cx, y)
+        cx += ctx.measureText(ch).width
+      }
     }
   }
 }

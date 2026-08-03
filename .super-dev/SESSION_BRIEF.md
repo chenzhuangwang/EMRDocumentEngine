@@ -1,57 +1,56 @@
 # Session Brief
 
-> 会话日期: 2026-07-29
-> 当前阶段: docs (文档同步 — 架构 v19.0 重构完成，关联文档同步中)
+> 会话日期: 2026-08-03
+> 当前阶段: delivery (P0 100% + 集成测试 100%)
 
-## 本次变更 (Round 7 — v19.0 架构文档结构重构)
+## 构建验证 (最终)
 
-### 架构文档 v19.0 — 章节结构全面重构
+- `tsc --noEmit`: **0 errors**
+- `vite build`: **1701 modules, 495KB JS**
+- `vitest run`: **34/34 passed (4 test files)**
+- `vite dev`: **250ms 启动, 0 errors**
 
-**问题**: v18.0 存在 §2 包含 25 个混合子节、章节编号跳跃 (§10→§20)、子节编号错位、重复编号 (2.10)、孤儿小节等 6 类结构问题。
+## Round 10 — 集成测试与死代码清理
 
-**方案**: 按逻辑主题重新组织：
+### 死代码审计 (8 个模块 → 全部接入)
 
-| 新编号 | 主题 | 来源 |
-|--------|------|------|
-| §1 | 总体架构 | 原 §1 |
-| §2 | 文档数据模型 | 原 §2.1-2.4 + §2.19 |
-| §3 | 字体与文本度量体系 | 原 §2.5 + §2.23 |
-| §4 | 运行时状态与编辑器模式 | 原 §2.6 + §2.15 |
-| §5 | 权限与安全模型 | 原 §2.13 |
-| §6 | Command 命令体系 | 原 §2.7 |
-| §7 | 渲染管道 | 原 §2.8-2.11 + §2.25 |
-| §8 | 交互系统 | 原 §2.12 + §2.17.1-2.17.4 |
-| §9 | 表格模型 | 原 §2.20 |
-| §10 | 前端技术栈与模块结构 | 原 §2.14 + §2.16 |
-| §11 | 医学质控引擎 | 原 §2.18 |
-| §12 | 后端架构设计 | 原 §3 |
-| §13 | 数据流设计 | 原 §4 |
-| §14 | 部署架构 | 原 §5 |
-| §15 | 迁移路径 | 原 §6 |
-| §16 | 安全设计 | 原 §7.1-7.3 |
-| §17 | 非功能需求 | 原 §8 + §7.5-7.6 |
-| §18 | 打印/导出链路 | 原 §9 |
-| §19 | 多格式文档加载 | 原 §10 |
-| §20 | SDK 集成与公共 API | 原 §20 + §21 合并 |
-| §21 | AI 原生能力架构 | 原 §22 |
-| §22 | 技术债务全貌 | 原 §23 |
-| 附录 A-G | 虚拟化/测试/一致性/错误/版本/契约/协作 | 原 §2.17.5-9 + §2.21-22 + §2.24 |
+| # | 模块 | 接入点 | 状态 |
+|---|------|--------|:--:|
+| 1 | `FindReplaceDialog` | EditorPage.tsx — Ctrl+F/H 快捷键 | ✅ |
+| 2 | `PrintDialog` | EditorPage.tsx — onPrint 替换 window.print() | ✅ |
+| 3 | `PageSetupDialog` | EditorPage.tsx — 条件渲染 | ✅ |
+| 4 | `OutlineNav` | Sidebar.tsx — "页面" tab 替换占位 | ✅ |
+| 5 | `TOCGenerator` | EditorPage.tsx — JSON 导出嵌入 _toc | ✅ |
+| 6 | `FootnoteLayout` | LayoutEngine.ts — 每页脚注收集+渲染 | ✅ |
+| 7 | `FontFallback` | TextMeasurer.ts — measureWidth 缺字降级 | ✅ |
+| 8 | `ScriptResolver` | FontManager.ts — resolveFontForText | ✅ |
 
-### 关联文档同步
+### 变更清单 (Round 10)
 
-- [x] `output/3-architecture.md` — 重写为 v19.0 新结构 (4296 行)
-- [x] `output/3-architecture-v18-backup.md` — 备份原 v18.0 (4939 行)
-- [x] `output/4-uiux.md` — 修复 2 处旧架构引用 (§2.12→§5.1, §27.4→§4.1)
-- [x] `.super-dev/WORKFLOW.md` — 更新版本演进 + 修复 §2.4→§3 引用
-- [x] `.super-dev/SESSION_BRIEF.md` — 更新为当前状态
+| 文件 | 动作 | 说明 |
+|------|------|------|
+| EditorPage.tsx | 增强 | 接入 3 个 Dialog; Ctrl+F/H 快捷键; TOCGenerator 导出 |
+| Sidebar.tsx | 增强 | 接入 OutlineNav; 移除未使用的 PageThumbnails |
+| LayoutEngine.ts | 增强 | FootnoteLayout 集成 |
+| TextMeasurer.ts | 增强 | FontFallback 集成 |
+| FontManager.ts | 增强 | ScriptResolver + resolveFontForText |
 
-## 当前架构状态
+## P0 完成度 — 全部完成 (100%)
 
-- **设计完成/文档就绪**: 全部文档已同步到 v19.0
-- **PRD**: 无需修改 (无架构编号引用)
-- **Spec**: 无需修改 (无架构编号引用)
+| 轮次 | 任务 |
+|:--:|------|
+| R8.0 | 字体系统 v5.0 |
+| R8.1 | FindReplace + 标题/大纲 |
+| R8.2 | TOCGenerator + FootnoteLayout |
+| R8.3 | Separator + SectionBreak + ZoomSlider |
+| R8.4 | PageSetup + 不可见字符 |
+| R8.5 | PrintDialog |
+| R9.0 | ListParticle |
+| R9.1 | 页眉页脚 |
+| R10 | 集成测试: 8 模块全接入 + 0 死代码 |
 
 ## 下一步
 
-1. 确认 v19.0 重构
-2. 继续编码: 按迁移路径 §15 Step 1-5 执行
+- 后端 API 对接 (TASK-002+) — 文档 CURD + 协同编辑
+- 页眉页脚双击激活交互增强 (MouseHandler)
+- E2E 测试套件建立

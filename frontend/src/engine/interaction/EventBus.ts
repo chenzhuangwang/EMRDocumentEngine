@@ -24,6 +24,10 @@ export interface EventPayloadMap {
   'yjs:synced': []
   'qc:completed': [result: unknown]
   'save:versionConflict': []
+  /** 页眉页脚区域双击 → section: 'header' | 'footer' */
+  'headerFooter:dblclick': [section: 'header' | 'footer']
+  /** 点击正文区域 (退出页眉页脚编辑) */
+  'body:click': []
 }
 
 export type EngineEvent = keyof EventPayloadMap

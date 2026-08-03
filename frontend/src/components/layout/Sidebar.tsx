@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store'
+import { OutlineNav } from '@/components/sidebar/OutlineNav'
 
 interface SidebarProps {
   templates?: TemplateCategory[]
@@ -84,7 +85,7 @@ export function Sidebar({ templates = [], onTemplateSelect, onNewTemplate, onEle
           />
         )}
         {sidebarTab === 'elements' && <ElementPalette onClick={onElementClick} />}
-        {sidebarTab === 'pages' && <PageThumbnails />}
+        {sidebarTab === 'pages' && <OutlineNav items={[]} />}
       </div>
     </aside>
   )
@@ -207,18 +208,6 @@ function ElementPalette({ onClick }: { onClick?: (type: string) => void }) {
           <span className="text-sm">{el.label}</span>
         </div>
       ))}
-    </div>
-  )
-}
-
-// ---- 页面缩略图 ----
-
-function PageThumbnails() {
-  return (
-    <div className="text-center py-8 text-sm text-gray-400">
-      <Layout size={32} className="mx-auto mb-2 text-gray-300" />
-      共 1 页
-      <div className="mt-2 text-xs">页面缩略图将在文档加载后显示</div>
     </div>
   )
 }

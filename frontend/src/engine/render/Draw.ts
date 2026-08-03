@@ -8,7 +8,7 @@
 
 import type { DocumentTree } from '../document/DocumentModel'
 import type { NodePool } from '../document/NodePool'
-import type { SLIFPage } from '../layout/SLIF'
+import type { SLIFPage, SLIFItem } from '../layout/SLIF'
 import type { EventBus } from '../interaction/EventBus'
 import type { EditorRuntimeState } from '../state/EditorRuntimeState'
 import { CoordinateSystem } from '../state/CoordinateSystem'
@@ -16,6 +16,8 @@ import { LayoutEngine } from '../layout/LayoutEngine'
 import { LayeredRenderer, type WatermarkConfig } from './LayeredRenderer'
 import { HitTestIndex } from './HitTestIndex'
 import { TextParticle } from './particles/TextParticle'
+import { SeparatorParticle } from './particles/SeparatorParticle'
+import { ListParticle } from './particles/ListParticle'
 
 interface CaretPos { x: number; y: number; h: number }
 
@@ -30,6 +32,10 @@ export class Draw {
   private pool: NodePool | null = null
   private _state: EditorRuntimeState | null = null
   private pages: SLIFPage[] = []
+
+  // 页眉页脚编辑模式 (TASK-470/471 双击激活)
+  private hfEditActive = false
+  private hfEditSection: 'header' | 'footer' = 'header'
 
   constructor(
     container: HTMLElement,
@@ -102,13 +108,11 @@ export class Draw {
 
     if (para) {
       // 列表标记偏移: 标记已拼入首节点, 光标需要跳过标记
-      const paraNode = pool.nodes.get(paraId) as unknown as { list?: { type: string; level?: number } } | undefined
+      const paraNode = pool.nodes.get(paraId) as unknown as { list?: { type: 'bullet' | 'ordered'; level?: number } } | undefined
       let listMarkerLen = 0
       if (paraNode?.list) {
         const lvl = paraNode.list.level || 1
-        const indent = '  '.repeat(lvl - 1)
-        if (paraNode.list.type === 'bullet') listMarkerLen = (indent + '• ').length
-        else if (paraNode.list.type === 'ordered') listMarkerLen = (indent + '99. ').length // 保守估计最大宽度
+        listMarkerLen = ListParticle.estimateMarkerWidth(lvl, paraNode.list.type).length
       }
 
       for (let i = visible.start; i <= visible.end; i++) {
@@ -178,23 +182,60 @@ export class Draw {
     }
     this.renderer.renderStatic(this.pages, visible)
 
-    // --- 内容层: 文本粒子 ---
+    // --- 内容层: 文本粒子 + 分隔线 + 页眉页脚 ---
     const ctx = this.renderer.getContentCtx()
     if (ctx) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, viewportW, viewportH)
       ctx.translate(offsetX, 0)
+      const contentWidth = pageWidth - 180 // marginLeft(90) + marginRight(90)
       for (let i = visible.start; i <= visible.end; i++) {
         const page = this.pages[i]
         if (!page) continue
         const pageY = (i - visible.start) * pageHeight
+
+        // --- 页眉区域 ---
+        if (page.headerItems && page.headerItems.length > 0) {
+          this.renderParticleItems(ctx, page.headerItems, pageY)
+        }
+
+        // --- 正文 ---
         for (const item of page.items) {
-          TextParticle.render(ctx, {
-            id: item.nodeId, type: item.type, value: item.text || '',
-            font: item.font, size: item.size, bold: item.bold, italic: item.italic,
-            color: item.color, underline: item.underline,
-            strikeout: item.strikeout, superscript: item.superscript, subscript: item.subscript,
-          }, item.x, pageY + item.y, {})
+          if (item.type === 'separator') {
+            SeparatorParticle.render(ctx, {
+              id: item.nodeId, type: item.type,
+            }, item.x, pageY + item.y, contentWidth)
+          } else {
+            // 列表标记独立渲染 (TASK-454)
+            if (item.listMarker) {
+              ListParticle.render(ctx, item.listMarker, item.x, pageY + item.y, item.ascent, {
+                font: item.font, size: item.size, bold: item.bold, color: item.color,
+              })
+            }
+            TextParticle.render(ctx, {
+              id: item.nodeId, type: item.type, value: item.text || '',
+              font: item.font, size: item.size, bold: item.bold, italic: item.italic,
+              color: item.color, underline: item.underline,
+              strikeout: item.strikeout, superscript: item.superscript, subscript: item.subscript,
+            }, item.x, pageY + item.y, {})
+          }
+        }
+
+        // 页眉页脚编辑模式: 正文半透明遮罩
+        if (this.hfEditActive) {
+          const headerH = page.headerHeight ?? 42
+          const footerH = page.footerHeight ?? 42
+          ctx.save()
+          ctx.globalAlpha = 0.35
+          ctx.fillStyle = '#FFFFFF'
+          ctx.fillRect(0, pageY + headerH, pageWidth, pageHeight - headerH - footerH)
+          ctx.restore()
+        }
+
+        // --- 页脚区域 ---
+        if (page.footerItems && page.footerItems.length > 0) {
+          const footerY = pageHeight - (page.footerHeight || 42)
+          this.renderParticleItems(ctx, page.footerItems, pageY + footerY)
         }
       }
     }
@@ -329,6 +370,27 @@ export class Draw {
     return null
   }
 
+  /** 渲染 SLIFItem[] — 页眉/页脚/正文共用 (TASK-470) */
+  private renderParticleItems(
+    ctx: CanvasRenderingContext2D,
+    items: SLIFItem[],
+    pageY: number,
+  ): void {
+    for (const item of items) {
+      if (item.listMarker) {
+        ListParticle.render(ctx, item.listMarker, item.x, pageY + item.y, item.ascent, {
+          font: item.font, size: item.size, bold: item.bold, color: item.color,
+        })
+      }
+      TextParticle.render(ctx, {
+        id: item.nodeId, type: item.type, value: item.text || '',
+        font: item.font, size: item.size, bold: item.bold, italic: item.italic,
+        color: item.color, underline: item.underline,
+        strikeout: item.strikeout, superscript: item.superscript, subscript: item.subscript,
+      }, item.x, pageY + item.y, {})
+    }
+  }
+
   // ================================================================
   // 公开 API
   // ================================================================
@@ -383,6 +445,19 @@ export class Draw {
   }
 
   getScale(): number { return this.coordSystem.transform.scale }
+
+  /** 页眉页脚编辑模式状态 */
+  isHeaderFooterEditActive(): boolean { return this.hfEditActive }
+  /** 当前编辑的页眉/页脚区域 */
+  getHeaderFooterEditSection(): 'header' | 'footer' { return this.hfEditSection }
+
+  /** 激活/关闭页眉页脚编辑模式 */
+  setHeaderFooterEditActive(active: boolean, section?: 'header' | 'footer'): void {
+    this.hfEditActive = active
+    if (section) this.hfEditSection = section
+  }
+
+  getEventBus(): EventBus { return this.eventBus }
 
   destroy(): void {
     this.renderer.destroy()

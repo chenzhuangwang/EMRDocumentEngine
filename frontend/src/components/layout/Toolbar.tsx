@@ -8,12 +8,13 @@ import {
   Printer, ChevronDown, AlignLeft, AlignCenter, AlignRight,
   AlignJustify, List, ListOrdered, Indent, Outdent,
   ChevronsUpDown, Type, ListFilter, Calendar, CheckSquare,
-  Circle, Hash, RectangleEllipsis, FileText,
+  Circle, Hash, RectangleEllipsis, FileText, Heading,
 } from 'lucide-react'
 import { useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { cn } from '@/lib/utils'
 import { useEditorStore } from '@/store'
+import { HeaderFooterToolbar } from '@/components/toolbar/HeaderFooterToolbar'
 
 interface ToolbarProps {
   onFormat?: (action: string, value?: unknown) => void
@@ -60,6 +61,25 @@ interface ControlItem {
 // ================================================================
 export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarProps) {
   const paraStyle = useEditorStore((s) => s.paragraphStyle)
+  const hfEdit = useEditorStore((s) => s.headerFooterEdit)
+  const hfConfig = useEditorStore((s) => s.headerFooterConfig)
+  const setHfEdit = useEditorStore((s) => s.setHeaderFooterEdit)
+  const setHfConfig = useEditorStore((s) => s.setHeaderFooterConfig)
+
+  // 页眉页脚编辑模式 → 上下文工具栏
+  if (hfEdit.active) {
+    return (
+      <HeaderFooterToolbar
+        section={hfEdit.section}
+        config={hfConfig}
+        onConfigChange={setHfConfig}
+        onInsertPageNumber={() => onInsert?.('pageNumber')}
+        onInsertDate={() => onInsert?.('currentDate')}
+        onClose={() => setHfEdit(false)}
+      />
+    )
+  }
+
   return (
     <div className="h-toolbar bg-white border-b border-gray-100 flex items-center px-3 gap-0.5 flex-shrink-0 overflow-x-auto select-none">
       {/* 组1：历史操作 */}
@@ -82,7 +102,14 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarP
 
       <ToolbarDivider />
 
-      {/* 组3：文本样式 */}
+      {/* 组3：标题样式 */}
+      <ToolbarGroup>
+        <HeadingDropdown onSelect={(level) => onFormat?.('heading', level)} />
+      </ToolbarGroup>
+
+      <ToolbarDivider />
+
+      {/* 组4：文本样式 */}
       <ToolbarGroup>
         <ToolbarButton title="加粗 (Ctrl+B)" onClick={() => onFormat?.('bold')}>
           <Bold size={16} />
@@ -106,14 +133,14 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarP
 
       <ToolbarDivider />
 
-      {/* 组4：文字颜色 */}
+      {/* 组5：文字颜色 */}
       <ToolbarGroup>
         <ColorPicker onSelect={(color) => onFormat?.('color', color)} />
       </ToolbarGroup>
 
       <ToolbarDivider />
 
-      {/* 组5：元素插入 */}
+      {/* 组6：元素插入 */}
       <ToolbarGroup>
         <ToolbarButton title="插入表格" onClick={() => onInsert?.('table')}>
           <Table size={16} />
@@ -126,7 +153,7 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarP
 
       <ToolbarDivider />
 
-      {/* 组6：段落格式 */}
+      {/* 组7：段落格式 */}
       <ToolbarGroup>
         <ToolbarButton title="左对齐" active={paraStyle?.alignment === 'left' || !paraStyle?.alignment} onClick={() => onFormat?.('alignLeft')}>
           <AlignLeft size={16} />
@@ -144,7 +171,7 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarP
 
       <ToolbarDivider />
 
-      {/* 组7：列表 + 缩进 */}
+      {/* 组8：列表 + 缩进 */}
       <ToolbarGroup>
         <ToolbarButton title="无序列表" onClick={() => onFormat?.('unorderedList')}>
           <List size={16} />
@@ -163,7 +190,7 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarP
       {/* 弹性空间 */}
       <div className="flex-1" />
 
-      {/* 组8：文件操作 */}
+      {/* 组9：文件操作 */}
       <ToolbarGroup>
         <ToolbarButton title="打印" onClick={onPrint}>
           <Printer size={16} />
@@ -341,6 +368,61 @@ function InsertControlDropdown({ onInsert }: { onInsert?: (type: string) => void
                 <span className="font-medium">{label}</span>
                 <span className="text-xs text-gray-400">{description}</span>
               </div>
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  )
+}
+
+// ---- 标题样式下拉 (TASK-457) ----
+
+const HEADING_STYLES = [
+  { label: '正文', value: 0 },
+  { label: '标题 1', value: 1 },
+  { label: '标题 2', value: 2 },
+  { label: '标题 3', value: 3 },
+  { label: '标题 4', value: 4 },
+  { label: '标题 5', value: 5 },
+  { label: '标题 6', value: 6 },
+]
+
+function HeadingDropdown({ onSelect }: { onSelect: (level: number) => void }) {
+  const [selected, setSelected] = useState(0)
+  const label = HEADING_STYLES.find(h => h.value === selected)?.label || '正文'
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          className="flex items-center gap-1 px-2 py-1 text-sm text-gray-700
+                     hover:bg-gray-100 rounded-md min-w-[70px] h-8
+                     data-[state=open]:bg-gray-100"
+          title="标题样式"
+        >
+          <Heading size={14} />
+          <span className="truncate">{label}</span>
+          <ChevronDown size={12} />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className="min-w-[120px] bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
+          sideOffset={4} align="start"
+        >
+          {HEADING_STYLES.map(h => (
+            <DropdownMenu.Item
+              key={h.value}
+              className="px-3 py-1.5 text-sm text-gray-700 outline-none cursor-default
+                         data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700"
+              style={h.value >= 1 ? {
+                fontSize: [0, 28, 24, 20, 18, 16, 14][h.value],
+                fontWeight: h.value >= 1 ? 'bold' : 'normal',
+              } : undefined}
+              onClick={() => { setSelected(h.value); onSelect(h.value) }}
+            >
+              {h.label}
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>

@@ -22,7 +22,7 @@ import {
   ICommand, CommandContext, StatePatch,
   SerializedCommand, PositionalCommand, generateCommandId,
 } from '../ICommand'
-import type { SerializedPara, SerializedChild } from './ClipboardManager'
+import type { SerializedPara } from '../ClipboardManager'
 
 /** 文本样式字段 (过滤掉 id/type/children) */
 const TEXT_STYLE_KEYS = [
@@ -193,7 +193,7 @@ export class InsertNodesCommand extends PositionalCommand {
         const style: Record<string, unknown> = {}
         for (const k of TEXT_STYLE_KEYS) { if (k in childSn) style[k] = childSn[k] }
         const tn = createTextNode((childSn.text as string) || '', style as unknown as TextStyle)
-        if (childSn.element) (tn as Record<string, unknown>).element = childSn.element
+        if (childSn.element) (tn as unknown as Record<string, unknown>).element = childSn.element
         pool.nodes.set(tn.id, tn)
         para.children.push(tn.id)
       } else {
@@ -210,7 +210,7 @@ export class InsertNodesCommand extends PositionalCommand {
     return para
   }
 
-  invert(ctx: CommandContext): ICommand | null {
+  invert(_ctx: CommandContext): ICommand | null {
     if (this.insertedParaIds.length === 0 || !this._snapshot) return null
     // 返回一个执行反向操作的命令: 删除插入的段落 + 恢复原状
     return new UndoPasteCommand(

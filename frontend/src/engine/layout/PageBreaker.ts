@@ -7,11 +7,15 @@ import { DEFAULT_PAGE_SETUP } from '../document/DocumentModel'
 
 /** 布局内部类型 — 换行后的单行 */
 export interface ILine {
-  elements: { id: string; type: string; value?: string; size?: number; font?: string }[]
+  elements: { id: string; type: string; value?: string; size?: number; font?: string; bold?: boolean; italic?: boolean; color?: string; underline?: boolean; strikeout?: boolean; superscript?: boolean; subscript?: boolean }[]
   width: number
   height: number
   maxAscent: number
   maxDescent: number
+  alignment?: string
+  indent?: number
+  /** 列表标记文本 (首行), 由 Draw.ts 通过 ListParticle 渲染 */
+  listMarker?: string
 }
 
 /** 布局内部类型 — 分页后的页面 */
@@ -69,8 +73,9 @@ export class PageBreaker {
       const line = lines[i]
       const lineHeight = line.height
 
-      // 检查当前行是否包含分页符
-      if (line.elements.length === 1 && line.elements[0]?.type === 'page_break') {
+      // 检查当前行是否包含分页符或分节符
+      const firstEl = line.elements[0]
+      if (firstEl?.type === 'page_break' || firstEl?.type === 'section_break') {
         // 保存当前页
         pages.push({
           pageIndex,

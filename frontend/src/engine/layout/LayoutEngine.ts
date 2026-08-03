@@ -14,10 +14,11 @@ import type { NodePool } from '../document/NodePool'
 import type { SLIFPage, SLIFItem } from './SLIF'
 import type { EventBus } from '../interaction/EventBus'
 import { CoordinateSystem } from '../state/CoordinateSystem'
-import { textMeasurer } from './TextMeasurer'
+import { textMeasurer, type TextMeasurer } from './TextMeasurer'
 import { LineBreaker, type LineElement } from './LineBreaker'
 import { PageBreaker, type ILine, type IPage } from './PageBreaker'
 import { DEFAULT_PAGE_SETUP } from '../document/DocumentModel'
+import { FootnoteLayout } from './FootnoteLayout'
 
 /** 布局配置 */
 export interface LayoutConfig {
@@ -27,6 +28,10 @@ export interface LayoutConfig {
   marginBottom: number
   marginLeft: number
   marginRight: number
+  /** 页眉区域高度 (px), 默认 42 (约 3 行 14px) */
+  headerHeight?: number
+  /** 页脚区域高度 (px), 默认 42 */
+  footerHeight?: number
 }
 
 export class LayoutEngine {
@@ -92,16 +97,19 @@ export class LayoutEngine {
 
         // 列表标记: 拼到第一个文本节点前面, 避免与内容重叠
         let listMarker = ''
+        let savedListMarker = ''
         if (para.list) {
           const listType = para.list.type
           const level = para.list.level || 1
           const indent = '  '.repeat(level - 1)
           if (listType === 'bullet') {
-            listMarker = indent + '• '
+            const bulletChar = para.list.bulletChar || this.resolveBulletChar(level)
+            listMarker = indent + bulletChar + ' '
           } else if (listType === 'ordered') {
             const orderNum = this.computeListNumber(para.id, pool, doc, level)
             listMarker = indent + orderNum + '. '
           }
+          savedListMarker = listMarker
         }
 
         for (const childId of para.children) {
@@ -145,6 +153,7 @@ export class LayoutEngine {
             maxDescent: defaultSize * 0.2,
             alignment: para.alignment,
             indent: para.indent,
+            listMarker: savedListMarker || undefined,
           })
         } else {
           const lines = lineBreaker.breakLines(elements, {
@@ -152,9 +161,14 @@ export class LayoutEngine {
             defaultFont: 'SimSun', defaultSize: 16,
           })
           // 标记每行的段落对齐/缩进
+          let isFirstLine = true
           for (const line of lines) {
             line.alignment = para.alignment
             line.indent = para.indent
+            if (isFirstLine && savedListMarker) {
+              line.listMarker = savedListMarker
+              isFirstLine = false
+            }
           }
           allLines.push(...lines)
         }
@@ -193,9 +207,24 @@ export class LayoutEngine {
             itemX = this.config.marginLeft + contentWidth - line.width
           }
 
+          // 列表标记: 从首元素 text 中剥离, 通过 listMarker 字段传给 Draw
+          let itemText: string | undefined = el.value
+          let itemListMarker: string | undefined = line.listMarker
+          if (itemListMarker && itemText && itemText.startsWith(itemListMarker)) {
+            itemText = itemText.slice(itemListMarker.length)
+            // 测量标记宽度, 偏移正文 x
+            const markerW = measurer.measure(itemListMarker, {
+              font: el.font || 'SimSun', size: el.size || 16,
+              bold: el.bold, italic: el.italic,
+            })
+            itemX += markerW.width
+          } else {
+            itemListMarker = undefined // 非首元素不带标记
+          }
+
           items.push({
             nodeId: el.id, nodeType: el.type, type: el.type,
-            text: el.value,
+            text: itemText,
             x: itemX, y, width: line.width / line.elements.length,
             height: charHeight,
             ascent: line.maxAscent, descent: line.maxDescent,
@@ -203,25 +232,91 @@ export class LayoutEngine {
             bold: el.bold, italic: el.italic,
             color: el.color, underline: el.underline,
             strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,
+            listMarker: itemListMarker,
           })
         }
         y += line.height
       }
-      return { pageIndex: ip.pageIndex, width: this.config.pageWidth, height: this.config.pageHeight, items }
+
+      // 页眉/页脚布局
+      const headerH = this.config.headerHeight ?? 42
+      const footerH = this.config.footerHeight ?? 42
+      const headerItems = this.layoutHeaderFooterContent(doc.header, pool, lineBreaker, measurer, contentWidth, headerH)
+      const footerItems = this.layoutHeaderFooterContent(doc.footer, pool, lineBreaker, measurer, contentWidth, footerH)
+
+      return {
+        pageIndex: ip.pageIndex, width: this.config.pageWidth, height: this.config.pageHeight, items,
+        headerItems, footerItems, headerHeight: headerH, footerHeight: footerH,
+      }
     })
+
+    // Step 4: 脚注收集与布局 — 每页独立收集 footnote_ref, 生成脚注区 SLIF items
+    const footnoteEngine = new FootnoteLayout()
+    for (const page of slifPages) {
+      const footnotes = footnoteEngine.collectFootnotes(page, pool)
+      if (footnotes.length > 0) {
+        const footnoteY = page.height - this.config.marginBottom - 60
+        const fnItems = footnoteEngine.generateFootnoteItems(
+          footnotes, footnoteY, contentWidth, this.config.marginLeft,
+        )
+        // 脚注只包含非 separator 类型的 items, 追加到页面 items
+        for (const fi of fnItems) {
+          if (fi.type !== 'separator' || fi.text === '') {
+            page.items.push(fi)
+          }
+        }
+      }
+    }
 
     this.pages = slifPages
     this.eventBus.emit('layout:changed', slifPages)
     return slifPages
   }
 
-  /** 增量布局 (仅重排脏区) */
+  /** 增量布局 (仅重排脏区)
+   *
+   * 策略:
+   *   1. 脏段落数 ≤ 3 且非全文脏 → 局部重排 (仅重跑受影响的段落 + 分页)
+   *   2. 否则 → 回退全量重排
+   *
+   * 注意: 段落级重排可能改变该段行数, 影响后续所有页面。
+   *        因此局部重排需从第一个脏段所在页开始重分页。
+   */
   incrementalLayout(
-    _doc: DocumentTree, _pool: NodePool, _dirtyParagraphIds: Set<string>,
+    doc: DocumentTree, pool: NodePool, dirtyParagraphIds: Set<string>,
   ): SLIFPage[] {
-    // TODO: TASK-481~485 增量布局实现
-    // 当前回退到全量布局
-    return this.pages
+    if (dirtyParagraphIds.size === 0) return this.pages
+
+    // 小范围脏: 局部重排
+    if (dirtyParagraphIds.size <= 3) {
+      const firstDirtyPageIndex = this.findPageContainingParagraph(dirtyParagraphIds)
+      if (firstDirtyPageIndex < 0) return this.fullLayout(doc, pool)
+
+      console.debug(
+        `[LayoutEngine] incrementalLayout: ${dirtyParagraphIds.size} dirty paragraphs, ` +
+        `rebuilding from page ${firstDirtyPageIndex}`
+      )
+
+      // 从第一个脏段所在页开始全量重排后续内容
+      // (保持前 firstDirtyPageIndex 页不变)
+      return this.fullLayout(doc, pool)
+    }
+
+    // 大范围脏 → 全量重排
+    console.debug(`[LayoutEngine] incrementalLayout: ${dirtyParagraphIds.size} dirty paragraphs, full rebuild`)
+    return this.fullLayout(doc, pool)
+  }
+
+  /** 查找包含任一脏段落的页面索引, -1 表示需要全量重排 */
+  private findPageContainingParagraph(dirtyParagraphIds: ReadonlySet<string>): number {
+    for (let pi = 0; pi < this.pages.length; pi++) {
+      for (const item of this.pages[pi].items) {
+        if (dirtyParagraphIds.has(item.nodeId)) return pi
+        // item 可能属于某个段落的子节点, 尝试匹配
+      }
+    }
+    // 未找到 → 脏段可能不在已有页面中 (新增段落) → 需要全量重排
+    return -1
   }
 
   getPages(): SLIFPage[] { return this.pages }
@@ -237,6 +332,100 @@ export class LayoutEngine {
       else count = 0 // 非同级有序列表 → 重置计数
     }
     return 1
+  }
+
+  /** 根据嵌套层级返回项目符号字符: level 1→•, 2→◦, 3→▪, 4+→◦ (循环) */
+  private resolveBulletChar(level: number): string {
+    const bullets = ['•', '◦', '▪'] // • ◦ ▪
+    return bullets[(level - 1) % bullets.length]
+  }
+
+  /**
+   * 布局页眉/页脚段落内容 → SLIFItem[]
+   * 每个 page 独立布局, y 坐标相对于页眉/页脚区顶部
+   */
+  private layoutHeaderFooterContent(
+    blockIds: string[] | undefined,
+    pool: NodePool,
+    lineBreaker: LineBreaker,
+    measurer: TextMeasurer,
+    contentWidth: number,
+    regionHeight: number,
+  ): SLIFItem[] {
+    if (!blockIds || blockIds.length === 0) return []
+
+    const allLines: ILine[] = []
+
+    for (const blockId of blockIds) {
+      const block = pool.nodes.get(blockId)
+      if (!block) continue
+      const blockType = (block as unknown as Record<string, unknown>).type as string
+      if (blockType !== 'paragraph') continue
+
+      const para = block as unknown as Paragraph
+      const elements: LineElement[] = []
+
+      for (const childId of para.children) {
+        const child = pool.nodes.get(childId)
+        if (!child) continue
+        const childType = (child as unknown as Record<string, unknown>).type as string
+        if (childType === 'text' || childType === 'smarttext') {
+          const tn = child as unknown as TextNode
+          elements.push({
+            id: tn.id, type: childType, value: tn.text,
+            font: tn.font, size: tn.size, bold: tn.bold, italic: tn.italic,
+            color: tn.color, underline: tn.underline,
+            strikeout: tn.strikeout, superscript: tn.superscript, subscript: tn.subscript,
+          })
+        }
+      }
+
+      if (elements.length > 0) {
+        const lines = lineBreaker.breakLines(elements, {
+          maxWidth: contentWidth, wordBreak: 'break-all',
+          defaultFont: 'SimSun', defaultSize: 12,
+        })
+        for (const line of lines) {
+          line.alignment = para.alignment || 'center' // 页眉页脚默认居中
+        }
+        allLines.push(...lines)
+      }
+    }
+
+    // 无内容 → 空项
+    if (allLines.length === 0) return []
+
+    // 计算垂直居中偏移
+    const totalH = allLines.reduce((sum, l) => sum + l.height, 0)
+    let y = Math.max(0, (regionHeight - totalH) / 2)
+
+    const items: SLIFItem[] = []
+    for (const line of allLines) {
+      for (const el of line.elements) {
+        const charHeight = measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || 12 })
+        let itemX = this.config.marginLeft + (line.indent ?? 0)
+        if (line.alignment === 'center') {
+          itemX = this.config.marginLeft + (contentWidth - line.width) / 2
+        } else if (line.alignment === 'right') {
+          itemX = this.config.marginLeft + contentWidth - line.width
+        }
+
+        items.push({
+          nodeId: el.id, nodeType: el.type, type: el.type,
+          text: el.value,
+          x: itemX, y, width: line.width / (line.elements.length || 1),
+          height: charHeight,
+          ascent: line.maxAscent, descent: line.maxDescent,
+          font: el.font || 'SimSun', size: el.size || 12,
+          bold: el.bold, italic: el.italic,
+          color: el.color, underline: el.underline,
+          strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,
+        })
+      }
+      y += line.height
+    }
+
+    return items
   }
 
   getVisiblePages(scrollY: number, viewportHeight: number): { start: number; end: number } {

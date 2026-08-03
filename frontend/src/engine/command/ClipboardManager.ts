@@ -10,7 +10,6 @@
 // 粘贴: 返回结构化节点数据 → InsertNodesCommand 消费
 // ================================================================
 
-import type { BaseNode } from '../document/DocumentModel'
 import type { DocumentTree } from '../document/DocumentModel'
 import type { NodePool } from '../document/NodePool'
 import { generateId } from '../document/DocumentModel'
@@ -53,7 +52,7 @@ export class ClipboardManager {
   copy(
     anchorPath: string[], anchorOffset: number,
     focusPath: string[], focusOffset: number,
-    doc: DocumentTree, pool: NodePool,
+    _doc: DocumentTree, pool: NodePool,
   ): void {
     if (anchorPath.length === 0 || focusPath.length === 0) return
 

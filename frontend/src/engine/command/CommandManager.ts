@@ -15,30 +15,7 @@ import { CommandUndoRedoStack } from './CommandUndoRedoStack'
 import type { EventBus } from '../interaction/EventBus'
 import type { DocumentTree } from '../document/DocumentModel'
 import type { NodePool } from '../document/NodePool'
-
-export class DirtyTracker {
-  private dirtyParagraphs = new Set<string>()
-  private _needsFullLayout = false
-  private _dirtyNodeIds = new Set<string>()
-  private _dirtySmartTextNodes = new Set<string>()
-
-  markParagraphDirty(paragraphId: string): void { this.dirtyParagraphs.add(paragraphId) }
-  markFullLayout(): void { this._needsFullLayout = true }
-  markNodeDirty(nodeId: string): void { this._dirtyNodeIds.add(nodeId) }
-  markSmartTextDirty(nodeId: string): void { this._dirtySmartTextNodes.add(nodeId) }
-
-  get needsFullLayout(): boolean { return this._needsFullLayout }
-  getDirtyParagraphs(): ReadonlySet<string> { return this.dirtyParagraphs }
-  getDirtyNodeIds(): ReadonlySet<string> { return this._dirtyNodeIds }
-  queryDirtySmartTextNodes(): Set<string> { return this._dirtySmartTextNodes }
-
-  clear(): void {
-    this.dirtyParagraphs.clear()
-    this._needsFullLayout = false
-    this._dirtyNodeIds.clear()
-    this._dirtySmartTextNodes.clear()
-  }
-}
+import { DirtyTracker } from '../layout/DirtyTracker'
 
 export class CommandManager {
   readonly undoStack: CommandUndoRedoStack

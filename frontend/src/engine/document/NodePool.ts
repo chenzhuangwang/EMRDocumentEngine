@@ -41,7 +41,7 @@ export class NodePool {
   private resolveChildren(parentId: string): string[] {
     const parent = this.nodes.get(parentId)
     if (!parent) throw new Error(`Parent ${parentId} not found`)
-    const p = parent as Record<string, unknown>
+    const p = parent as unknown as Record<string, unknown>
     // DocumentTree: children 在 body 上
     if (p.body && typeof p.body === 'object') {
       const b = p.body as Record<string, unknown>

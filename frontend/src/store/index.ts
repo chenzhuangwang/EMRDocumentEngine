@@ -17,6 +17,9 @@ interface EditorState {
   onlineUsers: number
   validationResults: ValidationResult[]
   paragraphStyle: { alignment?: string; listType?: string; indent?: number } | null
+  /** 页眉页脚编辑状态 (TASK-470) */
+  headerFooterEdit: { active: boolean; section: 'header' | 'footer' }
+  headerFooterConfig: { differentFirstPage: boolean; differentOddEven: boolean }
 
   setMode: (mode: string) => void
   setPageMode: (mode: string) => void
@@ -26,6 +29,9 @@ interface EditorState {
   setOnlineUsers: (count: number) => void
   setValidationResults: (results: ValidationResult[]) => void
   setParagraphStyle: (style: { alignment?: string; listType?: string; indent?: number } | null) => void
+  /** 激活/关闭页眉页脚编辑 */
+  setHeaderFooterEdit: (active: boolean, section?: 'header' | 'footer') => void
+  setHeaderFooterConfig: (patch: Partial<{ differentFirstPage: boolean; differentOddEven: boolean }>) => void
 }
 
 
@@ -44,6 +50,9 @@ export const useEditorStore = create<EditorState>((set) => ({
   saveStatus: 'saved',
   onlineUsers: 0,
   validationResults: [],
+  paragraphStyle: null,
+  headerFooterEdit: { active: false, section: 'header' },
+  headerFooterConfig: { differentFirstPage: false, differentOddEven: false },
 
   setMode: (mode) => set({ mode }),
   setPageMode: (pageMode) => set({ pageMode }),
@@ -53,6 +62,10 @@ export const useEditorStore = create<EditorState>((set) => ({
   setOnlineUsers: (onlineUsers) => set({ onlineUsers }),
   setValidationResults: (validationResults) => set({ validationResults }),
   setParagraphStyle: (paragraphStyle) => set({ paragraphStyle }),
+  setHeaderFooterEdit: (active, section) =>
+    set({ headerFooterEdit: { active, section: section || 'header' } }),
+  setHeaderFooterConfig: (patch) =>
+    set((s) => ({ headerFooterConfig: { ...s.headerFooterConfig, ...patch } })),
 }))
 
 // ---- 用户状态 ----

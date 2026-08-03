@@ -9,6 +9,11 @@ import type { Editor } from '../Editor'
 import type { Paragraph } from '../document/DocumentModel'
 import type { SLIFPage } from '../layout/SLIF'
 
+/** 双击时间阈值 (ms) */
+const DOUBLE_CLICK_THRESHOLD = 400
+/** 双击位置阈值 (px) — 两次点击坐标差在此范围内视为双击 */
+const DOUBLE_CLICK_DISTANCE = 8
+
 export class MouseHandler {
   private editor: Editor
   private container: HTMLElement
@@ -22,6 +27,11 @@ export class MouseHandler {
   // 鼠标按下位置 (用于阈值判定)
   private dragStartX = 0
   private dragStartY = 0
+
+  // 双击检测
+  private lastClickTime = 0
+  private lastClickX = 0
+  private lastClickY = 0
 
   constructor(editor: Editor, container: HTMLElement) {
     this.editor = editor
@@ -43,13 +53,44 @@ export class MouseHandler {
     this.dragStartX = e.clientX
     this.dragStartY = e.clientY
 
-    // 命中检测 → 设置光标 + 记录选区锚点
+    // 先检查是否在页眉/页脚区域
+    const hfSection = this.detectHeaderFooterRegion(e.clientX, e.clientY)
+    if (hfSection) {
+      // 双击检测
+      const now = Date.now()
+      const dx = Math.abs(e.clientX - this.lastClickX)
+      const dy = Math.abs(e.clientY - this.lastClickY)
+      const dt = now - this.lastClickTime
+
+      this.lastClickTime = now
+      this.lastClickX = e.clientX
+      this.lastClickY = e.clientY
+
+      if (dt < DOUBLE_CLICK_THRESHOLD && dx < DOUBLE_CLICK_DISTANCE && dy < DOUBLE_CLICK_DISTANCE) {
+        // 双击页眉/页脚 → 激活编辑模式
+        this.editor.getDraw().setHeaderFooterEditActive(true, hfSection)
+        this.editor.getEventBus().emit('headerFooter:dblclick', hfSection)
+        return
+      }
+      // 单击不处理 (拖拽选区对 header/footer 无意义)
+      return
+    }
+
+    // 在正文区域点击 → 如果当前在页眉页脚编辑模式, 退出
+    const draw = this.editor.getDraw()
+    if (draw.isHeaderFooterEditActive()) {
+      draw.setHeaderFooterEditActive(false)
+      this.editor.getEventBus().emit('body:click')
+      return
+    }
+
+    // 正常正文命中检测 → 设置光标 + 记录选区锚点
     const result = this.hitTest(e.clientX, e.clientY)
     if (!result) return
 
     const store = this.editor.getStore()
     const si = store as unknown as {
-      _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { active: boolean; anchor: { paragraphPath: string[] }; focus: { paragraphPath: string[] } } } }
+      _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { active: boolean; granularity: string; anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean } } } }
     }
 
     // 更新光标到点击位置
@@ -194,6 +235,40 @@ export class MouseHandler {
       accumulated += text.length
     }
     return Math.max(0, accumulated - markerLen)
+  }
+
+  /** 检测点击位置是否在页眉/页脚区域 */
+  private detectHeaderFooterRegion(clientX: number, clientY: number): 'header' | 'footer' | null {
+    const rect = this.container.getBoundingClientRect()
+    const screenY = clientY - rect.top + this.editor.getDraw().getCoordinateSystem().transform.scrollY
+
+    const pages = this.editor.getDraw().getPages()
+    if (pages.length === 0) return null
+
+    // 计算点击在哪一页
+    let pageIndex = 0; let localY = screenY
+    for (let i = 0; i < pages.length; i++) {
+      if (localY < pages[i].height) { pageIndex = i; break }
+      localY -= pages[i].height; pageIndex = i
+    }
+    const page = pages[pageIndex]
+    if (!page) return null
+
+    // 检查视口偏移
+    const viewportW = this.container.clientWidth
+    const offsetX = Math.max(0, (viewportW - page.width) / 2)
+    const docX = clientX - rect.left - offsetX
+    if (docX < 0 || docX > page.width) return null // 超出页面宽度
+
+    // 页眉区域: y 0 ~ headerHeight
+    const headerH = page.headerHeight ?? 42
+    if (localY >= 0 && localY <= headerH) return 'header'
+
+    // 页脚区域: y from pageHeight - footerHeight to pageHeight
+    const footerH = page.footerHeight ?? 42
+    if (localY >= page.height - footerH && localY <= page.height) return 'footer'
+
+    return null
   }
 
   destroy(): void {
