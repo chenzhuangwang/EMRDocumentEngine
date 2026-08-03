@@ -313,6 +313,28 @@ export class Editor {
     return page.items[0].y
   }
 
+  /**
+   * 收集段落中偏移范围内的所有文本节点 ID
+   * @param paraId 段落 ID
+   * @param startOffset 起始字符偏移 (inclusive)
+   * @param endOffset 结束字符偏移 (exclusive), 传 Number.MAX_SAFE_INTEGER 表示到段落末尾
+   */
+  private collectTextNodeIds(paraId: string, startOffset: number, endOffset: number): string[] {
+    const ids: string[] = []
+    const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+    if (!para?.children) return ids
+    let offset = 0
+    for (const cid of para.children) {
+      const n = this.pool.nodes.get(cid) as { type?: string; text?: string } | undefined
+      const len = n?.type === 'text' ? ((n.text as string) || '').length : 1
+      if (n?.type === 'text' && offset + len > startOffset && offset < endOffset) {
+        ids.push(cid)
+      }
+      offset += len
+    }
+    return ids
+  }
+
   getDocument(): DocumentTree { return this.doc }
   setDocument(doc: DocumentTree): void {
     this.doc = doc
@@ -410,29 +432,52 @@ export class Editor {
 
     let nodeIds: string[] = []
 
-    if (selection.active && selection.anchor.paragraphPath.join('.') === selection.focus.paragraphPath.join('.')) {
-      // 同段落选区: 收集选区范围内所有 text node
-      const paraId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
-      const start = Math.min(selection.anchor.offset, selection.focus.offset)
-      const end = Math.max(selection.anchor.offset, selection.focus.offset)
-      if (start < end) {
-        const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
-        if (para?.children) {
-          let offset = 0
-          for (const cid of para.children) {
-            const n = this.pool.nodes.get(cid) as { type?: string; text?: string } | undefined
-            const len = n?.type === 'text' ? ((n.text as string) || '').length : 1
-            if (offset + len > start && offset < end && n?.type === 'text') {
-              nodeIds.push(cid)
+    if (selection.active) {
+      const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
+      const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
+
+      if (anchorParaId === focusParaId) {
+        // 同段落选区: 收集选区范围内所有 text node
+        const start = Math.min(selection.anchor.offset, selection.focus.offset)
+        const end = Math.max(selection.anchor.offset, selection.focus.offset)
+        if (start < end) {
+          nodeIds = this.collectTextNodeIds(anchorParaId, start, end)
+        }
+      } else {
+        // 跨段落选区: 遍历 anchor→focus 之间所有段落, 逐段收集 text node
+        const bodyChildren = this.doc.body.children
+        const aIdx = bodyChildren.indexOf(anchorParaId)
+        const fIdx = bodyChildren.indexOf(focusParaId)
+        if (aIdx >= 0 && fIdx >= 0) {
+          const lo = Math.min(aIdx, fIdx)
+          const hi = Math.max(aIdx, fIdx)
+          // 与 Draw.renderSelectionUnified 逻辑一致: 首段偏移 = 索引较小端对应的 anchor/focus offset
+          const loOff = aIdx === lo ? selection.anchor.offset : selection.focus.offset
+          const hiOff = aIdx === hi ? selection.anchor.offset : selection.focus.offset
+          const INF = Number.MAX_SAFE_INTEGER
+
+          for (let i = lo; i <= hi; i++) {
+            const paraId = bodyChildren[i]
+            if (i === lo && i === hi) {
+              // 防御性: samePara 已在上方拦截, 此处仅在极端边界触发
+              if (loOff < hiOff) nodeIds.push(...this.collectTextNodeIds(paraId, loOff, hiOff))
+            } else if (i === lo) {
+              // 首段: 从 loOff 到段落末尾的全部文本节点
+              nodeIds.push(...this.collectTextNodeIds(paraId, loOff, INF))
+            } else if (i === hi) {
+              // 末段: 从段落开头到 hiOff 的全部文本节点
+              nodeIds.push(...this.collectTextNodeIds(paraId, 0, hiOff))
+            } else {
+              // 中间段: 全部文本节点
+              nodeIds.push(...this.collectTextNodeIds(paraId, 0, INF))
             }
-            offset += len
           }
         }
       }
     }
 
     if (nodeIds.length === 0) {
-      // 无选区或跨段落 → 只格式化光标处节点
+      // 无选区 → 只格式化光标处节点
       if (cursor.paragraphPath.length === 0) return
       const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
       const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
@@ -459,23 +504,42 @@ export class Editor {
     this.commandManager.execute(cmd)
   }
 
-  /** 设置光标所在段落的格式 (对齐/缩进/列表) */
+  /** 设置光标/选区段落的格式 (对齐/缩进/列表) — v20.35 支持跨段落选区 */
   setParagraphStyle(style: Partial<import('./document/DocumentModel').ParagraphStyle>): void {
-    const cursor = this.store.state.runtime.cursor
-    if (cursor.paragraphPath.length === 0) return
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-    const cmd = new ParagraphStyleCommand(
-      generateCommandId(), Date.now(), 'user',
-      paraId, style,
-    )
-    this.commandManager.execute(cmd)
+    const paraIds = this.getSelectedParagraphIds()
+    if (paraIds.length === 0) return
+    const ts = Date.now()
+    for (const paraId of paraIds) {
+      const cmd = new ParagraphStyleCommand(
+        generateCommandId(), ts, 'user',
+        [paraId], style,
+      )
+      this.commandManager.execute(cmd)
+    }
   }
 
-  /** 获取光标所在段落的格式 (供 Toolbar active 状态) */
+  /** 调整选中段落的缩进 (逐段独立计算, 支持跨段落选区) */
+  adjustIndent(delta: number): void {
+    const paraIds = this.getSelectedParagraphIds()
+    if (paraIds.length === 0) return
+    const ts = Date.now()
+    for (const paraId of paraIds) {
+      const para = this.pool.nodes.get(paraId) as { indent?: number } | undefined
+      const cur = para?.indent ?? 0
+      const newIndent = Math.max(0, cur + delta)
+      const cmd = new ParagraphStyleCommand(
+        generateCommandId(), ts, 'user',
+        [paraId], { indent: newIndent },
+      )
+      this.commandManager.execute(cmd)
+    }
+  }
+
+  /** 获取光标/选区首段落的格式 (供 Toolbar active 状态) */
   getParagraphStyle(): { alignment?: string; listType?: string; indent?: number } | null {
-    const cursor = this.store.state.runtime.cursor
-    if (cursor.paragraphPath.length === 0) return null
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const paraIds = this.getSelectedParagraphIds()
+    if (paraIds.length === 0) return null
+    const paraId = paraIds[0]
     const para = this.pool.nodes.get(paraId) as Record<string, unknown> | undefined
     if (!para) return null
     return {
@@ -483,6 +547,33 @@ export class Editor {
       listType: para.list ? (para.list as { type: string }).type : undefined,
       indent: para.indent as number | undefined,
     }
+  }
+
+  /** 收集当前选区涉及的所有段落 ID */
+  private getSelectedParagraphIds(): string[] {
+    const selection = this.store.state.runtime.selection
+    const cursor = this.store.state.runtime.cursor
+
+    if (selection.active) {
+      const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
+      const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
+      if (anchorParaId && focusParaId && anchorParaId !== focusParaId) {
+        const bodyChildren = this.doc.body.children
+        const aIdx = bodyChildren.indexOf(anchorParaId)
+        const fIdx = bodyChildren.indexOf(focusParaId)
+        if (aIdx >= 0 && fIdx >= 0) {
+          const lo = Math.min(aIdx, fIdx)
+          const hi = Math.max(aIdx, fIdx)
+          const ids: string[] = []
+          for (let i = lo; i <= hi; i++) ids.push(bodyChildren[i])
+          return ids
+        }
+      }
+    }
+
+    // 单段落: 光标所在段落
+    if (cursor.paragraphPath.length === 0) return []
+    return [cursor.paragraphPath[cursor.paragraphPath.length - 1]]
   }
 
   /** 全选: 选区覆盖整篇文档所有段落 */

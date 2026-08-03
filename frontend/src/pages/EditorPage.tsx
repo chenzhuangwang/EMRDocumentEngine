@@ -167,21 +167,8 @@ function EditorPageInner({
         ed.setParagraphStyle({ list: ps?.listType === 'ordered' ? undefined : { type: 'ordered', level: 1 } as unknown as import('@/engine').ListStyle })
         break
       }
-      case 'indent': {
-        const para = ed.getDocument().body.children.find(c => {
-          const p = ed.getPool().nodes.get(c) as { indent?: number } | undefined
-          return p?.indent !== undefined
-        })
-        const cur = ed.getPool().nodes.get(ed.getStore().state.runtime.cursor.paragraphPath.slice(-1)[0]) as { indent?: number } | undefined
-        ed.setParagraphStyle({ indent: (cur?.indent ?? 0) + 24 })
-        void para
-        break
-      }
-      case 'outdent': {
-        const cur2 = ed.getPool().nodes.get(ed.getStore().state.runtime.cursor.paragraphPath.slice(-1)[0]) as { indent?: number } | undefined
-        ed.setParagraphStyle({ indent: Math.max(0, (cur2?.indent ?? 0) - 24) })
-        break
-      }
+      case 'indent': ed.adjustIndent(24); break
+      case 'outdent': ed.adjustIndent(-24); break
     }
   }, [editorRef])
 
