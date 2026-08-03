@@ -179,12 +179,15 @@ export class KeyboardHandler {
       if (!paraId) continue
       const path = [...sel.anchor.paragraphPath.slice(0, -1), paraId]
       if (pi === lo && pi === hi) {
+        // 同段落选区: 仅删除 offset 范围内的字符
         const start = Math.min(loOff, hiOff)
         const end = Math.max(loOff, hiOff)
         if (end > start) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, start, end))
       } else if (pi === hi) {
+        // 末段: 删除段落开头到 hiOff 的字符
         if (hiOff > 0) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, hiOff))
       } else if (pi === lo) {
+        // 首段: 删除 loOff 到段落末尾的字符
         const para = ed.getPool().nodes.get(paraId) as { children?: string[] } | undefined
         let totalLen = 0
         if (para?.children) {
@@ -194,6 +197,29 @@ export class KeyboardHandler {
           }
         }
         if (loOff < totalLen) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, loOff, totalLen))
+      } else {
+        // 中间段落: 删除全部内容
+        const para = ed.getPool().nodes.get(paraId) as { children?: string[] } | undefined
+        let totalLen = 0
+        if (para?.children) {
+          for (const cid of para.children) {
+            const n = ed.getPool().nodes.get(cid) as { type?: string; text?: string } | undefined
+            totalLen += n?.type === 'text' ? (n.text || '').length : 1
+          }
+        }
+        if (totalLen > 0) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, totalLen))
+      }
+    }
+
+    // 跨段落选区: 删除后合并残段, 清除空段落残留
+    // 从 lo+1 开始反复合并到 lo, 每次合并后 lo+1 自动指向下一个残段
+    if (lo < hi) {
+      for (let mergeCount = (hi - lo); mergeCount > 0; mergeCount--) {
+        const currentSiblings = doc.body.children
+        const nextParaId = currentSiblings[lo + 1]
+        if (!nextParaId) break
+        const mergePath = [...sel.anchor.paragraphPath.slice(0, -1), nextParaId]
+        ed.execCommand(new MergeParagraphCommand(generateCommandId(), Date.now(), 'user', mergePath))
       }
     }
   }
