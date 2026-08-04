@@ -109,6 +109,19 @@ function EditorPageInner({
     }
   }, [editorRef, setHfEdit])
 
+  // 滚动双向同步: DOM container.scrollTop ↔ CoordinateSystem.scrollY
+  useEffect(() => {
+    const editor = editorRef.current
+    const container = containerRef.current
+    if (!editor || !container) return
+
+    const onScroll = () => {
+      editor.syncScrollPosition(container.scrollTop)
+    }
+    container.addEventListener('scroll', onScroll, { passive: true })
+    return () => container.removeEventListener('scroll', onScroll)
+  }, [editorRef, containerRef])
+
   // 字数统计 + 段落样式 — 订阅 contentChange 事件
   useEffect(() => {
     const editor = editorRef.current
@@ -198,6 +211,56 @@ function EditorPageInner({
       }
       case 'indent': ed.adjustIndent(24); break
       case 'outdent': ed.adjustIndent(-24); break
+      // 页眉页脚编辑模式切换
+      case 'headerFooterEnter': {
+        const section = _value as 'header' | 'footer'
+        const draw = ed.getDraw()
+        const isActive = draw.isHeaderFooterEditActive()
+        const currentSection = draw.getHeaderFooterEditSection()
+
+        if (isActive && currentSection === section) {
+          // 已在编辑同一区域 → 关闭
+          draw.setHeaderFooterEditActive(false)
+          setHfEdit(false)
+          ed.getEventBus().emit('body:click')
+        } else {
+          // 激活或切换区域
+          draw.setHeaderFooterEditActive(true, section)
+          setHfEdit(true, section)
+
+          // 确保目标区域有段落 (无则创建)
+          const doc = ed.getDocument()
+          const targetIds = section === 'header' ? doc.header! : doc.footer!
+          if (targetIds.length === 0) {
+            const paraId = ed.ensureHeaderFooterParagraph(section)
+            targetIds.push(paraId)
+          }
+
+          // 自动将光标定位到对应区域的第一个段落
+          const firstParaId = targetIds[0]
+          const store = ed.getStore()
+          const si = store as unknown as {
+            _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { active: boolean; granularity: string; anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean } } } }
+          }
+          si._state.runtime.cursor = {
+            paragraphPath: [doc.id, firstParaId],
+            offset: 0,
+            visible: true,
+          }
+          si._state.runtime.selection = {
+            anchor: { paragraphPath: [doc.id, firstParaId], offset: 0, visible: false },
+            focus: { paragraphPath: [doc.id, firstParaId], offset: 0, visible: false },
+            active: false,
+            granularity: 'character' as const,
+          }
+
+          ed.getEventBus().emit('headerFooter:dblclick', section)
+        }
+        // 重布局以包含新创建的段落
+        ed.getDraw().recomputeLayout(ed.getPool())
+        ed.getDraw().render(ed.getPool(), ed.getStore().state.runtime)
+        break
+      }
     }
   }, [editorRef])
 
@@ -282,7 +345,7 @@ function EditorPageInner({
       onTemplateSelect={handleTemplateSelect}
       templates={templates}
     >
-      <div ref={containerRef} className="flex-1 bg-[#E5E7EB] relative overflow-hidden" style={{ minHeight: '400px' }} />
+      <div ref={containerRef} className="flex-1 bg-[#E5E7EB] relative overflow-y-auto overflow-x-hidden" style={{ minHeight: '400px' }} />
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} onExport={handleExport} />
       <FindReplaceDialog
         open={findReplaceOpen}

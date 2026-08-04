@@ -76,7 +76,7 @@ export function Sidebar({ templates = [], onTemplateSelect, onNewTemplate, onEle
       </div>
 
       {/* 内容区域 */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin px-2 pb-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin px-2 pb-4">
         {sidebarTab === 'templates' && (
           <TemplateList
             templates={templates}

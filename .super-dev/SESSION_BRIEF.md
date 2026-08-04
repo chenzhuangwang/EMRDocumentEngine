@@ -1,56 +1,68 @@
 # Session Brief
 
-> 会话日期: 2026-08-03
-> 当前阶段: delivery (P0 100% + 集成测试 100%)
+> 会话日期: 2026-08-04
+> 当前阶段: delivery (质量整合)
 
-## 构建验证 (最终)
+## 构建基线
 
 - `tsc --noEmit`: **0 errors**
-- `vite build`: **1701 modules, 495KB JS**
+- `vite build`: **1701 modules, 506KB JS**
 - `vitest run`: **34/34 passed (4 test files)**
-- `vite dev`: **250ms 启动, 0 errors**
 
-## Round 10 — 集成测试与死代码清理
+## 本会话交付总览 (R11-R14)
 
-### 死代码审计 (8 个模块 → 全部接入)
+| 轮次 | 功能 | 文件 | +/- |
+|:--:|------|------|:--:|
+| R11 | 页眉页脚双击交互增强 | Draw + MouseHandler + Editor | +229/-3 |
+| R11.1 | 视觉分层 (背景/分隔线/高亮) | Draw | 重构 |
+| R12 | Toolbar 页眉页脚编辑入口 | Toolbar + EditorPage | +128 |
+| R13 | 页眉页脚内容持久化 | ElementFormatter + Editor + EditorPage + MouseHandler | +37 |
+| R14 | 键盘方向键导航 | KeyboardHandler | +117 |
 
-| # | 模块 | 接入点 | 状态 |
-|---|------|--------|:--:|
-| 1 | `FindReplaceDialog` | EditorPage.tsx — Ctrl+F/H 快捷键 | ✅ |
-| 2 | `PrintDialog` | EditorPage.tsx — onPrint 替换 window.print() | ✅ |
-| 3 | `PageSetupDialog` | EditorPage.tsx — 条件渲染 | ✅ |
-| 4 | `OutlineNav` | Sidebar.tsx — "页面" tab 替换占位 | ✅ |
-| 5 | `TOCGenerator` | EditorPage.tsx — JSON 导出嵌入 _toc | ✅ |
-| 6 | `FootnoteLayout` | LayoutEngine.ts — 每页脚注收集+渲染 | ✅ |
-| 7 | `FontFallback` | TextMeasurer.ts — measureWidth 缺字降级 | ✅ |
-| 8 | `ScriptResolver` | FontManager.ts — resolveFontForText | ✅ |
+**总计: 9 files, +603/-60 lines**
 
-### 变更清单 (Round 10)
+## 页眉页脚功能完备度
 
-| 文件 | 动作 | 说明 |
-|------|------|------|
-| EditorPage.tsx | 增强 | 接入 3 个 Dialog; Ctrl+F/H 快捷键; TOCGenerator 导出 |
-| Sidebar.tsx | 增强 | 接入 OutlineNav; 移除未使用的 PageThumbnails |
-| LayoutEngine.ts | 增强 | FootnoteLayout 集成 |
-| TextMeasurer.ts | 增强 | FontFallback 集成 |
-| FontManager.ts | 增强 | ScriptResolver + resolveFontForText |
+| 功能 | 状态 |
+|------|:--:|
+| 区域视觉区分 (淡灰背景) | ✅ |
+| 分隔线 (页眉下方/页脚上方) | ✅ |
+| 编辑模式高亮 (浅蓝) | ✅ |
+| 双击区域激活编辑 | ✅ |
+| Toolbar 入口按钮 | ✅ |
+| 编辑模式下单击定位光标 | ✅ |
+| 键盘输入文本到页眉页脚 | ✅ |
+| 内容持久化 (保存/加载) | ✅ |
+| 方向键导航 (body/header/footer 区域隔离) | ✅ |
+| Shift+方向键选区扩展 | ✅ |
+| 单击正文退出编辑 | ✅ |
+| header/footer 段落按需创建 | ✅ |
+| 页眉页脚间切换 | ✅ |
 
-## P0 完成度 — 全部完成 (100%)
+## 架构决策
 
-| 轮次 | 任务 |
-|:--:|------|
-| R8.0 | 字体系统 v5.0 |
-| R8.1 | FindReplace + 标题/大纲 |
-| R8.2 | TOCGenerator + FootnoteLayout |
-| R8.3 | Separator + SectionBreak + ZoomSlider |
-| R8.4 | PageSetup + 不可见字符 |
-| R8.5 | PrintDialog |
-| R9.0 | ListParticle |
-| R9.1 | 页眉页脚 |
-| R10 | 集成测试: 8 模块全接入 + 0 死代码 |
+1. **区域隔离**: header/footer/body 各维护独立的段落列表, 方向键在区域内导航不跨界
+2. **按需创建**: 文档默认 header:[], footer:[]; 进入编辑模式时通过 `ensureHeaderFooterParagraph` 创建段落
+3. **双向状态同步**: Draw(Canvas) ↔ Zustand(React) 通过 EventBus 桥接, `headerFooterEnter` action 统一入口
+4. **渲染分层**: Static(白页背景) → Content(灰背景+文本) → Interact(光标), 3 层 Canvas
+
+## 未提交变更文件
+
+```
+.super-dev/SESSION_BRIEF.md
+.super-dev/WORKFLOW.md
+frontend/src/components/layout/Toolbar.tsx
+frontend/src/engine/Editor.ts
+frontend/src/engine/document/ElementFormatter.ts
+frontend/src/engine/interaction/KeyboardHandler.ts
+frontend/src/engine/interaction/MouseHandler.ts
+frontend/src/engine/render/Draw.ts
+frontend/src/pages/EditorPage.tsx
+```
 
 ## 下一步
 
-- 后端 API 对接 (TASK-002+) — 文档 CURD + 协同编辑
-- 页眉页脚双击激活交互增强 (MouseHandler)
-- E2E 测试套件建立
+- 提交本轮变更
+- PageUp/PageDown 翻页导航
+- 页眉页脚段落内 Home/End 键行首行尾
+- 后端 API 对接

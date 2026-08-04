@@ -55,8 +55,57 @@ export class MouseHandler {
 
     // 先检查是否在页眉/页脚区域
     const hfSection = this.detectHeaderFooterRegion(e.clientX, e.clientY)
+
+    // --- 页眉页脚编辑模式下, 单击定位光标 ---
+    if (hfSection && this.editor.getDraw().isHeaderFooterEditActive() && this.editor.getDraw().getHeaderFooterEditSection() === hfSection) {
+      // 双击检测 (用于切换编辑的 header/footer 区域)
+      const now = Date.now()
+      const dx = Math.abs(e.clientX - this.lastClickX)
+      const dy = Math.abs(e.clientY - this.lastClickY)
+      const dt = now - this.lastClickTime
+
+      this.lastClickTime = now
+      this.lastClickX = e.clientX
+      this.lastClickY = e.clientY
+
+      if (dt < DOUBLE_CLICK_THRESHOLD && dx < DOUBLE_CLICK_DISTANCE && dy < DOUBLE_CLICK_DISTANCE) {
+        // 双击: 重新激活 (已在编辑模式, 保持)
+        this.editor.getDraw().setHeaderFooterEditActive(true, hfSection)
+        this.editor.getEventBus().emit('headerFooter:dblclick', hfSection)
+        return
+      }
+
+      // 单击: 在页眉/页脚区域内定位光标
+      const hfResult = this.hitTestHeaderFooter(e.clientX, e.clientY, hfSection)
+      if (hfResult) {
+        const store = this.editor.getStore()
+        const si = store as unknown as {
+          _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { active: boolean; granularity: string; anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean } } } }
+        }
+
+        si._state.runtime.cursor = {
+          paragraphPath: [...hfResult.paraPath],
+          offset: hfResult.offset,
+          visible: true,
+        }
+
+        si._state.runtime.selection = {
+          anchor: { paragraphPath: [...hfResult.paraPath], offset: hfResult.offset, visible: false },
+          focus: { paragraphPath: [...hfResult.paraPath], offset: hfResult.offset, visible: false },
+          active: false,
+          granularity: 'character' as const,
+        }
+
+        this.anchorParaPath = [...hfResult.paraPath]
+        this.anchorOffset = hfResult.offset
+
+        this.editor.getDraw().render(this.editor.getPool(), store.state.runtime)
+      }
+      return
+    }
+
     if (hfSection) {
-      // 双击检测
+      // 页眉/页脚区域, 但编辑模式未激活或区域不匹配
       const now = Date.now()
       const dx = Math.abs(e.clientX - this.lastClickX)
       const dy = Math.abs(e.clientY - this.lastClickY)
@@ -70,6 +119,29 @@ export class MouseHandler {
         // 双击页眉/页脚 → 激活编辑模式
         this.editor.getDraw().setHeaderFooterEditActive(true, hfSection)
         this.editor.getEventBus().emit('headerFooter:dblclick', hfSection)
+
+        // 确保目标区域有段落 (无则创建) + 光标定位到第一个段落
+        const doc = this.editor.getDocument()
+        const paraId = this.editor.ensureHeaderFooterParagraph(hfSection)
+        const store = this.editor.getStore()
+        const si = store as unknown as {
+          _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { active: boolean; granularity: string; anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean } } } }
+        }
+        si._state.runtime.cursor = {
+          paragraphPath: [doc.id, paraId],
+          offset: 0,
+          visible: true,
+        }
+        si._state.runtime.selection = {
+          anchor: { paragraphPath: [doc.id, paraId], offset: 0, visible: false },
+          focus: { paragraphPath: [doc.id, paraId], offset: 0, visible: false },
+          active: false,
+          granularity: 'character' as const,
+        }
+        this.anchorParaPath = [doc.id, paraId]
+        this.anchorOffset = 0
+        this.editor.getDraw().render(this.editor.getPool(), store.state.runtime)
+        return
         return
       }
       // 单击不处理 (拖拽选区对 header/footer 无意义)
@@ -269,6 +341,64 @@ export class MouseHandler {
     if (localY >= page.height - footerH && localY <= page.height) return 'footer'
 
     return null
+  }
+
+  /**
+   * 页眉/页脚区域命中检测 — 返回段落路径 + 字符偏移
+   * 仅在页眉页脚编辑模式下使用
+   */
+  private hitTestHeaderFooter(
+    clientX: number,
+    clientY: number,
+    section: 'header' | 'footer',
+  ): { paraPath: string[]; offset: number } | null {
+    const rect = this.container.getBoundingClientRect()
+    const screenX = clientX - rect.left
+    const screenY = clientY - rect.top + this.editor.getDraw().getCoordinateSystem().transform.scrollY
+
+    const pages = this.editor.getDraw().getPages()
+    if (pages.length === 0) return null
+
+    let pageIndex = 0; let localY = screenY
+    for (let i = 0; i < pages.length; i++) {
+      if (localY < pages[i].height) { pageIndex = i; break }
+      localY -= pages[i].height; pageIndex = i
+    }
+    const page = pages[pageIndex]
+    if (!page) return null
+
+    const viewportW = this.container.clientWidth
+    const offsetX = Math.max(0, (viewportW - page.width) / 2)
+    const docX = screenX - offsetX
+
+    // 使用 Draw 的页眉页脚命中检测
+    const result = this.editor.getDraw().findHeaderFooterItemAt(docX, localY, pageIndex, section)
+    if (!result) return null
+
+    // 查找该 nodeId 所属的段落
+    const para = this.findParagraphContaining(result.nodeId)
+    if (!para) return null
+
+    // 计算段落内的字符偏移
+    const items = section === 'header' ? (page.headerItems || []) : (page.footerItems || [])
+    let accumulated = 0
+    for (const childId of para.children) {
+      const item = items.find(it => it.nodeId === childId)
+      const text = (this.editor.getPool().nodes.get(childId) as unknown as { text?: string })?.text || ''
+      if (item) {
+        const itemTextLen = item.text?.length || 1
+        const charWidth = item.width / itemTextLen
+        if (docX <= item.x + item.width) {
+          const charIdx = Math.round((docX - item.x) / charWidth)
+          return {
+            paraPath: [this.editor.getDocument().id, para.id],
+            offset: Math.max(0, accumulated + Math.max(0, Math.min(charIdx, itemTextLen))),
+          }
+        }
+      }
+      accumulated += text.length
+    }
+    return { paraPath: [this.editor.getDocument().id, para.id], offset: Math.max(0, accumulated) }
   }
 
   destroy(): void {

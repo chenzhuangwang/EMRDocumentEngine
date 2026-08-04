@@ -2,8 +2,8 @@
 
 > 项目: EMRDocumentEngine
 > 创建: 2026-07-17
-> 最后更新: 2026-07-29 (v19.0 架构文档结构重构)
-> 当前阶段: docs (文档同步 — 架构 v19.0 完成，关联文档同步中)
+> 最后更新: 2026-08-04 (R14 方向键导航)
+> 当前阶段: delivery (质量整合 — 页眉页脚全链路交付)
 
 ---
 
@@ -60,3 +60,4 @@ FontManager (P0) → TextMeasurer (P0) → LineBreaker (P1) → PageBreaker → 
 27. **换行引擎 v5.0**: UAX #14 LineBreakClass + 中文避头尾 (lineStartForbidden/lineEndForbidden)
 28. **多语言 v5.0**: Unicode 脚本检测 → MultiLangFontConfig → resolveScriptRuns 自动字体选择
 | **v20.0** | **Round 8** | **里程碑: 3个P0修复 + 6对矛盾 + 合并残留清理 (架构可执行)** |
+| **v21.0** | **Round 11** | **页眉页脚双击激活交互增强: Draw/MouseHandler/Editor 三文件 226 行变更** |

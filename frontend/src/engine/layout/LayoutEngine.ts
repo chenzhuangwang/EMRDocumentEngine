@@ -13,7 +13,6 @@ import type { DocumentTree, Paragraph, TextNode } from '../document/DocumentMode
 import type { NodePool } from '../document/NodePool'
 import type { SLIFPage, SLIFItem } from './SLIF'
 import type { EventBus } from '../interaction/EventBus'
-import { CoordinateSystem } from '../state/CoordinateSystem'
 import { textMeasurer, type TextMeasurer } from './TextMeasurer'
 import { LineBreaker, type LineElement } from './LineBreaker'
 import { PageBreaker, type ILine, type IPage } from './PageBreaker'
@@ -35,13 +34,11 @@ export interface LayoutConfig {
 }
 
 export class LayoutEngine {
-  private coordSystem: CoordinateSystem
   private eventBus: EventBus
   private pages: SLIFPage[] = []
   private config: LayoutConfig
 
-  constructor(coordSystem: CoordinateSystem, eventBus: EventBus) {
-    this.coordSystem = coordSystem
+  constructor(eventBus: EventBus) {
     this.eventBus = eventBus
     this.config = {
       pageWidth: 794, pageHeight: 1123,
@@ -429,12 +426,11 @@ export class LayoutEngine {
   }
 
   getVisiblePages(scrollY: number, viewportHeight: number): { start: number; end: number } {
-    const dpr = this.coordSystem.transform.dpr
     let cumulativeY = 0
     let start = 0; let end = this.pages.length - 1
 
     for (let i = 0; i < this.pages.length; i++) {
-      const pageHeight = this.pages[i].height * dpr
+      const pageHeight = this.pages[i].height // CSS pixels, 与 scrollY/viewportHeight 同单位
       if (cumulativeY + pageHeight < scrollY) start = i + 1
       if (cumulativeY > scrollY + viewportHeight) { end = i - 1; break }
       cumulativeY += pageHeight

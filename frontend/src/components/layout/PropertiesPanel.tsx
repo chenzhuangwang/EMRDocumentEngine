@@ -50,7 +50,7 @@ export function PropertiesPanel({ selectedElement, onPropertyChange }: Propertie
       </div>
 
       {/* 内容 */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin p-4 space-y-4">
         {selectedElement ? (
           <>
             {/* 基本信息 */}

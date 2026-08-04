@@ -1,5 +1,5 @@
 import type { DocumentTree, BaseNode, Paragraph } from './document/DocumentModel'
-import { createDocument, createParagraph, extractStyle } from './document/ElementFormatter'
+import { createDocument, createParagraph, createTextNode, extractStyle } from './document/ElementFormatter'
 import { NodePool, buildNodePool } from './document/NodePool'
 import { Draw } from './render/Draw'
 import { EventBus } from './interaction/EventBus'
@@ -175,8 +175,29 @@ export class Editor {
     this.notifyListeners('ready')
   }
 
+  /** 获取文档总高度 (CSS pixels, 供滚动 spacer 使用) */
+  getTotalDocHeight(): number {
+    const pages = this.draw.getPages()
+    if (pages.length === 0) return 0
+    return pages.length * pages[0].height
+  }
+
+  /** 外部滚动同步 → 反偏移画布 + 更新 scrollY + 重渲染 */
+  syncScrollPosition(scrollTop: number): void {
+    const coord = this.draw.getCoordinateSystem()
+    if (scrollTop !== coord.transform.scrollY) {
+      coord.update({ scrollY: scrollTop })
+      this.draw.renderer.fixCanvasScrollOffset(scrollTop)
+      this.draw.render(this.pool, this.store.state.runtime)
+    }
+  }
+
   /** 点击命中检测 → 更新光标到点击位置 */
   private handleClick(e: MouseEvent): void {
+    // 页眉页脚编辑模式下, 光标定位已在 MouseHandler.onMouseDown 中完成,
+    // 此处不再重复处理 (避免 hitTestIndex 在 body items 中误命中)
+    if (this.draw.isHeaderFooterEditActive()) return
+
     const rect = this.container.getBoundingClientRect()
     const screenX = e.clientX - rect.left
     const screenY = e.clientY - rect.top + this.draw.getCoordinateSystem().transform.scrollY
@@ -341,6 +362,9 @@ export class Editor {
 
   getDocument(): DocumentTree { return this.doc }
   setDocument(doc: DocumentTree): void {
+    // 确保 header/footer 字段存在 (兼容旧版文档数据)
+    if (!doc.header) doc.header = []
+    if (!doc.footer) doc.footer = []
     this.doc = doc
     const fn = new Map<string, BaseNode>()
     fn.set(doc.id, doc)
@@ -354,6 +378,27 @@ export class Editor {
     setCursor(this.store, cursorPath, 0)
     this.draw.render(this.pool, this.store.state.runtime)
     this.notifyListeners('contentChange', doc)
+  }
+
+  /**
+   * 确保页眉/页脚区域至少有一个段落 (无则创建)
+   * 返回第一个段落 ID
+   */
+  ensureHeaderFooterParagraph(section: 'header' | 'footer'): string {
+    const targetIds = section === 'header' ? this.doc.header! : this.doc.footer!
+    if (targetIds.length > 0) return targetIds[0]
+
+    // 创建空白段落 + 空文本节点
+    const para = createParagraph()
+    const textNode = createTextNode('')
+    para.children = [textNode.id]
+
+    // 加入文档和池
+    targetIds.push(para.id)
+    this.pool.nodes.set(para.id, para)
+    this.pool.nodes.set(textNode.id, textNode)
+
+    return para.id
   }
 
   execCommand(command: ICommand): void { this.commandManager.execute(command) }

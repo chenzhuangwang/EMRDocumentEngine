@@ -71,7 +71,7 @@ export function TemplateSelectDialog({ open, onOpenChange, templates, onSelect }
           </div>
 
           {/* List */}
-          <div className="flex-1 overflow-y-auto px-2 pb-2">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2">
             {filtered.length === 0 ? (
               <div className="text-center py-12 text-sm text-gray-400">
                 <FileText size={36} className="mx-auto mb-2 text-gray-200" />

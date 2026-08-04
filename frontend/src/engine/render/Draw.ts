@@ -47,7 +47,7 @@ export class Draw {
 
     const dpr = window.devicePixelRatio || 1
     this.coordSystem = new CoordinateSystem(dpr)
-    this.layoutEngine = new LayoutEngine(this.coordSystem, eventBus)
+    this.layoutEngine = new LayoutEngine(eventBus)
     this.renderer = new LayeredRenderer(container, this.coordSystem)
     this.hitTestIndex = new HitTestIndex()
 
@@ -82,6 +82,7 @@ export class Draw {
   // ================================================================
   // 光标坐标计算 — 共享方法, render() 和 getCaretClientRect() 复用
   //
+  // 支持正文 body items + 页眉 headerItems + 页脚 footerItems
   // 关键保护: 找不到目标段落包围盒时, 回退到上次已知正确位置,
   // 绝不跳转到文档左上角 (offsetX+90, 72)
   // ================================================================
@@ -94,6 +95,7 @@ export class Draw {
     offsetX: number,
     visible: { start: number; end: number },
     pageHeight: number,
+    scrollOffset: number,
   ): CaretPos {
     const paraId = paragraphPath[paragraphPath.length - 1]
     const para = pool.nodes.get(paraId) as unknown as { children: string[] } | undefined
@@ -115,11 +117,29 @@ export class Draw {
         listMarkerLen = ListParticle.estimateMarkerWidth(lvl, paraNode.list.type).length
       }
 
+      // 判断该段落属于 body / header / footer 哪个区域
+      const section = this.resolveParagraphSection(paraId)
+
       for (let i = visible.start; i <= visible.end; i++) {
         const page = this.pages[i]
         if (!page) continue
-        const pageY = (i - visible.start) * pageHeight
-        for (const item of page.items) {
+        const pageY = (i - visible.start) * pageHeight - scrollOffset
+
+        // 选择搜索的 item 列表
+        let searchItems: SLIFItem[]
+        let yOffset = 0
+        if (section === 'header') {
+          searchItems = page.headerItems || []
+          yOffset = 0 // 页眉区从 pageY+0 开始
+        } else if (section === 'footer') {
+          searchItems = page.footerItems || []
+          yOffset = pageHeight - (page.footerHeight || 42) // 页脚区从页面底部偏移
+        } else {
+          searchItems = page.items
+          yOffset = 0
+        }
+
+        for (const item of searchItems) {
           if (para.children.includes(item.nodeId) || item.nodeId === paraId) {
             const textLen = item.text?.length || 0
             const adjustedOffset = offset + listMarkerLen
@@ -127,7 +147,7 @@ export class Draw {
               const localOff = adjustedOffset - charCount
               const charW = textLen > 0 ? item.width / textLen : 0
               caretX = offsetX + item.x + localOff * charW
-              caretY = pageY + item.y
+              caretY = pageY + yOffset + item.y
               caretH = item.ascent + item.descent
               found = true
               break
@@ -152,6 +172,74 @@ export class Draw {
     return { x: caretX, y: caretY, h: caretH }
   }
 
+  /**
+   * 判断段落 ID 属于 body / header / footer 哪个区域
+   * 遍历 doc.header[] 和 doc.footer[] 进行匹配
+   */
+  private resolveParagraphSection(paraId: string): 'body' | 'header' | 'footer' {
+    if (!this.document) return 'body'
+    if (this.document.header?.includes(paraId)) return 'header'
+    if (this.document.footer?.includes(paraId)) return 'footer'
+    return 'body'
+  }
+
+  /**
+   * 页眉/页脚区域命中检测
+   * @returns 命中的 nodeId, 或 null
+   */
+  findHeaderFooterItemAt(
+    docX: number,
+    localY: number, // 页面内 Y 坐标
+    pageIndex: number,
+    section: 'header' | 'footer',
+  ): { nodeId: string; itemX: number; itemY: number; itemWidth: number; itemHeight: number } | null {
+    const page = this.pages[pageIndex]
+    if (!page) return null
+
+    const items = section === 'header' ? (page.headerItems || []) : (page.footerItems || [])
+    if (items.length === 0) return null
+
+    // 调整 localY: 页脚 items 的 y 是相对于 footer 区顶部的
+    // 传入的 localY 需要转换为区域内部坐标
+    let regionLocalY = localY
+    if (section === 'header') {
+      regionLocalY = localY // header 从页面顶部(0)开始
+    } else {
+      const footerTop = page.height - (page.footerHeight || 42)
+      regionLocalY = localY - footerTop
+    }
+
+    // 线性扫描 (页眉页脚通常只有少量 item, 不需要空间索引)
+    let lastInRow: { nodeId: string; itemX: number; itemY: number; itemWidth: number; itemHeight: number } | null = null
+    for (const item of items) {
+      const itemBottom = item.y + item.ascent + item.descent
+      if (regionLocalY >= item.y && regionLocalY <= itemBottom) {
+        lastInRow = {
+          nodeId: item.nodeId,
+          itemX: item.x, itemY: item.y,
+          itemWidth: item.width, itemHeight: item.ascent + item.descent,
+        }
+        if (docX >= item.x && docX <= item.x + item.width) {
+          return lastInRow
+        }
+      }
+    }
+
+    // 行尾扩展命中
+    if (lastInRow && docX > lastInRow.itemX + lastInRow.itemWidth) {
+      return lastInRow
+    }
+
+    // 行首命中
+    for (const item of items) {
+      if (regionLocalY >= item.y && regionLocalY <= item.y + item.ascent + item.descent && docX < item.x) {
+        return { nodeId: item.nodeId, itemX: item.x, itemY: item.y, itemWidth: item.width, itemHeight: item.ascent + item.descent }
+      }
+    }
+
+    return null
+  }
+
   // ================================================================
   // 主渲染入口
   // 顺序: 静态层(背景) → 内容层(文本) → interact层(选区→光标)
@@ -171,16 +259,17 @@ export class Draw {
 
     const scrollY = this.coordSystem.transform.scrollY
     const visible = this.layoutEngine.getVisiblePages(scrollY, viewportH)
+    // 子页滚动偏移: scrollY 减去看不到的首个完整页, 得到当前页内偏移量 (0 ~ pageHeight)
+    const scrollOffset = scrollY - visible.start * pageHeight
 
     // --- 静态层: 页面背景 ---
     {
       const sctx = this.renderer.getStaticCtx()
       if (sctx) {
-        sctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-        sctx.translate(offsetX, 0)
+        sctx.setTransform(dpr, 0, 0, dpr, offsetX * dpr, 0)
       }
     }
-    this.renderer.renderStatic(this.pages, visible)
+    this.renderer.renderStatic(this.pages, visible, scrollOffset)
 
     // --- 内容层: 文本粒子 + 分隔线 + 页眉页脚 ---
     const ctx = this.renderer.getContentCtx()
@@ -192,11 +281,38 @@ export class Draw {
       for (let i = visible.start; i <= visible.end; i++) {
         const page = this.pages[i]
         if (!page) continue
-        const pageY = (i - visible.start) * pageHeight
+        const pageY = (i - visible.start) * pageHeight - scrollOffset
+        const headerH = page.headerHeight ?? 42
+        const footerH = page.footerHeight ?? 42
+        const hasHeader = page.headerItems && page.headerItems.length > 0
+        const hasFooter = page.footerItems && page.footerItems.length > 0
 
-        // --- 页眉区域 ---
-        if (page.headerItems && page.headerItems.length > 0) {
-          this.renderParticleItems(ctx, page.headerItems, pageY)
+        // ================================================================
+        // 页眉区域背景 + 分隔线 (无条件渲染, 提供页面结构视觉)
+        // ================================================================
+        // 背景色区分: 编辑模式下正在编辑的区域用浅蓝, 否则浅灰
+        ctx.fillStyle = (this.hfEditActive && this.hfEditSection === 'header')
+          ? '#EFF6FF'  // primary-50: 编辑高亮
+          : '#F3F4F6'  // gray-100: 非编辑态浅灰 (比 #F9FAFB 略深, 确保可见)
+        ctx.fillRect(0, pageY, pageWidth, headerH)
+
+        // 分隔线 (页眉下方, 页眉与正文之间)
+        ctx.strokeStyle = '#D1D5DB' // gray-300
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(0, pageY + headerH)
+        ctx.lineTo(pageWidth, pageY + headerH)
+        ctx.stroke()
+
+        // --- 页眉文本 (仅在有内容时渲染) ---
+        if (hasHeader) {
+          ctx.save()
+          if (!this.hfEditActive || this.hfEditSection !== 'header') {
+            // 非编辑态: 页眉文本变淡
+            ctx.globalAlpha = 0.55
+          }
+          this.renderParticleItems(ctx, page.headerItems!, pageY)
+          ctx.restore()
         }
 
         // --- 正文 ---
@@ -221,21 +337,54 @@ export class Draw {
           }
         }
 
-        // 页眉页脚编辑模式: 正文半透明遮罩
+        // ================================================================
+        // 页眉页脚编辑模式遮罩层
+        // ================================================================
         if (this.hfEditActive) {
-          const headerH = page.headerHeight ?? 42
-          const footerH = page.footerHeight ?? 42
           ctx.save()
-          ctx.globalAlpha = 0.35
+          // 正文区域: 半透明白色遮罩 (非编辑区变暗)
+          ctx.globalAlpha = 0.40
           ctx.fillStyle = '#FFFFFF'
           ctx.fillRect(0, pageY + headerH, pageWidth, pageHeight - headerH - footerH)
+
+          // 非激活的页眉/页脚区域: 也加遮罩 (背景始终存在, 无条件覆盖)
+          if (this.hfEditSection !== 'header') {
+            ctx.fillRect(0, pageY, pageWidth, headerH)
+          }
+          if (this.hfEditSection !== 'footer') {
+            ctx.fillRect(0, pageY + pageHeight - footerH, pageWidth, footerH)
+          }
           ctx.restore()
         }
 
-        // --- 页脚区域 ---
-        if (page.footerItems && page.footerItems.length > 0) {
-          const footerY = pageHeight - (page.footerHeight || 42)
-          this.renderParticleItems(ctx, page.footerItems, pageY + footerY)
+        // ================================================================
+        // 页脚区域背景 + 分隔线 (无条件渲染, 提供页面结构视觉)
+        // ================================================================
+        const footerTop = pageHeight - footerH
+
+        // 分隔线 (页脚上方, 正文与页脚之间)
+        ctx.strokeStyle = '#D1D5DB' // gray-300
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(0, pageY + footerTop)
+        ctx.lineTo(pageWidth, pageY + footerTop)
+        ctx.stroke()
+
+        // 背景色
+        ctx.fillStyle = (this.hfEditActive && this.hfEditSection === 'footer')
+          ? '#EFF6FF'  // primary-50: 编辑高亮
+          : '#F3F4F6'  // gray-100: 非编辑态浅灰
+        ctx.fillRect(0, pageY + footerTop, pageWidth, footerH)
+
+        // --- 页脚文本 (仅在有内容时渲染) ---
+        if (hasFooter) {
+          ctx.save()
+          if (!this.hfEditActive || this.hfEditSection !== 'footer') {
+            // 非编辑态: 页脚文本变淡
+            ctx.globalAlpha = 0.55
+          }
+          this.renderParticleItems(ctx, page.footerItems!, pageY + footerTop)
+          ctx.restore()
         }
       }
     }
@@ -247,7 +396,7 @@ export class Draw {
     const cursor = runtimeState.cursor
     if (cursor.paragraphPath.length === 0 || !cursor.visible) return
 
-    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX, visible, pageHeight)
+    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX, visible, pageHeight, scrollOffset)
 
     ictx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ictx.clearRect(0, 0, viewportW, viewportH)
@@ -255,7 +404,7 @@ export class Draw {
     // --- 选区高亮 (文字下方, 统一包围盒) ---
     const selection = runtimeState.selection
     if (selection.active) {
-      this.renderSelectionUnified(pool, selection, offsetX, visible, pageHeight, ictx)
+      this.renderSelectionUnified(pool, selection, offsetX, visible, pageHeight, scrollOffset, ictx)
     }
 
     // --- 光标 (文字上方) ---
@@ -273,6 +422,7 @@ export class Draw {
     offsetX: number,
     visible: { start: number; end: number },
     pageHeight: number,
+    scrollOffset: number,
     ictx: CanvasRenderingContext2D,
   ): void {
     const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1] || ''
@@ -301,7 +451,7 @@ export class Draw {
     for (let i = visible.start; i <= visible.end; i++) {
       const sp = this.pages[i]
       if (!sp) continue
-      const spY = (i - visible.start) * pageHeight
+      const spY = (i - visible.start) * pageHeight - scrollOffset
       for (const item of sp.items) {
         const itemParaId = this.findItemParagraph(item.nodeId, pool)
         if (!itemParaId) continue
@@ -422,8 +572,9 @@ export class Draw {
     const pageWidth = this.pages[0]?.width || 794
     const pageHeight = this.pages[0]?.height || 1123
     const offsetX = Math.max(0, (viewportW - pageWidth) / 2)
+    const scrollOffset = scrollY - visible.start * pageHeight
 
-    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX, visible, pageHeight)
+    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX, visible, pageHeight, scrollOffset)
 
     const canvas = this.renderer.getInteractCanvas()
     const canvasRect = canvas?.getBoundingClientRect() ?? this.container.getBoundingClientRect()

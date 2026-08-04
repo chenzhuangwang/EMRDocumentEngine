@@ -63,7 +63,7 @@ export function EditorLayout({
       />
 
       {/* 主体区域 */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0">
         {/* 侧边栏 */}
         {sidebarOpen && (
           <Sidebar
@@ -73,7 +73,7 @@ export function EditorLayout({
         )}
 
         {/* 编辑器画布 */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-h-0 min-w-0">
           {children}
           <StatusBar
             pageIndex={pageIndex}

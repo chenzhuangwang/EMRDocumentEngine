@@ -35,6 +35,7 @@ export class LayeredRenderer {
     content: null as CanvasRenderingContext2D | null,
     interact: null as CanvasRenderingContext2D | null,
   }
+  private spacer: HTMLDivElement | null = null
   private blinkTimer: number | null = null
   private coordSystem: CoordinateSystem
   private watermarkPattern: CanvasPattern | null = null
@@ -62,12 +63,27 @@ export class LayeredRenderer {
     }
     if (this.layers.content) this.layers.content.style.zIndex = '2'
     if (this.layers.static) this.layers.static.style.zIndex = '1'
+
+    // 滚动占位 spacer: 撑开容器产生原生滚动条
+    this.spacer = document.createElement('div')
+    this.spacer.style.pointerEvents = 'none'
+    this.spacer.style.width = '1px'
+    container.appendChild(this.spacer)
   }
 
   getStaticCtx(): CanvasRenderingContext2D | null { return this.ctxs.static }
   getContentCtx(): CanvasRenderingContext2D | null { return this.ctxs.content }
   getInteractCtx(): CanvasRenderingContext2D | null { return this.ctxs.interact }
   getInteractCanvas(): HTMLCanvasElement | null { return this.layers.interact }
+
+  /** 滚动反偏移: 保持绝对定位画布固定于可视区顶部 */
+  fixCanvasScrollOffset(scrollTop: number): void {
+    const topPx = `${scrollTop}px`
+    for (const key of ['static', 'content', 'interact'] as const) {
+      const c = this.layers[key]
+      if (c) c.style.top = topPx
+    }
+  }
 
   // ---- 尺寸管理 ----
 
@@ -85,6 +101,11 @@ export class LayeredRenderer {
       canvas.style.width = `${viewportW}px`
       canvas.style.height = `${canvasH}px`
     }
+
+    // 更新滚动占位高度 = 全文档高度
+    if (this.spacer) {
+      this.spacer.style.height = `${totalPages * pageHeight}px`
+    }
   }
 
   // ---- 滚动平移 ----
@@ -100,15 +121,16 @@ export class LayeredRenderer {
   // ---- 静态层 ----
 
   /** 渲染静态层 — ctx 变换由调用方 (Draw.render) 控制 */
-  renderStatic(pages: SLIFPage[], visibleRange: { start: number; end: number }): void {
+  renderStatic(pages: SLIFPage[], visibleRange: { start: number; end: number }, scrollOffset: number = 0): void {
     const ctx = this.ctxs.static!
-    ctx.clearRect(0, 0, this.layers.static!.width / this.coordSystem.transform.dpr, this.layers.static!.height / this.coordSystem.transform.dpr)
+    const dpr = this.coordSystem.transform.dpr
+    ctx.clearRect(0, 0, this.layers.static!.width / dpr, this.layers.static!.height / dpr)
     ctx.save()
 
     for (let i = visibleRange.start; i <= visibleRange.end; i++) {
       const page = pages[i]
       if (!page) continue
-      const pageY = (i - visibleRange.start) * page.height
+      const pageY = (i - visibleRange.start) * page.height - scrollOffset
 
       // 页面背景
       ctx.fillStyle = '#FFFFFF'
@@ -189,6 +211,8 @@ export class LayeredRenderer {
       this.layers[key] = null
       this.ctxs[key] = null
     }
+    this.spacer?.remove()
+    this.spacer = null
     this.watermarkPattern = null
   }
 }

@@ -43,6 +43,15 @@ export class KeyboardHandler {
     // Ctrl+A: 全选
     if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); ed.selectAll(); return }
 
+    // ---- 方向键 + 导航键 ----
+    const navKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']
+    if (navKeys.includes(e.key)) {
+      e.preventDefault()
+      if (cursor.paragraphPath.length === 0) return
+      this.handleNavigationKey(e.key, e.shiftKey, e.ctrlKey || e.metaKey, ed)
+      return
+    }
+
     const id = generateCommandId()
     const ts = Date.now()
 
@@ -222,6 +231,213 @@ export class KeyboardHandler {
         ed.execCommand(new MergeParagraphCommand(generateCommandId(), Date.now(), 'user', mergePath))
       }
     }
+  }
+
+  // ================================================================
+  // ================================================================
+  // 导航键 — 方向键 + Home/End + PageUp/PageDown
+  // 支持 body / header / footer 段落间移动, 区域隔离
+  // ================================================================
+
+  private handleNavigationKey(key: string, shift: boolean, ctrl: boolean, ed: Editor): void {
+    const store = ed.getStore()
+    const cursor = store.state.runtime.cursor
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const doc = ed.getDocument()
+    const pool = ed.getPool()
+
+    // 获取当前段落所属区域的兄弟列表
+    const siblings = this.getParagraphSiblings(paraId, doc)
+    const idx = siblings.indexOf(paraId)
+    if (idx < 0) return
+
+    // 计算段落内文本总长度
+    const totalLen = this.getParagraphLength(paraId, pool)
+
+    let newParaId = paraId
+    let newOffset = cursor.offset
+
+    switch (key) {
+      // ---- 方向键 ----
+      case 'ArrowLeft':
+        if (cursor.offset > 0) {
+          newOffset = cursor.offset - 1
+        } else if (idx > 0) {
+          newParaId = siblings[idx - 1]
+          newOffset = this.getParagraphLength(newParaId, pool)
+        }
+        break
+
+      case 'ArrowRight':
+        if (cursor.offset < totalLen) {
+          newOffset = cursor.offset + 1
+        } else if (idx < siblings.length - 1) {
+          newParaId = siblings[idx + 1]
+          newOffset = 0
+        }
+        break
+
+      case 'ArrowUp':
+        if (idx > 0) {
+          newParaId = siblings[idx - 1]
+          newOffset = Math.min(cursor.offset, this.getParagraphLength(newParaId, pool))
+        }
+        break
+
+      case 'ArrowDown':
+        if (idx < siblings.length - 1) {
+          newParaId = siblings[idx + 1]
+          newOffset = Math.min(cursor.offset, this.getParagraphLength(newParaId, pool))
+        }
+        break
+
+      // ---- Home/End ----
+      case 'Home':
+        if (ctrl) {
+          // Ctrl+Home: 跳到当前区域第一个段落开头
+          newParaId = siblings[0]
+        }
+        newOffset = 0
+        break
+
+      case 'End':
+        if (ctrl) {
+          // Ctrl+End: 跳到当前区域最后一个段落末尾
+          newParaId = siblings[siblings.length - 1]
+          newOffset = this.getParagraphLength(newParaId, pool)
+        } else {
+          newOffset = totalLen
+        }
+        break
+
+      // ---- PageUp/PageDown (基于 SLIF 页面跳转) ----
+      case 'PageUp':
+      case 'PageDown': {
+        const pages = ed.getDraw().getPages()
+        if (pages.length === 0) break
+
+        // 查找光标所在页面
+        const caretPageIndex = this.findCaretPage(ed, paraId)
+        if (caretPageIndex < 0) break
+
+        const targetPageIndex = key === 'PageUp'
+          ? Math.max(0, caretPageIndex - 1)
+          : Math.min(pages.length - 1, caretPageIndex + 1)
+
+        if (targetPageIndex === caretPageIndex) break
+
+        // 在目标页找第一个有内容的 paragraph 并定位
+        const targetParaId = this.findFirstParagraphOnPage(pages[targetPageIndex], pool, siblings)
+        if (targetParaId) {
+          newParaId = targetParaId
+          newOffset = Math.min(cursor.offset, this.getParagraphLength(targetParaId, pool))
+        }
+        break
+      }
+    }
+
+    // 更新光标位置
+    const si = store as unknown as {
+      _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean }; active: boolean; granularity: string } } }
+    }
+
+    const newPath = [...cursor.paragraphPath.slice(0, -1), newParaId]
+    si._state.runtime.cursor = { paragraphPath: newPath, offset: newOffset, visible: true }
+
+    if (shift) {
+      // Shift+方向键: 扩展选区 (保持 anchor, 移动 focus)
+      const sel = si._state.runtime.selection
+      if (!sel.active) {
+        // 首次扩展: 设置 anchor 为原光标位置
+        sel.anchor = { paragraphPath: [...cursor.paragraphPath], offset: cursor.offset, visible: false }
+        sel.active = true
+        sel.granularity = 'character'
+      }
+      sel.focus = { paragraphPath: newPath, offset: newOffset, visible: false }
+    } else {
+      // 无 Shift: 清除选区
+      si._state.runtime.selection = {
+        anchor: { paragraphPath: newPath, offset: newOffset, visible: false },
+        focus: { paragraphPath: newPath, offset: newOffset, visible: false },
+        active: false,
+        granularity: 'character',
+      }
+    }
+
+    ed.getDraw().render(pool, store.state.runtime)
+  }
+
+  /** 查找光标所在段落在哪个 SLIF 页面 */
+  private findCaretPage(ed: Editor, paraId: string): number {
+    const pages = ed.getDraw().getPages()
+    for (let i = 0; i < pages.length; i++) {
+      const items = pages[i].items
+      // 检查 body items
+      for (const item of items) {
+        if (item.nodeId === paraId) return i
+      }
+      // 检查 header/footer items
+      const hfSets = [pages[i].headerItems || [], pages[i].footerItems || []]
+      for (const hfItems of hfSets) {
+        for (const item of hfItems) {
+          if (item.nodeId === paraId) return i
+        }
+      }
+    }
+    return -1
+  }
+
+  /** 在 SLIF 页面中找第一个属于 siblings 的段落 ID */
+  private findFirstParagraphOnPage(
+    page: { items: { nodeId: string }[]; headerItems?: { nodeId: string }[]; footerItems?: { nodeId: string }[] },
+    pool: { nodes: Map<string, { type: string; children?: string[] }> },
+    siblings: string[],
+  ): string | null {
+    // 搜索正文 items
+    for (const item of page.items) {
+      const paraId = this.resolveItemParagraph(item.nodeId, pool)
+      if (paraId && siblings.includes(paraId)) return paraId
+    }
+    // 搜索 header/footer items (PageUp/Down 也适用)
+    for (const hfItems of [page.headerItems || [], page.footerItems || []]) {
+      for (const item of hfItems) {
+        const paraId = this.resolveItemParagraph(item.nodeId, pool)
+        if (paraId && siblings.includes(paraId)) return paraId
+      }
+    }
+    return null
+  }
+
+  /** 从 nodeId 查找所属段落 ID */
+  private resolveItemParagraph(nodeId: string, pool: { nodes: Map<string, { type: string; children?: string[] }> }): string | null {
+    for (const [, node] of pool.nodes) {
+      if (node.type === 'paragraph' && node.children?.includes(nodeId)) {
+        return (node as unknown as { id: string }).id || null
+      }
+    }
+    const self = pool.nodes.get(nodeId)
+    if (self?.type === 'paragraph') return nodeId
+    return null
+  }
+
+  /** 获取段落所在区域的兄弟段落列表 (body / header / footer) */
+  private getParagraphSiblings(paraId: string, doc: { body: { children: string[] }; header?: string[]; footer?: string[] }): string[] {
+    if (doc.body.children.includes(paraId)) return doc.body.children
+    if (doc.header?.includes(paraId)) return doc.header
+    if (doc.footer?.includes(paraId)) return doc.footer
+    return []
+  }
+
+  /** 计算段落文本总长度 (字符数) */
+  private getParagraphLength(paraId: string, pool: { nodes: Map<string, { type: string; children?: string[]; text?: string }> }): number {
+    const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+    if (!para?.children) return 0
+    let len = 0
+    for (const cid of para.children) {
+      const n = pool.nodes.get(cid) as { type?: string; text?: string } | undefined
+      len += n?.type === 'text' ? (n.text || '').length : 1
+    }
+    return len
   }
 
   destroy(): void {

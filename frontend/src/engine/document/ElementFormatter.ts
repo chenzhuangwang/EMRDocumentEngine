@@ -22,6 +22,8 @@ export function createDocument(title: string, body?: FlowBody, pageSetup?: PageS
     type: NodeType.DOCUMENT, id: generateId(), title,
     pageSetup: pageSetup ?? { ...DEFAULT_PAGE_SETUP },
     body: body ?? { mode: 'flow', children: [] },
+    header: [],
+    footer: [],
   }
 }
 

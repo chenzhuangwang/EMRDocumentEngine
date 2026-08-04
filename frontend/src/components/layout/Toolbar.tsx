@@ -9,6 +9,7 @@ import {
   AlignJustify, List, ListOrdered, Indent, Outdent,
   ChevronsUpDown, Type, ListFilter, Calendar, CheckSquare,
   Circle, Hash, RectangleEllipsis, FileText, Heading,
+  PanelTop,
 } from 'lucide-react'
 import { useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -190,7 +191,15 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarP
       {/* 弹性空间 */}
       <div className="flex-1" />
 
-      {/* 组9：文件操作 */}
+      {/* 组9：页眉页脚 */}
+      <ToolbarGroup>
+        <HeaderFooterDropdown
+          hfEdit={hfEdit}
+          onEnterEdit={(section) => onFormat?.('headerFooterEnter', section)}
+        />
+      </ToolbarGroup>
+
+      {/* 组10：文件操作 */}
       <ToolbarGroup>
         <ToolbarButton title="打印" onClick={onPrint}>
           <Printer size={16} />
@@ -281,7 +290,7 @@ function FontSizeDropdown({ onSelect }: { onSelect: (size: number) => void }) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[60px] max-h-[280px] overflow-y-auto bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
+          className="min-w-[60px] max-h-[280px] overflow-y-auto overflow-x-hidden bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
           sideOffset={4} align="start"
         >
           {FONT_SIZES.map(s => (
@@ -460,6 +469,79 @@ function ExportDropdown({ onExportClick }: { onExportClick?: () => void }) {
             <FileText size={14} />
             <span>导出文档...</span>
           </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  )
+}
+
+// ---- 页眉页脚编辑入口下拉 ----
+
+function HeaderFooterDropdown({
+  hfEdit,
+  onEnterEdit,
+}: {
+  hfEdit: { active: boolean; section: 'header' | 'footer' }
+  onEnterEdit: (section: 'header' | 'footer') => void
+}) {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          className={cn(
+            'flex items-center gap-1 px-2 py-1 text-sm rounded-md h-8 transition-colors',
+            hfEdit.active
+              ? 'bg-blue-50 text-blue-700'
+              : 'text-gray-600 hover:bg-gray-100',
+          )}
+          title="页眉页脚"
+        >
+          <PanelTop size={15} />
+          <span className="hidden lg:inline text-xs">页眉页脚</span>
+          <ChevronDown size={10} />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className="min-w-[130px] bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
+          sideOffset={4} align="end"
+        >
+          <DropdownMenu.Item
+            className={cn(
+              'flex items-center gap-2 px-3 py-2 text-sm outline-none cursor-default transition-colors',
+              hfEdit.active && hfEdit.section === 'header'
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-700 data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700',
+            )}
+            onClick={() => onEnterEdit('header')}
+          >
+            <PanelTop size={14} />
+            <span>编辑页眉</span>
+          </DropdownMenu.Item>
+          <DropdownMenu.Item
+            className={cn(
+              'flex items-center gap-2 px-3 py-2 text-sm outline-none cursor-default transition-colors',
+              hfEdit.active && hfEdit.section === 'footer'
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-700 data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700',
+            )}
+            onClick={() => onEnterEdit('footer')}
+          >
+            <PanelTop size={14} className="rotate-180" />
+            <span>编辑页脚</span>
+          </DropdownMenu.Item>
+          {hfEdit.active && (
+            <>
+              <div className="h-px bg-gray-100 my-1" />
+              <DropdownMenu.Item
+                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500 outline-none cursor-default
+                           data-[highlighted]:bg-red-50 data-[highlighted]:text-red-600 transition-colors"
+                onClick={() => onEnterEdit(hfEdit.section)}
+              >
+                <span>关闭页眉页脚</span>
+              </DropdownMenu.Item>
+            </>
+          )}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

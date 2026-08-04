@@ -112,7 +112,7 @@ export default function HomePage() {
       </header>
 
       {/* 主内容 */}
-      <main className="flex-1 overflow-y-auto p-8">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden p-8">
         <div className="max-w-5xl mx-auto">
           {/* 页面标题和新建按钮 */}
           <div className="flex items-center justify-between mb-8">
