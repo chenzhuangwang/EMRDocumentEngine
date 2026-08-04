@@ -141,6 +141,9 @@ export class LayeredRenderer {
         ctx.fillStyle = this.watermarkPattern
         ctx.fillRect(0, pageY, page.width, page.height)
       }
+
+      // 页面四角L标记 — 统一常量, 右上/右下用镜像变换
+      drawPageCornerMarks(ctx, pageY, page.width, page.height)
     }
     ctx.restore()
   }
@@ -215,4 +218,66 @@ export class LayeredRenderer {
     this.spacer = null
     this.watermarkPattern = null
   }
+}
+
+// ================================================================
+// 页面四角L标记 — 统一常量, 右角用坐标镜像
+// ================================================================
+
+const L_ARM_LENGTH = 12   // 横/纵向段长度 (px)
+const L_LINE_WIDTH = 0.5  // 线宽 0.5px
+const L_COLOR = '#CCCCCC' // 浅灰
+const L_OFFSET_X = 24     // 距页面左右边缘
+const L_ALPHA = 0.7       // 透明度
+
+/** 绘制L角 — 横纵独立方向, 保证四角开口朝页面内侧 */
+function drawLMark(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number,
+  hLen: number, vLen: number,
+): void {
+  ctx.beginPath()
+  ctx.moveTo(x, y)
+  ctx.lineTo(x + hLen, y)    // 水平: 正=右 负=左
+  ctx.moveTo(x, y)
+  ctx.lineTo(x, y + vLen)    // 垂直: 正=下 负=上
+  ctx.stroke()
+}
+
+/** 绘制单页四角L标记 */
+function drawPageCornerMarks(
+  ctx: CanvasRenderingContext2D,
+  pageY: number,
+  pageW: number,
+  pageH: number,
+): void {
+  ctx.save()
+  ctx.lineWidth = L_LINE_WIDTH
+  ctx.strokeStyle = L_COLOR
+  ctx.globalAlpha = L_ALPHA
+
+  const sepY = 42 // 分隔线Y位置
+  const gap = 6    // 距分隔线间距
+
+  // 左上角: 左+上 → ┘
+  drawLMark(ctx, L_OFFSET_X, pageY + sepY - gap, -L_ARM_LENGTH, -L_ARM_LENGTH)
+
+  // 右上角: 镜像 → └
+  ctx.save()
+  ctx.translate(pageW, pageY)
+  ctx.scale(-1, 1)
+  drawLMark(ctx, L_OFFSET_X, sepY - gap, -L_ARM_LENGTH, -L_ARM_LENGTH)
+  ctx.restore()
+
+  // 左下角: 左+下 → ┐
+  drawLMark(ctx, L_OFFSET_X, pageY + pageH - sepY + gap, -L_ARM_LENGTH, +L_ARM_LENGTH)
+
+  // 右下角: 镜像 → ┌
+  ctx.save()
+  ctx.translate(pageW, pageY + pageH)
+  ctx.scale(-1, 1)
+  drawLMark(ctx, L_OFFSET_X, -(sepY - gap), -L_ARM_LENGTH, +L_ARM_LENGTH)
+  ctx.restore()
+
+  ctx.restore()
 }

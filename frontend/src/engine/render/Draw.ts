@@ -288,21 +288,26 @@ export class Draw {
         const hasFooter = page.footerItems && page.footerItems.length > 0
 
         // ================================================================
-        // 页眉区域背景 + 分隔线 (无条件渲染, 提供页面结构视觉)
+        // 页眉区域 + 分隔线
         // ================================================================
-        // 背景色区分: 编辑模式下正在编辑的区域用浅蓝, 否则浅灰
-        ctx.fillStyle = (this.hfEditActive && this.hfEditSection === 'header')
-          ? '#EFF6FF'  // primary-50: 编辑高亮
-          : '#F3F4F6'  // gray-100: 非编辑态浅灰 (比 #F9FAFB 略深, 确保可见)
-        ctx.fillRect(0, pageY, pageWidth, headerH)
-
-        // 分隔线 (页眉下方, 页眉与正文之间)
-        ctx.strokeStyle = '#D1D5DB' // gray-300
-        ctx.lineWidth = 1
+        // 分隔线 (页眉下方) — 0.5px细线, 浅灰
+        ctx.strokeStyle = '#CCCCCC'
+        ctx.lineWidth = 0.5
         ctx.beginPath()
         ctx.moveTo(0, pageY + headerH)
         ctx.lineTo(pageWidth, pageY + headerH)
         ctx.stroke()
+
+        // 编辑模式: 激活区域用虚线边框标记
+        if (this.hfEditActive && this.hfEditSection === 'header') {
+          ctx.save()
+          ctx.strokeStyle = '#93C5FD' // primary-300
+          ctx.lineWidth = 1
+          ctx.setLineDash([4, 3])
+          ctx.strokeRect(1, pageY + 1, pageWidth - 2, headerH - 2)
+          ctx.setLineDash([])
+          ctx.restore()
+        }
 
         // --- 页眉文本 (仅在有内容时渲染) ---
         if (hasHeader) {
@@ -342,12 +347,11 @@ export class Draw {
         // ================================================================
         if (this.hfEditActive) {
           ctx.save()
-          // 正文区域: 半透明白色遮罩 (非编辑区变暗)
-          ctx.globalAlpha = 0.40
-          ctx.fillStyle = '#FFFFFF'
+          ctx.globalAlpha = 0.15
+          ctx.fillStyle = '#6B7280' // gray-500, 轻淡蒙层
+          // 正文区域变暗
           ctx.fillRect(0, pageY + headerH, pageWidth, pageHeight - headerH - footerH)
-
-          // 非激活的页眉/页脚区域: 也加遮罩 (背景始终存在, 无条件覆盖)
+          // 非激活的页眉/页脚区域也变暗
           if (this.hfEditSection !== 'header') {
             ctx.fillRect(0, pageY, pageWidth, headerH)
           }
@@ -362,19 +366,24 @@ export class Draw {
         // ================================================================
         const footerTop = pageHeight - footerH
 
-        // 分隔线 (页脚上方, 正文与页脚之间)
-        ctx.strokeStyle = '#D1D5DB' // gray-300
-        ctx.lineWidth = 1
+        // 分隔线 (页脚上方) — 0.5px细线, 浅灰
+        ctx.strokeStyle = '#CCCCCC'
+        ctx.lineWidth = 0.5
         ctx.beginPath()
         ctx.moveTo(0, pageY + footerTop)
         ctx.lineTo(pageWidth, pageY + footerTop)
         ctx.stroke()
 
-        // 背景色
-        ctx.fillStyle = (this.hfEditActive && this.hfEditSection === 'footer')
-          ? '#EFF6FF'  // primary-50: 编辑高亮
-          : '#F3F4F6'  // gray-100: 非编辑态浅灰
-        ctx.fillRect(0, pageY + footerTop, pageWidth, footerH)
+        // 编辑模式: 激活区域用虚线边框标记
+        if (this.hfEditActive && this.hfEditSection === 'footer') {
+          ctx.save()
+          ctx.strokeStyle = '#93C5FD' // primary-300
+          ctx.lineWidth = 1
+          ctx.setLineDash([4, 3])
+          ctx.strokeRect(1, pageY + footerTop + 1, pageWidth - 2, footerH - 2)
+          ctx.setLineDash([])
+          ctx.restore()
+        }
 
         // --- 页脚文本 (仅在有内容时渲染) ---
         if (hasFooter) {
