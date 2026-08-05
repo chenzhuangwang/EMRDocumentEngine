@@ -2,7 +2,7 @@
 
 > 会话日期: 2026-08-05
 > 当前阶段: delivery (质量整合)
-> 本轮: R30-R51
+> 本轮: R30-R54
 
 ## 构建基线
 
@@ -50,8 +50,11 @@
 | **R49** | **主题系统: EditorTheme 4 预设 (标准/护眼/打印/暗色) + CSS 变量注入** | **EditorTheme** | **+1** |
 | **R50** | **水印设置 UI: WatermarkDialog (文字/字号/颜色/透明度/旋转/间距)** | **WatermarkDialog** | **+1** |
 | **R51** | **性能诊断面板: PerfPanel (FPS/帧耗时/布局耗时/缓存命中率)** | **PerfPanel** | **+1** |
+| **R52** | **质控引擎: QCEngine (6条内置规则) + QCResultPanel (评分+等级+三级问题列表)** | **QCEngine + QCResultPanel** | **+2** |
+| **R53** | **i18n 国际化: LocaleMessages + setLocale/getLocale (zh-CN/en-US 内置 25 键)** | **i18n/index** | **+1** |
+| **R54** | **错误降级: 三级容错 (safeRenderParticle/safeRenderPage/safeLoadDocument + safeAsync)** | **ErrorRecovery** | **+1** |
 
-**总计: 46 files touched (R11-R51)**
+**总计: 50 files touched (R11-R54)**
 
 ## R30-R33 新增文件
 
