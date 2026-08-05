@@ -95,3 +95,59 @@ export {
   insertAt, removeAt, findById, findByDE, findByInternal,
   takeSnapshot, restoreSnapshot, extractStyle, sameStyle,
 } from './document/ElementFormatter'
+
+// ---- R30+: Particles ----
+export type { IParticle, RenderOptions } from './render/particles/IParticle'
+export { ParticleRegistry, particleRegistry } from './render/particles/ParticleRegistry'
+export { textParticle, separatorParticle, fieldParticle } from './render/particles/ParticleAdapters'
+export { createFootnoteParticle } from './render/particles/FootnoteParticle'
+export { createImageParticle } from './render/particles/ImageParticle'
+export { createCommentParticle } from './render/particles/CommentParticle'
+export { createTableParticle } from './render/particles/TableParticle'
+export { createBarcodeParticle } from './render/particles/BarcodeParticle'
+export { createLaTeXParticle } from './render/particles/LaTeXParticle'
+
+// ---- R30+: Engine modules ----
+export { AutoSaveManager } from './AutoSaveManager'
+export type { SaveEventType, SaveEventListener } from './AutoSaveManager'
+export { AutoCorrectEngine } from './AutoCorrectEngine'
+export type { AutoCorrectRule } from './AutoCorrectEngine'
+export { DocumentDiffer } from './DocumentDiffer'
+export type { DiffResult, DiffOperation, TextChange } from './DocumentDiffer'
+
+// ---- R30+: QC ----
+export { QCEngine } from './qc/QCEngine'
+export type { QCRule, QCIssue, QCResult, QCSeverity, QCGrade } from './qc/QCEngine'
+
+// ---- R30+: System ----
+export { EditorTheme, editorTheme } from './state/EditorTheme'
+export type { ThemePreset, ThemeColors } from './state/EditorTheme'
+export { locale, t } from './i18n/index'
+export type { Locale, LocaleMessages } from './i18n/index'
+export { VirtualViewport } from './layout/VirtualViewport'
+export type { ViewportState, VisibleRange } from './layout/VirtualViewport'
+export { MemoryManager, LRUMap } from './layout/MemoryManager'
+export type { MemoryStats } from './layout/MemoryManager'
+export { PerformanceMetrics, perfMetrics } from './PerformanceMetrics'
+export type { PerfEntry, PerfSummary } from './PerformanceMetrics'
+export {
+  EditorErrorCode,
+  safeRenderParticle, safeRenderPage, safeLoadDocument, safeAsync,
+  setErrorReporter,
+} from './ErrorRecovery'
+export type { EditorError, ErrorReporter, EditorErrorCode as EditorErrorCodeType } from './ErrorRecovery'
+
+// ---- R30+: Font management ----
+export { FontManager, fontManager } from './layout/FontManager'
+export type { FontDescriptor, FontVariant } from './layout/FontManager'
+export { FontFallback } from './layout/FontFallback'
+export type { FontRun } from './layout/FontFallback'
+export { ScriptResolver, scriptResolver } from './layout/ScriptResolver'
+export type { MultiLangFontConfig } from './layout/ScriptResolver'
+
+// ---- IEditor 公共 API 接口 ----
+export type {
+  IEditor,
+  EditorEventType,
+} from './Editor'
+export type { EditorListener } from './Editor'

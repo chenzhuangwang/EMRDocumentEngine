@@ -2,12 +2,12 @@
 
 > 会话日期: 2026-08-05
 > 当前阶段: delivery (质量整合)
-> 本轮: R30-R57
+> 本轮: R30-R60
 
 ## 构建基线
 
 - `tsc --noEmit`: **0 errors**
-- `vite build`: **1707 modules, 550KB JS**
+- `vite build`: **1721 modules, 550KB JS**
 - `vitest run`: **34/34 passed (4 test files)**
 
 ## 本会话交付总览 (R11-R33)
@@ -56,8 +56,11 @@
 | **R55** | **虚拟视口: VirtualViewport (可见页计算 + overscan + 画布偏移优化)** | **VirtualViewport** | **+1** |
 | **R56** | **内存管理: MemoryManager (容量限制+LRU淘汰+统计) + LRUMap (O(1)淘汰)** | **MemoryManager** | **+1** |
 | **R57** | **性能埋点: PerformanceMetrics (renderFrame/layout/keystroke + sendBeacon上报)** | **PerformanceMetrics** | **+1** |
+| **R58** | **LaTeX 公式: LaTeXParticle (纯 Canvas 分式/根号/上下标/希腊字母 无外部依赖)** | **LaTeXParticle** | **+1** |
+| **R59** | **引擎统一导出: engine/index.ts 全量 API + IEditor 公共接口** | **index.ts + Editor** | **修改 2** |
+| **R60** | **死代码清理: Position.ts @deprecated + 导出整理** | **Position.ts + index.ts** | **修改 2** |
 
-**总计: 53 files touched (R11-R57)**
+**总计: 56 files touched (R11-R60)**
 
 ## R30-R33 新增文件
 

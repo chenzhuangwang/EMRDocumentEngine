@@ -1168,5 +1168,21 @@ export class Editor {
   }
 }
 
-type EditorEventType = 'ready' | 'contentChange' | 'modeChange' | 'selectionChange' | 'save'
-interface EditorListener { event: EditorEventType; callback: (...args: unknown[]) => void }
+export type EditorEventType = 'ready' | 'contentChange' | 'modeChange' | 'selectionChange' | 'save'
+export interface EditorListener { event: EditorEventType; callback: (...args: unknown[]) => void }
+
+/** IEditor 公共 API (SDK 集成面) */
+export interface IEditor {
+  getDocument(): DocumentTree
+  setDocument(doc: DocumentTree): void
+  execCommand(command: ICommand): void
+  undo(): void; redo(): void
+  canUndo(): boolean; canRedo(): boolean
+  copy(): void; paste(): void
+  toggleFormat(style: Partial<import('./document/DocumentModel').TextStyle>): void
+  setParagraphStyle(style: Partial<import('./document/DocumentModel').ParagraphStyle>): void
+  getWordCount(): { chars: number; words: number; paragraphs: number; selectedChars?: number; selectedWords?: number }
+  on(event: EditorEventType, cb: (...args: unknown[]) => void): void
+  off(event: EditorEventType, cb: (...args: unknown[]) => void): void
+  destroy(): void
+}
