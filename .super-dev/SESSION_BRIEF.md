@@ -2,13 +2,13 @@
 
 > 会话日期: 2026-08-05
 > 当前阶段: delivery (质量整合)
-> 本轮: R30-R63
+> 本轮: R30-R66
 
 ## 构建基线
 
 - `tsc --noEmit`: **0 errors**
-- `vite build`: **1721 modules, 550KB JS**
-- `vitest run`: **34/34 passed (4 test files)**
+- `vite build`: **1721 modules, 551KB JS**
+- `vitest run`: **39/39 passed (5 test files)**
 
 ## 本会话交付总览 (R11-R33)
 
@@ -62,8 +62,11 @@
 | **R61** | **插件系统: IPlugin + PluginManager + 8类扩展点 + PluginContext** | **PluginManager** | **+1** |
 | **R62** | **图表粒子: ChartParticle (柱状图/折线图/饼图 纯Canvas + JSON数据驱动)** | **ChartParticle** | **+1** |
 | **R63** | **文档加载器: IDocumentLoader + DocumentLoaderRegistry + JSON/HTML/MD/XML 4格式** | **DocumentLoaderRegistry** | **+1** |
+| **R64** | **合并矩阵: MergeMatrix (colspan/rowspan 占位计算 + buildMergeMatrix 工厂)** | **MergeMatrix** | **+1** |
+| **R65** | **跨页断表: SLIFItem +headerRowCount/continuationLabel + TableParticle 续表渲染** | **LayoutEngine + SLIF + TableParticle** | **修改 3** |
+| **R66** | **测试增强: DocumentDiffer 单元测试 (5 tests) + 测试数 34→39** | **DocumentDiffer.test** | **+1** |
 
-**总计: 59 files touched (R11-R63)**
+**总计: 63 files touched (R11-R66)**
 
 ## R30-R33 新增文件
 

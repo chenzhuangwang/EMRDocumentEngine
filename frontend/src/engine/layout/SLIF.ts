@@ -20,6 +20,10 @@ export interface SLIFItem {
   superscript?: boolean; subscript?: boolean
   // table extension
   rows?: SLIFRow[]
+  /** 表头行数 (跨页重复, R65) */
+  headerRowCount?: number
+  /** 续表标记文本 (R65) */
+  continuationLabel?: string
   // image extension
   imageUrl?: string
   /** 列表标记文本 (项目符号或编号), 由 Draw.ts 通过 ListParticle 独立渲染 */

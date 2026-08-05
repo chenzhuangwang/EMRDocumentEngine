@@ -202,10 +202,14 @@ export class LayoutEngine {
 
         // 表格: 展开为含行数据的 SLIFItem (R37)
         if (firstEl?.type === 'table') {
-          const tbl = (firstEl as LineElement).tableBlock as { id: string; columns?: { width: number }[]; children: string[] } | undefined
+          const tbl = (firstEl as LineElement).tableBlock as {
+            id: string; columns?: { width: number }[]; children: string[]
+            pageBreak?: { repeatHeader?: boolean; minRowsBeforeBreak?: number; continuationLabel?: string }
+          } | undefined
           if (tbl) {
             const rows = this.buildTableRows(tbl, pool, contentWidth)
             const tableHeight = rows.reduce((h, r) => h + (r.height || 24) + 1, 0)
+            const pageBreak = tbl.pageBreak
             items.push({
               nodeId: tbl.id, nodeType: 'table', type: 'table',
               x: this.config.marginLeft, y,
@@ -213,6 +217,8 @@ export class LayoutEngine {
               ascent: tableHeight, descent: 0,
               font: 'SimSun', size: 12,
               rows,
+              headerRowCount: pageBreak?.repeatHeader ? 1 : undefined,
+              continuationLabel: pageBreak?.continuationLabel,
             })
           }
           continue
@@ -388,9 +394,9 @@ export class LayoutEngine {
 
   getPages(): SLIFPage[] { return this.pages }
 
-  /** 将 Table 节点展开为 SLIFRow[] (R37) */
+  /** 将 Table 节点展开为 SLIFRow[] (R37+R65: 跨页断表支持) */
   private buildTableRows(
-    table: { id: string; columns?: { width: number }[]; children: string[] },
+    table: { id: string; columns?: { width: number }[]; children: string[]; pageBreak?: { repeatHeader?: boolean; minRowsBeforeBreak?: number; continuationLabel?: string } },
     pool: NodePool,
     contentWidth: number,
   ): import('./SLIF').SLIFRow[] {

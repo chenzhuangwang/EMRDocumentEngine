@@ -22,6 +22,16 @@ export function createTableParticle(): IParticle {
       const rows = item.rows
       if (!rows || rows.length === 0) return
 
+      // R65: 续表标记
+      if (item.continuationLabel) {
+        ctx.save()
+        ctx.font = 'italic 11px "SimSun"'
+        ctx.fillStyle = '#6B7280'
+        ctx.fillText(item.continuationLabel, x, y + 12)
+        ctx.restore()
+        y += 20 // 续表标记占位
+      }
+
       // 计算列宽: 平均分配
       const maxCols = Math.max(...rows.map(r => r.cells.length))
       const colWidths = calculateColumnWidths(item.width, maxCols, rows)
