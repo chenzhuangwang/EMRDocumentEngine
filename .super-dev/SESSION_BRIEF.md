@@ -1,15 +1,16 @@
 # Session Brief
 
-> 会话日期: 2026-08-04
+> 会话日期: 2026-08-05
 > 当前阶段: delivery (质量整合)
+> 本轮: R30-R33
 
 ## 构建基线
 
 - `tsc --noEmit`: **0 errors**
-- `vite build`: **1701 modules, 516KB JS**
+- `vite build`: **1703 modules, 538KB JS**
 - `vitest run`: **34/34 passed (4 test files)**
 
-## 本会话交付总览 (R11-R18)
+## 本会话交付总览 (R11-R33)
 
 | 轮次 | 功能 | 文件 | +/- |
 |:--:|------|------|:--:|
@@ -23,65 +24,54 @@
 | R17 | 大纲导航面板接线 | Sidebar + EditorLayout + EditorPage + OutlineNav | 轻量 |
 | R18 | 清除格式 + 页面设置入口 | Editor + Toolbar + EditorLayout + EditorPage | 轻量 |
 | R19 | Ctrl+B/I/U 快捷键 + 字体/字号下拉状态同步 | Editor + EditorPage + Toolbar + Store | 轻量 |
+| R20-R23 | Toolbar 完备化 (B/I/U/删除线/上标/下标/列表/撤销/重做 激活态 + 格式刷 + 缩进 + 颜色) | Toolbar + Editor + EditorPage + Store + Draw | 中量 |
+| R24-R26 | 域代码/图片/查找替换 引擎层全链路 | LayoutEngine + SLIF + Draw + Editor + ElementFormatter + FindReplaceEngine + FindReplaceDialog | 重量 |
+| R27 | Toolbar 完备 + StatusBar 页码 + 导出 HTML + Ctrl+P | Toolbar + StatusBar + ExportDialog + EditorPage | 轻量 |
+| R28-R29 | 域代码动态值 + 图片 Canvas 渲染 + 查找替换 UI 接入 | Draw + Editor + EditorPage | 中量 |
+| **R30** | **IParticle 接口 + ParticleRegistry + 适配器** | **IParticle + ParticleRegistry + ParticleAdapters + index** | **+4 files** |
+| **R31** | **脚注全链路: FootnoteParticle + LayoutEngine集成 + Editor.insertFootnote + Ctrl+Alt+F** | **FootnoteParticle + LayoutEngine + Draw + Editor + ElementFormatter + KeyboardHandler** | **+1 file, 修改 5 files** |
+| **R32** | **批注面板: CommentPanel + CommentParticle + Sidebar 批注 Tab + Store 扩展** | **CommentPanel + CommentParticle + Sidebar + EditorLayout + Store** | **+2 files, 修改 3 files** |
+| **R33** | **ImageParticle 提取: 图片渲染逻辑从 Draw.ts 抽离为独立粒子** | **ImageParticle + index** | **+1 file** |
 
-**总计: 22 files**
+**总计: 29 files touched (R11-R33)**
 
-## 页眉页脚功能完备度
+## R30-R33 新增文件
 
-| 功能 | 状态 |
-|------|:--:|
-| 区域视觉区分 (淡灰背景) | ✅ |
-| 分隔线 (页眉下方/页脚上方) | ✅ |
-| 编辑模式高亮 (浅蓝) | ✅ |
-| 双击区域激活编辑 | ✅ |
-| Toolbar 入口按钮 | ✅ |
-| 编辑模式下单击定位光标 | ✅ |
-| 键盘输入文本到页眉页脚 | ✅ |
-| 内容持久化 (保存/加载) | ✅ |
-| 方向键导航 (body/header/footer 区域隔离) | ✅ |
-| Shift+方向键选区扩展 | ✅ |
-| 单击正文退出编辑 | ✅ |
-| header/footer 段落按需创建 | ✅ |
-| 页眉页脚间切换 | ✅ |
+```
+frontend/src/engine/render/particles/IParticle.ts          (接口定义 + RenderOptions)
+frontend/src/engine/render/particles/ParticleRegistry.ts   (注册表 + 全局单例)
+frontend/src/engine/render/particles/ParticleAdapters.ts   (Text/Separator/Field IParticle适配器)
+frontend/src/engine/render/particles/index.ts              (统一导出)
+frontend/src/engine/render/particles/FootnoteParticle.ts   (脚注引用渲染器)
+frontend/src/engine/render/particles/CommentParticle.ts    (批注标记渲染器)
+frontend/src/engine/render/particles/ImageParticle.ts      (图片粒子渲染器)
+frontend/src/components/panels/CommentPanel.tsx            (批注面板UI)
+```
 
-## R15-16 新增功能
+## R30-R33 修改文件
 
-| 轮次 | 功能 | 详情 |
-|:--:|------|------|
-| R15 | 缩放控制 | StatusBar 25%-400% 滑块 + Ctrl+滚轮 + Ctrl+plus/minus/0 快捷键 |
-| R15 | 标题格式修复 | HeadingDropdown 读取实际 outlineLevel + handleFormat 接入 heading |
-| R16 | 不可见字符 | 空格→`·` / 换行→`↵` / Tab→`→` 淡蓝色显示; StatusBar Pilcrow 按钮 + Ctrl+Shift+8 |
-| R17 | 大纲导航 | Sidebar "大纲" tab: 提取 outlineLevel>0 标题树 + 点击跳转光标/滚动到目标页 |
+```
+frontend/src/engine/layout/LayoutEngine.ts      (footnote_ref → SLIF item + 编号回填)
+frontend/src/engine/render/Draw.ts               (footnote type 调度 + ImageParticle import)
+frontend/src/engine/Editor.ts                    (insertFootnote 方法 + footnote factory import)
+frontend/src/engine/interaction/KeyboardHandler.ts (Ctrl+Alt+F 快捷键)
+frontend/src/engine/document/ElementFormatter.ts (createFootnoteRef + createFootnoteContent 工厂)
+frontend/src/components/layout/Sidebar.tsx        (批注 Tab + CommentPanel 集成)
+frontend/src/components/layout/EditorLayout.tsx   (CommentThread props 透传)
+frontend/src/store/index.ts                       (sidebarTab +'comments')
+```
 
 ## 架构决策
 
-1. **区域隔离**: header/footer/body 各维护独立的段落列表, 方向键在区域内导航不跨界
-2. **按需创建**: 文档默认 header:[], footer:[]; 进入编辑模式时通过 `ensureHeaderFooterParagraph` 创建段落
-3. **双向状态同步**: Draw(Canvas) ↔ Zustand(React) 通过 EventBus 桥接
-4. **渲染分层**: Static(白页背景) → Content(灰背景+文本) → Interact(光标), 3 层 Canvas
-5. **缩放**: React state → Editor.setScale() → CoordinateSystem.transform.scale → 坐标转换自动反映
-6. **不可见字符**: Draw._showInvisible → TextParticle.render showInvisible 选项 → 逐字符替换渲染
-7. **大纲导航**: TOCGenerator.extractEntries() → OutlineItem[] → Sidebar OutlineNav → 点击跳转光标+滚动
-
-## 变更文件
-
-```
-.super-dev/SESSION_BRIEF.md
-frontend/src/components/layout/EditorLayout.tsx   (+outline props → Sidebar)
-frontend/src/components/layout/Sidebar.tsx         (+outlineItems/onOutlineClick + ListTree tab)
-frontend/src/components/layout/StatusBar.tsx       (+Pilcrow 按钮)
-frontend/src/components/layout/Toolbar.tsx         (HeadingDropdown 读取 outlineLevel)
-frontend/src/components/sidebar/OutlineNav.tsx     (已存在, 无需修改)
-frontend/src/engine/Editor.ts                      (getParagraphStyle +outlineLevel, setShowInvisible)
-frontend/src/engine/render/Draw.ts                 (_showInvisible + 透传 TextParticle)
-frontend/src/engine/state/EditorRuntimeState.ts    (ViewState +showInvisible)
-frontend/src/pages/EditorPage.tsx                  (zoom/showInvisible/outline state + 快捷键 + 大纲跳转)
-frontend/src/store/index.ts                        (paragraphStyle +outlineLevel)
-```
+1. **IParticle 适配器模式**: 现有静态 Particle (TextParticle/SeparatorParticle) 保持不变, 通过轻量适配器对象实现 IParticle, 零风险零破坏
+2. **脚注两阶段**: LayoutEngine Step 3 生成 `type:'footnote'` 占位 SLIF item → Step 4 FootnoteLayout 收集+编号 → 回填正文编号 + 生成脚注区 items
+3. **批注面板**: 复用 Sidebar Tab 系统 (新增 'comments' tab), 无需新开右侧面板, 保持一致的交互模式
+4. **ImageParticle**: 从 Draw.ts 抽离为独立 IParticle, 工厂函数接收 `resolveUrl` + `onImageLoaded` 回调
 
 ## 下一步
 
-- 提交 R11-R17 变更
-- TASK-471: 页眉页脚域代码真实插入 (PAGE/NUMPAGES/DATE 域)
-- TASK-468: 打印对话框增强
-- 后端 API 对接
+- 后端 API 对接 (TASK-531~539)
+- 自动保存 AutoSaveManager (TASK-541~543)
+- 水印 Watermark (TASK-555)
+- 文档比较 DocumentDiffer (TASK-515~516)
+- QC 质控引擎 (TASK-601~606)

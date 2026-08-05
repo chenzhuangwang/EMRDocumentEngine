@@ -1,5 +1,5 @@
 import type { DocumentTree, BaseNode, Paragraph } from './document/DocumentModel'
-import { createDocument, createParagraph, createTextNode, extractStyle, createFieldNode, createSeparatorNode } from './document/ElementFormatter'
+import { createDocument, createParagraph, createTextNode, extractStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent } from './document/ElementFormatter'
 import { NodePool, buildNodePool } from './document/NodePool'
 import type { FieldType } from './document/DocumentModel'
 import { Draw } from './render/Draw'
@@ -466,6 +466,45 @@ export class Editor {
       if (nextPara && (nextPara as { type?: string }).type === 'paragraph') {
         setCursor(this.store, [this.doc.id, nextParaId], 0)
       }
+    }
+
+    this.draw.recomputeLayout(this.pool)
+    this.draw.render(this.pool, this.store.state.runtime)
+    this.notifyListeners('contentChange', this.doc)
+  }
+
+  /** 在光标位置插入脚注引用 + 脚注内容 (R31, Ctrl+Alt+F) */
+  insertFootnote(): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+    if (!para?.children) return
+
+    // 创建脚注内容 (空段落, 用户后续编辑)
+    const fnContent = createFootnoteContent('')
+    const contentPara = createParagraph([createTextNode('').id])
+    fnContent.children = [contentPara.id]
+    this.pool.nodes.set(fnContent.id, fnContent)
+    this.pool.nodes.set(contentPara.id, contentPara)
+
+    // 注册到文档级别
+    if (!this.doc.footnotes) this.doc.footnotes = []
+    this.doc.footnotes.push(fnContent.id)
+
+    // 创建脚注引用 (标记在正文中)
+    const fnRef = createFootnoteRef(fnContent.id)
+    fnContent.refId = fnRef.id
+    this.pool.nodes.set(fnRef.id, fnRef)
+
+    // 插入引用到光标位置
+    const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
+    if (resolved) {
+      const idx = para.children.indexOf(resolved.textNodeId)
+      para.children.splice(idx + 1, 0, fnRef.id)
+    } else {
+      para.children.push(fnRef.id)
     }
 
     this.draw.recomputeLayout(this.pool)

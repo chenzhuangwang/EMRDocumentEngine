@@ -10,6 +10,7 @@ import { StatusBar } from './StatusBar'
 import { PropertiesPanel } from './PropertiesPanel'
 import { useEditorStore, useUIStore } from '@/store'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
+import type { CommentThread } from '@/engine/document/DocumentModel'
 
 interface EditorLayoutProps {
   children: ReactNode
@@ -37,6 +38,11 @@ interface EditorLayoutProps {
   onOutlineClick?: (item: OutlineItem) => void
   onTemplateSelect?: (id: string) => void
   templates?: { name: string; items: { id: string; name: string; description?: string }[] }[]
+  /** 批注 (R32) */
+  commentThreads?: CommentThread[]
+  onSelectCommentThread?: (threadId: string) => void
+  onResolveCommentThread?: (threadId: string) => void
+  onAddCommentReply?: (threadId: string, content: string) => void
 }
 
 export function EditorLayout({
@@ -62,6 +68,10 @@ export function EditorLayout({
   onOutlineClick,
   onTemplateSelect,
   templates,
+  commentThreads = [],
+  onSelectCommentThread,
+  onResolveCommentThread,
+  onAddCommentReply,
 }: EditorLayoutProps) {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
@@ -96,6 +106,10 @@ export function EditorLayout({
             outlineItems={outlineItems}
             activeOutlineId={activeOutlineId}
             onOutlineClick={onOutlineClick}
+            commentThreads={commentThreads}
+            onSelectCommentThread={onSelectCommentThread}
+            onResolveCommentThread={onResolveCommentThread}
+            onAddCommentReply={onAddCommentReply}
           />
         )}
 

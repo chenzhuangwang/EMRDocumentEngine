@@ -18,10 +18,13 @@ import {
   Table,
   Image,
   ListTree,
+  MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store'
 import { OutlineNav, type OutlineItem } from '@/components/sidebar/OutlineNav'
+import { CommentPanel } from '@/components/panels/CommentPanel'
+import type { CommentThread } from '@/engine/document/DocumentModel'
 
 interface SidebarProps {
   templates?: TemplateCategory[]
@@ -34,6 +37,12 @@ interface SidebarProps {
   activeOutlineId?: string | null
   /** 点击大纲条目 */
   onOutlineClick?: (item: OutlineItem) => void
+  /** 批注线程 (R32) */
+  commentThreads?: CommentThread[]
+  /** 批注回调 */
+  onSelectCommentThread?: (threadId: string) => void
+  onResolveCommentThread?: (threadId: string) => void
+  onAddCommentReply?: (threadId: string, content: string) => void
 }
 
 interface TemplateCategory {
@@ -41,7 +50,11 @@ interface TemplateCategory {
   items: { id: string; name: string; description?: string }[]
 }
 
-export function Sidebar({ templates = [], onTemplateSelect, onNewTemplate, onElementClick, outlineItems = [], activeOutlineId, onOutlineClick }: SidebarProps) {
+export function Sidebar({
+  templates = [], onTemplateSelect, onNewTemplate, onElementClick,
+  outlineItems = [], activeOutlineId, onOutlineClick,
+  commentThreads = [], onSelectCommentThread, onResolveCommentThread, onAddCommentReply,
+}: SidebarProps) {
   const sidebarTab = useUIStore((s) => s.sidebarTab)
   const setSidebarTab = useUIStore((s) => s.setSidebarTab)
 
@@ -66,6 +79,12 @@ export function Sidebar({ templates = [], onTemplateSelect, onNewTemplate, onEle
           onClick={() => setSidebarTab('pages')}
           icon={<ListTree size={14} />}
           label="大纲"
+        />
+        <SidebarTab
+          active={sidebarTab === 'comments'}
+          onClick={() => setSidebarTab('comments')}
+          icon={<MessageSquare size={14} />}
+          label="批注"
         />
       </div>
 
@@ -96,6 +115,14 @@ export function Sidebar({ templates = [], onTemplateSelect, onNewTemplate, onEle
             items={outlineItems}
             activeId={activeOutlineId}
             onItemClick={onOutlineClick}
+          />
+        )}
+        {sidebarTab === 'comments' && (
+          <CommentPanel
+            threads={commentThreads}
+            onSelectThread={onSelectCommentThread}
+            onResolveThread={onResolveCommentThread}
+            onAddReply={onAddCommentReply}
           />
         )}
       </div>

@@ -120,12 +120,12 @@ export const useUserStore = create<UserState>((set) => ({
 interface UIState {
   sidebarOpen: boolean
   propertiesPanelOpen: boolean
-  sidebarTab: 'templates' | 'elements' | 'pages'
+  sidebarTab: 'templates' | 'elements' | 'pages' | 'comments'
 
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
   setPropertiesPanelOpen: (open: boolean) => void
-  setSidebarTab: (tab: 'templates' | 'elements' | 'pages') => void
+  setSidebarTab: (tab: 'templates' | 'elements' | 'pages' | 'comments') => void
 }
 
 export const useUIStore = create<UIState>((set) => ({

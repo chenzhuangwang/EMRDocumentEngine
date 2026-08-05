@@ -201,7 +201,21 @@ export class LayoutEngine {
           continue
         }
         for (const el of line.elements) {
-          if (el.type === 'section_break' || el.type === 'footnote_ref') continue
+          if (el.type === 'section_break') continue
+          if (el.type === 'footnote_ref') {
+            // 脚注引用: 生成占位 SLIF item, 编号在 Step 4 回填
+            const fnCharHeight = measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || 12 })
+            items.push({
+              nodeId: el.id, nodeType: 'footnote_ref', type: 'footnote',
+              x: this.config.marginLeft + (line.indent ?? 0), y,
+              width: 12, height: fnCharHeight,
+              ascent: fnCharHeight * 0.8, descent: fnCharHeight * 0.2,
+              font: el.font || 'SimSun', size: el.size || 12,
+              text: '?',  // 占位, Step 4 回填为正确编号
+              superscript: true,
+            })
+            continue
+          }
           if (el.type === 'image') {
             const imgEl = el as { imageData?: { width?: number; height?: number } }
             const iw = imgEl.imageData?.width || contentWidth
@@ -274,15 +288,20 @@ export class LayoutEngine {
     for (const page of slifPages) {
       const footnotes = footnoteEngine.collectFootnotes(page, pool)
       if (footnotes.length > 0) {
+        // 回填正文中 footnote SLIF items 的编号
+        for (const item of page.items) {
+          if (item.type === 'footnote') {
+            const fn = footnotes.find(f => f.refId === item.nodeId)
+            if (fn) item.text = String(fn.number)
+          }
+        }
         const footnoteY = page.height - this.config.marginBottom - 60
         const fnItems = footnoteEngine.generateFootnoteItems(
           footnotes, footnoteY, contentWidth, this.config.marginLeft,
         )
-        // 脚注只包含非 separator 类型的 items, 追加到页面 items
+        // 脚注区 items 追加到页面
         for (const fi of fnItems) {
-          if (fi.type !== 'separator' || fi.text === '') {
-            page.items.push(fi)
-          }
+          page.items.push(fi)
         }
       }
     }

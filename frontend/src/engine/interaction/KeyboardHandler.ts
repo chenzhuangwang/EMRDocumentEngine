@@ -42,6 +42,8 @@ export class KeyboardHandler {
     if ((e.ctrlKey || e.metaKey) && e.key === 'x') { e.preventDefault(); ed.copy(); return }
     // Ctrl+A: 全选
     if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); ed.selectAll(); return }
+    // Ctrl+Alt+F: 插入脚注 (R31)
+    if ((e.ctrlKey || e.metaKey) && e.altKey && e.key === 'f') { e.preventDefault(); ed.insertFootnote(); return }
 
     // ---- 方向键 + 导航键 ----
     const navKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']

@@ -18,6 +18,7 @@ import { HitTestIndex } from './HitTestIndex'
 import { TextParticle } from './particles/TextParticle'
 import { SeparatorParticle } from './particles/SeparatorParticle'
 import { ListParticle } from './particles/ListParticle'
+import { createFootnoteParticle } from './particles/FootnoteParticle'
 
 interface CaretPos { x: number; y: number; h: number }
 
@@ -337,6 +338,12 @@ export class Draw {
             if (imgUrl) {
               this.renderImage(ctx, imgUrl, item.x, pageY + item.y, item.width, item.height)
             }
+          } else if (item.type === 'footnote') {
+            // 脚注引用: 上标编号 (R31)
+            const fp = createFootnoteParticle()
+            fp.render(ctx, item, item.x, pageY + item.y, {
+              pageIndex: i, totalPages: this.pages.length,
+            })
           } else {
             // 列表标记独立渲染 (TASK-454)
             if (item.listMarker) {

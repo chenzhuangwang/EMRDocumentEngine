@@ -9,7 +9,7 @@ import type {
   ImageNode, Table, TableRow, TableCell, SeparatorNode,
   SectionBreak, PageSetup, TextStyle, ParagraphStyle,
   ElementMeta, ColumnDefinition, FlowBody,
-  FieldNode, FieldType,
+  FieldNode, FieldType, FootnoteRef, FootnoteContent,
 } from './DocumentModel'
 import { NodeType, generateId, DEFAULT_PAGE_SETUP } from './DocumentModel'
 import { NodePool } from './NodePool'
@@ -105,6 +105,14 @@ export function createSeparatorNode(style?: Partial<SeparatorNode>): SeparatorNo
 
 export function createSectionBreak(breakType: SectionBreak['breakType']): SectionBreak {
   return { type: NodeType.SECTION_BREAK, id: generateId(), breakType }
+}
+
+export function createFootnoteRef(footnoteId: string): FootnoteRef {
+  return { type: NodeType.FOOTNOTE_REF, id: generateId(), footnoteId }
+}
+
+export function createFootnoteContent(refId: string, children?: string[]): FootnoteContent {
+  return { type: NodeType.FOOTNOTE_CONTENT, id: generateId(), refId, children: children ?? [] }
 }
 
 // ================================================================
