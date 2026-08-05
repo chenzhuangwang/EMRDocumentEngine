@@ -623,14 +623,17 @@ export class Draw {
     }
   }
 
-  setWatermark(wm: WatermarkConfig): void { this.renderer.prepareWatermark(wm) }
-
   setScale(scale: number): void {
     this.coordSystem.update({ scale })
     this.eventBus.emit('scale:changed', scale)
   }
 
   getScale(): number { return this.coordSystem.transform.scale }
+
+  /** 设置数字水印 (R35) */
+  setWatermark(config: WatermarkConfig): void {
+    this.renderer.prepareWatermark(config)
+  }
 
   /** 域代码动态值计算 (TASK-471) */
   private resolveFieldText(item: { fieldType?: string; text?: string }, pageIndex: number): string {

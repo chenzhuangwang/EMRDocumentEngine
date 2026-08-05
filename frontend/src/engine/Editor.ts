@@ -3,6 +3,7 @@ import { createDocument, createParagraph, createTextNode, extractStyle, createFi
 import { NodePool, buildNodePool } from './document/NodePool'
 import type { FieldType } from './document/DocumentModel'
 import { Draw } from './render/Draw'
+import { AutoSaveManager } from './AutoSaveManager'
 import { EventBus } from './interaction/EventBus'
 import { CommandManager } from './command/CommandManager'
 import { InputComposer } from './interaction/IMEHandler'
@@ -43,6 +44,7 @@ export class Editor {
   private mouseHandler: MouseHandler
   private clipboard: ClipboardManager
   private findReplace: FindReplaceEngine
+  private autoSave: AutoSaveManager
   private _formatPainterStyle: Record<string, unknown> | null = null
   private listeners: EditorListener[] = []
   private _clickToFocus: (e: MouseEvent) => void
@@ -75,6 +77,15 @@ export class Editor {
     this.mouseHandler = new MouseHandler(this, container)
     this.clipboard = new ClipboardManager()
     this.findReplace = new FindReplaceEngine()
+    this.autoSave = new AutoSaveManager(doc.id, doc.title || '未命名文档', () => this.doc)
+    // 自动保存: 保存状态同步到 EditorStore
+    this.autoSave.onSave((type) => {
+      if (type === 'saving') this.store.setSaveStatus('saving')
+      else if (type === 'saved') this.store.setSaveStatus('saved')
+      else if (type === 'error') this.store.setSaveStatus('error')
+    })
+    // 初始化 IndexedDB (异步, 不阻塞构造函数)
+    this.autoSave.init().catch(err => console.warn('[AutoSave] IndexedDB init failed:', err))
     this.commandManager = new CommandManager(
       this.eventBus,
       () => this.doc,
@@ -90,7 +101,7 @@ export class Editor {
       this.store.setDirty(true)
     })
 
-    // document:changed → 重布局 + 重绘 (唯一渲染入口)
+    // document:changed → 重布局 + 重绘 + 自动保存标记 (唯一渲染入口)
     this.eventBus.on('document:changed', (payload: { invalidation: import('./command/ICommand').InvalidationScope }) => {
       const t0 = performance.now()
       this.draw.recomputeLayout(this.pool, payload.invalidation)
@@ -102,6 +113,7 @@ export class Editor {
         `bodyChildren=[${this.doc.body.children.join(',')}]`
       )
       this.draw.render(this.pool, this.store.state.runtime)
+      this.autoSave.markDirty()
     })
 
     // render:request (undo/redo 等) → 使用当前的 pool 和 state
@@ -987,7 +999,63 @@ export class Editor {
 
   setRuntimeState(state: EditorRuntimeState): void { this.draw.setRuntimeState(state) }
   setScale(scale: number): void { this.draw.setScale(scale) }
-  getScale(): number { return this.draw.getScale() }
+  /** 获取字数统计 (R36) */
+  getWordCount(): { chars: number; words: number; paragraphs: number; selectedChars?: number; selectedWords?: number } {
+    let chars = 0
+    let words = 0
+    const bodyChildren = this.doc.body.children
+
+    for (const childId of bodyChildren) {
+      const node = this.pool.nodes.get(childId)
+      if (!node) continue
+      const n = node as { type?: string; children?: string[] }
+
+      if (n.type === 'paragraph' && n.children) {
+        for (const cid of n.children) {
+          const cn = this.pool.nodes.get(cid) as { type?: string; text?: string } | undefined
+          if (cn?.type === 'text' && cn.text) {
+            const t = cn.text
+            chars += [...t].length  // 字符数 (含CJK)
+            // 英文单词数: 按空白/标点分割
+            words += (t.match(/[\w一-鿿]+/g) || []).length
+          }
+        }
+      }
+    }
+
+    const paragraphs = bodyChildren.filter(id => {
+      const n = this.pool.nodes.get(id)
+      return n && (n as { type?: string }).type === 'paragraph'
+    }).length
+
+    // 选区统计
+    let selectedChars: number | undefined
+    let selectedWords: number | undefined
+    const sel = this.store.state.runtime.selection
+    if (sel.active) {
+      const anchorParaId = sel.anchor.paragraphPath[sel.anchor.paragraphPath.length - 1]
+      const focusParaId = sel.focus.paragraphPath[sel.focus.paragraphPath.length - 1]
+      if (anchorParaId === focusParaId) {
+        const start = Math.min(sel.anchor.offset, sel.focus.offset)
+        const end = Math.max(sel.anchor.offset, sel.focus.offset)
+        const nodeIds = this.collectTextNodeIds(anchorParaId, start, end)
+        let selText = ''
+        for (const nid of nodeIds) {
+          const n = this.pool.nodes.get(nid) as { text?: string } | undefined
+          if (n?.text) selText += n.text
+        }
+        selectedChars = [...selText].length
+        selectedWords = (selText.match(/[\w一-鿿]+/g) || []).length
+      }
+    }
+
+    return { chars, words, paragraphs, selectedChars, selectedWords }
+  }
+
+  /** 设置数字水印 (R35) */
+  setWatermark(config: import('./render/LayeredRenderer').WatermarkConfig): void {
+    this.draw.setWatermark(config)
+  }
 
   /** 不可见字符显示切换 (TASK-475) */
   setShowInvisible(v: boolean): void { this.draw.showInvisible = v }
@@ -1041,7 +1109,11 @@ export class Editor {
     this.mouseHandler.destroy()
     this.inputComposer.destroy()
     this.draw.destroy()
+    this.autoSave.destroy()
   }
+
+  /** 获取 AutoSaveManager (供页面卸载时立即保存) */
+  getAutoSave(): AutoSaveManager { return this.autoSave }
 
   on(event: EditorEventType, cb: (...args: unknown[]) => void): void {
     this.listeners.push({ event, callback: cb })

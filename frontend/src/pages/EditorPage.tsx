@@ -236,25 +236,16 @@ function EditorPageInner({
     const editor = editorRef.current
     if (!editor) return
     const update = () => {
-      const doc = editor.getDocument()
-      const pool = editor.getPool()
-      let count = 0
-      for (const paraId of doc.body.children) {
-        const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
-        if (para?.children) {
-          for (const childId of para.children) {
-            const node = pool.nodes.get(childId) as { text?: string; type?: string } | undefined
-            if (node?.type === 'text') count += (node.text || '').length
-          }
-        }
-      }
-      setWordCount(count)
+      const wc = editor.getWordCount()
+      setWordCount(wc.words)
       setPageCount(editor.getDraw().getPages().length)
       setParaStyle(editor.getParagraphStyle())
       setTextStyle(editor.getTextStyle())
       setCanUndoRedo(editor.canUndo(), editor.canRedo())
 
       // 大纲: 提取所有 outlineLevel > 0 的标题段落
+      const doc = editor.getDocument()
+      const pool = editor.getPool()
       const pages = editor.getDraw().getPages()
       const paraPageMap = new Map<string, number>()
       for (let pi = 0; pi < pages.length; pi++) {

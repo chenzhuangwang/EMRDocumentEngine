@@ -2,12 +2,12 @@
 
 > 会话日期: 2026-08-05
 > 当前阶段: delivery (质量整合)
-> 本轮: R30-R33
+> 本轮: R30-R36
 
 ## 构建基线
 
 - `tsc --noEmit`: **0 errors**
-- `vite build`: **1703 modules, 538KB JS**
+- `vite build`: **1704 modules, 542KB JS**
 - `vitest run`: **34/34 passed (4 test files)**
 
 ## 本会话交付总览 (R11-R33)
@@ -32,8 +32,11 @@
 | **R31** | **脚注全链路: FootnoteParticle + LayoutEngine集成 + Editor.insertFootnote + Ctrl+Alt+F** | **FootnoteParticle + LayoutEngine + Draw + Editor + ElementFormatter + KeyboardHandler** | **+1 file, 修改 5 files** |
 | **R32** | **批注面板: CommentPanel + CommentParticle + Sidebar 批注 Tab + Store 扩展** | **CommentPanel + CommentParticle + Sidebar + EditorLayout + Store** | **+2 files, 修改 3 files** |
 | **R33** | **ImageParticle 提取: 图片渲染逻辑从 Draw.ts 抽离为独立粒子** | **ImageParticle + index** | **+1 file** |
+| **R34** | **自动保存: AutoSaveManager (IndexedDB + 防抖3s + 恢复检测)** | **AutoSaveManager + Editor 集成** | **+1, 修改 1** |
+| **R35** | **数字水印: Draw.setWatermark + Editor.setWatermark API 接入** | **Draw + Editor** | **修改 2** |
+| **R36** | **字数统计: Editor.getWordCount (chars/words/paragraphs/selection)** | **Editor + EditorPage** | **修改 2** |
 
-**总计: 29 files touched (R11-R33)**
+**总计: 32 files touched (R11-R36)**
 
 ## R30-R33 新增文件
 
