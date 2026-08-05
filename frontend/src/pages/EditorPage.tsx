@@ -651,9 +651,15 @@ function EditorPageInner({
       onInsert={(type: string) => {
         const ed = editorRef.current
         if (!ed) return
-        // 域代码: 页眉页脚工具栏插入页码/日期 (TASK-471)
+        // 域代码: 工具栏插入域 (TASK-471 + R39)
         if (type === 'pageNumber') { ed.insertFieldCode('page_number'); return }
         if (type === 'currentDate') { ed.insertFieldCode('current_date'); return }
+        if (type === 'totalPages') { ed.insertFieldCode('total_pages'); return }
+        if (type === 'currentTime') { ed.insertFieldCode('current_time'); return }
+        if (type === 'authorName') { ed.insertFieldCode('author_name'); return }
+        if (type === 'documentTitle') { ed.insertFieldCode('document_title'); return }
+        if (type === 'lastSavedDate') { ed.insertFieldCode('last_saved_date'); return }
+        if (type === 'printDate') { ed.insertFieldCode('print_date'); return }
         // 分隔线插入
         if (type === 'separator') { ed.insertSeparator(); return }
         // 图片: 触发文件选择器

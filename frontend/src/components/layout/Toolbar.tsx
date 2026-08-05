@@ -10,6 +10,7 @@ import {
   ChevronsUpDown, Type, ListFilter, Calendar, CheckSquare,
   Circle, Hash, RectangleEllipsis, FileText, Heading,
   PanelTop, Eraser, Settings, Paintbrush, Minus,
+  Clock, User,
 } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { cn } from '@/lib/utils'
@@ -165,6 +166,7 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
           <Image size={16} />
         </ToolbarButton>
         <InsertControlDropdown onInsert={onInsert} />
+        <FieldDropdown onInsert={onInsert} />
       </ToolbarGroup>
 
       <ToolbarDivider />
@@ -571,6 +573,60 @@ function HeaderFooterDropdown({
               </DropdownMenu.Item>
             </>
           )}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  )
+}
+
+// ---- 域代码插入下拉 (R39) ----
+
+const FIELD_ITEMS: { type: string; label: string; icon: React.ReactNode; shortcut?: string }[] = [
+  { type: 'pageNumber', label: '页码', icon: <Hash size={14} />, shortcut: 'PAGE' },
+  { type: 'totalPages', label: '总页数', icon: <FileText size={14} />, shortcut: 'NUMPAGES' },
+  { type: 'currentDate', label: '当前日期', icon: <Calendar size={14} />, shortcut: 'DATE' },
+  { type: 'currentTime', label: '当前时间', icon: <Clock size={14} />, shortcut: 'TIME' },
+  { type: 'authorName', label: '作者名称', icon: <User size={14} />, shortcut: 'AUTHOR' },
+  { type: 'documentTitle', label: '文档标题', icon: <FileText size={14} />, shortcut: 'TITLE' },
+  { type: 'lastSavedDate', label: '最后保存日期', icon: <Clock size={14} />, shortcut: 'SAVEDATE' },
+  { type: 'printDate', label: '打印日期', icon: <Calendar size={14} />, shortcut: 'PRINTDATE' },
+]
+
+function FieldDropdown({ onInsert }: { onInsert?: (type: string) => void }) {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          title="插入域代码"
+          className="toolbar-btn flex items-center gap-0.5"
+        >
+          <Hash size={16} />
+          <ChevronDown size={10} className="text-gray-400" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className="min-w-[180px] bg-white rounded-md shadow-lg border border-gray-200
+                     py-1 z-50 animate-in fade-in-80"
+          sideOffset={4}
+        >
+          <div className="px-2 py-1 text-[10px] text-gray-400 uppercase tracking-wider">
+            插入域代码
+          </div>
+          {FIELD_ITEMS.map(item => (
+            <DropdownMenu.Item
+              key={item.type}
+              className="flex items-center gap-2 px-2 py-1.5 text-xs text-gray-700
+                         hover:bg-gray-100 rounded mx-1 cursor-pointer outline-none"
+              onClick={() => onInsert?.(item.type)}
+            >
+              <span className="flex-shrink-0 text-gray-400">{item.icon}</span>
+              <span className="flex-1">{item.label}</span>
+              {item.shortcut && (
+                <span className="text-[10px] text-gray-400 font-mono">{item.shortcut}</span>
+              )}
+            </DropdownMenu.Item>
+          ))}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

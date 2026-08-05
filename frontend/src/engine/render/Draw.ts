@@ -19,6 +19,7 @@ import { TextParticle } from './particles/TextParticle'
 import { SeparatorParticle } from './particles/SeparatorParticle'
 import { ListParticle } from './particles/ListParticle'
 import { createFootnoteParticle } from './particles/FootnoteParticle'
+import { createTableParticle } from './particles/TableParticle'
 
 interface CaretPos { x: number; y: number; h: number }
 
@@ -344,6 +345,10 @@ export class Draw {
             fp.render(ctx, item, item.x, pageY + item.y, {
               pageIndex: i, totalPages: this.pages.length,
             })
+          } else if (item.type === 'table') {
+            // 表格渲染 (R37)
+            const tp = createTableParticle()
+            tp.render(ctx, item, item.x, pageY + item.y)
           } else {
             // 列表标记独立渲染 (TASK-454)
             if (item.listMarker) {

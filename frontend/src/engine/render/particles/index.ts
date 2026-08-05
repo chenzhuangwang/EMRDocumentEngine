@@ -11,3 +11,4 @@ export { textParticle, separatorParticle, fieldParticle } from './ParticleAdapte
 export { createFootnoteParticle } from './FootnoteParticle'
 export { createImageParticle } from './ImageParticle'
 export { createCommentParticle } from './CommentParticle'
+export { createTableParticle } from './TableParticle'

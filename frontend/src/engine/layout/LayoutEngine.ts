@@ -88,6 +88,16 @@ export class LayoutEngine {
         continue
       }
 
+      if (blockType === 'table') {
+        // 表格: 生成 SLIFItem 时在后续步骤中展开 (R37)
+        allLines.push({
+          elements: [{ id: block.id, type: 'table', value: '', tableBlock: block } as LineElement],
+          width: contentWidth, height: 0, maxAscent: 0, maxDescent: 0,
+          indent: 0,
+        })
+        continue
+      }
+
       if (blockType === 'paragraph') {
         const para = block as unknown as Paragraph
         const elements: LineElement[] = []
@@ -188,8 +198,27 @@ export class LayoutEngine {
       let y = this.config.marginTop
       const items: SLIFItem[] = []
       for (const line of ip.lines) {
-        if (line.height === 0) continue // 跳过 section_break 标记行
         const firstEl = line.elements[0]
+
+        // 表格: 展开为含行数据的 SLIFItem (R37)
+        if (firstEl?.type === 'table') {
+          const tbl = (firstEl as LineElement).tableBlock as { id: string; columns?: { width: number }[]; children: string[] } | undefined
+          if (tbl) {
+            const rows = this.buildTableRows(tbl, pool, contentWidth)
+            const tableHeight = rows.reduce((h, r) => h + (r.height || 24) + 1, 0)
+            items.push({
+              nodeId: tbl.id, nodeType: 'table', type: 'table',
+              x: this.config.marginLeft, y,
+              width: contentWidth, height: tableHeight,
+              ascent: tableHeight, descent: 0,
+              font: 'SimSun', size: 12,
+              rows,
+            })
+          }
+          continue
+        }
+
+        if (line.height === 0) continue // 跳过 section_break 标记行
         if (firstEl?.type === 'separator') {
           items.push({
             nodeId: firstEl.id, nodeType: 'separator', type: 'separator',
@@ -358,6 +387,66 @@ export class LayoutEngine {
   }
 
   getPages(): SLIFPage[] { return this.pages }
+
+  /** 将 Table 节点展开为 SLIFRow[] (R37) */
+  private buildTableRows(
+    table: { id: string; columns?: { width: number }[]; children: string[] },
+    pool: NodePool,
+    contentWidth: number,
+  ): import('./SLIF').SLIFRow[] {
+    const numCols = table.columns?.length || 2
+    const colWidth = Math.floor(contentWidth / numCols)
+    const rows: import('./SLIF').SLIFRow[] = []
+
+    for (const rowId of table.children) {
+      const row = pool.nodes.get(rowId) as { type?: string; height?: number; children: string[] } | undefined
+      if (!row || row.type !== 'row') continue
+
+      const cells: import('./SLIF').SLIFCell[] = []
+      for (let ci = 0; ci < row.children.length; ci++) {
+        const cellId = row.children[ci]
+        const cell = pool.nodes.get(cellId) as {
+          type?: string; colspan?: number; rowspan?: number
+          isHeader?: boolean; backgroundColor?: string
+          verticalAlign?: string; children: string[]
+        } | undefined
+        if (!cell) continue
+
+        const items: import('./SLIF').SLIFItem[] = []
+        for (const paraId of cell.children) {
+          const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+          if (para?.children) {
+            for (const textId of para.children) {
+              const tn = pool.nodes.get(textId) as { type?: string; text?: string; font?: string; size?: number; bold?: boolean; color?: string } | undefined
+              if (tn?.type === 'text') {
+                items.push({
+                  nodeId: textId, nodeType: 'text', type: 'text',
+                  x: 0, y: 0, width: colWidth - 12, height: 20,
+                  ascent: 14, descent: 6,
+                  font: tn.font || 'SimSun', size: tn.size || 12,
+                  bold: tn.bold, color: tn.color,
+                  text: tn.text || '',
+                })
+              }
+            }
+          }
+        }
+
+        cells.push({
+          x: ci * colWidth, y: 0,
+          width: colWidth, height: row.height || 24,
+          colspan: cell.colspan, rowspan: cell.rowspan,
+          isHeader: cell.isHeader,
+          backgroundColor: cell.backgroundColor,
+          items,
+        })
+      }
+
+      rows.push({ height: row.height || 24, cells })
+    }
+
+    return rows
+  }
 
   /** 计算有序列表编号: 统计前面同类型同级别段落数 + 1 */
   private computeListNumber(paraId: string, pool: import('../document/NodePool').NodePool, doc: DocumentTree, level: number): number {

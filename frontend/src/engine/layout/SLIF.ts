@@ -37,6 +37,7 @@ export interface SLIFCell {
   x: number; y: number; width: number; height: number
   colspan?: number; rowspan?: number
   isHeader?: boolean
+  backgroundColor?: string
   items: SLIFItem[]
 }
 

@@ -2,12 +2,12 @@
 
 > 会话日期: 2026-08-05
 > 当前阶段: delivery (质量整合)
-> 本轮: R30-R36
+> 本轮: R30-R39
 
 ## 构建基线
 
 - `tsc --noEmit`: **0 errors**
-- `vite build`: **1704 modules, 542KB JS**
+- `vite build`: **1705 modules, 546KB JS**
 - `vitest run`: **34/34 passed (4 test files)**
 
 ## 本会话交付总览 (R11-R33)
@@ -35,8 +35,11 @@
 | **R34** | **自动保存: AutoSaveManager (IndexedDB + 防抖3s + 恢复检测)** | **AutoSaveManager + Editor 集成** | **+1, 修改 1** |
 | **R35** | **数字水印: Draw.setWatermark + Editor.setWatermark API 接入** | **Draw + Editor** | **修改 2** |
 | **R36** | **字数统计: Editor.getWordCount (chars/words/paragraphs/selection)** | **Editor + EditorPage** | **修改 2** |
+| **R37** | **表格渲染: TableParticle + LayoutEngine 表格→SLIF 转换** | **TableParticle + LayoutEngine + LineBreaker + Draw** | **+1, 修改 3** |
+| **R38** | **书签对话框: BookmarkDialog (书签插入+交叉引用选择)** | **BookmarkDialog** | **+1** |
+| **R39** | **域插入下拉: FieldDropdown (8种域代码) + EditorPage 全量接线** | **Toolbar + EditorPage** | **修改 2** |
 
-**总计: 32 files touched (R11-R36)**
+**总计: 35 files touched (R11-R39)**
 
 ## R30-R33 新增文件
 
