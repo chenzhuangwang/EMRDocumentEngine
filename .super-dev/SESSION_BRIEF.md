@@ -2,7 +2,7 @@
 
 > 会话日期: 2026-08-05
 > 当前阶段: delivery (质量整合)
-> 本轮: R30-R48
+> 本轮: R30-R51
 
 ## 构建基线
 
@@ -47,8 +47,11 @@
 | **R46** | **文档比较引擎: DocumentDiffer (段落级 LCS + 文本节点级 diff)** | **DocumentDiffer** | **+1** |
 | **R47** | **文档比较视图: DocumentCompareView (差异列表+颜色编码+统计栏)** | **DocumentCompareView** | **+1** |
 | **R48** | **差异控制栏: 接受/拒绝单个差异 + 全部接受/拒绝 (已内置)** | **DocumentCompareView** | **已合并** |
+| **R49** | **主题系统: EditorTheme 4 预设 (标准/护眼/打印/暗色) + CSS 变量注入** | **EditorTheme** | **+1** |
+| **R50** | **水印设置 UI: WatermarkDialog (文字/字号/颜色/透明度/旋转/间距)** | **WatermarkDialog** | **+1** |
+| **R51** | **性能诊断面板: PerfPanel (FPS/帧耗时/布局耗时/缓存命中率)** | **PerfPanel** | **+1** |
 
-**总计: 43 files touched (R11-R48)**
+**总计: 46 files touched (R11-R51)**
 
 ## R30-R33 新增文件
 
