@@ -2,7 +2,7 @@
 
 > 会话日期: 2026-08-05
 > 当前阶段: delivery (质量整合)
-> 本轮: R30-R45
+> 本轮: R30-R48
 
 ## 构建基线
 
@@ -44,8 +44,11 @@
 | **R43** | **自动更正引擎: AutoCorrectEngine (24条医学缩写规则) + IME 自动替换** | **AutoCorrectEngine + Editor** | **+1, 修改 1** |
 | **R44** | **选择性粘贴: PasteSpecialDialog (保留源格式/匹配目标/纯文本)** | **PasteSpecialDialog** | **+1** |
 | **R45** | **条形码: BarcodeParticle (Code128B Canvas 原生渲染)** | **BarcodeParticle** | **+1** |
+| **R46** | **文档比较引擎: DocumentDiffer (段落级 LCS + 文本节点级 diff)** | **DocumentDiffer** | **+1** |
+| **R47** | **文档比较视图: DocumentCompareView (差异列表+颜色编码+统计栏)** | **DocumentCompareView** | **+1** |
+| **R48** | **差异控制栏: 接受/拒绝单个差异 + 全部接受/拒绝 (已内置)** | **DocumentCompareView** | **已合并** |
 
-**总计: 41 files touched (R11-R45)**
+**总计: 43 files touched (R11-R48)**
 
 ## R30-R33 新增文件
 
