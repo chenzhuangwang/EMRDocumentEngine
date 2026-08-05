@@ -37,6 +37,12 @@ export class Draw {
   private hfEditActive = false
   private hfEditSection: 'header' | 'footer' = 'header'
 
+  // 不可见字符显示 (TASK-475)
+  private _showInvisible = false
+
+  // 图片缓存: URL → HTMLImageElement
+  private imageCache = new Map<string, HTMLImageElement>()
+
   constructor(
     container: HTMLElement,
     eventBus: EventBus,
@@ -316,7 +322,7 @@ export class Draw {
             // 非编辑态: 页眉文本变淡
             ctx.globalAlpha = 0.55
           }
-          this.renderParticleItems(ctx, page.headerItems!, pageY)
+          this.renderParticleItems(ctx, page.headerItems!, pageY, i)
           ctx.restore()
         }
 
@@ -326,6 +332,11 @@ export class Draw {
             SeparatorParticle.render(ctx, {
               id: item.nodeId, type: item.type,
             }, item.x, pageY + item.y, contentWidth)
+          } else if (item.type === 'image') {
+            const imgUrl = this.resolveImageUrl(item)
+            if (imgUrl) {
+              this.renderImage(ctx, imgUrl, item.x, pageY + item.y, item.width, item.height)
+            }
           } else {
             // 列表标记独立渲染 (TASK-454)
             if (item.listMarker) {
@@ -334,11 +345,11 @@ export class Draw {
               })
             }
             TextParticle.render(ctx, {
-              id: item.nodeId, type: item.type, value: item.text || '',
+              id: item.nodeId, type: item.type, value: this.resolveFieldText(item, i),
               font: item.font, size: item.size, bold: item.bold, italic: item.italic,
               color: item.color, underline: item.underline,
               strikeout: item.strikeout, superscript: item.superscript, subscript: item.subscript,
-            }, item.x, pageY + item.y, {})
+            }, item.x, pageY + item.y, { showInvisible: this._showInvisible })
           }
         }
 
@@ -392,7 +403,7 @@ export class Draw {
             // 非编辑态: 页脚文本变淡
             ctx.globalAlpha = 0.55
           }
-          this.renderParticleItems(ctx, page.footerItems!, pageY + footerTop)
+          this.renderParticleItems(ctx, page.footerItems!, pageY + footerTop, i)
           ctx.restore()
         }
       }
@@ -534,19 +545,27 @@ export class Draw {
     ctx: CanvasRenderingContext2D,
     items: SLIFItem[],
     pageY: number,
+    pageIndex: number,
   ): void {
     for (const item of items) {
+      if (item.type === 'image') {
+        const imgUrl = this.resolveImageUrl(item)
+        if (imgUrl) {
+          this.renderImage(ctx, imgUrl, item.x, pageY + item.y, item.width, item.height)
+        }
+        continue
+      }
       if (item.listMarker) {
         ListParticle.render(ctx, item.listMarker, item.x, pageY + item.y, item.ascent, {
           font: item.font, size: item.size, bold: item.bold, color: item.color,
         })
       }
       TextParticle.render(ctx, {
-        id: item.nodeId, type: item.type, value: item.text || '',
+        id: item.nodeId, type: item.type, value: this.resolveFieldText(item, pageIndex),
         font: item.font, size: item.size, bold: item.bold, italic: item.italic,
         color: item.color, underline: item.underline,
         strikeout: item.strikeout, superscript: item.superscript, subscript: item.subscript,
-      }, item.x, pageY + item.y, {})
+      }, item.x, pageY + item.y, { showInvisible: this._showInvisible })
     }
   }
 
@@ -605,6 +624,69 @@ export class Draw {
   }
 
   getScale(): number { return this.coordSystem.transform.scale }
+
+  /** 域代码动态值计算 (TASK-471) */
+  private resolveFieldText(item: { fieldType?: string; text?: string }, pageIndex: number): string {
+    if (!item.fieldType) return item.text || ''
+    const total = this.pages.length
+    const now = new Date()
+    switch (item.fieldType) {
+      case 'page_number': return String(pageIndex + 1)
+      case 'total_pages': return String(total)
+      case 'current_date': return now.toLocaleDateString('zh-CN')
+      case 'current_time': return now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+      case 'document_title': return this.document?.title || ''
+      case 'author_name': return 'user' // 暂取默认
+      case 'last_saved_date': return now.toLocaleDateString('zh-CN')
+      case 'print_date': return now.toLocaleDateString('zh-CN')
+      default: return item.text || `[${item.fieldType}]`
+    }
+  }
+
+  /** 不可见字符显示 (TASK-475) */
+  get showInvisible(): boolean { return this._showInvisible }
+  set showInvisible(v: boolean) { this._showInvisible = v }
+
+  /** 从 pool 中解析图片 URL */
+  private resolveImageUrl(item: { nodeId: string }): string | null {
+    if (!this.pool) return null
+    const node = this.pool.nodes.get(item.nodeId) as { src?: string } | undefined
+    return node?.src || null
+  }
+
+  /** 渲染图片 (TASK-447), 带内存缓存 */
+  private renderImage(
+    ctx: CanvasRenderingContext2D,
+    url: string,
+    x: number, y: number,
+    width: number, height: number,
+  ): void {
+    let img = this.imageCache.get(url)
+    if (img) {
+      ctx.drawImage(img, x, y, width, height)
+      return
+    }
+    // 异步加载首帧, 后续帧从缓存读取
+    img = new Image()
+    img.src = url
+    img.onload = () => {
+      this.imageCache.set(url, img!)
+      // 触发重绘以显示图片
+      if (this.pool && this._state) {
+        this.render(this.pool, this._state)
+      }
+    }
+    // 加载中绘制占位矩形
+    ctx.save()
+    ctx.fillStyle = '#E5E7EB'
+    ctx.fillRect(x, y, width, height)
+    ctx.strokeStyle = '#9CA3AF'
+    ctx.lineWidth = 1
+    ctx.setLineDash([4, 2])
+    ctx.strokeRect(x, y, width, height)
+    ctx.setLineDash([])
+    ctx.restore()
+  }
 
   /** 页眉页脚编辑模式状态 */
   isHeaderFooterEditActive(): boolean { return this.hfEditActive }

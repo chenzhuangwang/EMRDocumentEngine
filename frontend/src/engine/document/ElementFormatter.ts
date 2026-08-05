@@ -9,6 +9,7 @@ import type {
   ImageNode, Table, TableRow, TableCell, SeparatorNode,
   SectionBreak, PageSetup, TextStyle, ParagraphStyle,
   ElementMeta, ColumnDefinition, FlowBody,
+  FieldNode, FieldType,
 } from './DocumentModel'
 import { NodeType, generateId, DEFAULT_PAGE_SETUP } from './DocumentModel'
 import { NodePool } from './NodePool'
@@ -37,6 +38,21 @@ export function createTextNode(text: string, style?: TextStyle): TextNode {
 
 export function createSmartTextNode(text: string, element: ElementMeta, style?: TextStyle): SmartTextNode {
   return { type: NodeType.SMART_TEXT, id: generateId(), text, element, ...style }
+}
+
+export function createFieldNode(fieldType: FieldType, format?: string, style?: TextStyle): FieldNode {
+  const labels: Record<string, string> = {
+    page_number: '[页码]', total_pages: '[总页数]',
+    current_date: '[日期]', current_time: '[时间]',
+    author_name: '[作者]', document_title: '[标题]',
+    last_saved_date: '[保存日期]', print_date: '[打印日期]',
+  }
+  return {
+    type: NodeType.FIELD, id: generateId(),
+    fieldType, format,
+    cachedValue: labels[fieldType] || `[${fieldType}]`,
+    ...style,
+  }
 }
 
 export function createImageNode(objectKey: string, width: number, height: number, wrap: 'inline' | 'square' | 'top-bottom' = 'inline'): ImageNode {

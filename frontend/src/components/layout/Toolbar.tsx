@@ -9,9 +9,8 @@ import {
   AlignJustify, List, ListOrdered, Indent, Outdent,
   ChevronsUpDown, Type, ListFilter, Calendar, CheckSquare,
   Circle, Hash, RectangleEllipsis, FileText, Heading,
-  PanelTop,
+  PanelTop, Eraser, Settings, Paintbrush, Minus,
 } from 'lucide-react'
-import { useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { cn } from '@/lib/utils'
 import { useEditorStore } from '@/store'
@@ -22,6 +21,9 @@ interface ToolbarProps {
   onInsert?: (elementType: string) => void
   onExportClick?: () => void
   onPrint?: () => void
+  onPageSetup?: () => void
+  /** 格式刷状态 */
+  formatPainterActive?: boolean
 }
 
 // ---- 常量 ----
@@ -60,8 +62,11 @@ interface ControlItem {
 }
 
 // ================================================================
-export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarProps) {
+export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetup, formatPainterActive }: ToolbarProps) {
   const paraStyle = useEditorStore((s) => s.paragraphStyle)
+  const textStyle = useEditorStore((s) => s.textStyle)
+  const canUndo = useEditorStore((s) => s.canUndo)
+  const canRedo = useEditorStore((s) => s.canRedo)
   const hfEdit = useEditorStore((s) => s.headerFooterEdit)
   const hfConfig = useEditorStore((s) => s.headerFooterConfig)
   const setHfEdit = useEditorStore((s) => s.setHeaderFooterEdit)
@@ -85,10 +90,10 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarP
     <div className="h-toolbar bg-white border-b border-gray-100 flex items-center px-3 gap-0.5 flex-shrink-0 overflow-x-auto select-none">
       {/* 组1：历史操作 */}
       <ToolbarGroup>
-        <ToolbarButton title="撤销 (Ctrl+Z)" onClick={() => onFormat?.('undo')}>
+        <ToolbarButton title="撤销 (Ctrl+Z)" disabled={!canUndo} onClick={() => onFormat?.('undo')}>
           <Undo2 size={16} />
         </ToolbarButton>
-        <ToolbarButton title="重做 (Ctrl+Y)" onClick={() => onFormat?.('redo')}>
+        <ToolbarButton title="重做 (Ctrl+Y)" disabled={!canRedo} onClick={() => onFormat?.('redo')}>
           <Redo2 size={16} />
         </ToolbarButton>
       </ToolbarGroup>
@@ -112,23 +117,30 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarP
 
       {/* 组4：文本样式 */}
       <ToolbarGroup>
-        <ToolbarButton title="加粗 (Ctrl+B)" onClick={() => onFormat?.('bold')}>
+        <ToolbarButton title="格式刷" active={formatPainterActive} onClick={() => onFormat?.('formatPainter')}>
+          <Paintbrush size={16} />
+        </ToolbarButton>
+        <ToolbarButton title="加粗 (Ctrl+B)" active={textStyle?.bold} onClick={() => onFormat?.('bold')}>
           <Bold size={16} />
         </ToolbarButton>
-        <ToolbarButton title="斜体 (Ctrl+I)" onClick={() => onFormat?.('italic')}>
+        <ToolbarButton title="斜体 (Ctrl+I)" active={textStyle?.italic} onClick={() => onFormat?.('italic')}>
           <Italic size={16} />
         </ToolbarButton>
-        <ToolbarButton title="下划线 (Ctrl+U)" onClick={() => onFormat?.('underline')}>
+        <ToolbarButton title="下划线 (Ctrl+U)" active={textStyle?.underline} onClick={() => onFormat?.('underline')}>
           <Underline size={16} />
         </ToolbarButton>
-        <ToolbarButton title="删除线" onClick={() => onFormat?.('strikeout')}>
+        <ToolbarButton title="删除线" active={textStyle?.strikeout} onClick={() => onFormat?.('strikeout')}>
           <Strikethrough size={16} />
         </ToolbarButton>
-        <ToolbarButton title="上标" onClick={() => onFormat?.('superscript')}>
+        <ToolbarButton title="上标" active={textStyle?.superscript} onClick={() => onFormat?.('superscript')}>
           <Superscript size={16} />
         </ToolbarButton>
-        <ToolbarButton title="下标" onClick={() => onFormat?.('subscript')}>
+        <ToolbarButton title="下标" active={textStyle?.subscript} onClick={() => onFormat?.('subscript')}>
           <Subscript size={16} />
+        </ToolbarButton>
+        <ToolbarDivider />
+        <ToolbarButton title="清除格式" onClick={() => onFormat?.('clearFormat')}>
+          <Eraser size={16} />
         </ToolbarButton>
       </ToolbarGroup>
 
@@ -143,6 +155,9 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarP
 
       {/* 组6：元素插入 */}
       <ToolbarGroup>
+        <ToolbarButton title="插入分隔线" onClick={() => onInsert?.('separator')}>
+          <Minus size={16} />
+        </ToolbarButton>
         <ToolbarButton title="插入表格" onClick={() => onInsert?.('table')}>
           <Table size={16} />
         </ToolbarButton>
@@ -174,10 +189,10 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarP
 
       {/* 组8：列表 + 缩进 */}
       <ToolbarGroup>
-        <ToolbarButton title="无序列表" onClick={() => onFormat?.('unorderedList')}>
+        <ToolbarButton title="无序列表" active={paraStyle?.listType === 'bullet'} onClick={() => onFormat?.('unorderedList')}>
           <List size={16} />
         </ToolbarButton>
-        <ToolbarButton title="有序列表" onClick={() => onFormat?.('orderedList')}>
+        <ToolbarButton title="有序列表" active={paraStyle?.listType === 'ordered'} onClick={() => onFormat?.('orderedList')}>
           <ListOrdered size={16} />
         </ToolbarButton>
         <ToolbarButton title="减少缩进" onClick={() => onFormat?.('outdent')}>
@@ -201,6 +216,9 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick }: ToolbarP
 
       {/* 组10：文件操作 */}
       <ToolbarGroup>
+        <ToolbarButton title="页面设置" onClick={onPageSetup}>
+          <Settings size={16} />
+        </ToolbarButton>
         <ToolbarButton title="打印" onClick={onPrint}>
           <Printer size={16} />
         </ToolbarButton>
@@ -241,7 +259,8 @@ function ToolbarButton({
 // ---- 字体下拉 ----
 
 function FontDropdown({ onSelect }: { onSelect: (font: string) => void }) {
-  const [selected, setSelected] = useState('SimSun')
+  const textStyle = useEditorStore((s) => s.textStyle)
+  const selected = textStyle?.font || 'SimSun'
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -263,7 +282,7 @@ function FontDropdown({ onSelect }: { onSelect: (font: string) => void }) {
               className="px-3 py-1.5 text-sm text-gray-700 outline-none cursor-default
                          data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700"
               style={{ fontFamily: f.value }}
-              onClick={() => { setSelected(f.value); onSelect(f.value) }}
+              onClick={() => onSelect(f.value)}
             >
               {f.label}
             </DropdownMenu.Item>
@@ -277,7 +296,8 @@ function FontDropdown({ onSelect }: { onSelect: (font: string) => void }) {
 // ---- 字号下拉 ----
 
 function FontSizeDropdown({ onSelect }: { onSelect: (size: number) => void }) {
-  const [selected, setSelected] = useState(16)
+  const textStyle = useEditorStore((s) => s.textStyle)
+  const selected = textStyle?.size || 16
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -298,7 +318,7 @@ function FontSizeDropdown({ onSelect }: { onSelect: (size: number) => void }) {
               key={s}
               className="px-3 py-1.5 text-sm text-gray-700 outline-none cursor-default
                          data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 text-center"
-              onClick={() => { setSelected(s); onSelect(s) }}
+              onClick={() => onSelect(s)}
             >
               {s}
             </DropdownMenu.Item>
@@ -312,14 +332,22 @@ function FontSizeDropdown({ onSelect }: { onSelect: (size: number) => void }) {
 // ---- 文字颜色选择器 ----
 
 function ColorPicker({ onSelect }: { onSelect: (color: string) => void }) {
+  const textStyle = useEditorStore((s) => s.textStyle)
+  const currentColor = textStyle?.color || '#000000'
+
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          className="toolbar-btn data-[state=open]:bg-gray-100"
-          title="文字颜色"
+          className="toolbar-btn data-[state=open]:bg-gray-100 relative"
+          title={`文字颜色 (${currentColor})`}
         >
           <Palette size={16} />
+          {/* 当前颜色指示器 */}
+          <span
+            className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-3 h-0.5 rounded-full"
+            style={{ backgroundColor: currentColor }}
+          />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
@@ -398,7 +426,8 @@ const HEADING_STYLES = [
 ]
 
 function HeadingDropdown({ onSelect }: { onSelect: (level: number) => void }) {
-  const [selected, setSelected] = useState(0)
+  const paraStyle = useEditorStore((s) => s.paragraphStyle)
+  const selected = paraStyle?.outlineLevel ?? 0
   const label = HEADING_STYLES.find(h => h.value === selected)?.label || '正文'
 
   return (
@@ -429,7 +458,7 @@ function HeadingDropdown({ onSelect }: { onSelect: (level: number) => void }) {
                 fontSize: [0, 28, 24, 20, 18, 16, 14][h.value],
                 fontWeight: h.value >= 1 ? 'bold' : 'normal',
               } : undefined}
-              onClick={() => { setSelected(h.value); onSelect(h.value) }}
+              onClick={() => onSelect(h.value)}
             >
               {h.label}
             </DropdownMenu.Item>

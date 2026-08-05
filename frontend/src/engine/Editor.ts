@@ -1,6 +1,7 @@
 import type { DocumentTree, BaseNode, Paragraph } from './document/DocumentModel'
-import { createDocument, createParagraph, createTextNode, extractStyle } from './document/ElementFormatter'
+import { createDocument, createParagraph, createTextNode, extractStyle, createFieldNode, createSeparatorNode } from './document/ElementFormatter'
 import { NodePool, buildNodePool } from './document/NodePool'
+import type { FieldType } from './document/DocumentModel'
 import { Draw } from './render/Draw'
 import { EventBus } from './interaction/EventBus'
 import { CommandManager } from './command/CommandManager'
@@ -12,6 +13,8 @@ import { generateCommandId } from './command/ICommand'
 import { InsertTextCommand } from './command/commands/InsertTextCommand'
 import { InsertNodesCommand } from './command/commands/InsertNodesCommand'
 import { FormatTextCommand } from './command/commands/FormatTextCommand'
+import { ClearFormatCommand } from './command/commands/FormatTextCommand'
+import { FormatPainterCommand } from './command/commands/FormatTextCommand'
 import { ParagraphStyleCommand } from './command/commands/ParagraphStyleCommand'
 import { ClipboardManager } from './command/ClipboardManager'
 import { EditorStore } from './state/EditorStore'
@@ -40,6 +43,7 @@ export class Editor {
   private mouseHandler: MouseHandler
   private clipboard: ClipboardManager
   private findReplace: FindReplaceEngine
+  private _formatPainterStyle: Record<string, unknown> | null = null
   private listeners: EditorListener[] = []
   private _clickToFocus: (e: MouseEvent) => void
 
@@ -197,6 +201,12 @@ export class Editor {
     // 页眉页脚编辑模式下, 光标定位已在 MouseHandler.onMouseDown 中完成,
     // 此处不再重复处理 (避免 hitTestIndex 在 body items 中误命中)
     if (this.draw.isHeaderFooterEditActive()) return
+
+    // 格式刷激活时: 点击 = 应用格式到目标段落 (TASK-472)
+    if (this._formatPainterStyle) {
+      this.handleFormatPainterApply(e)
+      return
+    }
 
     const rect = this.container.getBoundingClientRect()
     const screenX = e.clientX - rect.left
@@ -401,6 +411,110 @@ export class Editor {
     return para.id
   }
 
+  /**
+   * 在光标位置插入域代码 (TASK-471)
+   * 用于页眉页脚工具栏"插入页码"/"插入日期"等
+   */
+  insertFieldCode(fieldType: FieldType): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const fn = createFieldNode(fieldType)
+
+    // 注册到 NodePool
+    this.pool.nodes.set(fn.id, fn)
+
+    // 插入到段落 children 的光标偏移处
+    const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+    if (!para?.children) return
+
+    // 找到光标所在的文本节点位置，在后面插入 FieldNode
+    const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
+    if (resolved) {
+      const idx = para.children.indexOf(resolved.textNodeId)
+      para.children.splice(idx + 1, 0, fn.id)
+    } else {
+      // 段尾: 追加到最后
+      para.children.push(fn.id)
+    }
+
+    // 触发重布局+重绘
+    this.draw.recomputeLayout(this.pool)
+    this.draw.render(this.pool, this.store.state.runtime)
+    this.notifyListeners('contentChange', this.doc)
+  }
+
+  /** 在光标所在段落后插入分隔线 (TASK-462) */
+  insertSeparator(): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const idx = this.doc.body.children.indexOf(paraId)
+    if (idx < 0) return
+
+    const sep = createSeparatorNode()
+    this.pool.nodes.set(sep.id, sep)
+    this.doc.body.children.splice(idx + 1, 0, sep.id)
+
+    // 光标移到分隔线后的下一段 (如果有)
+    const newBody = this.doc.body.children
+    const nextParaId = newBody[idx + 2] // 跳过刚插入的 separator
+    if (nextParaId) {
+      const nextPara = this.pool.nodes.get(nextParaId)
+      if (nextPara && (nextPara as { type?: string }).type === 'paragraph') {
+        setCursor(this.store, [this.doc.id, nextParaId], 0)
+      }
+    }
+
+    this.draw.recomputeLayout(this.pool)
+    this.draw.render(this.pool, this.store.state.runtime)
+    this.notifyListeners('contentChange', this.doc)
+  }
+
+  /** 在光标位置插入图片 (TASK-447), dataUrl 为 base64 或 blob URL */
+  insertImage(dataUrl: string, naturalW?: number, naturalH?: number): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    // 限制显示宽度不超过内容区域
+    const maxW = 794 - 180 // pageWidth - margins
+    const displayW = Math.min(naturalW || maxW, maxW)
+    const displayH = naturalW && naturalH
+      ? (displayW / naturalW) * naturalH
+      : 200
+
+    const imgNode = {
+      type: 'image' as const,
+      id: generateCommandId(),
+      src: dataUrl,
+      width: displayW,
+      height: displayH,
+      naturalWidth: naturalW,
+      naturalHeight: naturalH,
+      wrapMode: 'top-bottom' as const,
+    }
+
+    this.pool.nodes.set(imgNode.id, imgNode)
+
+    const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+    if (para?.children) {
+      const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
+      if (resolved) {
+        const idx = para.children.indexOf(resolved.textNodeId)
+        para.children.splice(idx + 1, 0, imgNode.id)
+      } else {
+        para.children.push(imgNode.id)
+      }
+    }
+
+    this.draw.recomputeLayout(this.pool)
+    this.draw.render(this.pool, this.store.state.runtime)
+    this.notifyListeners('contentChange', this.doc)
+  }
+
   execCommand(command: ICommand): void { this.commandManager.execute(command) }
   undo(): void { this.commandManager.undo() }
   redo(): void { this.commandManager.redo() }
@@ -553,6 +667,152 @@ export class Editor {
     this.commandManager.execute(cmd)
   }
 
+  /** 清除光标/选区处所有文本格式 (TASK-473) */
+  clearFormat(): void {
+    const selection = this.store.state.runtime.selection
+    const cursor = this.store.state.runtime.cursor
+    let nodeIds: string[] = []
+
+    if (selection.active) {
+      const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
+      const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
+
+      if (anchorParaId === focusParaId) {
+        const start = Math.min(selection.anchor.offset, selection.focus.offset)
+        const end = Math.max(selection.anchor.offset, selection.focus.offset)
+        if (start < end) nodeIds = this.collectTextNodeIds(anchorParaId, start, end)
+      } else {
+        const bodyChildren = this.doc.body.children
+        const aIdx = bodyChildren.indexOf(anchorParaId)
+        const fIdx = bodyChildren.indexOf(focusParaId)
+        if (aIdx >= 0 && fIdx >= 0) {
+          const lo = Math.min(aIdx, fIdx)
+          const hi = Math.max(aIdx, fIdx)
+          const loOff = aIdx === lo ? selection.anchor.offset : selection.focus.offset
+          const hiOff = aIdx === hi ? selection.anchor.offset : selection.focus.offset
+          const INF = Number.MAX_SAFE_INTEGER
+          for (let i = lo; i <= hi; i++) {
+            const paraId = bodyChildren[i]
+            if (i === lo && i === hi) {
+              if (loOff < hiOff) nodeIds.push(...this.collectTextNodeIds(paraId, loOff, hiOff))
+            } else if (i === lo) {
+              nodeIds.push(...this.collectTextNodeIds(paraId, loOff, INF))
+            } else if (i === hi) {
+              nodeIds.push(...this.collectTextNodeIds(paraId, 0, hiOff))
+            } else {
+              nodeIds.push(...this.collectTextNodeIds(paraId, 0, INF))
+            }
+          }
+        }
+      }
+    }
+
+    if (nodeIds.length === 0) {
+      if (cursor.paragraphPath.length === 0) return
+      const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+      const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
+      if (!resolved) return
+      nodeIds = [resolved.textNodeId]
+    }
+
+    const cmd = new ClearFormatCommand(generateCommandId(), Date.now(), 'user', nodeIds)
+    this.commandManager.execute(cmd)
+  }
+
+  /** 格式刷: 复制光标处文本样式 (TASK-472), 返回可序列化的样式对象 */
+  copyFormatPainterStyle(): Record<string, unknown> | null {
+    const ts = this.getTextStyle()
+    if (!ts) return null
+    const clean: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(ts)) {
+      if (v !== undefined && v !== false) clean[k] = v
+    }
+    return clean
+  }
+
+  /** 格式刷: 激活/取消 */
+  setFormatPainterActive(active: boolean): void {
+    if (active) {
+      this._formatPainterStyle = this.copyFormatPainterStyle()
+    } else {
+      this._formatPainterStyle = null
+    }
+  }
+
+  /** 格式刷是否激活 */
+  get isFormatPainterActive(): boolean { return this._formatPainterStyle !== null }
+
+  /** 格式刷: 点击目标段落时应用样式 */
+  private handleFormatPainterApply(e: MouseEvent): void {
+    if (!this._formatPainterStyle) return
+
+    const rect = this.container.getBoundingClientRect()
+    const screenX = e.clientX - rect.left
+    const screenY = e.clientY - rect.top + this.draw.getCoordinateSystem().transform.scrollY
+
+    const pages = this.draw.getPages()
+    if (pages.length === 0) { this._formatPainterStyle = null; return }
+
+    let pageIndex = 0; let localY = screenY
+    for (let i = 0; i < pages.length; i++) {
+      if (localY < pages[i].height) { pageIndex = i; break }
+      localY -= pages[i].height; pageIndex = i
+    }
+    const page = pages[pageIndex]
+    if (!page) { this._formatPainterStyle = null; return }
+
+    const viewportW = this.container.clientWidth
+    const offsetX = Math.max(0, (viewportW - page.width) / 2)
+    const docX = screenX - offsetX
+
+    const nodeId = this.draw.getHitTestIndex().hitTest(docX, localY, pageIndex)
+    if (nodeId) {
+      const para = this.findParagraphContaining(nodeId)
+      if (para) {
+        this.applyFormatPainter(para.id, this._formatPainterStyle)
+        // 同时定位光标到点击位置
+        const cursorOffset = this.computeOffsetAtX(para, docX, page)
+        setCursor(this.store, [this.doc.id, para.id], cursorOffset)
+      }
+    }
+
+    // 单次使用后退出 (双击模式可扩展)
+    this._formatPainterStyle = null
+    this.draw.render(this.pool, this.store.state.runtime)
+
+    // 通知 React 层更新状态
+    this.notifyFormatPainterChange(false)
+  }
+
+  private onFormatPainterChange: ((active: boolean) => void) | null = null
+
+  /** 注册格式刷状态变更回调 (供 React 层同步) */
+  setOnFormatPainterChange(cb: (active: boolean) => void): void {
+    this.onFormatPainterChange = cb
+  }
+
+  private notifyFormatPainterChange(active: boolean): void {
+    this.onFormatPainterChange?.(active)
+  }
+
+  /** 格式刷: 将样式应用到目标段落的所有文本节点 (TASK-472) */
+  applyFormatPainter(paraId: string, style: Record<string, unknown>): void {
+    const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+    if (!para?.children) return
+    const nodeIds: string[] = []
+    for (const cid of para.children) {
+      const n = this.pool.nodes.get(cid) as { type?: string } | undefined
+      if (n?.type === 'text') nodeIds.push(cid)
+    }
+    if (nodeIds.length === 0) return
+    const cmd = new FormatPainterCommand(
+      generateCommandId(), Date.now(), 'user',
+      nodeIds,
+      style as Partial<import('./document/DocumentModel').TextStyle>,
+    )
+    this.commandManager.execute(cmd)
+  }
+
   /** 设置光标/选区段落的格式 (对齐/缩进/列表) — v20.35 支持跨段落选区 */
   setParagraphStyle(style: Partial<import('./document/DocumentModel').ParagraphStyle>): void {
     const paraIds = this.getSelectedParagraphIds()
@@ -584,8 +844,41 @@ export class Editor {
     }
   }
 
+  /** 获取光标处文本样式 (供 Toolbar 状态同步) */
+  getTextStyle(): {
+    font?: string; size?: number
+    bold?: boolean; italic?: boolean; underline?: boolean
+    strikeout?: boolean; superscript?: boolean; subscript?: boolean
+    color?: string
+  } | null {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return null
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
+    let tn: { font?: string; size?: number; bold?: boolean; italic?: boolean; underline?: boolean; strikeout?: boolean; superscript?: boolean; subscript?: boolean; color?: string } | undefined
+    if (resolved) {
+      tn = this.pool.nodes.get(resolved.textNodeId) as typeof tn
+    } else {
+      // 光标在段尾 → 取最后一个 text node 的样式
+      const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+      if (para?.children) {
+        for (let i = para.children.length - 1; i >= 0; i--) {
+          const n = this.pool.nodes.get(para.children[i]) as { type?: string } & typeof tn
+          if (n?.type === 'text') { tn = n; break }
+        }
+      }
+    }
+    if (!tn) return null
+    return {
+      font: tn.font, size: tn.size,
+      bold: tn.bold, italic: tn.italic, underline: tn.underline,
+      strikeout: tn.strikeout, superscript: tn.superscript, subscript: tn.subscript,
+      color: tn.color,
+    }
+  }
+
   /** 获取光标/选区首段落的格式 (供 Toolbar active 状态) */
-  getParagraphStyle(): { alignment?: string; listType?: string; indent?: number } | null {
+  getParagraphStyle(): { alignment?: string; listType?: string; indent?: number; outlineLevel?: number } | null {
     const paraIds = this.getSelectedParagraphIds()
     if (paraIds.length === 0) return null
     const paraId = paraIds[0]
@@ -595,6 +888,7 @@ export class Editor {
       alignment: para.alignment as string | undefined,
       listType: para.list ? (para.list as { type: string }).type : undefined,
       indent: para.indent as number | undefined,
+      outlineLevel: para.outlineLevel as number | undefined,
     }
   }
 
@@ -655,6 +949,10 @@ export class Editor {
   setRuntimeState(state: EditorRuntimeState): void { this.draw.setRuntimeState(state) }
   setScale(scale: number): void { this.draw.setScale(scale) }
   getScale(): number { return this.draw.getScale() }
+
+  /** 不可见字符显示切换 (TASK-475) */
+  setShowInvisible(v: boolean): void { this.draw.showInvisible = v }
+  getShowInvisible(): boolean { return this.draw.showInvisible }
 
   /** 聚焦编辑器 */
   focus(): void { this.inputComposer.focus() }

@@ -35,7 +35,7 @@ const FORMATS: ExportFormat[] = [
     label: 'HTML 页面',
     description: '纯静态网页，可在浏览器中直接查看',
     icon: <FileCode size={22} />,
-    available: false,
+    available: true,
   },
   {
     id: 'txt',

@@ -136,6 +136,14 @@ export class LayoutEngine {
             })
           } else if (childType === 'footnote_ref') {
             elements.push({ id: child.id, type: 'footnote_ref', value: '' })
+          } else if (childType === 'field') {
+            const fn = child as unknown as Record<string, unknown>
+            elements.push({
+              id: child.id, type: 'field', value: (fn.cachedValue as string) || '',
+              font: fn.font as string, size: fn.size as number,
+              bold: fn.bold as boolean, italic: fn.italic as boolean,
+              fieldType: fn.fieldType as string,
+            })
           }
         }
 
@@ -194,6 +202,19 @@ export class LayoutEngine {
         }
         for (const el of line.elements) {
           if (el.type === 'section_break' || el.type === 'footnote_ref') continue
+          if (el.type === 'image') {
+            const imgEl = el as { imageData?: { width?: number; height?: number } }
+            const iw = imgEl.imageData?.width || contentWidth
+            const ih = imgEl.imageData?.height || 200
+            items.push({
+              nodeId: el.id, nodeType: 'image', type: 'image',
+              x: this.config.marginLeft, y,
+              width: Math.min(iw, contentWidth), height: ih,
+              ascent: ih, descent: 0,
+              font: 'SimSun', size: 12,
+            })
+            continue
+          }
           const charHeight = measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || 16 })
 
           // 计算 X 偏移: 基础 marginLeft + 缩进 + 对齐
@@ -230,6 +251,7 @@ export class LayoutEngine {
             color: el.color, underline: el.underline,
             strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,
             listMarker: itemListMarker,
+            fieldType: (el as { fieldType?: string }).fieldType,
           })
         }
         y += line.height
@@ -374,6 +396,14 @@ export class LayoutEngine {
             color: tn.color, underline: tn.underline,
             strikeout: tn.strikeout, superscript: tn.superscript, subscript: tn.subscript,
           })
+        } else if (childType === 'field') {
+          const fn = child as unknown as Record<string, unknown>
+          elements.push({
+            id: child.id, type: 'field', value: (fn.cachedValue as string) || '',
+            font: fn.font as string, size: fn.size as number,
+            bold: fn.bold as boolean, italic: fn.italic as boolean,
+            fieldType: fn.fieldType as string,
+          })
         }
       }
 
@@ -417,7 +447,8 @@ export class LayoutEngine {
           bold: el.bold, italic: el.italic,
           color: el.color, underline: el.underline,
           strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,
-        })
+            fieldType: (el as { fieldType?: string }).fieldType,
+          })
       }
       y += line.height
     }

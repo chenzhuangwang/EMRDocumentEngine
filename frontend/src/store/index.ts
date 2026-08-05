@@ -16,7 +16,14 @@ interface EditorState {
   saveStatus: 'saved' | 'saving' | 'unsaved' | 'error'
   onlineUsers: number
   validationResults: ValidationResult[]
-  paragraphStyle: { alignment?: string; listType?: string; indent?: number } | null
+  paragraphStyle: { alignment?: string; listType?: string; indent?: number; outlineLevel?: number } | null
+  /** 光标处文本样式 (供 Toolbar 按钮状态同步) */
+  textStyle: {
+    font?: string; size?: number
+    bold?: boolean; italic?: boolean; underline?: boolean
+    strikeout?: boolean; superscript?: boolean; subscript?: boolean
+    color?: string
+  } | null
   /** 页眉页脚编辑状态 (TASK-470) */
   headerFooterEdit: { active: boolean; section: 'header' | 'footer' }
   headerFooterConfig: { differentFirstPage: boolean; differentOddEven: boolean }
@@ -28,7 +35,20 @@ interface EditorState {
   setSaveStatus: (status: 'saved' | 'saving' | 'unsaved' | 'error') => void
   setOnlineUsers: (count: number) => void
   setValidationResults: (results: ValidationResult[]) => void
-  setParagraphStyle: (style: { alignment?: string; listType?: string; indent?: number } | null) => void
+  setParagraphStyle: (style: { alignment?: string; listType?: string; indent?: number; outlineLevel?: number } | null) => void
+  setTextStyle: (style: {
+    font?: string; size?: number
+    bold?: boolean; italic?: boolean; underline?: boolean
+    strikeout?: boolean; superscript?: boolean; subscript?: boolean
+    color?: string
+  } | null) => void
+  /** 格式刷状态 (TASK-472) */
+  formatPainter: { active: boolean; style: Record<string, unknown> | null }
+  setFormatPainter: (active: boolean, style?: Record<string, unknown> | null) => void
+  /** 撤销/重做状态 (供 Toolbar 按钮禁用态) */
+  canUndo: boolean
+  canRedo: boolean
+  setCanUndoRedo: (canUndo: boolean, canRedo: boolean) => void
   /** 激活/关闭页眉页脚编辑 */
   setHeaderFooterEdit: (active: boolean, section?: 'header' | 'footer') => void
   setHeaderFooterConfig: (patch: Partial<{ differentFirstPage: boolean; differentOddEven: boolean }>) => void
@@ -51,6 +71,10 @@ export const useEditorStore = create<EditorState>((set) => ({
   onlineUsers: 0,
   validationResults: [],
   paragraphStyle: null,
+  textStyle: null,
+  formatPainter: { active: false, style: null },
+  canUndo: false,
+  canRedo: false,
   headerFooterEdit: { active: false, section: 'header' },
   headerFooterConfig: { differentFirstPage: false, differentOddEven: false },
 
@@ -62,6 +86,9 @@ export const useEditorStore = create<EditorState>((set) => ({
   setOnlineUsers: (onlineUsers) => set({ onlineUsers }),
   setValidationResults: (validationResults) => set({ validationResults }),
   setParagraphStyle: (paragraphStyle) => set({ paragraphStyle }),
+  setTextStyle: (textStyle) => set({ textStyle }),
+  setFormatPainter: (active, style = null) => set({ formatPainter: { active, style } }),
+  setCanUndoRedo: (canUndo, canRedo) => set({ canUndo, canRedo }),
   setHeaderFooterEdit: (active, section) =>
     set({ headerFooterEdit: { active, section: section || 'header' } }),
   setHeaderFooterConfig: (patch) =>

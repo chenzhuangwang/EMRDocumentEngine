@@ -2,9 +2,9 @@
 // 状态栏
 // ============================================================
 
-import { FileText, Type, Wifi, WifiOff, Minus, Plus } from 'lucide-react'
+import { FileText, Type, Wifi, WifiOff, Minus, Plus, Pilcrow } from 'lucide-react'
 import { useEditorStore } from '@/store'
-import { formatWordCount } from '@/lib/utils'
+import { cn, formatWordCount } from '@/lib/utils'
 
 interface StatusBarProps {
   pageIndex?: number
@@ -15,6 +15,10 @@ interface StatusBarProps {
   scale?: number
   /** 缩放变更回调 */
   onScaleChange?: (scale: number) => void
+  /** 不可见字符显示 */
+  showInvisible?: boolean
+  /** 不可见字符切换回调 */
+  onToggleInvisible?: () => void
 }
 
 export function StatusBar({
@@ -24,6 +28,8 @@ export function StatusBar({
   onlineCount = 0,
   scale = 1,
   onScaleChange,
+  showInvisible = false,
+  onToggleInvisible,
 }: StatusBarProps) {
   const saveStatus = useEditorStore((s) => s.saveStatus)
 
@@ -31,6 +37,20 @@ export function StatusBar({
     <footer className="h-statusbar bg-gray-50 border-t border-gray-200 flex items-center justify-between px-4 text-xs text-gray-500 flex-shrink-0 select-none">
       {/* 左侧：页面信息 */}
       <div className="flex items-center gap-4">
+        {/* 不可见字符切换 (TASK-475) */}
+        <button
+          className={cn(
+            'p-0.5 rounded transition-colors',
+            showInvisible
+              ? 'text-blue-600 bg-blue-50 hover:bg-blue-100'
+              : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100',
+          )}
+          onClick={onToggleInvisible}
+          title={showInvisible ? '隐藏格式标记' : '显示格式标记 (Ctrl+Shift+8)'}
+        >
+          <Pilcrow size={14} />
+        </button>
+
         <div className="flex items-center gap-1.5">
           <FileText size={12} />
           <span>第 {pageIndex} 页 / 共 {pageCount} 页</span>

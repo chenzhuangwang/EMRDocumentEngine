@@ -79,6 +79,7 @@ export interface LineElement {
   subscript?: boolean
   imageData?: { width?: number; height?: number; wrapType?: string }
   control?: { width?: number }
+  fieldType?: string
 }
 
 export interface FontConfig {

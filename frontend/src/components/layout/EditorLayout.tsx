@@ -9,6 +9,7 @@ import { Sidebar } from './Sidebar'
 import { StatusBar } from './StatusBar'
 import { PropertiesPanel } from './PropertiesPanel'
 import { useEditorStore, useUIStore } from '@/store'
+import type { OutlineItem } from '@/components/sidebar/OutlineNav'
 
 interface EditorLayoutProps {
   children: ReactNode
@@ -19,9 +20,21 @@ interface EditorLayoutProps {
   onInsert?: (elementType: string) => void
   onExportClick?: () => void
   onPrint?: () => void
+  onPageSetup?: () => void
+  formatPainterActive?: boolean
   wordCount?: number
   pageIndex?: number
   pageCount?: number
+  scale?: number
+  onScaleChange?: (scale: number) => void
+  showInvisible?: boolean
+  onToggleInvisible?: () => void
+  /** 大纲条目 (TASK-456) */
+  outlineItems?: OutlineItem[]
+  /** 当前激活的标题 ID */
+  activeOutlineId?: string | null
+  /** 点击大纲条目 */
+  onOutlineClick?: (item: OutlineItem) => void
   onTemplateSelect?: (id: string) => void
   templates?: { name: string; items: { id: string; name: string; description?: string }[] }[]
 }
@@ -35,9 +48,18 @@ export function EditorLayout({
   onInsert,
   onExportClick,
   onPrint,
+  onPageSetup,
+  formatPainterActive,
   wordCount = 0,
   pageIndex = 1,
   pageCount = 1,
+  scale = 1,
+  onScaleChange,
+  showInvisible = false,
+  onToggleInvisible,
+  outlineItems = [],
+  activeOutlineId,
+  onOutlineClick,
   onTemplateSelect,
   templates,
 }: EditorLayoutProps) {
@@ -60,6 +82,8 @@ export function EditorLayout({
         onInsert={onInsert}
         onExportClick={onExportClick}
         onPrint={onPrint}
+        onPageSetup={onPageSetup}
+        formatPainterActive={formatPainterActive}
       />
 
       {/* 主体区域 */}
@@ -69,6 +93,9 @@ export function EditorLayout({
           <Sidebar
             templates={templates || DEFAULT_TEMPLATES}
             onTemplateSelect={onTemplateSelect}
+            outlineItems={outlineItems}
+            activeOutlineId={activeOutlineId}
+            onOutlineClick={onOutlineClick}
           />
         )}
 
@@ -80,6 +107,10 @@ export function EditorLayout({
             pageCount={pageCount}
             wordCount={wordCount}
             onlineCount={onlineUsers}
+            scale={scale}
+            onScaleChange={onScaleChange}
+            showInvisible={showInvisible}
+            onToggleInvisible={onToggleInvisible}
           />
         </div>
 

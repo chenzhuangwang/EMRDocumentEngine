@@ -52,6 +52,7 @@ export interface ViewState {
   mode: EditorMode
   pageMode: PageMode
   scale: number
+  showInvisible: boolean
   scroll: { x: number; y: number }
   visiblePages: { start: number; end: number }
 }
@@ -95,7 +96,7 @@ export function createDefaultRuntimeState(): EditorRuntimeState {
       granularity: 'character',
     },
     view: {
-      mode: 'edit', pageMode: 'paging', scale: 1,
+      mode: 'edit', pageMode: 'paging', scale: 1, showInvisible: false,
       scroll: { x: 0, y: 0 },
       visiblePages: { start: 0, end: 0 },
     },

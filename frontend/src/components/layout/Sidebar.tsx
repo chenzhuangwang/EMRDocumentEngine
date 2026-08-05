@@ -5,7 +5,6 @@
 import {
   FileText,
   Puzzle,
-  Layout,
   Search,
   FolderOpen,
   FilePlus,
@@ -18,16 +17,23 @@ import {
   Hash,
   Table,
   Image,
+  ListTree,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store'
-import { OutlineNav } from '@/components/sidebar/OutlineNav'
+import { OutlineNav, type OutlineItem } from '@/components/sidebar/OutlineNav'
 
 interface SidebarProps {
   templates?: TemplateCategory[]
   onTemplateSelect?: (templateId: string) => void
   onNewTemplate?: () => void
   onElementClick?: (type: string) => void
+  /** 大纲条目 (TASK-456) */
+  outlineItems?: OutlineItem[]
+  /** 当前激活的标题 ID */
+  activeOutlineId?: string | null
+  /** 点击大纲条目 */
+  onOutlineClick?: (item: OutlineItem) => void
 }
 
 interface TemplateCategory {
@@ -35,7 +41,7 @@ interface TemplateCategory {
   items: { id: string; name: string; description?: string }[]
 }
 
-export function Sidebar({ templates = [], onTemplateSelect, onNewTemplate, onElementClick }: SidebarProps) {
+export function Sidebar({ templates = [], onTemplateSelect, onNewTemplate, onElementClick, outlineItems = [], activeOutlineId, onOutlineClick }: SidebarProps) {
   const sidebarTab = useUIStore((s) => s.sidebarTab)
   const setSidebarTab = useUIStore((s) => s.setSidebarTab)
 
@@ -58,8 +64,8 @@ export function Sidebar({ templates = [], onTemplateSelect, onNewTemplate, onEle
         <SidebarTab
           active={sidebarTab === 'pages'}
           onClick={() => setSidebarTab('pages')}
-          icon={<Layout size={14} />}
-          label="页面"
+          icon={<ListTree size={14} />}
+          label="大纲"
         />
       </div>
 
@@ -85,7 +91,13 @@ export function Sidebar({ templates = [], onTemplateSelect, onNewTemplate, onEle
           />
         )}
         {sidebarTab === 'elements' && <ElementPalette onClick={onElementClick} />}
-        {sidebarTab === 'pages' && <OutlineNav items={[]} />}
+        {sidebarTab === 'pages' && (
+          <OutlineNav
+            items={outlineItems}
+            activeId={activeOutlineId}
+            onItemClick={onOutlineClick}
+          />
+        )}
       </div>
     </aside>
   )
