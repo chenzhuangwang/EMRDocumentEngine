@@ -43,6 +43,8 @@ interface EditorLayoutProps {
   onSelectCommentThread?: (threadId: string) => void
   onResolveCommentThread?: (threadId: string) => void
   onAddCommentReply?: (threadId: string, content: string) => void
+  /** 阅读模式 (R40) */
+  readingMode?: boolean
 }
 
 export function EditorLayout({
@@ -72,21 +74,25 @@ export function EditorLayout({
   onSelectCommentThread,
   onResolveCommentThread,
   onAddCommentReply,
+  readingMode = false,
 }: EditorLayoutProps) {
-  const sidebarOpen = useUIStore((s) => s.sidebarOpen)
+  const sidebarOpen = useUIStore((s) => s.sidebarOpen) && !readingMode
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
 
   return (
     <div className="h-full flex flex-col">
-      {/* 顶部导航栏 */}
+      {/* 顶部导航栏 — 阅读模式下隐藏 */}
+      {!readingMode && (
       <HeaderBar
         documentTitle={documentTitle}
         onTitleChange={onTitleChange}
         onSave={onSave}
         onFormat={onFormat}
       />
+      )}
 
-      {/* 工具栏 */}
+      {/* 工具栏 — 阅读模式下隐藏 */}
+      {!readingMode && (
       <Toolbar
         onFormat={onFormat}
         onInsert={onInsert}
@@ -95,6 +101,7 @@ export function EditorLayout({
         onPageSetup={onPageSetup}
         formatPainterActive={formatPainterActive}
       />
+      )}
 
       {/* 主体区域 */}
       <div className="flex flex-1 min-h-0">
@@ -116,6 +123,7 @@ export function EditorLayout({
         {/* 编辑器画布 */}
         <div className="flex-1 flex flex-col min-h-0 min-w-0">
           {children}
+          {!readingMode && (
           <StatusBar
             pageIndex={pageIndex}
             pageCount={pageCount}
@@ -126,10 +134,11 @@ export function EditorLayout({
             showInvisible={showInvisible}
             onToggleInvisible={onToggleInvisible}
           />
+          )}
         </div>
 
-        {/* 属性面板 */}
-        <PropertiesPanel />
+        {/* 属性面板 — 阅读模式下隐藏 */}
+        {!readingMode && <PropertiesPanel />}
       </div>
     </div>
   )

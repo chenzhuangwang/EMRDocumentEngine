@@ -2,12 +2,12 @@
 
 > 会话日期: 2026-08-05
 > 当前阶段: delivery (质量整合)
-> 本轮: R30-R39
+> 本轮: R30-R42
 
 ## 构建基线
 
 - `tsc --noEmit`: **0 errors**
-- `vite build`: **1705 modules, 546KB JS**
+- `vite build`: **1706 modules, 547KB JS**
 - `vitest run`: **34/34 passed (4 test files)**
 
 ## 本会话交付总览 (R11-R33)
@@ -38,8 +38,11 @@
 | **R37** | **表格渲染: TableParticle + LayoutEngine 表格→SLIF 转换** | **TableParticle + LayoutEngine + LineBreaker + Draw** | **+1, 修改 3** |
 | **R38** | **书签对话框: BookmarkDialog (书签插入+交叉引用选择)** | **BookmarkDialog** | **+1** |
 | **R39** | **域插入下拉: FieldDropdown (8种域代码) + EditorPage 全量接线** | **Toolbar + EditorPage** | **修改 2** |
+| **R40** | **阅读模式: 全屏阅读 (隐藏工具栏/侧栏/状态栏) + ESC 退出** | **ReadingMode + EditorPage + EditorLayout** | **+1, 修改 2** |
+| **R41** | **最近文档: localStorage 10 份 + 侧栏快速打开** | **RecentDocuments** | **+1** |
+| **R42** | **文档属性: DocumentPropertiesDialog (标题/作者/关键词/科室)** | **DocumentPropertiesDialog** | **+1** |
 
-**总计: 35 files touched (R11-R39)**
+**总计: 38 files touched (R11-R42)**
 
 ## R30-R33 新增文件
 

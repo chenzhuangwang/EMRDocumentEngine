@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { EditorLayout } from '@/components/layout/EditorLayout'
+import { ReadingModeOverlay } from '@/components/views/ReadingMode'
 import { EditorProvider, useEditorRef } from '@/components/editor/EditorProvider'
 import { ExportDialog } from '@/components/dialogs/ExportDialog'
 import { FindReplaceDialog } from '@/components/dialogs/FindReplaceDialog'
@@ -100,6 +101,7 @@ function EditorPageInner({
   const findResultsRef = useRef<import('@/engine').MatchResult[]>([])
   const [zoom, setZoom] = useState(1)
   const [showInvisible, setShowInvisible] = useState(false)
+  const [readingMode, setReadingMode] = useState(false)
   const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([])
   const [activeOutlineId, setActiveOutlineId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -643,7 +645,9 @@ function EditorPageInner({
   }, [])
 
   return (
+    <ReadingModeOverlay active={readingMode} onToggle={() => setReadingMode(v => !v)}>
     <EditorLayout
+      readingMode={readingMode}
       documentTitle={documentTitle}
       onTitleChange={onTitleChange}
       onSave={handleSave}
@@ -725,5 +729,6 @@ function EditorPageInner({
         }}
       />
     </EditorLayout>
+    </ReadingModeOverlay>
   )
 }
