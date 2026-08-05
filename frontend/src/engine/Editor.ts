@@ -4,6 +4,7 @@ import { NodePool, buildNodePool } from './document/NodePool'
 import type { FieldType } from './document/DocumentModel'
 import { Draw } from './render/Draw'
 import { AutoSaveManager } from './AutoSaveManager'
+import { AutoCorrectEngine } from './AutoCorrectEngine'
 import { EventBus } from './interaction/EventBus'
 import { CommandManager } from './command/CommandManager'
 import { InputComposer } from './interaction/IMEHandler'
@@ -13,6 +14,7 @@ import type { ICommand } from './command/ICommand'
 import { generateCommandId } from './command/ICommand'
 import { InsertTextCommand } from './command/commands/InsertTextCommand'
 import { InsertNodesCommand } from './command/commands/InsertNodesCommand'
+import { DeleteRangeCommand } from './command/commands/DeleteRangeCommand'
 import { FormatTextCommand } from './command/commands/FormatTextCommand'
 import { ClearFormatCommand } from './command/commands/FormatTextCommand'
 import { FormatPainterCommand } from './command/commands/FormatTextCommand'
@@ -45,6 +47,7 @@ export class Editor {
   private clipboard: ClipboardManager
   private findReplace: FindReplaceEngine
   private autoSave: AutoSaveManager
+  private autoCorrect: AutoCorrectEngine
   private _formatPainterStyle: Record<string, unknown> | null = null
   private listeners: EditorListener[] = []
   private _clickToFocus: (e: MouseEvent) => void
@@ -78,6 +81,7 @@ export class Editor {
     this.clipboard = new ClipboardManager()
     this.findReplace = new FindReplaceEngine()
     this.autoSave = new AutoSaveManager(doc.id, doc.title || '未命名文档', () => this.doc)
+    this.autoCorrect = new AutoCorrectEngine()
     // 自动保存: 保存状态同步到 EditorStore
     this.autoSave.onSave((type) => {
       if (type === 'saving') this.store.setSaveStatus('saving')
@@ -166,6 +170,9 @@ export class Editor {
         cursor.paragraphPath, cursor.offset, text, activeStyle,
       )
       this.commandManager.execute(cmd)
+
+      // 自动更正检查 (R43): IME 输入后检测光标前文本是否需要替换
+      this.applyAutoCorrect(cursor.paragraphPath)
     })
 
     // 初始布局 + 首帧渲染
@@ -1055,6 +1062,39 @@ export class Editor {
   /** 设置数字水印 (R35) */
   setWatermark(config: import('./render/LayeredRenderer').WatermarkConfig): void {
     this.draw.setWatermark(config)
+  }
+
+  /** 自动更正: IME 输入后检测光标前文本是否需要替换 (R43) */
+  private applyAutoCorrect(paragraphPath: string[]): void {
+    const paraId = paragraphPath[paragraphPath.length - 1]
+    if (!paraId) return
+
+    // 获取段落完整文本
+    const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+    if (!para?.children) return
+    let fullText = ''
+    for (const cid of para.children) {
+      const n = this.pool.nodes.get(cid) as { type?: string; text?: string } | undefined
+      if (n?.type === 'text') fullText += n.text || ''
+    }
+
+    const cursor = this.store.state.runtime.cursor
+    const result = this.autoCorrect.checkAtCursor(fullText, cursor.offset)
+    if (!result) return
+
+    // 执行替换: 删除匹配文本 + 插入替换文本
+    if (result.end > result.start) {
+      this.commandManager.execute(new DeleteRangeCommand(
+        generateCommandId(), Date.now(), 'user',
+        paragraphPath, result.start, result.end,
+      ))
+    }
+    this.commandManager.execute(new InsertTextCommand(
+      generateCommandId(), Date.now(), 'user',
+      paragraphPath, result.start, result.replacement,
+    ))
+
+    console.debug(`[AutoCorrect] "${fullText.slice(result.start, result.end)}" → "${result.replacement}"`)
   }
 
   /** 不可见字符显示切换 (TASK-475) */

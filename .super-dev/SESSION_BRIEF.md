@@ -2,12 +2,12 @@
 
 > 会话日期: 2026-08-05
 > 当前阶段: delivery (质量整合)
-> 本轮: R30-R42
+> 本轮: R30-R45
 
 ## 构建基线
 
 - `tsc --noEmit`: **0 errors**
-- `vite build`: **1706 modules, 547KB JS**
+- `vite build`: **1707 modules, 550KB JS**
 - `vitest run`: **34/34 passed (4 test files)**
 
 ## 本会话交付总览 (R11-R33)
@@ -41,8 +41,11 @@
 | **R40** | **阅读模式: 全屏阅读 (隐藏工具栏/侧栏/状态栏) + ESC 退出** | **ReadingMode + EditorPage + EditorLayout** | **+1, 修改 2** |
 | **R41** | **最近文档: localStorage 10 份 + 侧栏快速打开** | **RecentDocuments** | **+1** |
 | **R42** | **文档属性: DocumentPropertiesDialog (标题/作者/关键词/科室)** | **DocumentPropertiesDialog** | **+1** |
+| **R43** | **自动更正引擎: AutoCorrectEngine (24条医学缩写规则) + IME 自动替换** | **AutoCorrectEngine + Editor** | **+1, 修改 1** |
+| **R44** | **选择性粘贴: PasteSpecialDialog (保留源格式/匹配目标/纯文本)** | **PasteSpecialDialog** | **+1** |
+| **R45** | **条形码: BarcodeParticle (Code128B Canvas 原生渲染)** | **BarcodeParticle** | **+1** |
 
-**总计: 38 files touched (R11-R42)**
+**总计: 41 files touched (R11-R45)**
 
 ## R30-R33 新增文件
 
