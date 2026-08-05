@@ -2,7 +2,7 @@
 
 > 会话日期: 2026-08-05
 > 当前阶段: delivery (质量整合)
-> 本轮: R30-R60
+> 本轮: R30-R63
 
 ## 构建基线
 
@@ -59,8 +59,11 @@
 | **R58** | **LaTeX 公式: LaTeXParticle (纯 Canvas 分式/根号/上下标/希腊字母 无外部依赖)** | **LaTeXParticle** | **+1** |
 | **R59** | **引擎统一导出: engine/index.ts 全量 API + IEditor 公共接口** | **index.ts + Editor** | **修改 2** |
 | **R60** | **死代码清理: Position.ts @deprecated + 导出整理** | **Position.ts + index.ts** | **修改 2** |
+| **R61** | **插件系统: IPlugin + PluginManager + 8类扩展点 + PluginContext** | **PluginManager** | **+1** |
+| **R62** | **图表粒子: ChartParticle (柱状图/折线图/饼图 纯Canvas + JSON数据驱动)** | **ChartParticle** | **+1** |
+| **R63** | **文档加载器: IDocumentLoader + DocumentLoaderRegistry + JSON/HTML/MD/XML 4格式** | **DocumentLoaderRegistry** | **+1** |
 
-**总计: 56 files touched (R11-R60)**
+**总计: 59 files touched (R11-R63)**
 
 ## R30-R33 新增文件
 
