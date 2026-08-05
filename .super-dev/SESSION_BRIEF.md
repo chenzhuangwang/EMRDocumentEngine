@@ -2,7 +2,7 @@
 
 > 会话日期: 2026-08-05
 > 当前阶段: delivery (质量整合)
-> 本轮: R30-R54
+> 本轮: R30-R57
 
 ## 构建基线
 
@@ -53,8 +53,11 @@
 | **R52** | **质控引擎: QCEngine (6条内置规则) + QCResultPanel (评分+等级+三级问题列表)** | **QCEngine + QCResultPanel** | **+2** |
 | **R53** | **i18n 国际化: LocaleMessages + setLocale/getLocale (zh-CN/en-US 内置 25 键)** | **i18n/index** | **+1** |
 | **R54** | **错误降级: 三级容错 (safeRenderParticle/safeRenderPage/safeLoadDocument + safeAsync)** | **ErrorRecovery** | **+1** |
+| **R55** | **虚拟视口: VirtualViewport (可见页计算 + overscan + 画布偏移优化)** | **VirtualViewport** | **+1** |
+| **R56** | **内存管理: MemoryManager (容量限制+LRU淘汰+统计) + LRUMap (O(1)淘汰)** | **MemoryManager** | **+1** |
+| **R57** | **性能埋点: PerformanceMetrics (renderFrame/layout/keystroke + sendBeacon上报)** | **PerformanceMetrics** | **+1** |
 
-**总计: 50 files touched (R11-R54)**
+**总计: 53 files touched (R11-R57)**
 
 ## R30-R33 新增文件
 
