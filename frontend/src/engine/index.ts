@@ -160,7 +160,7 @@ export type { EditorSecurityConfig } from './security/SecurityConfig'
 export {
   DocumentLoaderRegistry, documentLoaderRegistry,
 } from './loaders/DocumentLoaderRegistry'
-export type { IDocumentLoader } from './loaders/DocumentLoaderRegistry'
+export type { IDocumentLoader, LoadResult } from './loaders/DocumentLoaderRegistry'
 
 // ---- R60+: Plugins ----
 export { PluginManager } from './plugins/PluginManager'

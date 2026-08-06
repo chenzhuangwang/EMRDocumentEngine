@@ -24,6 +24,8 @@ export interface SLIFItem {
   headerRowCount?: number
   /** 续表标记文本 (R65) */
   continuationLabel?: string
+  /** 表格列宽数组 (TASK-701, px) */
+  columnWidths?: number[]
   // image extension
   imageUrl?: string
   /** 列表标记文本 (项目符号或编号), 由 Draw.ts 通过 ListParticle 独立渲染 */

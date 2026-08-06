@@ -32,9 +32,11 @@ export function createTableParticle(): IParticle {
         y += 20 // 续表标记占位
       }
 
-      // 计算列宽: 平均分配
+      // 计算列宽: 优先使用 columnWidths, 否则平均分配
       const maxCols = Math.max(...rows.map(r => r.cells.length))
-      const colWidths = calculateColumnWidths(item.width, maxCols, rows)
+      const colWidths = item.columnWidths && item.columnWidths.length === maxCols
+        ? item.columnWidths
+        : calculateColumnWidths(item.width, maxCols, rows)
 
       let rowY = y
 

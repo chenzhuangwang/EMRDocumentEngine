@@ -5,7 +5,16 @@
 // JSON/XML/HTML/Markdown 格式自动检测 + 路由
 // ============================================================
 
-import type { DocumentTree } from '../document/DocumentModel'
+import type { DocumentTree, BaseNode } from '../document/DocumentModel'
+import { NodeType, generateId } from '../document/DocumentModel'
+
+// ---- 加载结果 ----
+
+export interface LoadResult {
+  doc: DocumentTree
+  /** 所有节点的映射 (用于构建 NodePool) */
+  nodes: Map<string, BaseNode>
+}
 
 // ---- 加载器接口 ----
 
@@ -14,8 +23,8 @@ export interface IDocumentLoader {
   readonly extensions: string[]
   /** 加载器名称 */
   readonly name: string
-  /** 从文本内容加载为 DocumentTree */
-  load(content: string, fileName?: string): DocumentTree
+  /** 从文本内容加载为 DocumentTree + nodes */
+  load(content: string, fileName?: string): LoadResult
   /** 检测是否可处理此内容 (通过文件头/内容特征) */
   detect?(content: string): boolean
 }
@@ -48,7 +57,7 @@ export class DocumentLoaderRegistry {
   }
 
   /** 加载文档: 先按扩展名, 再按内容检测 */
-  load(content: string, fileName?: string): DocumentTree | null {
+  load(content: string, fileName?: string): LoadResult | null {
     let loader: IDocumentLoader | null = null
 
     if (fileName) loader = this.findByExtension(fileName)
@@ -73,8 +82,15 @@ export class DocumentLoaderRegistry {
 const JSONLoader: IDocumentLoader = {
   name: 'JSON',
   extensions: ['.json', '.emr'],
-  load(content: string): DocumentTree {
-    return JSON.parse(content) as DocumentTree
+  load(content: string): LoadResult {
+    const doc = JSON.parse(content) as DocumentTree
+    const nodes = new Map<string, BaseNode>()
+    nodes.set(doc.id, doc as unknown as BaseNode)
+    // 注册 body 子节点
+    for (const cid of doc.body.children) {
+      nodes.set(cid, { type: 'paragraph' as NodeType, id: cid, children: [] } as unknown as BaseNode)
+    }
+    return { doc, nodes }
   },
   detect(content: string): boolean {
     const trimmed = content.trim()
@@ -86,59 +102,75 @@ const JSONLoader: IDocumentLoader = {
 const HTMLLoader: IDocumentLoader = {
   name: 'HTML',
   extensions: ['.html', '.htm'],
-  load(content: string): DocumentTree {
+  load(content: string): LoadResult {
     const title = content.match(/<title>(.*?)<\/title>/)?.[1] || '导入的HTML文档'
-    const bodyText = content.replace(/<[^>]+>/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+    const bodyText = content.replace(/<[^>]+>/g, '\n').replace(/&nbsp;/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
+    const paras = bodyText.split('\n\n').filter(p => p.trim())
 
-    const paragraphs = bodyText.split('\n\n').filter(p => p.trim())
-    const bodyChildren: string[] = []
+    const docId = generateId()
+    const nodes = new Map<string, BaseNode>()
+    const paraIds: string[] = []
 
-    for (let i = 0; i < paragraphs.length; i++) {
-      const paraId = `html_p_${i + 1}`
-      const lines = paragraphs[i].trim().split('\n').filter(Boolean)
-      const textChildren: string[] = []
+    const doc: DocumentTree = {
+      type: 'document', id: docId, title,
+      body: { mode: 'flow', children: paraIds },
+      header: [], footer: [],
+      pageSetup: { width: 794, height: 1123, marginTop: 72, marginBottom: 72, marginLeft: 90, marginRight: 90, orientation: 'portrait' },
+    }
+    nodes.set(docId, doc as unknown as BaseNode)
 
-      for (let j = 0; j < lines.length; j++) {
-        const tid = `${paraId}_t${j + 1}`
-        // 注意: 这里创建的节点需要注册到 NodePool, 简化实现
-        textChildren.push(tid)
-      }
-      bodyChildren.push(paraId)
+    for (let i = 0; i < paras.length; i++) {
+      const paraId = generateId()
+      const textId = generateId()
+      const text = paras[i].replace(/\n/g, ' ').trim()
+
+      nodes.set(paraId, { type: 'paragraph' as NodeType, id: paraId, children: [textId] } as unknown as BaseNode)
+      nodes.set(textId, { type: 'text' as NodeType, id: textId, text, font: 'SimSun', size: 16 } as unknown as BaseNode)
+      paraIds.push(paraId)
     }
 
-    return {
-      type: 'document', id: 'html_import_' + Date.now(), title,
-      body: { mode: 'flow', children: bodyChildren },
-      header: [], footer: [],
-    } as unknown as DocumentTree
+    return { doc, nodes }
   },
   detect(content: string): boolean {
     return /<(!DOCTYPE|html|head|body)[^>]*>/i.test(content)
   },
 }
 
-/** Markdown 转 DocumentTree (简化) */
+/** Markdown 转 DocumentTree */
 const MarkdownLoader: IDocumentLoader = {
   name: 'Markdown',
   extensions: ['.md', '.markdown'],
-  load(content: string): DocumentTree {
+  load(content: string): LoadResult {
     const lines = content.split('\n')
     const title = lines[0]?.replace(/^#+\s*/, '') || '导入的Markdown文档'
-    const bodyChildren: string[] = []
 
-    let i = lines[0]?.startsWith('#') ? 1 : 0
-    for (; i < lines.length; i++) {
+    const docId = generateId()
+    const nodes = new Map<string, BaseNode>()
+    const paraIds: string[] = []
+
+    const doc: DocumentTree = {
+      type: 'document', id: docId, title,
+      body: { mode: 'flow', children: paraIds },
+      header: [], footer: [],
+      pageSetup: { width: 794, height: 1123, marginTop: 72, marginBottom: 72, marginLeft: 90, marginRight: 90, orientation: 'portrait' },
+    }
+    nodes.set(docId, doc as unknown as BaseNode)
+
+    const startIdx = lines[0]?.startsWith('#') ? 1 : 0
+    for (let i = startIdx; i < lines.length; i++) {
       const line = lines[i].trim()
       if (!line) continue
-      const paraId = `md_p_${i}`
-      bodyChildren.push(paraId)
+      const paraId = generateId()
+      const textId = generateId()
+      const text = line.replace(/^#{1,6}\s*/, '').replace(/^[-*+]\s*/, '').replace(/^\d+\.\s*/, '')
+      const outlineLevel = line.startsWith('#') ? (line.match(/^#+/)![0].length) : 0
+
+      nodes.set(paraId, { type: 'paragraph' as NodeType, id: paraId, children: [textId], outlineLevel } as unknown as BaseNode)
+      nodes.set(textId, { type: 'text' as NodeType, id: textId, text, font: 'SimSun', size: 16 } as unknown as BaseNode)
+      paraIds.push(paraId)
     }
 
-    return {
-      type: 'document', id: 'md_import_' + Date.now(), title,
-      body: { mode: 'flow', children: bodyChildren },
-      header: [], footer: [],
-    } as unknown as DocumentTree
+    return { doc, nodes }
   },
   detect(content: string): boolean {
     return /^(#{1,6}\s|[-*+]\s|\d+\.\s|```|> )/m.test(content)
@@ -149,13 +181,16 @@ const MarkdownLoader: IDocumentLoader = {
 const XMLLoader: IDocumentLoader = {
   name: 'XML',
   extensions: ['.xml', '.cda', '.hl7'],
-  load(_content: string): DocumentTree {
-    return {
-      type: 'document', id: 'xml_import_' + Date.now(),
+  load(_content: string): LoadResult {
+    const docId = generateId()
+    const doc: DocumentTree = {
+      type: 'document', id: docId,
       title: '导入的XML文档',
       body: { mode: 'flow', children: [] },
       header: [], footer: [],
-    } as unknown as DocumentTree
+      pageSetup: { width: 794, height: 1123, marginTop: 72, marginBottom: 72, marginLeft: 90, marginRight: 90, orientation: 'portrait' },
+    }
+    return { doc, nodes: new Map([[docId, doc as unknown as BaseNode]]) }
   },
   detect(content: string): boolean {
     return content.trim().startsWith('<?xml') || content.trim().startsWith('<')

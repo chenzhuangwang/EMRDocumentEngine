@@ -12,6 +12,7 @@
 
 import type { DocumentTree } from '../document/DocumentModel'
 import type { NodePool } from '../document/NodePool'
+import { generateCommandId } from './ICommand'
 import { generateId } from '../document/DocumentModel'
 
 // ---- 类型 ----
@@ -199,6 +200,57 @@ export class ClipboardManager {
   paste(): { nodes: SerializedPara[]; plainText: string } | null {
     if (!this.data) return null
     return { nodes: this.data.nodes, plainText: this.data.plainText }
+  }
+
+  /**
+   * 选择性粘贴: 仅保留文本 (TASK-517)
+   * 去除所有格式, 每个段落生成一个纯文本 TextNode
+   */
+  pasteAsPlainText(): { nodes: SerializedPara[]; plainText: string } | null {
+    if (!this.data) return null
+
+    const nodes: SerializedPara[] = this.data.nodes.map(para => ({
+      type: 'paragraph',
+      id: generateCommandId(),
+      style: {},
+      children: [{
+        type: 'text',
+        id: generateCommandId(),
+        text: para.children
+          .map(c => c.text || '')
+          .join(''),
+        font: 'SimSun',
+        size: 16,
+      }],
+    }))
+
+    return { nodes, plainText: this.data.plainText }
+  }
+
+  /**
+   * 选择性粘贴: 匹配目标格式 (TASK-517)
+   * 保留段落结构, 但移除源文本格式 (font/size/bold/italic/color)
+   */
+  pasteMatchingDestination(destinationStyle?: { font?: string; size?: number }): { nodes: SerializedPara[]; plainText: string } | null {
+    if (!this.data) return null
+
+    const defaultFont = destinationStyle?.font || 'SimSun'
+    const defaultSize = destinationStyle?.size || 16
+
+    const nodes: SerializedPara[] = this.data.nodes.map(para => ({
+      type: 'paragraph',
+      id: generateCommandId(),
+      style: {},
+      children: para.children.map(c => ({
+        type: c.type || 'text',
+        id: generateCommandId(),
+        text: c.text || '',
+        font: defaultFont,
+        size: defaultSize,
+      })),
+    }))
+
+    return { nodes, plainText: this.data.plainText }
   }
 
   /** 从纯文本构造剪贴板 (外部粘贴兜底) */
