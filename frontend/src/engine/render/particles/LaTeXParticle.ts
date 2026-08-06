@@ -25,58 +25,58 @@ const GREEK: Record<string, string> = {
 
 // ---- Token 类型 ----
 
-type Token =
+export type LaTeXToken =
   | { type: 'text'; value: string }
   | { type: 'sup'; value: string }
   | { type: 'sub'; value: string }
   | { type: 'frac'; num: string; den: string }
   | { type: 'sqrt'; inner: string }
 
+type Token = LaTeXToken
+
 // ---- 简单 LaTeX 解析器 ----
 
-function tokenize(latex: string): Token[] {
+export function tokenize(latex: string): Token[] {
   const tokens: Token[] = []
   let i = 0
 
   while (i < latex.length) {
     // 分式 \frac{num}{den}
     if (latex.startsWith('\\frac{', i)) {
-      const numStart = i + 6
-      const numEnd = findMatchingBrace(latex, numStart)
-      const denStart = numEnd + 2 // skip }{
+      const braceStart = i + 5  // position of {
+      const numEnd = findMatchingBrace(latex, braceStart)
+      const num = latex.slice(braceStart + 1, numEnd)
+      const denStart = numEnd + 1  // position of second {
       const denEnd = findMatchingBrace(latex, denStart)
-      tokens.push({
-        type: 'frac',
-        num: latex.slice(numStart, numEnd),
-        den: latex.slice(denStart, denEnd),
-      })
+      const den = latex.slice(denStart + 1, denEnd)
+      tokens.push({ type: 'frac', num, den })
       i = denEnd + 1
       continue
     }
 
     // 根号 \sqrt{inner}
     if (latex.startsWith('\\sqrt{', i)) {
-      const start = i + 6
-      const end = findMatchingBrace(latex, start)
-      tokens.push({ type: 'sqrt', inner: latex.slice(start, end) })
+      const braceStart = i + 5  // position of {
+      const end = findMatchingBrace(latex, braceStart)
+      tokens.push({ type: 'sqrt', inner: latex.slice(braceStart + 1, end) })
       i = end + 1
       continue
     }
 
     // 上标 ^{...}
     if (latex[i] === '^' && latex[i + 1] === '{') {
-      const start = i + 2
-      const end = findMatchingBrace(latex, start)
-      tokens.push({ type: 'sup', value: latex.slice(start, end) })
+      const braceStart = i + 1  // position of {
+      const end = findMatchingBrace(latex, braceStart)
+      tokens.push({ type: 'sup', value: latex.slice(braceStart + 1, end) })
       i = end + 1
       continue
     }
 
     // 下标 _{...}
     if (latex[i] === '_' && latex[i + 1] === '{') {
-      const start = i + 2
-      const end = findMatchingBrace(latex, start)
-      tokens.push({ type: 'sub', value: latex.slice(start, end) })
+      const braceStart = i + 1  // position of {
+      const end = findMatchingBrace(latex, braceStart)
+      tokens.push({ type: 'sub', value: latex.slice(braceStart + 1, end) })
       i = end + 1
       continue
     }
