@@ -31,6 +31,7 @@ const XSS_PATTERNS = [
   /on\w+\s*=\s*[^\s>]+/gi,
   /javascript\s*:/gi,
   /<iframe\b[^>]*>/gi,
+  /<\/iframe>/gi,
   /<embed\b[^>]*>/gi,
   /<object\b[^>]*>/gi,
 ]
