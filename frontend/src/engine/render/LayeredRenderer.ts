@@ -22,6 +22,10 @@ export interface WatermarkConfig {
   opacity?: number
   rotation?: number
   spacing?: number
+  /** 图片水印 URL (type='image' 或 'tile-image' 时) */
+  imageUrl?: string
+  /** 图片水印缩放比例 */
+  imageScale?: number
 }
 
 export class LayeredRenderer {
@@ -39,6 +43,8 @@ export class LayeredRenderer {
   private blinkTimer: number | null = null
   private coordSystem: CoordinateSystem
   private watermarkPattern: CanvasPattern | null = null
+  private watermarkConfig: WatermarkConfig | null = null
+  private watermarkImage: HTMLImageElement | null = null
   private cursorVisible = true
 
   private readonly OVERSCAN_PAGES = 1
@@ -137,9 +143,16 @@ export class LayeredRenderer {
       ctx.fillRect(0, pageY, page.width, page.height)
 
       // 水印
-      if (this.watermarkPattern) {
-        ctx.fillStyle = this.watermarkPattern
-        ctx.fillRect(0, pageY, page.width, page.height)
+      if (this.watermarkConfig) {
+        const wm = this.watermarkConfig
+        if (wm.type === 'tile' && this.watermarkPattern) {
+          ctx.fillStyle = this.watermarkPattern
+          ctx.fillRect(0, pageY, page.width, page.height)
+        } else if (wm.type === 'text') {
+          this.drawTextWatermark(ctx, pageY, page.width, page.height, wm)
+        } else if (wm.type === 'image' && this.watermarkImage) {
+          this.drawImageWatermark(ctx, pageY, page.width, page.height, wm)
+        }
       }
 
       // 页面四角L标记 — 统一常量, 右上/右下用镜像变换
@@ -151,7 +164,18 @@ export class LayeredRenderer {
   // ---- 水印 ----
 
   prepareWatermark(wm: WatermarkConfig): void {
-    if (wm.type !== 'tile') { this.watermarkPattern = null; return }
+    this.watermarkConfig = wm
+    this.watermarkPattern = null
+    this.watermarkImage = null
+
+    if (wm.type === 'tile') {
+      this.prepareTileWatermark(wm)
+    } else if (wm.type === 'image' && wm.imageUrl) {
+      this.prepareImageWatermark(wm)
+    }
+  }
+
+  private prepareTileWatermark(wm: WatermarkConfig): void {
     const size = wm.spacing || 200
     const offscreen = document.createElement('canvas')
     offscreen.width = size; offscreen.height = size
@@ -164,6 +188,47 @@ export class LayeredRenderer {
     octx.rotate(((wm.rotation ?? 45) * Math.PI) / 180)
     octx.fillText(wm.text || '', 0, 0)
     this.watermarkPattern = this.ctxs.static!.createPattern(offscreen, 'repeat')
+  }
+
+  private prepareImageWatermark(wm: WatermarkConfig): void {
+    const img = new Image()
+    img.src = wm.imageUrl!
+    img.onload = () => { this.watermarkImage = img }
+  }
+
+  /** 绘制单条居中文本水印 */
+  private drawTextWatermark(
+    ctx: CanvasRenderingContext2D,
+    pageY: number, pageW: number, pageH: number,
+    wm: WatermarkConfig,
+  ): void {
+    ctx.save()
+    ctx.globalAlpha = wm.opacity ?? 0.08
+    ctx.fillStyle = wm.color || '#000000'
+    ctx.font = `${wm.fontSize || 56}px "SimSun"`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.translate(pageW / 2, pageY + pageH / 2)
+    ctx.rotate(((wm.rotation ?? 45) * Math.PI) / 180)
+    ctx.fillText(wm.text || '', 0, 0)
+    ctx.restore()
+  }
+
+  /** 绘制居中图片水印 */
+  private drawImageWatermark(
+    ctx: CanvasRenderingContext2D,
+    pageY: number, pageW: number, pageH: number,
+    wm: WatermarkConfig,
+  ): void {
+    if (!this.watermarkImage) return
+    ctx.save()
+    ctx.globalAlpha = wm.opacity ?? 0.15
+    const scale = wm.imageScale || 0.4
+    const iw = this.watermarkImage.width * scale
+    const ih = this.watermarkImage.height * scale
+    const ix = (pageW - iw) / 2
+    const iy = pageY + (pageH - ih) / 2
+    ctx.drawImage(this.watermarkImage, ix, iy, iw, ih)
+    ctx.restore()
   }
 
   // ---- 光标闪烁 ----

@@ -25,6 +25,8 @@ const DEFAULTS: WatermarkConfig = {
   opacity: 0.08,
   rotation: 45,
   spacing: 200,
+  imageUrl: '',
+  imageScale: 0.4,
 }
 
 export function WatermarkDialog({ open, onClose, initialConfig, onApply }: WatermarkDialogProps) {
