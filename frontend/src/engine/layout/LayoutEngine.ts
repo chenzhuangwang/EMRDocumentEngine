@@ -346,14 +346,10 @@ export class LayoutEngine {
     return slifPages
   }
 
-  /** 增量布局 (仅重排脏区)
+  /** 增量布局 (仅重排脏区, TASK-446 incrementalRepaginate)
    *
-   * 策略:
-   *   1. 脏段落数 ≤ 3 且非全文脏 → 局部重排 (仅重跑受影响的段落 + 分页)
-   *   2. 否则 → 回退全量重排
-   *
-   * 注意: 段落级重排可能改变该段行数, 影响后续所有页面。
-   *        因此局部重排需从第一个脏段所在页开始重分页。
+   * 策略: 脏段落 ≤ 3 → 保留早期页面 + 从脏页开始 fullLayout 切片
+   *       否则 → 全量重排
    */
   incrementalLayout(
     doc: DocumentTree, pool: NodePool, dirtyParagraphIds: Set<string>,
@@ -363,20 +359,41 @@ export class LayoutEngine {
     // 小范围脏: 局部重排
     if (dirtyParagraphIds.size <= 3) {
       const firstDirtyPageIndex = this.findPageContainingParagraph(dirtyParagraphIds)
-      if (firstDirtyPageIndex < 0) return this.fullLayout(doc, pool)
+      if (firstDirtyPageIndex <= 0) return this.fullLayout(doc, pool)
 
-      console.debug(
-        `[LayoutEngine] incrementalLayout: ${dirtyParagraphIds.size} dirty paragraphs, ` +
-        `rebuilding from page ${firstDirtyPageIndex}`
-      )
+      // 全量重排 (LineBreaker + PageBreaker 管道无法只重排中间部分)
+      const allPages = this.fullLayout(doc, pool)
 
-      // 从第一个脏段所在页开始全量重排后续内容
-      // (保持前 firstDirtyPageIndex 页不变)
-      return this.fullLayout(doc, pool)
+      // 如果早期页面布局未变, 复用它们 (页码对齐)
+      let preservedCount = 0
+      for (let i = 0; i < firstDirtyPageIndex && i < allPages.length; i++) {
+        if (i < this.pages.length &&
+            this.pages[i].items.length === allPages[i].items.length &&
+            this.pages[i].items[0]?.nodeId === allPages[i].items[0]?.nodeId) {
+          preservedCount++
+        } else {
+          break
+        }
+      }
+
+      if (preservedCount > 0) {
+        const result = [...this.pages.slice(0, preservedCount), ...allPages.slice(preservedCount)]
+        // 重新编号页面
+        for (let i = 0; i < result.length; i++) result[i].pageIndex = i
+        this.pages = result
+        this.eventBus.emit('layout:changed', result)
+        console.debug(
+          `[LayoutEngine] incrementalLayout: preserved ${preservedCount}/${firstDirtyPageIndex} pages, ` +
+          `${dirtyParagraphIds.size} dirty → ${result.length} total pages`
+        )
+        return result
+      }
+
+      this.pages = allPages
+      return allPages
     }
 
     // 大范围脏 → 全量重排
-    console.debug(`[LayoutEngine] incrementalLayout: ${dirtyParagraphIds.size} dirty paragraphs, full rebuild`)
     return this.fullLayout(doc, pool)
   }
 
