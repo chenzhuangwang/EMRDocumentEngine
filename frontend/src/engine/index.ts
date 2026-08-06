@@ -176,3 +176,9 @@ export type { EditorListener } from './Editor'
 // ---- KaTeX ----
 export { renderKaTeXToCanvas, validateKaTeX, measureKaTeX } from './render/KaTeXRenderer'
 export type { KaTeXRenderResult } from './render/KaTeXRenderer'
+
+// ---- P0: 增量布局 + 增量分页 (TASK-482/485) ----
+export { IncrementalLayout } from './layout/IncrementalLayout'
+export type { CachedParagraphLayout } from './layout/IncrementalLayout'
+export { PageStartTable } from './layout/PageStartTable'
+export type { PageEntry } from './layout/PageStartTable'
