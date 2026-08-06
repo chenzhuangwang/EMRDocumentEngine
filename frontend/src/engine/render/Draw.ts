@@ -49,6 +49,9 @@ export class Draw {
   // rAF 合并渲染 (TASK-484): 同一帧多次 render() 调用仅执行最后一次
   private _rafId: number | null = null
 
+  // 脏区域裁剪 (TASK-483): 非 null 时仅重绘该区域
+  private dirtyRect: { x: number; y: number; w: number; h: number } | null = null
+
   constructor(
     container: HTMLElement,
     eventBus: EventBus,
@@ -301,6 +304,14 @@ export class Draw {
     const ctx = this.renderer.getContentCtx()
     if (ctx) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      // TASK-483: 脏区域裁剪 — 仅清除和重绘变更区域
+      if (this.dirtyRect) {
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(this.dirtyRect.x, this.dirtyRect.y, this.dirtyRect.w, this.dirtyRect.h)
+        ctx.clip()
+        this.dirtyRect = null
+      }
       ctx.clearRect(0, 0, viewportW, viewportH)
       ctx.translate(offsetX, 0)
       const contentWidth = pageWidth - 180 // marginLeft(90) + marginRight(90)
@@ -440,6 +451,8 @@ export class Draw {
     }
 
     // --- interact 层: 选区 + 光标 ---
+    // 恢复内容层的裁剪区域
+    if (ctx) ctx.restore()
     const ictx = this.renderer.getInteractCtx()
     if (!ictx || !pool || !runtimeState) return
 
@@ -649,6 +662,11 @@ export class Draw {
   setScale(scale: number): void {
     this.coordSystem.update({ scale })
     this.eventBus.emit('scale:changed', scale)
+  }
+
+  /** 设置脏区域裁剪 (TASK-483): 仅重绘该区域, 渲染后自动清除 */
+  setDirtyRect(rect: { x: number; y: number; w: number; h: number } | null): void {
+    this.dirtyRect = rect
   }
 
   getScale(): number { return this.coordSystem.transform.scale }

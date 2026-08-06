@@ -2,7 +2,12 @@
 // SLIF — 标准布局中间格式 (架构 §7.7, v20.34)
 //
 // LayoutEngine 产出 → Draw/LayeredRenderer 消费 → 导出链路消费
+//
+// 版本: SLIF_VERSION = '4.0' — 与 DocumentTree modelVersion 对齐
 // ================================================================
+
+/** SLIF 格式版本 (与 DocumentTree modelVersion 对齐) */
+export const SLIF_VERSION = '4.0'
 
 export interface SLIFItem {
   nodeId: string
