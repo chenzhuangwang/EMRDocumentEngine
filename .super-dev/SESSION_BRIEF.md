@@ -8,7 +8,7 @@
 
 - `tsc --noEmit`: **0 errors**
 - `vite build`: **1721 modules, 551KB JS**
-- `vitest run`: **88/88 passed (11 test files)**
+- `vitest run`: **129/129 passed (15 test files)**
 
 ## 本会话交付总览 (R11-R33)
 
