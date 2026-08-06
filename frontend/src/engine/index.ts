@@ -145,6 +145,27 @@ export type { FontRun } from './layout/FontFallback'
 export { ScriptResolver, scriptResolver } from './layout/ScriptResolver'
 export type { MultiLangFontConfig } from './layout/ScriptResolver'
 
+// ---- R60+: Document management ----
+export { ModelUpgrader, modelUpgrader } from './document/ModelUpgrader'
+export type { ModelVersion, VersionUpgrader, VersionCompatibility } from './document/ModelUpgrader'
+export { parseVersion, compareVersions, versionToString, VERSION_COMPATIBILITY } from './document/ModelUpgrader'
+export { MergeMatrix, buildMergeMatrix } from './document/MergeMatrix'
+export type { CellSpan } from './document/MergeMatrix'
+
+// ---- R60+: Security ----
+export { SecurityChecker, sanitizeHtml, sanitizeText, isSafeHtml } from './security/SecurityConfig'
+export type { EditorSecurityConfig } from './security/SecurityConfig'
+
+// ---- R60+: Loaders ----
+export {
+  DocumentLoaderRegistry, documentLoaderRegistry,
+} from './loaders/DocumentLoaderRegistry'
+export type { IDocumentLoader } from './loaders/DocumentLoaderRegistry'
+
+// ---- R60+: Plugins ----
+export { PluginManager } from './plugins/PluginManager'
+export type { IPlugin, PluginContext, ExtensionPoint, ToolbarAction } from './plugins/PluginManager'
+
 // ---- IEditor 公共 API 接口 ----
 export type {
   IEditor,
