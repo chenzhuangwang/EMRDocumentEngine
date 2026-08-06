@@ -18,6 +18,7 @@ import { HitTestIndex } from './HitTestIndex'
 import { TextParticle } from './particles/TextParticle'
 import { SeparatorParticle } from './particles/SeparatorParticle'
 import { ListParticle } from './particles/ListParticle'
+import { MemoryManager } from '../layout/MemoryManager'
 import { createFootnoteParticle } from './particles/FootnoteParticle'
 import { createTableParticle } from './particles/TableParticle'
 
@@ -42,8 +43,8 @@ export class Draw {
   // 不可见字符显示 (TASK-475)
   private _showInvisible = false
 
-  // 图片缓存: URL → HTMLImageElement
-  private imageCache = new Map<string, HTMLImageElement>()
+  // 图片缓存: URL → HTMLImageElement (容量 50, LRU 淘汰)
+  private imageCache = new MemoryManager<string>(50)
 
   // rAF 合并渲染 (TASK-484): 同一帧多次 render() 调用仅执行最后一次
   private _rafId: number | null = null
@@ -693,7 +694,7 @@ export class Draw {
     x: number, y: number,
     width: number, height: number,
   ): void {
-    let img = this.imageCache.get(url)
+    let img = this.imageCache.get<HTMLImageElement>(url)
     if (img) {
       ctx.drawImage(img, x, y, width, height)
       return
@@ -702,10 +703,10 @@ export class Draw {
     img = new Image()
     img.src = url
     img.onload = () => {
-      this.imageCache.set(url, img!)
+      this.imageCache.set(url, img)
       // 触发重绘以显示图片
       if (this.pool && this._state) {
-        this.render(this.pool, this._state)
+        this.scheduleRender(this.pool, this._state)
       }
     }
     // 加载中绘制占位矩形

@@ -5,6 +5,7 @@ import type { FieldType } from './document/DocumentModel'
 import { Draw } from './render/Draw'
 import { AutoSaveManager } from './AutoSaveManager'
 import { AutoCorrectEngine } from './AutoCorrectEngine'
+import { PerformanceMetrics } from './PerformanceMetrics'
 import { EventBus } from './interaction/EventBus'
 import { CommandManager } from './command/CommandManager'
 import { InputComposer } from './interaction/IMEHandler'
@@ -48,6 +49,7 @@ export class Editor {
   private findReplace: FindReplaceEngine
   private autoSave: AutoSaveManager
   private autoCorrect: AutoCorrectEngine
+  private perfMetrics: PerformanceMetrics
   private _formatPainterStyle: Record<string, unknown> | null = null
   private listeners: EditorListener[] = []
   private _clickToFocus: (e: MouseEvent) => void
@@ -82,6 +84,7 @@ export class Editor {
     this.findReplace = new FindReplaceEngine()
     this.autoSave = new AutoSaveManager(doc.id, doc.title || '未命名文档', () => this.doc)
     this.autoCorrect = new AutoCorrectEngine()
+    this.perfMetrics = new PerformanceMetrics()
     // 自动保存: 保存状态同步到 EditorStore
     this.autoSave.onSave((type) => {
       if (type === 'saving') this.store.setSaveStatus('saving')
@@ -116,6 +119,7 @@ export class Editor {
         `cursor=(${cursor.paragraphPath.join('/')}, offset=${cursor.offset}), ` +
         `bodyChildren=[${this.doc.body.children.join(',')}]`
       )
+      this.perfMetrics.recordLayout(t1 - t0)
       this.draw.render(this.pool, this.store.state.runtime)
       this.autoSave.markDirty()
     })
@@ -1211,6 +1215,7 @@ export class Editor {
 
   /** 获取 AutoSaveManager (供页面卸载时立即保存) */
   getAutoSave(): AutoSaveManager { return this.autoSave }
+  getPerfMetrics(): PerformanceMetrics { return this.perfMetrics }
 
   on(event: EditorEventType, cb: (...args: unknown[]) => void): void {
     this.listeners.push({ event, callback: cb })
