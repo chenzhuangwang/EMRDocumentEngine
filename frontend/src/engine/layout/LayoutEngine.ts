@@ -197,29 +197,71 @@ export class LayoutEngine {
     const slifPages: SLIFPage[] = iPages.map((ip: IPage) => {
       let y = this.config.marginTop
       const items: SLIFItem[] = []
+      const pageContentHeight = pageSetup.height - pageSetup.marginTop - pageSetup.marginBottom
       for (const line of ip.lines) {
         const firstEl = line.elements[0]
 
-        // 表格: 展开为含行数据的 SLIFItem (R37)
+        // 表格: 展开为含行数据的 SLIFItem (R37+R65+TASK-702 跨页断表)
         if (firstEl?.type === 'table') {
           const tbl = (firstEl as LineElement).tableBlock as {
             id: string; columns?: { width: number }[]; children: string[]
             pageBreak?: { repeatHeader?: boolean; minRowsBeforeBreak?: number; continuationLabel?: string }
           } | undefined
           if (tbl) {
-            const rows = this.buildTableRows(tbl, pool, contentWidth)
-            const tableHeight = rows.reduce((h, r) => h + (r.height || 24) + 1, 0)
+            const allRows = this.buildTableRows(tbl, pool, contentWidth)
             const pageBreak = tbl.pageBreak
-            items.push({
-              nodeId: tbl.id, nodeType: 'table', type: 'table',
-              x: this.config.marginLeft, y,
-              width: contentWidth, height: tableHeight,
-              ascent: tableHeight, descent: 0,
-              font: 'SimSun', size: 12,
-              rows,
-              headerRowCount: pageBreak?.repeatHeader ? 1 : undefined,
-              continuationLabel: pageBreak?.continuationLabel,
-            })
+            const headerRowCount = pageBreak?.repeatHeader ? 1 : 0
+            const minRows = pageBreak?.minRowsBeforeBreak || 2
+            const label = pageBreak?.continuationLabel || '（续表）'
+
+            // 计算剩余页面空间
+            const pageContentBottom = this.config.marginTop + pageContentHeight
+            const remainingSpace = pageContentBottom - y
+            const totalTableH = allRows.reduce((h, r) => h + (r.height || 24) + 1, 0)
+
+            if (totalTableH <= remainingSpace || allRows.length <= minRows) {
+              // 表格完整放入当前页
+              items.push(this.createTableItem(tbl.id, allRows, contentWidth, y, totalTableH, headerRowCount))
+            } else {
+              // 跨页拆分 (TASK-702)
+              let rowStart = 0
+              let usedH = 0
+              let isFirstPage = true
+
+              while (rowStart < allRows.length) {
+                const pageRows = []
+                let pageH = 0
+                // 第一页: 使用当前页剩余空间; 后续页: 使用整页空间
+                const maxH = isFirstPage ? remainingSpace : pageContentHeight - 30 // 30 for continuation label
+
+                for (let ri = rowStart; ri < allRows.length; ri++) {
+                  const rh = (allRows[ri].height || 24) + 1
+                  if (pageH + rh > maxH && pageRows.length >= minRows) break
+                  pageRows.push(allRows[ri])
+                  pageH += rh
+                }
+
+                if (pageRows.length === 0) break
+
+                const item = this.createTableItem(tbl.id, pageRows, contentWidth, y,
+                  pageH, isFirstPage ? headerRowCount : headerRowCount)
+                if (!isFirstPage) {
+                  item.continuationLabel = label
+                  y += 20 // 续表标记占用
+                }
+                items.push(item)
+
+                rowStart += pageRows.length
+                y += pageH
+                usedH += pageH
+                isFirstPage = false
+
+                // 下一页从顶部开始
+                if (rowStart < allRows.length) {
+                  y = this.config.marginTop
+                }
+              }
+            }
           }
           continue
         }
@@ -472,6 +514,22 @@ export class LayoutEngine {
   }
 
   /** 计算有序列表编号: 统计前面同类型同级别段落数 + 1 */
+  /** 创建表格 SLIFItem (TASK-702) */
+  private createTableItem(
+    tableId: string, rows: import('./SLIF').SLIFRow[], contentWidth: number,
+    y: number, height: number, headerRowCount?: number,
+  ): import('./SLIF').SLIFItem {
+    return {
+      nodeId: tableId, nodeType: 'table', type: 'table',
+      x: this.config.marginLeft, y,
+      width: contentWidth, height,
+      ascent: height, descent: 0,
+      font: 'SimSun', size: 12,
+      rows,
+      headerRowCount,
+    }
+  }
+
   private computeListNumber(paraId: string, pool: import('../document/NodePool').NodePool, doc: DocumentTree, level: number): number {
     let count = 0
     for (const bid of doc.body.children) {
