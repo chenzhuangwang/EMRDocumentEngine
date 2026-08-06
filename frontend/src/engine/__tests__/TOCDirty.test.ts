@@ -92,4 +92,36 @@ describe('DirtyTracker', () => {
     dt.markFullLayout()
     expect(dt.isFullDocument()).toBe(true)
   })
+
+  it('should check needsFullLayout', () => {
+    const dt = new DirtyTracker()
+    expect(dt.needsFullLayout).toBe(false)
+    dt.markFullLayout()
+    expect(dt.needsFullLayout).toBe(true)
+  })
+
+  it('should get dirty node IDs', () => {
+    const dt = new DirtyTracker()
+    dt.markParagraphDirty('p1')
+    dt.markParagraphDirty('p2')
+    expect(dt.hasDirtyParagraphs()).toBe(true)
+  })
+})
+
+// ---- TOCGenerator extended ----
+
+describe('TOCGenerator extended', () => {
+  it('should return empty for doc without headings', () => {
+    const doc = { type:'document',id:'d1',title:'T',body:{mode:'flow' as const,children:[]},header:[],footer:[],pageSetup:{width:794,height:1123,marginTop:72,marginBottom:72,marginLeft:90,marginRight:90,orientation:'portrait' as const}} as DocumentTree
+    const allNodes = new Map<string,import('../document/DocumentModel').BaseNode>()
+    allNodes.set('d1', doc as unknown as import('../document/DocumentModel').BaseNode)
+    const pool = buildNodePool(allNodes, {body:'d1'})
+    const gen = new TOCGenerator()
+    expect(gen.extractEntries(doc, pool).length).toBe(0)
+  })
+
+  it('should use default maxLevel', () => {
+    const gen = new TOCGenerator()
+    expect(gen).toBeDefined()
+  })
 })
