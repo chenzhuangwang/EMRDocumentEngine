@@ -401,6 +401,12 @@ export class Editor {
     this.draw.setDocument(doc, this.pool)
     this.draw.recomputeLayout(this.pool)
 
+    // 自动应用文档水印 (R70)
+    const ps = doc.pageSetup as { watermark?: import('./render/LayeredRenderer').WatermarkConfig } | undefined
+    if (ps?.watermark) {
+      this.draw.setWatermark(ps.watermark)
+    }
+
     const cursorPath = doc.body.children.length > 0
       ? [doc.id, doc.body.children[0]]
       : []
