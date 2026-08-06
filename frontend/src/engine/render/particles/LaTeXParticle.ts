@@ -7,6 +7,7 @@
 
 import type { IParticle, RenderOptions } from './IParticle'
 import type { SLIFItem } from '../../layout/SLIF'
+import { renderKaTeXToCanvas } from '../KaTeXRenderer'
 
 // ---- 希腊字母映射 ----
 
@@ -134,9 +135,13 @@ export function createLaTeXParticle(): IParticle {
         const tokens = tokenize(latex)
         renderFormula(ctx, tokens, x, y, fontSize, fontFamily, color)
       } catch {
-        // 解析失败: 原样渲染 LaTeX 源码
-        ctx.font = `${fontSize}px "${fontFamily}"`
-        ctx.fillText(latex, x, y + fontSize * 0.8)
+        // 纯 Canvas 解析失败 → 尝试 KaTeX 回退
+        const katexResult = renderKaTeXToCanvas(ctx, latex, x, y, fontSize, color)
+        if (!katexResult) {
+          // KaTeX 也失败: 原样渲染 LaTeX 源码
+          ctx.font = `${fontSize}px "${fontFamily}"`
+          ctx.fillText(latex, x, y + fontSize * 0.8)
+        }
       }
 
       ctx.restore()

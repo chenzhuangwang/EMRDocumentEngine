@@ -172,3 +172,7 @@ export type {
   EditorEventType,
 } from './Editor'
 export type { EditorListener } from './Editor'
+
+// ---- KaTeX ----
+export { renderKaTeXToCanvas, validateKaTeX, measureKaTeX } from './render/KaTeXRenderer'
+export type { KaTeXRenderResult } from './render/KaTeXRenderer'
