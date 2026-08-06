@@ -11,9 +11,13 @@ import type { SLIFItem } from '../../layout/SLIF'
 // ---- 图表数据格式 ----
 
 interface ChartData {
-  type: 'bar' | 'line' | 'pie'
+  type: 'bar' | 'line' | 'pie' | 'radar' | 'scatter' | 'area'
   labels: string[]
   values: number[]
+  /** 散点图专用: [x,y][] 数据 */
+  points?: [number, number][]
+  /** 雷达图: 多系列 values 为二维数组 */
+  series?: { name: string; values: number[] }[]
   colors?: string[]
   title?: string
 }
@@ -59,6 +63,9 @@ export function createChartParticle(): IParticle {
         case 'bar': drawBarChart(ctx, data, x, y, chartW, chartH, colors); break
         case 'line': drawLineChart(ctx, data, x, y, chartW, chartH, colors); break
         case 'pie': drawPieChart(ctx, data, x, y, chartW, chartH, colors); break
+        case 'radar': drawRadarChart(ctx, data, x, y, chartW, chartH, colors); break
+        case 'scatter': drawScatterChart(ctx, data, x, y, chartW, chartH, colors); break
+        case 'area': drawAreaChart(ctx, data, x, y, chartW, chartH, colors); break
       }
 
       ctx.restore()
@@ -203,6 +210,143 @@ function drawPieChart(
     const pct = Math.round((data.values[i] / total) * 100)
     ctx.fillText(`${label} (${pct}%)`, x + 24, legendY + 9)
     legendY += 16
+  }
+}
+
+// ---- 雷达图 ----
+
+function drawRadarChart(
+  ctx: CanvasRenderingContext2D, data: ChartData,
+  x: number, y: number, w: number, h: number, colors: string[],
+): void {
+  const cx = x + w / 2; const cy = y + h / 2 + 8
+  const radius = Math.min(w, h) / 2 - 30
+  const axes = data.labels.length
+  if (axes < 3) return
+  const maxVal = Math.max(...data.values, 1)
+
+  // 背景网格 (同心多边形)
+  for (let level = 1; level <= 4; level++) {
+    const r = (radius * level) / 4
+    ctx.beginPath()
+    for (let i = 0; i < axes; i++) {
+      const angle = (Math.PI * 2 * i) / axes - Math.PI / 2
+      const px = cx + Math.cos(angle) * r; const py = cy + Math.sin(angle) * r
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)
+    }
+    ctx.closePath()
+    ctx.strokeStyle = '#E5E7EB'; ctx.lineWidth = 0.5; ctx.stroke()
+  }
+
+  // 轴线
+  for (let i = 0; i < axes; i++) {
+    const angle = (Math.PI * 2 * i) / axes - Math.PI / 2
+    ctx.beginPath(); ctx.moveTo(cx, cy)
+    ctx.lineTo(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius)
+    ctx.strokeStyle = '#D1D5DB'; ctx.lineWidth = 0.5; ctx.stroke()
+    // 标签
+    const lx = cx + Math.cos(angle) * (radius + 16); const ly = cy + Math.sin(angle) * (radius + 16)
+    ctx.fillStyle = '#6B7280'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText(data.labels[i], lx, ly + 4)
+  }
+
+  // 数据多边形
+  ctx.beginPath()
+  for (let i = 0; i < axes; i++) {
+    const angle = (Math.PI * 2 * i) / axes - Math.PI / 2
+    const r = (data.values[i] / maxVal) * radius
+    const px = cx + Math.cos(angle) * r; const py = cy + Math.sin(angle) * r
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)
+  }
+  ctx.closePath()
+  ctx.fillStyle = colors[0] + '33'; ctx.fill()
+  ctx.strokeStyle = colors[0]; ctx.lineWidth = 2; ctx.stroke()
+
+  // 数据点
+  for (let i = 0; i < axes; i++) {
+    const angle = (Math.PI * 2 * i) / axes - Math.PI / 2
+    const r = (data.values[i] / maxVal) * radius
+    ctx.beginPath(); ctx.arc(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, 3, 0, Math.PI * 2)
+    ctx.fillStyle = colors[0]; ctx.fill()
+  }
+}
+
+// ---- 散点图 ----
+
+function drawScatterChart(
+  ctx: CanvasRenderingContext2D, data: ChartData,
+  x: number, y: number, w: number, h: number, colors: string[],
+): void {
+  const top = y + 24; const bottom = y + h - 24
+  const areaH = bottom - top
+  const pts = data.points || data.values.map((v, i) => [i, v] as [number, number])
+  if (pts.length === 0) return
+  const maxX = Math.max(...pts.map(p => p[0]), 1)
+  const maxY = Math.max(...pts.map(p => p[1]), 1)
+
+  // 网格
+  ctx.strokeStyle = '#E5E7EB'; ctx.lineWidth = 0.5
+  for (let i = 0; i <= 4; i++) {
+    const gy = top + (areaH * i) / 4
+    ctx.beginPath(); ctx.moveTo(x + 10, gy); ctx.lineTo(x + w - 10, gy); ctx.stroke()
+  }
+
+  // 数据点
+  for (const [px, py] of pts) {
+    const sx = x + 10 + (px / maxX) * (w - 20)
+    const sy = bottom - (py / maxY) * areaH
+    ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2)
+    ctx.fillStyle = colors[0] + 'CC'; ctx.fill()
+    ctx.strokeStyle = colors[0]; ctx.lineWidth = 1; ctx.stroke()
+  }
+
+  // 轴标签
+  ctx.fillStyle = '#6B7280'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
+  ctx.fillText(`0`, x + 10, bottom + 14)
+  ctx.fillText(`${maxX}`, x + w - 10, bottom + 14)
+}
+
+// ---- 面积图 ----
+
+function drawAreaChart(
+  ctx: CanvasRenderingContext2D, data: ChartData,
+  x: number, y: number, w: number, h: number, colors: string[],
+): void {
+  const top = y + 24; const bottom = y + h - 24
+  const areaH = bottom - top
+  const count = data.values.length
+  const maxVal = Math.max(...data.values, 1)
+  const stepX = (w - 20) / Math.max(count - 1, 1)
+
+  const pts: { px: number; py: number }[] = []
+  for (let i = 0; i < count; i++) {
+    pts.push({ px: x + 10 + i * stepX, py: bottom - (data.values[i] / maxVal) * areaH })
+  }
+
+  // 填充区域
+  ctx.beginPath()
+  ctx.moveTo(pts[0].px, bottom)
+  for (const pt of pts) ctx.lineTo(pt.px, pt.py)
+  ctx.lineTo(pts[pts.length - 1].px, bottom)
+  ctx.closePath()
+  ctx.fillStyle = colors[0] + '22'; ctx.fill()
+
+  // 折线
+  ctx.beginPath(); ctx.moveTo(pts[0].px, pts[0].py)
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].px, pts[i].py)
+  ctx.strokeStyle = colors[0]; ctx.lineWidth = 2; ctx.stroke()
+
+  // 数据点
+  for (const pt of pts) {
+    ctx.beginPath(); ctx.arc(pt.px, pt.py, 3, 0, Math.PI * 2)
+    ctx.fillStyle = colors[0]; ctx.fill()
+  }
+
+  // 标签
+  ctx.fillStyle = '#6B7280'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
+  for (let i = 0; i < count; i++) {
+    if (data.labels[i]) ctx.fillText(data.labels[i], pts[i].px, bottom + 14)
+    ctx.fillText(String(data.values[i]), pts[i].px, pts[i].py - 8)
   }
 }
 
