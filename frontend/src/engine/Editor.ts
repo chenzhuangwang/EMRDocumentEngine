@@ -579,6 +579,57 @@ export class Editor {
     this.notifyListeners('contentChange', this.doc)
   }
 
+  /** 在光标位置后插入表格 (R83) */
+  insertTable(rows: number, cols: number): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+
+    const tableId = generateCommandId()
+    const colWidth = 100 / Math.max(cols, 1)
+    const rowIds: string[] = []
+
+    for (let r = 0; r < rows; r++) {
+      const rowId = generateCommandId()
+      const cellIds: string[] = []
+      for (let c = 0; c < cols; c++) {
+        const cellId = generateCommandId()
+        const para = createParagraph([createTextNode('').id])
+        this.pool.nodes.set(para.id, para)
+        this.pool.nodes.set(cellId, {
+          type: 'cell' as const, id: cellId,
+          children: [para.id],
+          colspan: 1, rowspan: 1,
+        } as unknown as BaseNode)
+        cellIds.push(cellId)
+      }
+      this.pool.nodes.set(rowId, {
+        type: 'row' as const, id: rowId,
+        children: cellIds, height: 24,
+      } as unknown as BaseNode)
+      rowIds.push(rowId)
+    }
+
+    this.pool.nodes.set(tableId, {
+      type: 'table' as const, id: tableId,
+      columns: Array.from({ length: cols }, () => ({ width: colWidth, mode: 'percentage' as const })),
+      children: rowIds,
+    } as unknown as BaseNode)
+
+    // 在光标段落后插入表格
+    const idx = this.doc.body.children.indexOf(paraId)
+    if (idx >= 0) {
+      this.doc.body.children.splice(idx + 1, 0, tableId)
+    } else {
+      this.doc.body.children.push(tableId)
+    }
+
+    this.draw.recomputeLayout(this.pool)
+    this.draw.render(this.pool, this.store.state.runtime)
+    this.notifyListeners('contentChange', this.doc)
+  }
+
   execCommand(command: ICommand): void { this.commandManager.execute(command) }
   undo(): void { this.commandManager.undo() }
   redo(): void { this.commandManager.redo() }
