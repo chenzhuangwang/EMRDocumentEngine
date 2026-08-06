@@ -45,6 +45,9 @@ export class Draw {
   // 图片缓存: URL → HTMLImageElement
   private imageCache = new Map<string, HTMLImageElement>()
 
+  // rAF 合并渲染 (TASK-484): 同一帧多次 render() 调用仅执行最后一次
+  private _rafId: number | null = null
+
   constructor(
     container: HTMLElement,
     eventBus: EventBus,
@@ -252,6 +255,20 @@ export class Draw {
   // 主渲染入口
   // 顺序: 静态层(背景) → 内容层(文本) → interact层(选区→光标)
   // ================================================================
+
+  /**
+   * rAF 合并渲染 (TASK-484)
+   * 同一帧内多次调用 scheduleRender 仅执行最后一次 render
+   * 用于高频场景: 连续输入/滚动/缩放
+   */
+  scheduleRender(pool?: NodePool, runtimeState?: EditorRuntimeState): void {
+    if (this._rafId !== null) return  // 已有待执行的渲染帧
+    this._rafId = requestAnimationFrame(() => {
+      this._rafId = null
+      this.render(pool, runtimeState)
+    })
+  }
+
   render(pool?: NodePool, runtimeState?: EditorRuntimeState): void {
     if (this.pages.length === 0) return
 

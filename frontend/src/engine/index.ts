@@ -182,3 +182,11 @@ export { IncrementalLayout } from './layout/IncrementalLayout'
 export type { CachedParagraphLayout } from './layout/IncrementalLayout'
 export { PageStartTable } from './layout/PageStartTable'
 export type { PageEntry } from './layout/PageStartTable'
+
+// ---- TASK-511: BookmarkRenderer ----
+export { BookmarkRenderer } from './render/BookmarkRenderer'
+export type { ResolvedReference } from './render/BookmarkRenderer'
+
+// ---- TASK-469: PrintHistoryService ----
+export { PrintHistoryService, printHistory } from '../services/PrintHistoryService'
+export type { PrintRecord } from '../services/PrintHistoryService'

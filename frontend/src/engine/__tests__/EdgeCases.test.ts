@@ -7,6 +7,7 @@ import type { DocumentTree, BaseNode } from '../document/DocumentModel'
 import { parseVersion, compareVersions } from '../document/ModelUpgrader'
 import { LRUMap } from '../layout/MemoryManager'
 import { sanitizeHtml, isSafeHtml } from '../security/SecurityConfig'
+import { PrintHistoryService } from '../../services/PrintHistoryService'
 
 function makeDoc(texts: string[]): { doc: DocumentTree; pool: NodePool } {
   const doc = createDocument('test')
@@ -70,4 +71,36 @@ describe('Version edge', () => {
 describe('NodePool edge', () => {
   function p(t: string[]) { const {doc,pool}=makeDoc(t); return {pool,doc} }
   it('traverse', () => { const {pool,doc}=p(['hi']); const ids:string[]=[]; traversePool(pool,doc.id,()=>ids.push('x')); expect(ids.length).toBeGreaterThan(0) })
+})
+
+// ---- PrintHistoryService ----
+
+describe('PrintHistoryService', () => {
+  it('should add and retrieve records', () => {
+    const s = new PrintHistoryService()
+    s.addRecord({ id:'ph1',documentId:'d1',documentTitle:'Test',printedAt:Date.now(),pageRange:{start:1,end:5},copies:1,duplex:false,completed:true })
+    expect(s.getHistory().length).toBe(1)
+    expect(s.getHistory()[0].documentTitle).toBe('Test')
+  })
+
+  it('should find incomplete print', () => {
+    const s = new PrintHistoryService()
+    s.addRecord({ id:'ph2',documentId:'d2',documentTitle:'T2',printedAt:Date.now(),pageRange:{start:1,end:10},copies:2,duplex:true,completed:false,lastCompletedPage:7 })
+    expect(s.findIncomplete()).not.toBeNull()
+    expect(s.findIncomplete()!.lastCompletedPage).toBe(7)
+  })
+
+  it('should update record', () => {
+    const s = new PrintHistoryService()
+    s.addRecord({ id:'ph3',documentId:'d3',documentTitle:'T3',printedAt:Date.now(),pageRange:{start:1,end:3},copies:1,duplex:false,completed:false })
+    s.updateRecord('ph3', { completed: true })
+    expect(s.getHistory()[0].completed).toBe(true)
+  })
+
+  it('should clear history', () => {
+    const s = new PrintHistoryService()
+    s.addRecord({ id:'ph4',documentId:'d4',documentTitle:'T4',printedAt:Date.now(),pageRange:{start:1,end:1},copies:1,duplex:false,completed:true })
+    s.clear()
+    expect(s.getHistory().length).toBe(0)
+  })
 })
