@@ -10,7 +10,8 @@ import {
   ChevronsUpDown, Type, ListFilter, Calendar, CheckSquare,
   Circle, Hash, RectangleEllipsis, FileText, Heading,
   PanelTop, Eraser, Settings, Paintbrush, Minus,
-  Clock, User,
+  Clock, User, Highlighter, Bookmark,
+  Combine, Ungroup,
 } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { cn } from '@/lib/utils'
@@ -150,6 +151,7 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
       {/* 组5：文字颜色 */}
       <ToolbarGroup>
         <ColorPicker onSelect={(color) => onFormat?.('color', color)} />
+        <HighlightPicker onSelect={(color) => onFormat?.('highlight', color)} />
       </ToolbarGroup>
 
       <ToolbarDivider />
@@ -162,11 +164,20 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
         <ToolbarButton title="插入表格" onClick={() => onInsert?.('table')}>
           <Table size={16} />
         </ToolbarButton>
+        <ToolbarButton title="合并单元格" onClick={() => onFormat?.('mergeCells')}>
+          <Combine size={16} />
+        </ToolbarButton>
+        <ToolbarButton title="拆分单元格" onClick={() => onFormat?.('splitCell')}>
+          <Ungroup size={16} />
+        </ToolbarButton>
         <ToolbarButton title="插入图片" onClick={() => onInsert?.('image')}>
           <Image size={16} />
         </ToolbarButton>
         <InsertControlDropdown onInsert={onInsert} />
         <FieldDropdown onInsert={onInsert} />
+        <ToolbarButton title="插入书签" onClick={() => onFormat?.('openBookmark')}>
+          <Bookmark size={16} />
+        </ToolbarButton>
       </ToolbarGroup>
 
       <ToolbarDivider />
@@ -627,6 +638,61 @@ function FieldDropdown({ onInsert }: { onInsert?: (type: string) => void }) {
               )}
             </DropdownMenu.Item>
           ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  )
+}
+
+// ---- 文字高亮选择器 ----
+
+const HIGHLIGHT_COLORS = [
+  '#FFFF00', '#90EE90', '#87CEEB', '#FFB6C1',
+  '#DDA0DD', '#F0E68C', '#FFD700', '#FFA07A',
+]
+
+function HighlightPicker({ onSelect }: { onSelect: (color: string) => void }) {
+  const textStyle = useEditorStore((s) => s.textStyle)
+  const currentHighlight = textStyle?.highlight || 'transparent'
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          className="toolbar-btn data-[state=open]:bg-gray-100 relative"
+          title={`文字高亮 (${currentHighlight === 'transparent' ? '无' : currentHighlight})`}
+        >
+          <Highlighter size={16} />
+          <span
+            className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-3 h-0.5 rounded-full"
+            style={{ backgroundColor: currentHighlight === 'transparent' ? '#94A3B8' : currentHighlight }}
+          />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className="bg-white rounded-md shadow-lg border border-gray-200 p-2 z-50"
+          sideOffset={4} align="start"
+        >
+          <div className="grid grid-cols-7 gap-1">
+            <DropdownMenu.Item
+              className="w-6 h-6 rounded-sm border border-gray-200 outline-none cursor-pointer
+                         flex items-center justify-center text-[10px] text-gray-400
+                         data-[highlighted]:ring-2 data-[highlighted]:ring-blue-400"
+              onClick={() => onSelect('transparent')}
+            >
+              ✕
+            </DropdownMenu.Item>
+            {HIGHLIGHT_COLORS.map(color => (
+              <DropdownMenu.Item
+                key={color}
+                className="w-6 h-6 rounded-sm border border-gray-200 outline-none cursor-pointer
+                           data-[highlighted]:ring-2 data-[highlighted]:ring-blue-400 data-[highlighted]:ring-offset-1"
+                style={{ backgroundColor: color }}
+                onClick={() => onSelect(color)}
+              />
+            ))}
+          </div>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

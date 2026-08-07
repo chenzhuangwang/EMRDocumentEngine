@@ -30,16 +30,34 @@ export class KeyboardHandler {
     const cursor = store.state.runtime.cursor
     const author = 'user'
 
+    // ---- 模式检查: 限制编辑操作 ----
+    const mode = store.state.runtime.view.mode
+    const isReadonly = mode === 'readonly' || mode === 'clean' || mode === 'print'
+    const isForm = mode === 'form'
+    const isDesign = mode === 'design'
+    // 仅设计模式允许所有操作, 其余模式有编辑限制
+    const blockEdit = !isDesign && (isReadonly || isForm)
+
     // Ctrl+Z / Ctrl+Y
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); ed.undo(); return }
     if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); ed.redo(); return }
 
     // Ctrl+C: 复制选区
     if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); ed.copy(); return }
-    // Ctrl+V: 粘贴
-    if ((e.ctrlKey || e.metaKey) && e.key === 'v') { e.preventDefault(); ed.paste(); return }
-    // Ctrl+X: 剪切
-    if ((e.ctrlKey || e.metaKey) && e.key === 'x') { e.preventDefault(); ed.copy(); return }
+    // Ctrl+V: 粘贴 (模式拦截)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'v') { e.preventDefault(); if (!blockEdit) ed.paste(); return }
+    // Ctrl+X: 剪切 (复制 + 删除选区)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'x') {
+      e.preventDefault()
+      ed.copy()
+      if (!blockEdit) {
+        const sel = store.state.runtime.selection
+        if (sel.active && !this.isSelectionCollapsed(sel)) {
+          this.deleteSelection(ed, sel)
+        }
+      }
+      return
+    }
     // Ctrl+A: 全选
     if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); ed.selectAll(); return }
     // Ctrl+Alt+F: 插入脚注 (R31)
@@ -57,10 +75,10 @@ export class KeyboardHandler {
     const id = generateCommandId()
     const ts = Date.now()
 
-    // Enter — 拆段
+    // Enter — 拆段 (模式拦截)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (cursor.paragraphPath.length === 0) return
+      if (blockEdit || cursor.paragraphPath.length === 0) return
       ed.execCommand(new SplitParagraphCommand(id, ts, author, cursor.paragraphPath, cursor.offset))
       return
     }
@@ -68,6 +86,7 @@ export class KeyboardHandler {
     // Backspace — 有选区则删选区, 无选区则删前一字符
     if (e.key === 'Backspace') {
       e.preventDefault()
+      if (blockEdit) return
       const sel = store.state.runtime.selection
       if (sel.active && !this.isSelectionCollapsed(sel)) {
         this.deleteSelection(ed, sel)
@@ -84,6 +103,7 @@ export class KeyboardHandler {
     // Delete — 有选区则删选区, 无选区则删后一字符
     if (e.key === 'Delete') {
       e.preventDefault()
+      if (blockEdit) return
       const sel = store.state.runtime.selection
       if (sel.active && !this.isSelectionCollapsed(sel)) {
         this.deleteSelection(ed, sel)
@@ -111,9 +131,10 @@ export class KeyboardHandler {
       return
     }
 
-    // 可见字符 — 有选区则替换选区内容
+    // 可见字符 — 有选区则替换选区内容 (模式拦截)
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
       e.preventDefault()
+      if (blockEdit) return
       const sel = store.state.runtime.selection
       if (sel.active && !this.isSelectionCollapsed(sel)) {
         this.deleteSelection(ed, sel)

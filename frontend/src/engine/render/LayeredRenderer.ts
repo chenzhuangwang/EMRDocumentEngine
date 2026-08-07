@@ -233,24 +233,21 @@ export class LayeredRenderer {
 
   // ---- 光标闪烁 ----
 
+  private _renderCallback: (() => void) | null = null
+
+  /** 注册渲染回调 — 由 Draw 调用, 用于 blink 触发重绘 */
+  setRenderCallback(fn: () => void): void {
+    this._renderCallback = fn
+  }
+
   startCursorBlink(state: EditorRuntimeState): void {
     this.stopCursorBlink()
+    this.cursorVisible = true
     this.blinkTimer = window.setInterval(() => {
       this.cursorVisible = !this.cursorVisible
-      const ctx = this.ctxs.interact!
-      const canvas = this.layers.interact!
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-      // 仅当光标可见且有有效位置时绘制
-      if (this.cursorVisible && state.cursor.paragraphPath.length > 0) {
-        // 光标位置由 Draw/LayoutEngine 提供的坐标来渲染
-        // 此处仅管理闪烁状态和 clearing
-      }
-
-      // 选区始终绘制
-      if (state.selection.active) {
-        // 选区渲染
-      }
+      // 同步可见性到运行时状态, 触发 Draw 重绘
+      state.cursor.visible = this.cursorVisible
+      if (this._renderCallback) this._renderCallback()
     }, 530)
   }
 

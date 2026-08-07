@@ -82,12 +82,36 @@ export class TextParticle {
       ctx.lineWidth = 1
       const uy = y + fontSize * 0.9
       const tw = ctx.measureText(el.value).width
-      ctx.beginPath()
-      ctx.moveTo(x, uy)
-      ctx.lineTo(x + tw, uy)
-      if (el.underlineStyle === 'wave') ctx.setLineDash([2, 2])
-      ctx.stroke()
-      ctx.setLineDash([])
+      const style = el.underlineStyle || 'single'
+
+      if (style === 'wave') {
+        // 波浪下划线 — 正弦曲线路径
+        ctx.beginPath()
+        const amplitude = 2
+        const period = 6
+        for (let wx = x; wx <= x + tw; wx += 1) {
+          const wy = uy + Math.sin((wx - x) / period * Math.PI * 2) * amplitude
+          if (wx === x) ctx.moveTo(wx, wy)
+          else ctx.lineTo(wx, wy)
+        }
+        ctx.stroke()
+      } else if (style === 'double') {
+        // 双下划线 — 两条平行线
+        ctx.beginPath()
+        ctx.moveTo(x, uy - 2)
+        ctx.lineTo(x + tw, uy - 2)
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.moveTo(x, uy + 2)
+        ctx.lineTo(x + tw, uy + 2)
+        ctx.stroke()
+      } else {
+        // single — 默认单线
+        ctx.beginPath()
+        ctx.moveTo(x, uy)
+        ctx.lineTo(x + tw, uy)
+        ctx.stroke()
+      }
     }
 
     // ---- 7. 删除线 ----

@@ -20,7 +20,7 @@ export interface SLIFItem {
   ascent: number; descent: number
   font: string; size: number
   bold?: boolean; italic?: boolean
-  underline?: boolean; strikeout?: boolean
+  underline?: boolean; underlineStyle?: string; strikeout?: boolean
   color?: string; highlight?: string
   superscript?: boolean; subscript?: boolean
   // table extension

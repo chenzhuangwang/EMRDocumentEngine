@@ -11,10 +11,14 @@ import { ExportDialog } from '@/components/dialogs/ExportDialog'
 import { FindReplaceDialog } from '@/components/dialogs/FindReplaceDialog'
 import { PrintDialog } from '@/components/dialogs/PrintDialog'
 import { PageSetupDialog } from '@/components/dialogs/PageSetupDialog'
+import { PasteSpecialDialog, type PasteFormat } from '@/components/dialogs/PasteSpecialDialog'
+import { BookmarkDialog } from '@/components/dialogs/BookmarkDialog'
 import { useEditorStore } from '@/store'
 import { documentApi, templateApi } from '@/services/api'
 import { generateCommandId } from '@/engine/command/ICommand'
 import { InsertTextCommand } from '@/engine/command/commands/InsertTextCommand'
+import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
+import { buildNodePool } from '@/engine/document/NodePool'
 import { TOCGenerator } from '@/engine/render/TOCGenerator'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
 
@@ -93,6 +97,9 @@ function EditorPageInner({
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
   const [printOpen, setPrintOpen] = useState(false)
   const [pageSetupOpen, setPageSetupOpen] = useState(false)
+  const [pasteSpecialOpen, setPasteSpecialOpen] = useState(false)
+  const [bookmarkOpen, setBookmarkOpen] = useState(false)
+  const [tableInsertOpen, setTableInsertOpen] = useState(false)
   const [wordCount, setWordCount] = useState(0)
   const [pageCount, setPageCount] = useState(1)
   const [currentPageIndex, setCurrentPageIndex] = useState(0)
@@ -105,6 +112,7 @@ function EditorPageInner({
   const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([])
   const [activeOutlineId, setActiveOutlineId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const docFileInputRef = useRef<HTMLInputElement>(null)
   const [templates, setTemplates] = useState<{ name: string; items: { id: string; name: string; description?: string }[] }[]>([])
   const setDirty = useEditorStore((s) => s.setDirty)
   const setSaveStatus = useEditorStore((s) => s.setSaveStatus)
@@ -333,6 +341,28 @@ function EditorPageInner({
     e.target.value = ''
   }, [editorRef])
 
+  const handleDocFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const text = reader.result as string
+      const result = documentLoaderRegistry.load(text, file.name)
+      if (result?.doc) {
+        const ed = editorRef.current
+        if (ed) {
+          const map = new Map<string, import('@/engine/document/DocumentModel').BaseNode>()
+          map.set(result.doc.id, result.doc)
+          const pool = buildNodePool(map, { body: result.doc.id })
+          ed.setDocument(result.doc)
+          ed.getDraw().render(pool, ed.getStore().state.runtime)
+        }
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }, [editorRef])
+
   // 查找 (TASK-452)
   const handleFind = useCallback((query: string, options: { caseSensitive: boolean; wholeWord: boolean; useRegex: boolean }) => {
     const ed = editorRef.current
@@ -443,6 +473,8 @@ function EditorPageInner({
       if ((e.ctrlKey || e.metaKey) && e.key === 'u') { e.preventDefault(); handleFormat('underline') }
       // Ctrl+P: 打印 (Word 兼容)
       if ((e.ctrlKey || e.metaKey) && e.key === 'p') { e.preventDefault(); setPrintOpen(true) }
+      // Ctrl+Shift+V: 选择性粘贴
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'V') { e.preventDefault(); setPasteSpecialOpen(true) }
       // Tab: 增加缩进 (Word 兼容)
       if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); handleFormat('indent') }
       // Shift+Tab: 减少缩进
@@ -469,6 +501,7 @@ function EditorPageInner({
       case 'superscript': ed.toggleFormat({ superscript: true }); break
       case 'subscript': ed.toggleFormat({ subscript: true }); break
       case 'clearFormat': ed.clearFormat(); break
+      case 'openBookmark': setBookmarkOpen(true); break
       // 格式刷: 切换激活状态
       case 'formatPainter':
         if (ed.isFormatPainterActive) {
@@ -485,6 +518,7 @@ function EditorPageInner({
       case 'font': ed.toggleFormat({ font: String(_value ?? 'SimSun') }); break
       case 'fontSize': ed.toggleFormat({ size: Number(_value ?? 16) }); break
       case 'color': ed.toggleFormat({ color: String(_value ?? '#000000') }); break
+      case 'highlight': ed.toggleFormat({ highlight: _value === 'transparent' ? undefined : String(_value ?? '#FFFF00') } as Partial<import('@/engine').TextStyle>); break
       // 段落格式
       case 'alignLeft': ed.setParagraphStyle({ alignment: 'left' }); break
       case 'alignCenter': ed.setParagraphStyle({ alignment: 'center' }); break
@@ -502,6 +536,12 @@ function EditorPageInner({
       }
       case 'indent': ed.adjustIndent(24); break
       case 'outdent': ed.adjustIndent(-24); break
+      case 'lineHeight': ed.setParagraphStyle({ lineHeight: Number(_value ?? 1.5) }); break
+      case 'spaceBefore': ed.setParagraphStyle({ spaceBefore: Number(_value ?? 0) }); break
+      case 'spaceAfter': ed.setParagraphStyle({ spaceAfter: Number(_value ?? 0) }); break
+      case 'letterSpacing': ed.toggleFormat({ letterSpacing: Number(_value ?? 0) }); break
+      case 'mergeCells': ed.mergeSelectedCells(); break
+      case 'splitCell': ed.splitSelectedCell(); break
       // 标题样式: outlineLevel 0=正文, 1-6=Heading
       case 'heading':
         ed.setParagraphStyle({ outlineLevel: Number(_value ?? 0) })
@@ -668,6 +708,18 @@ function EditorPageInner({
         if (type === 'separator') { ed.insertSeparator(); return }
         // 图片: 触发文件选择器
         if (type === 'image') { fileInputRef.current?.click(); return }
+        // 表格插入: 默认 3x3 网格
+        if (type === 'table') { setTableInsertOpen(true); return }
+        // 分节符
+        if (type === 'sectionBreak') { ed.insertSectionBreak(); return }
+        // 表单控件 → SmartTextNode 创建
+        if (type === 'input') { ed.insertSmartText('文本输入', 'S1'); return }
+        if (type === 'textarea') { ed.insertSmartText('文本域', 'S2'); return }
+        if (type === 'number') { ed.insertSmartText('数字输入', 'N'); return }
+        if (type === 'date') { ed.insertSmartText('日期选择', 'D'); return }
+        if (type === 'select') { ed.insertSmartText('下拉选择', 'S1'); return }
+        if (type === 'checkbox') { ed.insertSmartText('复选框', 'S1'); return }
+        if (type === 'radio') { ed.insertSmartText('单选框', 'S1'); return }
         const placeholder = PLACEHOLDER_MAP[type] || `[${type}]`
         const cursor = ed.getStore().state.runtime.cursor
         if (cursor.paragraphPath.length === 0) return
@@ -676,6 +728,15 @@ function EditorPageInner({
       onExportClick={() => setExportOpen(true)}
       onPrint={() => setPrintOpen(true)}
       onPageSetup={() => setPageSetupOpen(true)}
+      commentThreads={(() => { const ed = editorRef.current; return ed ? ed.getComments() : [] })()}
+      onAddCommentReply={(threadId, content) => editorRef.current?.addCommentReply(threadId, content)}
+      onResolveCommentThread={(threadId) => {
+        const ed = editorRef.current
+        if (!ed) return
+        const threads = ed.getComments()
+        const t = threads.find(c => c.id === threadId)
+        ed.resolveComment(threadId, t?.status !== 'resolved')
+      }}
       formatPainterActive={formatPainterActive}
       wordCount={wordCount}
       pageCount={pageCount}
@@ -699,6 +760,13 @@ function EditorPageInner({
         className="hidden"
         onChange={handleImageFile}
       />
+      <input
+        ref={docFileInputRef}
+        type="file"
+        accept=".json,.emr,.html,.htm,.md,.markdown,.xml"
+        className="hidden"
+        onChange={handleDocFile}
+      />
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} onExport={handleExport} />
       <FindReplaceDialog
         open={findReplaceOpen}
@@ -715,20 +783,93 @@ function EditorPageInner({
         open={printOpen}
         onClose={() => setPrintOpen(false)}
         totalPages={pageCount}
-        onPrint={(settings) => {
-          console.debug('[EditorPage] print settings:', settings)
-          window.print()
+        onPrint={(_settings) => {
+          const ed = editorRef.current
+          if (!ed) return
+          const pageImages = ed.preparePrintPages()
+          const w = window.open('', '_blank', `width=${screen.width},height=${screen.height}`)
+          if (!w) return
+          w.document.write('<html><head><title>打印</title><style>')
+          w.document.write('@page{size:A4;margin:0}body{margin:0;display:flex;flex-direction:column;align-items:center}')
+          w.document.write('img{width:210mm;height:auto;page-break-after:always}img:last-child{page-break-after:auto}')
+          w.document.write('</style></head><body>')
+          for (const url of pageImages) {
+            w.document.write(`<img src="${url}" />`)
+          }
+          w.document.write('</body></html>')
+          w.document.close()
+          setTimeout(() => { w.print(); w.close() }, 300)
         }}
       />
       <PageSetupDialog
         open={pageSetupOpen}
         onClose={() => setPageSetupOpen(false)}
         onApply={(values) => {
-          console.debug('[EditorPage] page setup values:', values)
+          const ed = editorRef.current
+          if (ed) ed.applyPageSetup(values)
           setPageSetupOpen(false)
+        }}
+      />
+      <PasteSpecialDialog
+        open={pasteSpecialOpen}
+        onClose={() => setPasteSpecialOpen(false)}
+        onPaste={(format: PasteFormat) => {
+          const ed = editorRef.current
+          if (ed) ed.pasteSpecial(format)
+          setPasteSpecialOpen(false)
+        }}
+      />
+      {tableInsertOpen && (
+        <TableSizePicker
+          onSelect={(r, c) => { editorRef.current?.insertTable(r, c); setTableInsertOpen(false) }}
+          onCancel={() => setTableInsertOpen(false)}
+        />
+      )}
+      <BookmarkDialog
+        open={bookmarkOpen}
+        onClose={() => setBookmarkOpen(false)}
+        targets={(() => { const ed = editorRef.current; return ed ? ed.getBookmarkTargets() : [] })()}
+        onInsertBookmark={(name) => {
+          const ed = editorRef.current
+          if (ed) ed.insertBookmark(name)
+          setBookmarkOpen(false)
+        }}
+        onInsertCrossReference={(targetId, refType, displayText) => {
+          const ed = editorRef.current
+          if (ed) ed.insertCrossReference(targetId, refType, displayText)
+          setBookmarkOpen(false)
         }}
       />
     </EditorLayout>
     </ReadingModeOverlay>
+  )
+}
+
+// ---- 内联表格尺寸选择器 ----
+
+function TableSizePicker({ onSelect, onCancel }: { onSelect: (rows: number, cols: number) => void; onCancel: () => void }) {
+  const [hoverCols, setHoverCols] = useState(1)
+  const [hoverRows, setHoverRows] = useState(1)
+  const maxC = 8; const maxR = 10
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20" onClick={onCancel}>
+      <div className="bg-white rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+        <div className="text-xs text-gray-500 mb-2">{hoverRows}×{hoverCols} 表格</div>
+        <div className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(${maxC}, 24px)` }}>
+          {Array.from({ length: maxR }, (_, r) =>
+            Array.from({ length: maxC }, (_, c) => (
+              <div
+                key={`${r}-${c}`}
+                className="w-6 h-6 rounded-sm border cursor-pointer transition-colors"
+                style={{ backgroundColor: r < hoverRows && c < hoverCols ? '#3B82F6' : '#E5E7EB', borderColor: r < hoverRows && c < hoverCols ? '#2563EB' : '#D1D5DB' }}
+                onMouseEnter={() => { setHoverRows(r + 1); setHoverCols(c + 1) }}
+                onClick={() => onSelect(r + 1, c + 1)}
+              />
+            ))
+          )}
+        </div>
+      </div>
+    </div>
   )
 }

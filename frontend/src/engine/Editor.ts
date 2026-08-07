@@ -1,11 +1,12 @@
 import type { DocumentTree, BaseNode, Paragraph } from './document/DocumentModel'
-import { createDocument, createParagraph, createTextNode, extractStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent } from './document/ElementFormatter'
+import { createDocument, createParagraph, createTextNode, extractStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent, createSmartTextNode } from './document/ElementFormatter'
 import { NodePool, buildNodePool } from './document/NodePool'
 import type { FieldType } from './document/DocumentModel'
 import { Draw } from './render/Draw'
 import { AutoSaveManager } from './AutoSaveManager'
 import { AutoCorrectEngine } from './AutoCorrectEngine'
 import { PerformanceMetrics } from './PerformanceMetrics'
+import { PluginManager } from './plugins/PluginManager'
 import { EventBus } from './interaction/EventBus'
 import { CommandManager } from './command/CommandManager'
 import { InputComposer } from './interaction/IMEHandler'
@@ -50,7 +51,12 @@ export class Editor {
   private autoSave: AutoSaveManager
   private autoCorrect: AutoCorrectEngine
   private perfMetrics: PerformanceMetrics
+  private pluginManager: PluginManager
   private _formatPainterStyle: Record<string, unknown> | null = null
+  // 表格单元格选择
+  private _selectedTableId: string | null = null
+  private _selectedCellRow = -1
+  private _selectedCellCol = -1
   private listeners: EditorListener[] = []
   private _clickToFocus: (e: MouseEvent) => void
 
@@ -85,6 +91,7 @@ export class Editor {
     this.autoSave = new AutoSaveManager(doc.id, doc.title || '未命名文档', () => this.doc)
     this.autoCorrect = new AutoCorrectEngine()
     this.perfMetrics = new PerformanceMetrics()
+    this.pluginManager = new PluginManager()
     // 自动保存: 保存状态同步到 EditorStore
     this.autoSave.onSave((type) => {
       if (type === 'saving') this.store.setSaveStatus('saving')
@@ -189,6 +196,24 @@ export class Editor {
     setCursor(this.store, cursorPath, 0)
 
     this.draw.render(this.pool, this.store.state.runtime)
+
+    // 启动光标闪烁 — 首次渲染后, 光标已在 interact 层绘制
+    this.draw.renderer.setRenderCallback(() => {
+      this.draw.render(this.pool, this.store.state.runtime)
+    })
+    this.draw.renderer.startCursorBlink(this.store.state.runtime)
+
+    // 注册演示插件 (验证 PluginManager 系统)
+    this.pluginManager.register({
+      id: 'emr.demo',
+      name: 'Demo Plugin',
+      version: '1.0.0',
+      enabled: true,
+      install: (ctx) => { console.debug('[Plugin:demo] installed', ctx) },
+      enable: () => { console.debug('[Plugin:demo] enabled') },
+      disable: () => { console.debug('[Plugin:demo] disabled') },
+      destroy: () => { console.debug('[Plugin:demo] destroyed') },
+    })
 
     // 点击容器 → 命中检测 + 更新光标 + 聚焦
     // 若刚结束拖拽则跳过, 避免覆盖选区
@@ -634,10 +659,291 @@ export class Editor {
     this.notifyListeners('contentChange', this.doc)
   }
 
+  /** 选中表格单元格 (供鼠标点击使用) */
+  selectTableCell(tableId: string, row: number, col: number): void {
+    if (this._selectedTableId === tableId && this._selectedCellRow === row && this._selectedCellCol === col) {
+      // 再次点击同一单元格 → 清除选择
+      this._selectedTableId = null; this._selectedCellRow = -1; this._selectedCellCol = -1
+    } else {
+      this._selectedTableId = tableId; this._selectedCellRow = row; this._selectedCellCol = col
+    }
+    this.draw.render(this.pool, this.store.state.runtime)
+  }
+
+  get selectedTableId(): string | null { return this._selectedTableId }
+  get selectedCellRow(): number { return this._selectedCellRow }
+  get selectedCellCol(): number { return this._selectedCellCol }
+
+  /** 合并选中的相邻单元格 */
+  mergeSelectedCells(): void {
+    if (!this._selectedTableId || this._selectedCellRow < 0) return
+    // 简化实现: 将当前单元格与右侧单元格合并 (rowspan=1, colspan=2)
+    const table = this.pool.nodes.get(this._selectedTableId) as { children?: string[] } | undefined
+    if (!table?.children) return
+    const rowId = table.children[this._selectedCellRow]
+    if (!rowId) return
+    const row = this.pool.nodes.get(rowId) as { children?: string[] } | undefined
+    if (!row?.children) return
+    const cellId = row.children[this._selectedCellCol]
+    const nextCellId = row.children[this._selectedCellCol + 1]
+    if (!cellId || !nextCellId) return
+
+    const cell = this.pool.nodes.get(cellId) as { colspan?: number; children?: string[] } | undefined
+    if (cell) {
+      cell.colspan = (cell.colspan || 1) + 1
+      // 移除下一个单元格的子节点添加到当前单元格
+      const nextCell = this.pool.nodes.get(nextCellId) as { children?: string[] } | undefined
+      if (nextCell?.children) {
+        cell.children = [...(cell.children || []), ...nextCell.children]
+        this.pool.nodes.delete(nextCellId)
+        row.children.splice(this._selectedCellCol + 1, 1)
+      }
+    }
+    this._selectedTableId = null; this._selectedCellRow = -1; this._selectedCellCol = -1
+    this.draw.recomputeLayout(this.pool)
+    this.draw.render(this.pool, this.store.state.runtime)
+    this.notifyListeners('contentChange', this.doc)
+  }
+
+  /** 拆分合并的单元格 */
+  splitSelectedCell(): void {
+    if (!this._selectedTableId || this._selectedCellRow < 0) return
+    const table = this.pool.nodes.get(this._selectedTableId) as { children?: string[] } | undefined
+    if (!table?.children) return
+    const rowId = table.children[this._selectedCellRow]
+    if (!rowId) return
+    const row = this.pool.nodes.get(rowId) as { children?: string[] } | undefined
+    if (!row?.children) return
+    const cellId = row.children[this._selectedCellCol]
+    const cell = this.pool.nodes.get(cellId) as { colspan?: number; children?: string[] } | undefined
+    if (!cell || (cell.colspan || 1) <= 1) return
+
+    // 恢复为普通单元格: colspan → 1, 为新单元格创建段落
+    cell.colspan = 1
+    const newCellId = generateCommandId()
+    this.pool.nodes.set(newCellId, {
+      type: 'cell' as const, id: newCellId,
+      children: [createParagraph([createTextNode('').id]).id],
+      colspan: 1, rowspan: 1,
+    } as unknown as BaseNode)
+    row.children.splice(this._selectedCellCol + 1, 0, newCellId)
+
+    this._selectedTableId = null; this._selectedCellRow = -1; this._selectedCellCol = -1
+    this.draw.recomputeLayout(this.pool)
+    this.draw.render(this.pool, this.store.state.runtime)
+    this.notifyListeners('contentChange', this.doc)
+  }
+
+  /** 选择性粘贴 (Ctrl+Shift+V) — keep-source / match-destination / plain-text */
+  pasteSpecial(format: 'keep-source' | 'match-destination' | 'plain-text'): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+
+    let data = this.clipboard.paste()
+    if (!data || data.nodes.length === 0) {
+      this.pasteFromSystem()
+      return
+    }
+
+    if (format === 'plain-text') {
+      data = this.clipboard.pasteAsPlainText()
+    } else if (format === 'match-destination') {
+      data = this.clipboard.pasteMatchingDestination(this.getTextStyle() || undefined)
+    }
+    // keep-source: use data as-is
+
+    if (!data || data.nodes.length === 0) return
+    const cmd = new InsertNodesCommand(
+      generateCommandId(), Date.now(), 'user',
+      cursor.paragraphPath, cursor.offset,
+      data.nodes,
+    )
+    this.commandManager.execute(cmd)
+  }
+
+  /** 切换编辑器模式 (edit/readonly/form/clean/design/print) */
+  setMode(mode: import('./state/EditorRuntimeState').EditorMode): void {
+    this.store.state.runtime.view.mode = mode
+    this.eventBus.emit('state:changed', {})
+  }
+
+  /** 插入 SmartTextNode (医疗结构化文本) */
+  insertSmartText(name: string, format?: 'S1' | 'S2' | 'S3' | 'N' | 'D'): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+
+    const meta: import('./document/DocumentModel').ElementMeta = {
+      code: { internal: `CTL_${name.toUpperCase()}`, dataElement: `DE99.99.${name}` },
+      name,
+      format: format ? { dataType: format } : undefined,
+    }
+    const smartNode = createSmartTextNode(`[${name}]`, meta)
+    this.pool.nodes.set(smartNode.id, smartNode)
+
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
+    if (resolved) {
+      const para = this.pool.nodes.get(paraId) as { children?: string[] }
+      if (para?.children) {
+        const idx = para.children.indexOf(resolved.textNodeId)
+        if (idx >= 0) para.children.splice(idx + 1, 0, smartNode.id)
+        else para.children.push(smartNode.id)
+      }
+    } else {
+      const para = this.pool.nodes.get(paraId) as { children?: string[] }
+      if (para?.children) para.children.push(smartNode.id)
+    }
+
+    this.draw.recomputeLayout(this.pool)
+    this.draw.render(this.pool, this.store.state.runtime)
+    this.notifyListeners('contentChange', this.doc)
+  }
+
+  /** 插入书签 — 在当前光标位置创建 BookmarkNode */
+  insertBookmark(name: string): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+
+    const bookmarkId = generateCommandId()
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const bookmark: BaseNode = {
+      type: 'bookmark' as const, id: bookmarkId,
+      name,
+      targetId: paraId,
+      targetOffset: cursor.offset,
+    } as unknown as BaseNode
+    this.pool.nodes.set(bookmarkId, bookmark)
+
+    const para = this.pool.nodes.get(paraId) as { children?: string[] }
+    if (para?.children) {
+      const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
+      if (resolved) {
+        const idx = para.children.indexOf(resolved.textNodeId)
+        if (idx >= 0) para.children.splice(idx + 1, 0, bookmarkId)
+        else para.children.push(bookmarkId)
+      } else {
+        para.children.push(bookmarkId)
+      }
+    }
+    this.notifyListeners('contentChange', this.doc)
+  }
+
+  /** 获取文档中所有书签/标题/脚注目标 (供 BookmarkDialog 使用) */
+  getBookmarkTargets(): { id: string; label: string; type: 'heading' | 'bookmark' | 'footnote'; pageHint?: number }[] {
+    const targets: { id: string; label: string; type: 'heading' | 'bookmark' | 'footnote'; pageHint?: number }[] = []
+    for (const [, node] of this.pool.nodes) {
+      if (node.type === 'bookmark') {
+        const bm = node as unknown as { id: string; name: string }
+        targets.push({ id: bm.id, label: bm.name || bm.id, type: 'bookmark' })
+      } else if (node.type === 'paragraph') {
+        const p = node as unknown as { id: string; outlineLevel?: number; children?: string[] }
+        if (p.outlineLevel && p.outlineLevel > 0) {
+          const text = p.children?.map(cid => {
+            const cn = this.pool.nodes.get(cid) as { text?: string } | undefined
+            return cn?.text || ''
+          }).join('') || `标题${p.outlineLevel}`
+          targets.push({ id: p.id, label: text, type: 'heading' })
+        }
+      } else if (node.type === 'footnote_content') {
+        const fn = node as unknown as { id: string }
+        targets.push({ id: fn.id, label: `脚注 ${fn.id.slice(-4)}`, type: 'footnote' })
+      }
+    }
+    return targets
+  }
+
+  /** 创建批注 — 在当前选区/光标位置创建 CommentMarker */
+  createComment(content: string): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+
+    const markerId = generateCommandId()
+    const threadId = generateCommandId()
+    const ts = Date.now()
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+
+    // 创建 CommentMarker
+    const marker: BaseNode = {
+      type: 'comment_marker' as const, id: markerId,
+      threadId,
+      rangeStart: { path: [...cursor.paragraphPath], offset: Math.max(0, cursor.offset - 1) },
+      rangeEnd: { path: [...cursor.paragraphPath], offset: cursor.offset },
+    } as unknown as BaseNode
+    this.pool.nodes.set(markerId, marker)
+
+    // 插入到光标所在的文本节点之后
+    const para = this.pool.nodes.get(paraId) as { children?: string[] }
+    if (para?.children) {
+      const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
+      if (resolved) {
+        const idx = para.children.indexOf(resolved.textNodeId)
+        if (idx >= 0) para.children.splice(idx + 1, 0, markerId)
+        else para.children.push(markerId)
+      } else {
+        para.children.push(markerId)
+      }
+    }
+
+    // 初始化 comments 数组并添加 thread
+    if (!this.doc.comments) this.doc.comments = []
+    this.doc.comments.push({
+      id: threadId,
+      rangeStart: { path: [...cursor.paragraphPath], offset: Math.max(0, cursor.offset - 1) },
+      rangeEnd: { path: [...cursor.paragraphPath], offset: cursor.offset },
+      author: 'user',
+      createdAt: ts,
+      status: 'open' as const,
+      baseVersion: 1,
+      anchorStatus: 'valid' as const,
+      comments: [{ id: generateCommandId(), author: 'user', createdAt: ts, content }],
+    })
+
+    this.notifyListeners('contentChange', this.doc)
+  }
+
+  /** 获取批注列表 */
+  getComments(): import('./document/DocumentModel').CommentThread[] {
+    return this.doc.comments || []
+  }
+
+  /** 添加批注回复 */
+  addCommentReply(threadId: string, content: string): void {
+    if (!this.doc.comments) return
+    const thread = this.doc.comments.find(t => t.id === threadId)
+    if (thread) {
+      thread.comments.push({ id: generateCommandId(), author: 'user', createdAt: Date.now(), content })
+      this.notifyListeners('contentChange', this.doc)
+    }
+  }
+
+  /** 解决/重新打开批注 */
+  resolveComment(threadId: string, resolved: boolean): void {
+    if (!this.doc.comments) return
+    const thread = this.doc.comments.find(t => t.id === threadId)
+    if (thread) {
+      thread.status = resolved ? 'resolved' : 'reopened'
+      this.notifyListeners('contentChange', this.doc)
+    }
+  }
+
   execCommand(command: ICommand): void { this.commandManager.execute(command) }
   undo(): void { this.commandManager.undo() }
   redo(): void { this.commandManager.redo() }
   canUndo(): boolean { return this.commandManager.canUndo() }
+
+  /** 应用页面设置 — 更新 DocumentTree.pageSetup 并重新排版 */
+  applyPageSetup(values: { marginTop: number; marginBottom: number; marginLeft: number; marginRight: number; pageWidth: number; pageHeight: number; orientation: 'portrait' | 'landscape' }): void {
+    this.doc.pageSetup.width = values.pageWidth
+    this.doc.pageSetup.height = values.pageHeight
+    this.doc.pageSetup.marginTop = values.marginTop
+    this.doc.pageSetup.marginBottom = values.marginBottom
+    this.doc.pageSetup.marginLeft = values.marginLeft
+    this.doc.pageSetup.marginRight = values.marginRight
+    this.doc.pageSetup.orientation = values.orientation
+    this.draw.recomputeLayout(this.pool)
+    this.draw.render(this.pool, this.store.state.runtime)
+    this.notifyListeners('contentChange', this.doc)
+  }
   canRedo(): boolean { return this.commandManager.canRedo() }
 
   /** 复制: 选区范围 → 深度克隆 → 内存剪贴板 + 系统剪贴板 */
@@ -1202,6 +1508,90 @@ export class Editor {
   highlightAll(query: string, options?: FindOptions): MatchResult[] {
     return this.findReplace.highlightAll(query, this.doc, this.pool, options)
   }
+
+  /** 为打印准备页面 — 返回每页 canvas dataURL 数组 */
+  preparePrintPages(): string[] {
+    const pages = this.draw.getPages()
+    const result: string[] = []
+    const dpr = window.devicePixelRatio || 1
+
+    for (const page of pages) {
+      const canvas = document.createElement('canvas')
+      canvas.width = page.width * dpr
+      canvas.height = page.height * dpr
+      const pctx = canvas.getContext('2d')
+      if (!pctx) continue
+
+      pctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      pctx.fillStyle = '#FFFFFF'
+      pctx.fillRect(0, 0, page.width, page.height)
+
+      // 渲染页面内容 (复用现有渲染管线)
+      this.draw.renderPageToContext(pctx, page, page.width)
+      result.push(canvas.toDataURL('image/png'))
+    }
+    return result
+  }
+
+  /** 插入交叉引用 — 在当前光标位置创建 CrossReferenceNode */
+  insertCrossReference(targetId: string, refType: string, displayText: string): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+
+    const refId = generateCommandId()
+    const refNode: BaseNode = {
+      type: 'cross_reference' as const, id: refId,
+      refType, targetRef: targetId, displayText,
+      font: 'SimSun', size: 16, bold: false, italic: false,
+      underline: true, color: '#2563EB',  // 蓝色下划线表示链接
+    } as unknown as BaseNode
+    this.pool.nodes.set(refId, refNode)
+
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const para = this.pool.nodes.get(paraId) as { children?: string[] }
+    if (para?.children) {
+      const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
+      if (resolved) {
+        const idx = para.children.indexOf(resolved.textNodeId)
+        if (idx >= 0) para.children.splice(idx + 1, 0, refId)
+        else para.children.push(refId)
+      } else {
+        para.children.push(refId)
+      }
+    }
+
+    this.draw.recomputeLayout(this.pool)
+    this.draw.render(this.pool, this.store.state.runtime)
+    this.notifyListeners('contentChange', this.doc)
+  }
+
+  /** 插入分节符 — 在当前段落后创建 SectionBreak */
+  insertSectionBreak(): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+
+    const breakId = generateCommandId()
+    const breakNode: BaseNode = {
+      type: 'section_break' as const, id: breakId,
+      nextPageSetup: { ...this.doc.pageSetup },
+    } as unknown as BaseNode
+    this.pool.nodes.set(breakId, breakNode)
+
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const idx = this.doc.body.children.indexOf(paraId)
+    if (idx >= 0) {
+      this.doc.body.children.splice(idx + 1, 0, breakId)
+    } else {
+      this.doc.body.children.push(breakId)
+    }
+
+    this.draw.recomputeLayout(this.pool)
+    this.draw.render(this.pool, this.store.state.runtime)
+    this.notifyListeners('contentChange', this.doc)
+  }
+
+  /** 注册演示插件 (验证 PluginManager 系统) */
+  getPluginManager(): PluginManager { return this.pluginManager }
 
   destroy(): void {
     this.listeners = []

@@ -21,6 +21,11 @@ import { ListParticle } from './particles/ListParticle'
 import { MemoryManager } from '../layout/MemoryManager'
 import { createFootnoteParticle } from './particles/FootnoteParticle'
 import { createTableParticle } from './particles/TableParticle'
+import { createImageParticle } from './particles/ImageParticle'
+import { createControlParticle } from './particles/ControlParticle'
+import { createChartParticle } from './particles/ChartParticle'
+import { createBarcodeParticle } from './particles/BarcodeParticle'
+import { particleRegistry } from './particles/ParticleRegistry'
 
 interface CaretPos { x: number; y: number; h: number }
 
@@ -73,6 +78,25 @@ export class Draw {
       this.pages = pages
       this.hitTestIndex.rebuild(pages)
     })
+
+    // 注册图片粒子渲染器 (通过 ParticleRegistry 调度)
+    if (!particleRegistry.has('image')) {
+      particleRegistry.register(createImageParticle(
+        (nodeId) => this.resolveImageUrl({ nodeId }),
+        () => { if (this.pool && this._state) this.scheduleRender(this.pool, this._state) },
+      ))
+    }
+    // 注册控件/SmartText 粒子渲染器
+    if (!particleRegistry.has('smarttext')) {
+      particleRegistry.register(createControlParticle())
+    }
+    // 注册图表/条码粒子渲染器 (预留)
+    if (!particleRegistry.has('chart')) {
+      particleRegistry.register(createChartParticle())
+    }
+    if (!particleRegistry.has('barcode')) {
+      particleRegistry.register(createBarcodeParticle())
+    }
   }
 
   setDocument(doc: DocumentTree, pool?: NodePool): void {
@@ -364,9 +388,9 @@ export class Draw {
               id: item.nodeId, type: item.type,
             }, item.x, pageY + item.y, contentWidth)
           } else if (item.type === 'image') {
-            const imgUrl = this.resolveImageUrl(item)
-            if (imgUrl) {
-              this.renderImage(ctx, imgUrl, item.x, pageY + item.y, item.width, item.height)
+            const imageParticle = particleRegistry.get('image')
+            if (imageParticle) {
+              imageParticle.render(ctx, item, item.x, pageY + item.y)
             }
           } else if (item.type === 'footnote') {
             // 脚注引用: 上标编号 (R31)
@@ -389,7 +413,9 @@ export class Draw {
               id: item.nodeId, type: item.type, value: this.resolveFieldText(item, i),
               font: item.font, size: item.size, bold: item.bold, italic: item.italic,
               color: item.color, underline: item.underline,
+              underlineStyle: (item as { underlineStyle?: string }).underlineStyle,
               strikeout: item.strikeout, superscript: item.superscript, subscript: item.subscript,
+              highlight: (item as { highlight?: string }).highlight,
             }, item.x, pageY + item.y, { showInvisible: this._showInvisible })
           }
         }
@@ -457,9 +483,8 @@ export class Draw {
     if (!ictx || !pool || !runtimeState) return
 
     const cursor = runtimeState.cursor
-    if (cursor.paragraphPath.length === 0 || !cursor.visible) return
-
-    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX, visible, pageHeight, scrollOffset)
+    // 无有效光标位置 → 跳过 interact 层渲染
+    if (cursor.paragraphPath.length === 0) return
 
     ictx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ictx.clearRect(0, 0, viewportW, viewportH)
@@ -470,9 +495,12 @@ export class Draw {
       this.renderSelectionUnified(pool, selection, offsetX, visible, pageHeight, scrollOffset, ictx)
     }
 
-    // --- 光标 (文字上方) ---
-    ictx.fillStyle = '#000000'
-    ictx.fillRect(caret.x, caret.y, 2, caret.h)
+    // --- 光标 (文字上方, 仅在 visible 时绘制) ---
+    if (cursor.visible) {
+      const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX, visible, pageHeight, scrollOffset)
+      ictx.fillStyle = '#000000'
+      ictx.fillRect(caret.x, caret.y, 2, caret.h)
+    }
   }
 
   // ================================================================
@@ -748,6 +776,34 @@ export class Draw {
   setHeaderFooterEditActive(active: boolean, section?: 'header' | 'footer'): void {
     this.hfEditActive = active
     if (section) this.hfEditSection = section
+  }
+
+  /** 渲染单个 SLIF 页面到离屏 Canvas 上下文 (用于打印) */
+  renderPageToContext(ctx: CanvasRenderingContext2D, page: SLIFPage, pageWidth: number): void {
+    // 绘制正文 items
+    for (const item of page.items) {
+      if (item.type === 'separator') {
+        SeparatorParticle.render(ctx, { id: item.nodeId, type: item.type }, item.x, item.y, pageWidth - item.x - 90)
+      } else if (item.type === 'image') {
+        const p = particleRegistry.get('image')
+        if (p) p.render(ctx, item, item.x, item.y)
+      } else {
+        TextParticle.render(ctx, {
+          id: item.nodeId, type: item.type, value: item.text || '',
+          font: item.font, size: item.size, bold: item.bold, italic: item.italic,
+          color: item.color, underline: item.underline,
+          underlineStyle: (item as { underlineStyle?: string }).underlineStyle,
+          strikeout: item.strikeout, superscript: item.superscript, subscript: item.subscript,
+          highlight: (item as { highlight?: string }).highlight,
+        }, item.x, item.y, { showInvisible: false })
+      }
+    }
+    // 绘制列表标记
+    for (const item of page.items) {
+      if ((item as { listMarker?: string }).listMarker) {
+        ListParticle.render(ctx, (item as { listMarker: string }).listMarker, item.x - 20, item.y, item.size || 16)
+      }
+    }
   }
 
   getEventBus(): EventBus { return this.eventBus }

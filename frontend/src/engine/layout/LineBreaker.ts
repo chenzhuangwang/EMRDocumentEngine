@@ -73,8 +73,8 @@ export interface LineElement {
   bold?: boolean
   italic?: boolean
   color?: string
-  underline?: boolean
-  strikeout?: boolean
+  underline?: boolean; underlineStyle?: string; strikeout?: boolean
+  highlight?: string
   superscript?: boolean
   subscript?: boolean
   imageData?: { width?: number; height?: number; wrapType?: string }

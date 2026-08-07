@@ -114,7 +114,8 @@ export class LayoutEngine {
             listMarker = indent + bulletChar + ' '
           } else if (listType === 'ordered') {
             const orderNum = this.computeListNumber(para.id, pool, doc, level)
-            listMarker = indent + orderNum + '. '
+            const numberStyle = para.list.numberStyle || 'decimal'
+            listMarker = indent + this.formatListNumber(orderNum, numberStyle) + ' '
           }
           savedListMarker = listMarker
         }
@@ -123,16 +124,21 @@ export class LayoutEngine {
           const child = pool.nodes.get(childId)
           if (!child) continue
           const childType = (child as unknown as Record<string, unknown>).type as string
-          if (childType === 'text' || childType === 'smarttext') {
+          if (childType === 'text' || childType === 'smarttext' || childType === 'cross_reference') {
             const tn = child as unknown as TextNode
-            // 列表标记合并到第一个文本节点
-            const value = listMarker ? listMarker + tn.text : tn.text
+            // 交叉引用节点使用 displayText
+            const textVal = childType === 'cross_reference'
+              ? ((child as unknown as { displayText: string }).displayText || tn.text || '?')
+              : tn.text
+            const value = listMarker ? listMarker + textVal : textVal
             if (listMarker) listMarker = '' // 仅首节点添加
             elements.push({
               id: tn.id, type: childType, value,
               font: tn.font, size: tn.size, bold: tn.bold, italic: tn.italic,
               color: tn.color, underline: tn.underline,
+              underlineStyle: (tn as { underlineStyle?: string }).underlineStyle,
               strikeout: tn.strikeout, superscript: tn.superscript, subscript: tn.subscript,
+              highlight: tn.highlight,
             })
           } else if (childType === 'image') {
             const img = child as unknown as Record<string, unknown>
@@ -340,7 +346,9 @@ export class LayoutEngine {
             font: el.font || 'SimSun', size: el.size || 16,
             bold: el.bold, italic: el.italic,
             color: el.color, underline: el.underline,
+            underlineStyle: (el as { underlineStyle?: string }).underlineStyle,
             strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,
+            highlight: (el as { highlight?: string }).highlight,
             listMarker: itemListMarker,
             fieldType: (el as { fieldType?: string }).fieldType,
           })
@@ -528,6 +536,45 @@ export class LayoutEngine {
       rows,
       headerRowCount,
     }
+  }
+
+  /** 根据 numberStyle 格式化有序列表编号 */
+  private formatListNumber(orderNum: number, numberStyle: string): string {
+    switch (numberStyle) {
+      case 'lower_alpha':
+        return String.fromCharCode(96 + ((orderNum - 1) % 26) + 1)
+      case 'upper_alpha':
+        return String.fromCharCode(64 + ((orderNum - 1) % 26) + 1)
+      case 'lower_roman':
+        return this.toRomanNumeral(orderNum).toLowerCase()
+      case 'upper_roman':
+        return this.toRomanNumeral(orderNum)
+      case 'cjk_ideographic':
+        return this.toCjkIdeographic(orderNum)
+      default:
+        return String(orderNum)
+    }
+  }
+
+  private toRomanNumeral(n: number): string {
+    const values = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
+    const symbols = ['M', 'CM', 'D', 'CD', 'C', 'XC', 'L', 'XL', 'X', 'IX', 'V', 'IV', 'I']
+    let r = ''
+    for (let i = 0; i < values.length; i++) {
+      while (n >= values[i]) { r += symbols[i]; n -= values[i] }
+    }
+    return r
+  }
+
+  private toCjkIdeographic(n: number): string {
+    const digits = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九']
+    if (n < 1) return '零'
+    if (n <= 9) return digits[n]
+    if (n <= 99) {
+      const tens = n >= 20 ? digits[Math.floor(n / 10)] : ''
+      return tens + '十' + (n % 10 > 0 ? digits[n % 10] : '')
+    }
+    return String(n) // > 99 fallback
   }
 
   private computeListNumber(paraId: string, pool: import('../document/NodePool').NodePool, doc: DocumentTree, level: number): number {

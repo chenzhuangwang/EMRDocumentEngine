@@ -22,7 +22,7 @@ interface EditorState {
     font?: string; size?: number
     bold?: boolean; italic?: boolean; underline?: boolean
     strikeout?: boolean; superscript?: boolean; subscript?: boolean
-    color?: string
+    color?: string; highlight?: string
   } | null
   /** 页眉页脚编辑状态 (TASK-470) */
   headerFooterEdit: { active: boolean; section: 'header' | 'footer' }
@@ -40,7 +40,7 @@ interface EditorState {
     font?: string; size?: number
     bold?: boolean; italic?: boolean; underline?: boolean
     strikeout?: boolean; superscript?: boolean; subscript?: boolean
-    color?: string
+    color?: string; highlight?: string
   } | null) => void
   /** 格式刷状态 (TASK-472) */
   formatPainter: { active: boolean; style: Record<string, unknown> | null }

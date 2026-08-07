@@ -322,6 +322,7 @@ export interface DocumentTree {
   footer?: string[]
   footnotes?: string[]
   endnotes?: string[]
+  comments?: CommentThread[]
   metadata?: Record<string, unknown>
 }
 

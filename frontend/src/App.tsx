@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import EditorPage from '@/pages/EditorPage'
 import HomePage from '@/pages/HomePage'
+import ComparePage from '@/pages/ComparePage'
 
 function App() {
   return (
@@ -10,6 +11,7 @@ function App() {
       <Route path="/editor" element={<EditorPage />} />
       <Route path="/editor/:id" element={<EditorPage />} />
       <Route path="/editor/new" element={<EditorPage />} />
+      <Route path="/compare/:oldId/:newId" element={<ComparePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

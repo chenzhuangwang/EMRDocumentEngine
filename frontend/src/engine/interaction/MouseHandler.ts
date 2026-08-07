@@ -183,7 +183,47 @@ export class MouseHandler {
     this.anchorParaPath = [...result.paraPath]
     this.anchorOffset = result.offset
 
+    // 检查是否在表格单元格内 → 选中单元格 (Shift+Click 用于合并/拆分)
+    if (!e.shiftKey) {
+      const tableInfo = this.findTableAndCell(result.paraPath)
+      if (tableInfo) {
+        this.editor.selectTableCell(tableInfo.tableId, tableInfo.row, tableInfo.col)
+        return
+      }
+    }
+
     this.editor.getDraw().render(this.editor.getPool(), store.state.runtime)
+  }
+
+  /** 查找段落所属的表格和单元格位置 */
+  private findTableAndCell(paraPath: string[]): { tableId: string; row: number; col: number } | null {
+    if (paraPath.length < 2) return null
+    const paraId = paraPath[paraPath.length - 1]
+    const pool = this.editor.getPool()
+
+    for (const [, node] of pool.nodes) {
+      if (node.type !== 'cell') continue
+      const cell = node as unknown as { id: string; children?: string[] }
+      if (!cell.children?.includes(paraId)) continue
+
+      // 找到 cell → 向上找到 row 和 table
+      for (const [, n2] of pool.nodes) {
+        if (n2.type !== 'row') continue
+        const r = n2 as unknown as { id: string; children?: string[] }
+        const colIdx = r.children?.indexOf(cell.id)
+        if (colIdx === undefined || colIdx < 0) continue
+
+        for (const [, n3] of pool.nodes) {
+          if (n3.type !== 'table') continue
+          const t = n3 as unknown as { id: string; children?: string[] }
+          const rowIdx = t.children?.indexOf(r.id)
+          if (rowIdx !== undefined && rowIdx >= 0) {
+            return { tableId: t.id, row: rowIdx, col: colIdx }
+          }
+        }
+      }
+    }
+    return null
   }
 
   private onMouseMove = (e: MouseEvent) => {
