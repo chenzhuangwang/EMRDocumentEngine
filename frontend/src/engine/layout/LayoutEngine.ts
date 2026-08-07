@@ -325,6 +325,7 @@ export class LayoutEngine {
           // 列表标记: 从首元素 text 中剥离, 通过 listMarker 字段传给 Draw
           let itemText: string | undefined = el.value
           let itemListMarker: string | undefined = line.listMarker
+          const markerX = itemX  // 保存标记原始位置 (shift 前)
           if (itemListMarker && itemText && itemText.startsWith(itemListMarker)) {
             itemText = itemText.slice(itemListMarker.length)
             // 测量标记宽度, 偏移正文 x
@@ -350,6 +351,7 @@ export class LayoutEngine {
             strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,
             highlight: (el as { highlight?: string }).highlight,
             listMarker: itemListMarker,
+            listMarkerX: itemListMarker ? markerX : undefined,
             fieldType: (el as { fieldType?: string }).fieldType,
           })
         }

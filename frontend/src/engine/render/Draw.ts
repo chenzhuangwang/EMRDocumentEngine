@@ -405,7 +405,7 @@ export class Draw {
           } else {
             // 列表标记独立渲染 (TASK-454)
             if (item.listMarker) {
-              ListParticle.render(ctx, item.listMarker, item.x, pageY + item.y, item.ascent, {
+              ListParticle.render(ctx, item.listMarker, (item as { listMarkerX?: number }).listMarkerX ?? item.x, pageY + item.y, item.ascent, {
                 font: item.font, size: item.size, bold: item.bold, color: item.color,
               })
             }
@@ -801,7 +801,10 @@ export class Draw {
     // 绘制列表标记
     for (const item of page.items) {
       if ((item as { listMarker?: string }).listMarker) {
-        ListParticle.render(ctx, (item as { listMarker: string }).listMarker, item.x - 20, item.y, item.size || 16)
+        const markerItem = item as { listMarker: string; listMarkerX?: number; x: number; y: number; ascent: number; font?: string; size?: number; bold?: boolean; color?: string }
+        ListParticle.render(ctx, markerItem.listMarker, markerItem.listMarkerX ?? markerItem.x ?? 0, markerItem.y ?? 0, markerItem.ascent, {
+          font: markerItem.font, size: markerItem.size, bold: markerItem.bold, color: markerItem.color,
+        })
       }
     }
   }

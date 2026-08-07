@@ -35,6 +35,8 @@ export interface SLIFItem {
   imageUrl?: string
   /** 列表标记文本 (项目符号或编号), 由 Draw.ts 通过 ListParticle 独立渲染 */
   listMarker?: string
+  /** 列表标记 X 坐标 (shift 前原始位置) */
+  listMarkerX?: number
   /** 域类型 (FieldNode.fieldType), 渲染时动态计算值 */
   fieldType?: string
 }
