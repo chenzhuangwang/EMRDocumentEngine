@@ -203,12 +203,15 @@ export class KeyboardHandler {
     const lo = Math.min(aIdx, fIdx)
     const hi = Math.max(aIdx, fIdx)
     const loOff = aIdx === lo ? sel.anchor.offset : sel.focus.offset
-    const hiOff = aIdx === hi ? sel.anchor.offset : sel.focus.offset
+    const hiOff = fIdx === hi ? sel.focus.offset : sel.anchor.offset
 
     // 从后往前删, 避免索引漂移
     for (let pi = hi; pi >= lo; pi--) {
       const paraId = siblings[pi]
       if (!paraId) continue
+      // 跳过非段落节点 (表格、图片等不会出现在 paragraphPath 中)
+      const node = ed.getPool().nodes.get(paraId)
+      if (!node || (node.type !== 'paragraph')) continue
       const path = [...sel.anchor.paragraphPath.slice(0, -1), paraId]
       if (pi === lo && pi === hi) {
         // 同段落选区: 仅删除 offset 范围内的字符

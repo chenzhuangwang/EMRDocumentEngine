@@ -43,6 +43,11 @@ export class MergeParagraphCommand extends PositionalCommand {
       pool.insertChild(prevPara.id, childId, prevPara.children.length)
     }
 
+    // 3.1 当前段有列表样式而上一段没有 → 传播列表样式
+    if (currentPara.list && !prevPara.list) {
+      pool.updateNode(prevPara.id, { list: currentPara.list } as Partial<Paragraph>)
+    }
+
     // 4. 合并上一段
     normalizeParagraph(prevPara, pool)
 

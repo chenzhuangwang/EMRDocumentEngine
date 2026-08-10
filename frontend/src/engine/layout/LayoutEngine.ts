@@ -325,6 +325,7 @@ export class LayoutEngine {
           // 列表标记: 从首元素 text 中剥离, 通过 listMarker 字段传给 Draw
           let itemText: string | undefined = el.value
           let itemListMarker: string | undefined = line.listMarker
+          let itemMarkerWidth: number | undefined
           const markerX = itemX  // 保存标记原始位置 (shift 前)
           if (itemListMarker && itemText && itemText.startsWith(itemListMarker)) {
             itemText = itemText.slice(itemListMarker.length)
@@ -333,6 +334,7 @@ export class LayoutEngine {
               font: el.font || 'SimSun', size: el.size || 16,
               bold: el.bold, italic: el.italic,
             })
+            itemMarkerWidth = markerW.width
             itemX += markerW.width
           } else {
             itemListMarker = undefined // 非首元素不带标记
@@ -352,6 +354,7 @@ export class LayoutEngine {
             highlight: (el as { highlight?: string }).highlight,
             listMarker: itemListMarker,
             listMarkerX: itemListMarker ? markerX : undefined,
+            markerWidth: itemMarkerWidth,
             fieldType: (el as { fieldType?: string }).fieldType,
           })
         }
@@ -581,12 +584,30 @@ export class LayoutEngine {
 
   private computeListNumber(paraId: string, pool: import('../document/NodePool').NodePool, doc: DocumentTree, level: number): number {
     let count = 0
+    let lastOrderedCount = 0  // 记住上一个有序列表序列的计数，供 continueNumbering 使用
+
     for (const bid of doc.body.children) {
-      if (bid === paraId) return count + 1
       const b = pool.nodes.get(bid) as Record<string, unknown> | undefined
-      const bl = b?.list as { type?: string; level?: number } | undefined
-      if (bl?.type === 'ordered' && (bl?.level || 1) === level) count++
-      else count = 0 // 非同级有序列表 → 重置计数
+      const bl = b?.list as { type?: string; level?: number; startAt?: number; continueNumbering?: boolean } | undefined
+
+      if (bid === paraId) {
+        // continueNumbering: 当前段跟在非列表段落后仍延续编号
+        if (bl?.continueNumbering && count === 0 && lastOrderedCount > 0) {
+          count = lastOrderedCount
+        }
+        // startAt: 显式指定起始编号 (优先级最高)
+        if (bl?.startAt && bl.startAt > 0) {
+          return bl.startAt
+        }
+        return count + 1
+      }
+
+      if (bl?.type === 'ordered' && (bl?.level || 1) === level) {
+        count++
+        lastOrderedCount = count
+      } else {
+        count = 0
+      }
     }
     return 1
   }

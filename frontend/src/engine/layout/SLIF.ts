@@ -37,6 +37,8 @@ export interface SLIFItem {
   listMarker?: string
   /** 列表标记 X 坐标 (shift 前原始位置) */
   listMarkerX?: number
+  /** 列表标记像素宽度 (用于光标 charW 计算扣减) */
+  markerWidth?: number
   /** 域类型 (FieldNode.fieldType), 渲染时动态计算值 */
   fieldType?: string
 }

@@ -11,6 +11,7 @@ import type { ICommand } from '../ICommand'
 import { CommandContext, StatePatch, SerializedCommand, PositionalCommand } from '../ICommand'
 import { InsertTextCommand } from './InsertTextCommand'
 import { normalizeParagraph } from './ParagraphUtils'
+import { createTextNode } from '../../document/ElementFormatter'
 
 export class DeleteRangeCommand extends PositionalCommand {
   readonly type = 'delete-range'
@@ -90,8 +91,17 @@ export class DeleteRangeCommand extends PositionalCommand {
     // Step 3: 删除后合并相邻同样式 TextNode
     normalizeParagraph(para, pool)
 
+    // Step 4: 防止空段落僵尸 — 删除全部内容后至少保留一个空文本节点
+    if (para.children.length === 0) {
+      const emptyText = createTextNode('')
+      ;(para as { children: string[] }).children = [emptyText.id]
+      pool.nodes.set(emptyText.id, emptyText as unknown as import('../../document/DocumentModel').BaseNode)
+    }
+
     return {
       cursor: { paragraphPath: this.path, offset: this.startOffset },
+      // 删除后清除选区，防止下次按键读到过期 offset 再次触发 deleteSelection
+      selection: { active: false },
       invalidation: 'paragraph',
     }
   }

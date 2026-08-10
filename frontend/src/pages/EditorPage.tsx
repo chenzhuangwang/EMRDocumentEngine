@@ -531,7 +531,13 @@ function EditorPageInner({
       }
       case 'orderedList': {
         const ps = ed.getParagraphStyle()
-        ed.setParagraphStyle({ list: ps?.listType === 'ordered' ? undefined : { type: 'ordered', level: 1 } as unknown as import('@/engine').ListStyle })
+        ed.setParagraphStyle({ list: ps?.listType === 'ordered' ? undefined : { type: 'ordered', level: 1, numberStyle: 'decimal' } as unknown as import('@/engine').ListStyle })
+        break
+      }
+      case 'orderedListNumberStyle': {
+        // 仅切换编号样式，保留列表类型和层级
+        const ns = String(_value ?? 'decimal')
+        ed.setParagraphStyle({ list: { type: 'ordered', level: 1, numberStyle: ns } as unknown as import('@/engine').ListStyle })
         break
       }
       case 'indent': ed.adjustIndent(24); break

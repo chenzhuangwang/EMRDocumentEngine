@@ -208,6 +208,12 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
         <ToolbarButton title="有序列表" active={paraStyle?.listType === 'ordered'} onClick={() => onFormat?.('orderedList')}>
           <ListOrdered size={16} />
         </ToolbarButton>
+        {paraStyle?.listType === 'ordered' && (
+          <NumberStyleDropdown
+            selected={paraStyle?.numberStyle || 'decimal'}
+            onSelect={(ns) => onFormat?.('orderedListNumberStyle', ns)}
+          />
+        )}
         <ToolbarButton title="减少缩进" onClick={() => onFormat?.('outdent')}>
           <Outdent size={16} />
         </ToolbarButton>
@@ -693,6 +699,57 @@ function HighlightPicker({ onSelect }: { onSelect: (color: string) => void }) {
               />
             ))}
           </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  )
+}
+
+// ---- 编号样式下拉 ----
+
+const NUMBER_STYLES: { label: string; value: string; sample: string }[] = [
+  { label: '1, 2, 3',        value: 'decimal',          sample: '1' },
+  { label: 'a, b, c',        value: 'lower_alpha',      sample: 'a' },
+  { label: 'A, B, C',        value: 'upper_alpha',      sample: 'A' },
+  { label: 'i, ii, iii',     value: 'lower_roman',      sample: 'i' },
+  { label: 'I, II, III',     value: 'upper_roman',      sample: 'I' },
+  { label: '一, 二, 三',     value: 'cjk_ideographic',  sample: '一' },
+]
+
+function NumberStyleDropdown({ selected, onSelect }: { selected: string; onSelect: (value: string) => void }) {
+  const current = NUMBER_STYLES.find(n => n.value === selected) || NUMBER_STYLES[0]
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          className="flex items-center gap-0.5 px-1.5 py-1 text-xs text-gray-500
+                     hover:bg-gray-100 rounded-md h-8 data-[state=open]:bg-gray-100"
+          title="编号样式"
+        >
+          <span className="font-mono text-gray-600">{current.sample}</span>
+          <ChevronDown size={10} />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className="min-w-[120px] bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
+          sideOffset={4} align="start"
+        >
+          {NUMBER_STYLES.map(n => (
+            <DropdownMenu.Item
+              key={n.value}
+              className={cn(
+                'px-3 py-1.5 text-sm outline-none cursor-default transition-colors',
+                n.value === selected
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-gray-700 data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700',
+              )}
+              onClick={() => onSelect(n.value)}
+            >
+              <span className="font-mono">{n.label}</span>
+            </DropdownMenu.Item>
+          ))}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

@@ -16,7 +16,7 @@ interface EditorState {
   saveStatus: 'saved' | 'saving' | 'unsaved' | 'error'
   onlineUsers: number
   validationResults: ValidationResult[]
-  paragraphStyle: { alignment?: string; listType?: string; indent?: number; outlineLevel?: number } | null
+  paragraphStyle: { alignment?: string; listType?: string; numberStyle?: string; indent?: number; outlineLevel?: number } | null
   /** 光标处文本样式 (供 Toolbar 按钮状态同步) */
   textStyle: {
     font?: string; size?: number
@@ -35,7 +35,7 @@ interface EditorState {
   setSaveStatus: (status: 'saved' | 'saving' | 'unsaved' | 'error') => void
   setOnlineUsers: (count: number) => void
   setValidationResults: (results: ValidationResult[]) => void
-  setParagraphStyle: (style: { alignment?: string; listType?: string; indent?: number; outlineLevel?: number } | null) => void
+  setParagraphStyle: (style: { alignment?: string; listType?: string; numberStyle?: string; indent?: number; outlineLevel?: number } | null) => void
   setTextStyle: (style: {
     font?: string; size?: number
     bold?: boolean; italic?: boolean; underline?: boolean

@@ -26,6 +26,7 @@ import { EditorStore } from './state/EditorStore'
 import type { EditorRuntimeState } from './state/EditorRuntimeState'
 import { FindReplaceEngine } from './FindReplaceEngine'
 import type { FindOptions, MatchResult } from './FindReplaceEngine'
+import { cumulativeCharWidths, findCharIndexAtX } from './layout/CharWidthHelper'
 
 /** 辅助: 绕开 Readonly 直接写 store._state.runtime.cursor */
 type StoreInternal = { _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean } } } }
@@ -313,9 +314,11 @@ export class Editor {
       // 行间空白 (在内容范围内但未命中任何 item) → 光标保持原位, 不移动
     }
 
-    // 单击清空选区
-    const si = this.store as unknown as { _state: { runtime: { selection: { active: boolean } } } }
-    si._state.runtime.selection.active = false
+    // 单击清空选区 (双击/三击已处理选区则跳过)
+    if (!this.mouseHandler.wasMultiClick()) {
+      const si = this.store as unknown as { _state: { runtime: { selection: { active: boolean } } } }
+      si._state.runtime.selection.active = false
+    }
 
     // 无论命中与否都重绘
     this.draw.render(this.pool, this.store.state.runtime)
@@ -335,34 +338,31 @@ export class Editor {
   /** 根据文档坐标 X 计算段落内的字符偏移 */
   private computeOffsetAtX(para: Paragraph, docX: number, page: import('./layout/SLIF').SLIFPage): number {
     let accumulated = 0
-    const markerLen = this.getListMarkerLen(para)
 
     for (const childId of para.children) {
       const item = page.items.find(it => it.nodeId === childId)
-      const text = (this.pool.nodes.get(childId) as unknown as { text?: string })?.text || ''
+      const textNode = this.pool.nodes.get(childId) as unknown as { text?: string; font?: string; size?: number; bold?: boolean; italic?: boolean } | undefined
+      const text = textNode?.text || ''
       if (item) {
-        // item.text 含标记前缀, 用 item 文本长度计算 charWidth
-        const itemTextLen = item.text?.length || 1
-        const charWidth = item.width / itemTextLen
-        if (docX <= item.x + item.width) {
-          const charIdx = Math.round((docX - item.x) / charWidth)
-          return Math.max(0, accumulated + Math.max(0, Math.min(charIdx, itemTextLen)) - markerLen)
+        const bodyText = item.text || ''
+        // item.text 是正文 (标记已剥离), item.x 已偏移过标记宽度
+        const bodyW = item.markerWidth != null ? item.width - item.markerWidth : item.width
+        if (docX <= item.x + bodyW) {
+          const relativeX = docX - item.x
+          // 逐字符累积宽度, 正确区分半角/全角字符像素宽度
+          const cumWidths = cumulativeCharWidths(bodyText, {
+            font: textNode?.font || item.font || 'SimSun',
+            size: textNode?.size || item.size || 16,
+            bold: textNode?.bold ?? item.bold,
+            italic: textNode?.italic ?? item.italic,
+          })
+          const charIdx = findCharIndexAtX(relativeX, cumWidths, bodyText.length || 0)
+          return Math.max(0, accumulated + charIdx)
         }
       }
       accumulated += text.length
     }
-    return Math.max(0, accumulated - markerLen)
-  }
-
-  /** 列表标记长度 (bullet="• ", ordered="99. ") */
-  private getListMarkerLen(para: Paragraph): number {
-    const p = para as unknown as { list?: { type: string; level?: number } }
-    if (!p.list) return 0
-    const lvl = p.list.level || 1
-    const indent = '  '.repeat(lvl - 1)
-    if (p.list.type === 'bullet') return (indent + '• ').length
-    if (p.list.type === 'ordered') return (indent + '99. ').length
-    return 0
+    return Math.max(0, accumulated)
   }
 
   /** 计算段落内所有文本节点的总字符数 */
@@ -1303,7 +1303,7 @@ export class Editor {
   }
 
   /** 获取光标/选区首段落的格式 (供 Toolbar active 状态) */
-  getParagraphStyle(): { alignment?: string; listType?: string; indent?: number; outlineLevel?: number } | null {
+  getParagraphStyle(): { alignment?: string; listType?: string; numberStyle?: string; indent?: number; outlineLevel?: number } | null {
     const paraIds = this.getSelectedParagraphIds()
     if (paraIds.length === 0) return null
     const paraId = paraIds[0]
@@ -1312,6 +1312,7 @@ export class Editor {
     return {
       alignment: para.alignment as string | undefined,
       listType: para.list ? (para.list as { type: string }).type : undefined,
+      numberStyle: para.list ? (para.list as { numberStyle?: string }).numberStyle : undefined,
       indent: para.indent as number | undefined,
       outlineLevel: para.outlineLevel as number | undefined,
     }

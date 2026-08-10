@@ -19,6 +19,7 @@ import { TextParticle } from './particles/TextParticle'
 import { SeparatorParticle } from './particles/SeparatorParticle'
 import { ListParticle } from './particles/ListParticle'
 import { MemoryManager } from '../layout/MemoryManager'
+import { cumulativeWidthUpTo } from '../layout/CharWidthHelper'
 import { createFootnoteParticle } from './particles/FootnoteParticle'
 import { createTableParticle } from './particles/TableParticle'
 import { createImageParticle } from './particles/ImageParticle'
@@ -148,14 +149,6 @@ export class Draw {
     let charCount = 0
 
     if (para) {
-      // 列表标记偏移: 标记已拼入首节点, 光标需要跳过标记
-      const paraNode = pool.nodes.get(paraId) as unknown as { list?: { type: 'bullet' | 'ordered'; level?: number } } | undefined
-      let listMarkerLen = 0
-      if (paraNode?.list) {
-        const lvl = paraNode.list.level || 1
-        listMarkerLen = ListParticle.estimateMarkerWidth(lvl, paraNode.list.type).length
-      }
-
       // 判断该段落属于 body / header / footer 哪个区域
       const section = this.resolveParagraphSection(paraId)
 
@@ -181,11 +174,17 @@ export class Draw {
         for (const item of searchItems) {
           if (para.children.includes(item.nodeId) || item.nodeId === paraId) {
             const textLen = item.text?.length || 0
-            const adjustedOffset = offset + listMarkerLen
-            if (adjustedOffset <= charCount + textLen) {
-              const localOff = adjustedOffset - charCount
-              const charW = textLen > 0 ? item.width / textLen : 0
-              caretX = offsetX + item.x + localOff * charW
+            // item.x 已偏移过标记宽度, cursor offset 是正文内偏移, 无需调整
+            if (offset <= charCount + textLen) {
+              const localOff = offset - charCount
+              // 逐字符累积宽度: 正确区分半角/全角字符, 避免中英文混排光标偏移
+              const cumWidth = cumulativeWidthUpTo(item.text || '', localOff, {
+                font: item.font || 'SimSun',
+                size: item.size || 16,
+                bold: item.bold,
+                italic: item.italic,
+              })
+              caretX = offsetX + item.x + cumWidth
               caretY = pageY + yOffset + item.y
               caretH = item.ascent + item.descent
               found = true
@@ -553,7 +552,14 @@ export class Draw {
         const itemStart = paraOffsets.get(itemParaId) ?? 0
         const tLen = item.text?.length || 0
         const itemEnd = itemStart + tLen
-        const charW = tLen > 0 ? item.width / tLen : 0
+
+        // 获取该 item 的字体配置, 用于精确 char 宽度测量
+        const fontCfg = {
+          font: item.font || 'SimSun',
+          size: item.size || 16,
+          bold: item.bold,
+          italic: item.italic,
+        }
 
         // ---- 第一层: item 级筛选 ----
         let include = true
@@ -588,9 +594,10 @@ export class Draw {
           localEnd = Math.min(tLen || 1, hiOff - itemStart)
         }
 
-        const dx = localStart * charW
+        // 逐字符累积宽度: 正确区分半角/全角字符像素宽度
+        const dx = cumulativeWidthUpTo(item.text || '', localStart, fontCfg)
         const dw = tLen > 0
-          ? (localEnd - localStart) * charW
+          ? cumulativeWidthUpTo(item.text || '', localEnd, fontCfg) - dx
           : item.ascent + item.descent  // 空段落用高度作为最小宽度
 
         ictx.fillRect(offsetX + item.x + dx, spY + item.y, dw, item.ascent + item.descent)
