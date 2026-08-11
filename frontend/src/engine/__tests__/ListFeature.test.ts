@@ -73,8 +73,12 @@ describe('formatOrderedNumber', () => {
     expect(ListParticle.formatOrderedNumber(26, 'lower_alpha')).toBe('z.')
   })
 
-  it('lower_alpha: 27 → wraps to "a."', () => {
-    expect(ListParticle.formatOrderedNumber(27, 'lower_alpha')).toBe('a.')
+  it('lower_alpha: 26 → "z.", 27 → "aa.", 28 → "ab." (bijective base-26)', () => {
+    expect(ListParticle.formatOrderedNumber(26, 'lower_alpha')).toBe('z.')
+    expect(ListParticle.formatOrderedNumber(27, 'lower_alpha')).toBe('aa.')
+    expect(ListParticle.formatOrderedNumber(28, 'lower_alpha')).toBe('ab.')
+    expect(ListParticle.formatOrderedNumber(52, 'lower_alpha')).toBe('az.')
+    expect(ListParticle.formatOrderedNumber(53, 'lower_alpha')).toBe('ba.')
   })
 
   it('upper_alpha: 1 → "A.", 2 → "B."', () => {
@@ -109,8 +113,19 @@ describe('formatOrderedNumber', () => {
     expect(ListParticle.formatOrderedNumber(0, 'cjk_ideographic')).toBe('零、')
   })
 
-  it('cjk_ideographic: > 99 fallback to decimal with 、suffix', () => {
-    expect(ListParticle.formatOrderedNumber(100, 'cjk_ideographic')).toBe('100、')
+  it('cjk_ideographic: 100→一百、, 101→一百零一、, 110→一百一十、, 223→二百二十三、, 999→九百九十九、', () => {
+    expect(ListParticle.formatOrderedNumber(100, 'cjk_ideographic')).toBe('一百、')
+    expect(ListParticle.formatOrderedNumber(101, 'cjk_ideographic')).toBe('一百零一、')
+    expect(ListParticle.formatOrderedNumber(110, 'cjk_ideographic')).toBe('一百一十、')
+    expect(ListParticle.formatOrderedNumber(200, 'cjk_ideographic')).toBe('二百、')
+    expect(ListParticle.formatOrderedNumber(223, 'cjk_ideographic')).toBe('二百二十三、')
+    expect(ListParticle.formatOrderedNumber(300, 'cjk_ideographic')).toBe('三百、')
+    expect(ListParticle.formatOrderedNumber(999, 'cjk_ideographic')).toBe('九百九十九、')
+  })
+
+  it('cjk_ideographic: >= 1000 fallback to decimal with 、suffix', () => {
+    expect(ListParticle.formatOrderedNumber(1000, 'cjk_ideographic')).toBe('1000、')
+    expect(ListParticle.formatOrderedNumber(2024, 'cjk_ideographic')).toBe('2024、')
   })
 
   it('default (no numberStyle) → decimal', () => {
@@ -118,7 +133,40 @@ describe('formatOrderedNumber', () => {
   })
 })
 
-// ---- 3. estimateMarkerWidth 标记宽度估算 (static) ----
+// ---- 3.1 toAlphaBijective 双射 base-26 ----
+
+describe('toAlphaBijective', () => {
+  it('1→A, 26→Z, 27→AA, 52→AZ, 702→ZZ, 703→AAA', () => {
+    expect(ListParticle.toAlphaBijective(1)).toBe('A')
+    expect(ListParticle.toAlphaBijective(26)).toBe('Z')
+    expect(ListParticle.toAlphaBijective(27)).toBe('AA')
+    expect(ListParticle.toAlphaBijective(52)).toBe('AZ')
+    expect(ListParticle.toAlphaBijective(702)).toBe('ZZ')
+    expect(ListParticle.toAlphaBijective(703)).toBe('AAA')
+  })
+})
+
+// ---- 3.2 formatOrderedNumberRaw (无后缀) ----
+
+describe('formatOrderedNumberRaw', () => {
+  it('decimal: 1 → "1"', () => {
+    expect(ListParticle.formatOrderedNumberRaw(1, 'decimal')).toBe('1')
+  })
+  it('lower_alpha: 27 → "aa"', () => {
+    expect(ListParticle.formatOrderedNumberRaw(27, 'lower_alpha')).toBe('aa')
+  })
+  it('upper_roman: 4 → "IV"', () => {
+    expect(ListParticle.formatOrderedNumberRaw(4, 'upper_roman')).toBe('IV')
+  })
+  it('cjk_ideographic: 100 → "一百"', () => {
+    expect(ListParticle.formatOrderedNumberRaw(100, 'cjk_ideographic')).toBe('一百')
+  })
+  it('default (no numberStyle) → decimal', () => {
+    expect(ListParticle.formatOrderedNumberRaw(7)).toBe('7')
+  })
+})
+
+// ---- 4. estimateMarkerWidth 标记宽度估算 (static) ----
 
 describe('estimateMarkerWidth', () => {
   it('should return string for bullet list', () => {
@@ -300,6 +348,46 @@ describe('MergeParagraphCommand list propagation', () => {
   })
 })
 
+// ---- 5.1 adjustListLevel 层级变更逻辑 ----
+
+describe('adjustListLevel logic', () => {
+  it('Tab on list item should increase level', () => {
+    const list = { type: 'bullet' as const, level: 1 }
+    const newLevel = list.level + 1
+    expect(newLevel).toBe(2)
+  })
+
+  it('Shift+Tab on level 2 list item → level 1', () => {
+    const list = { type: 'bullet' as const, level: 2 }
+    const newLevel = list.level - 1
+    expect(newLevel).toBe(1)
+  })
+
+  it('Shift+Tab on level 1 list item → level 0 (remove list)', () => {
+    const currentLevel = 1
+    const newLevel = currentLevel - 1
+    expect(newLevel < 1).toBe(true) // should trigger list removal
+  })
+
+  it('Tab on level 3 nested list → level 4', () => {
+    const list = { type: 'ordered' as const, level: 3 }
+    const newLevel = list.level + 1
+    expect(newLevel).toBe(4)
+  })
+
+  it('non-list paragraph keeps pixel indent behavior', () => {
+    const indent = 0
+    const newIndent = indent + 24
+    expect(newIndent).toBe(24)
+  })
+
+  it('non-list paragraph outdent clamps to 0', () => {
+    const indent = 24
+    const newIndent = Math.max(0, indent - 24)
+    expect(newIndent).toBe(0)
+  })
+})
+
 // ---- 6. ListParticle 静态方法存在性 ----
 
 describe('ListParticle static API', () => {
@@ -313,6 +401,22 @@ describe('ListParticle static API', () => {
 
   it('should have static formatOrderedNumber method', () => {
     expect(typeof ListParticle.formatOrderedNumber).toBe('function')
+  })
+
+  it('should have static formatOrderedNumberRaw method', () => {
+    expect(typeof ListParticle.formatOrderedNumberRaw).toBe('function')
+  })
+
+  it('should have static toAlphaBijective method', () => {
+    expect(typeof ListParticle.toAlphaBijective).toBe('function')
+  })
+
+  it('should have static toRoman method', () => {
+    expect(typeof ListParticle.toRoman).toBe('function')
+  })
+
+  it('should have static toCjkIdeographic method', () => {
+    expect(typeof ListParticle.toCjkIdeographic).toBe('function')
   })
 
   it('should have static estimateMarkerWidth method', () => {

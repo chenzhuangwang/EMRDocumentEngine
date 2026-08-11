@@ -43,8 +43,12 @@ export class SplitParagraphCommand extends PositionalCommand {
     // 2. 分裂 children
     const splitIdx = para.children.indexOf(textNodeId)
     const rightChildren = para.children.slice(splitIdx + 1)
-    if (beforeText) {
-      pool.updateNode(textNode.id, { text: beforeText } as Partial<TextNode>)
+    // 总是截断原始 TextNode (beforeText 可能为空字符串, 必须更新)
+    pool.updateNode(textNode.id, { text: beforeText } as Partial<TextNode>)
+    // 截断原始段落 children: 只保留到 splitIdx (含被截断的 TextNode)
+    if (rightChildren.length > 0) {
+      const paraChildren = (para as unknown as { children: string[] }).children
+      paraChildren.splice(splitIdx + 1, rightChildren.length)
     }
 
     // 3. 构造新段落 (继承样式)

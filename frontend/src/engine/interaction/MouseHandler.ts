@@ -362,8 +362,11 @@ export class MouseHandler {
   /** 命中检测 — 返回段落路径 + 字符偏移 */
   private hitTest(clientX: number, clientY: number): { paraPath: string[]; offset: number } | null {
     const rect = this.container.getBoundingClientRect()
-    const screenX = clientX - rect.left
-    const screenY = clientY - rect.top + this.editor.getDraw().getCoordinateSystem().transform.scrollY
+    const coord = this.editor.getDraw().getCoordinateSystem()
+    const scale = coord.transform.scale
+    // 屏幕坐标 → 文档坐标: 客户端 CSS px 除以 scale
+    const screenX = (clientX - rect.left) / scale
+    const screenY = (clientY - rect.top) / scale + coord.transform.scrollY
 
     const pages = this.editor.getDraw().getPages()
     if (pages.length === 0) return null
@@ -377,8 +380,10 @@ export class MouseHandler {
     if (!page) return null
 
     const viewportW = this.container.clientWidth
-    const offsetX = Math.max(0, (viewportW - page.width) / 2)
-    const docX = screenX - offsetX
+    // offsetX = 页面居中偏移 (CSS px)
+    const visiblePageW = page.width * scale
+    const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
+    const docX = screenX - offsetX / scale
 
     const nodeId = this.editor.getDraw().getHitTestIndex().hitTest(docX, localY, pageIndex)
     if (!nodeId) return null
@@ -433,7 +438,9 @@ export class MouseHandler {
   /** 检测点击位置是否在页眉/页脚区域 */
   private detectHeaderFooterRegion(clientX: number, clientY: number): 'header' | 'footer' | null {
     const rect = this.container.getBoundingClientRect()
-    const screenY = clientY - rect.top + this.editor.getDraw().getCoordinateSystem().transform.scrollY
+    const coord = this.editor.getDraw().getCoordinateSystem()
+    const scale = coord.transform.scale
+    const screenY = (clientY - rect.top) / scale + coord.transform.scrollY
 
     const pages = this.editor.getDraw().getPages()
     if (pages.length === 0) return null
@@ -449,8 +456,9 @@ export class MouseHandler {
 
     // 检查视口偏移
     const viewportW = this.container.clientWidth
-    const offsetX = Math.max(0, (viewportW - page.width) / 2)
-    const docX = clientX - rect.left - offsetX
+    const visiblePageW = page.width * scale
+    const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
+    const docX = (clientX - rect.left - offsetX) / scale
     if (docX < 0 || docX > page.width) return null // 超出页面宽度
 
     // 页眉区域: y 0 ~ headerHeight
@@ -474,8 +482,11 @@ export class MouseHandler {
     section: 'header' | 'footer',
   ): { paraPath: string[]; offset: number } | null {
     const rect = this.container.getBoundingClientRect()
-    const screenX = clientX - rect.left
-    const screenY = clientY - rect.top + this.editor.getDraw().getCoordinateSystem().transform.scrollY
+    const coord = this.editor.getDraw().getCoordinateSystem()
+    const scale = coord.transform.scale
+    // 屏幕坐标 → 文档坐标
+    const screenX = (clientX - rect.left) / scale
+    const screenY = (clientY - rect.top) / scale + coord.transform.scrollY
 
     const pages = this.editor.getDraw().getPages()
     if (pages.length === 0) return null
@@ -489,8 +500,9 @@ export class MouseHandler {
     if (!page) return null
 
     const viewportW = this.container.clientWidth
-    const offsetX = Math.max(0, (viewportW - page.width) / 2)
-    const docX = screenX - offsetX
+    const visiblePageW = page.width * scale
+    const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
+    const docX = screenX - offsetX / scale
 
     // 使用 Draw 的页眉页脚命中检测
     const result = this.editor.getDraw().findHeaderFooterItemAt(docX, localY, pageIndex, section)

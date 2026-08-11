@@ -526,22 +526,43 @@ function EditorPageInner({
       case 'alignJustify': ed.setParagraphStyle({ alignment: 'justify' }); break
       case 'unorderedList': {
         const ps = ed.getParagraphStyle()
-        ed.setParagraphStyle({ list: ps?.listType === 'bullet' ? undefined : { type: 'bullet', level: 1 } as unknown as import('@/engine').ListStyle })
+        const turningOn = ps?.listType !== 'bullet'
+        ed.setParagraphStyle({ list: turningOn ? { type: 'bullet', level: 1 } as unknown as import('@/engine').ListStyle : undefined, indent: turningOn ? 0 : undefined })
         break
       }
       case 'orderedList': {
         const ps = ed.getParagraphStyle()
-        ed.setParagraphStyle({ list: ps?.listType === 'ordered' ? undefined : { type: 'ordered', level: 1, numberStyle: 'decimal' } as unknown as import('@/engine').ListStyle })
+        const turningOn = ps?.listType !== 'ordered'
+        ed.setParagraphStyle({ list: turningOn ? { type: 'ordered', level: 1, numberStyle: 'decimal' } as unknown as import('@/engine').ListStyle : undefined, indent: turningOn ? 0 : undefined })
         break
       }
       case 'orderedListNumberStyle': {
         // 仅切换编号样式，保留列表类型和层级
         const ns = String(_value ?? 'decimal')
-        ed.setParagraphStyle({ list: { type: 'ordered', level: 1, numberStyle: ns } as unknown as import('@/engine').ListStyle })
+        const ps = ed.getParagraphStyle()
+        ed.setParagraphStyle({ list: { type: 'ordered', level: ps?.listLevel ?? 1, numberStyle: ns } as unknown as import('@/engine').ListStyle })
         break
       }
-      case 'indent': ed.adjustIndent(24); break
-      case 'outdent': ed.adjustIndent(-24); break
+      case 'indent': {
+        const ps = ed.getParagraphStyle()
+        if (ps?.listType) {
+          // 列表段落: 增加嵌套层级
+          ed.adjustListLevel(1)
+        } else {
+          ed.adjustIndent(24)
+        }
+        break
+      }
+      case 'outdent': {
+        const ps = ed.getParagraphStyle()
+        if (ps?.listType) {
+          // 列表段落: 减少嵌套层级 (level<1 时取消列表)
+          ed.adjustListLevel(-1)
+        } else {
+          ed.adjustIndent(-24)
+        }
+        break
+      }
       case 'lineHeight': ed.setParagraphStyle({ lineHeight: Number(_value ?? 1.5) }); break
       case 'spaceBefore': ed.setParagraphStyle({ spaceBefore: Number(_value ?? 0) }); break
       case 'spaceAfter': ed.setParagraphStyle({ spaceAfter: Number(_value ?? 0) }); break

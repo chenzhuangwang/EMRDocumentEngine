@@ -18,6 +18,7 @@ import { LineBreaker, type LineElement } from './LineBreaker'
 import { PageBreaker, type ILine, type IPage } from './PageBreaker'
 import { DEFAULT_PAGE_SETUP } from '../document/DocumentModel'
 import { FootnoteLayout } from './FootnoteLayout'
+import { ListParticle } from '../render/particles/ListParticle'
 
 /** 布局配置 */
 export interface LayoutConfig {
@@ -110,12 +111,12 @@ export class LayoutEngine {
           const level = para.list.level || 1
           const indent = '  '.repeat(level - 1)
           if (listType === 'bullet') {
-            const bulletChar = para.list.bulletChar || this.resolveBulletChar(level)
+            const bulletChar = para.list.bulletChar || ListParticle.resolveBulletChar(level)
             listMarker = indent + bulletChar + ' '
           } else if (listType === 'ordered') {
             const orderNum = this.computeListNumber(para.id, pool, doc, level)
             const numberStyle = para.list.numberStyle || 'decimal'
-            listMarker = indent + this.formatListNumber(orderNum, numberStyle) + ' '
+            listMarker = indent + ListParticle.formatOrderedNumberRaw(orderNum, numberStyle) + ' '
           }
           savedListMarker = listMarker
         }
@@ -543,45 +544,6 @@ export class LayoutEngine {
     }
   }
 
-  /** 根据 numberStyle 格式化有序列表编号 */
-  private formatListNumber(orderNum: number, numberStyle: string): string {
-    switch (numberStyle) {
-      case 'lower_alpha':
-        return String.fromCharCode(96 + ((orderNum - 1) % 26) + 1)
-      case 'upper_alpha':
-        return String.fromCharCode(64 + ((orderNum - 1) % 26) + 1)
-      case 'lower_roman':
-        return this.toRomanNumeral(orderNum).toLowerCase()
-      case 'upper_roman':
-        return this.toRomanNumeral(orderNum)
-      case 'cjk_ideographic':
-        return this.toCjkIdeographic(orderNum)
-      default:
-        return String(orderNum)
-    }
-  }
-
-  private toRomanNumeral(n: number): string {
-    const values = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
-    const symbols = ['M', 'CM', 'D', 'CD', 'C', 'XC', 'L', 'XL', 'X', 'IX', 'V', 'IV', 'I']
-    let r = ''
-    for (let i = 0; i < values.length; i++) {
-      while (n >= values[i]) { r += symbols[i]; n -= values[i] }
-    }
-    return r
-  }
-
-  private toCjkIdeographic(n: number): string {
-    const digits = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九']
-    if (n < 1) return '零'
-    if (n <= 9) return digits[n]
-    if (n <= 99) {
-      const tens = n >= 20 ? digits[Math.floor(n / 10)] : ''
-      return tens + '十' + (n % 10 > 0 ? digits[n % 10] : '')
-    }
-    return String(n) // > 99 fallback
-  }
-
   private computeListNumber(paraId: string, pool: import('../document/NodePool').NodePool, doc: DocumentTree, level: number): number {
     let count = 0
     let lastOrderedCount = 0  // 记住上一个有序列表序列的计数，供 continueNumbering 使用
@@ -610,12 +572,6 @@ export class LayoutEngine {
       }
     }
     return 1
-  }
-
-  /** 根据嵌套层级返回项目符号字符: level 1→•, 2→◦, 3→▪, 4+→◦ (循环) */
-  private resolveBulletChar(level: number): string {
-    const bullets = ['•', '◦', '▪'] // • ◦ ▪
-    return bullets[(level - 1) % bullets.length]
   }
 
   /**

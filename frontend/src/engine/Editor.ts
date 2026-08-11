@@ -238,8 +238,10 @@ export class Editor {
   /** 外部滚动同步 → 反偏移画布 + 更新 scrollY + 重渲染 */
   syncScrollPosition(scrollTop: number): void {
     const coord = this.draw.getCoordinateSystem()
-    if (scrollTop !== coord.transform.scrollY) {
-      coord.update({ scrollY: scrollTop })
+    // 容器 CSS 像素 → 文档坐标: scrollY = scrollTop / scale
+    const docScrollY = scrollTop / coord.transform.scale
+    if (docScrollY !== coord.transform.scrollY) {
+      coord.update({ scrollY: docScrollY })
       this.draw.renderer.fixCanvasScrollOffset(scrollTop)
       this.draw.render(this.pool, this.store.state.runtime)
     }
@@ -1269,6 +1271,62 @@ export class Editor {
     }
   }
 
+  /**
+   * 调整列表嵌套层级
+   * - 列表段落: delta>0 增加 level (Tab), delta<0 减少 level (Shift+Tab)
+   * - level<1 时移除列表 (取消列表)
+   * - 非列表段落: 回退到 adjustIndent 行为
+   */
+  adjustListLevel(delta: number): void {
+    const paraIds = this.getSelectedParagraphIds()
+    if (paraIds.length === 0) return
+    const ts = Date.now()
+    for (const paraId of paraIds) {
+      const para = this.pool.nodes.get(paraId) as {
+        list?: { type: 'bullet' | 'ordered'; level?: number; numberStyle?: string }
+        indent?: number
+      } | undefined
+      if (para?.list) {
+        if (delta > 0) {
+          // Tab: 增加嵌套层级
+          const newLevel = (para.list.level || 1) + delta
+          const cmd = new ParagraphStyleCommand(
+            generateCommandId(), ts, 'user',
+            [paraId], { list: { ...para.list, level: newLevel } as import('./document/DocumentModel').ListStyle, indent: 0 },
+          )
+          this.commandManager.execute(cmd)
+        } else {
+          // Shift+Tab: 减少嵌套层级
+          const currentLevel = para.list.level || 1
+          const newLevel = currentLevel + delta // delta 为负值
+          if (newLevel < 1) {
+            // 取消列表: 移除 list 属性
+            const cmd = new ParagraphStyleCommand(
+              generateCommandId(), ts, 'user',
+              [paraId], { list: undefined, indent: 0 },
+            )
+            this.commandManager.execute(cmd)
+          } else {
+            const cmd = new ParagraphStyleCommand(
+              generateCommandId(), ts, 'user',
+              [paraId], { list: { ...para.list, level: newLevel } as import('./document/DocumentModel').ListStyle, indent: 0 },
+            )
+            this.commandManager.execute(cmd)
+          }
+        }
+      } else {
+        // 非列表段落: 保持原有的像素缩进行为
+        const cur = para?.indent ?? 0
+        const newIndent = Math.max(0, cur + delta * 24)
+        const cmd = new ParagraphStyleCommand(
+          generateCommandId(), ts, 'user',
+          [paraId], { indent: newIndent },
+        )
+        this.commandManager.execute(cmd)
+      }
+    }
+  }
+
   /** 获取光标处文本样式 (供 Toolbar 状态同步) */
   getTextStyle(): {
     font?: string; size?: number
@@ -1303,7 +1361,7 @@ export class Editor {
   }
 
   /** 获取光标/选区首段落的格式 (供 Toolbar active 状态) */
-  getParagraphStyle(): { alignment?: string; listType?: string; numberStyle?: string; indent?: number; outlineLevel?: number } | null {
+  getParagraphStyle(): { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; indent?: number; outlineLevel?: number } | null {
     const paraIds = this.getSelectedParagraphIds()
     if (paraIds.length === 0) return null
     const paraId = paraIds[0]
@@ -1312,6 +1370,7 @@ export class Editor {
     return {
       alignment: para.alignment as string | undefined,
       listType: para.list ? (para.list as { type: string }).type : undefined,
+      listLevel: para.list ? (para.list as { level?: number }).level : undefined,
       numberStyle: para.list ? (para.list as { numberStyle?: string }).numberStyle : undefined,
       indent: para.indent as number | undefined,
       outlineLevel: para.outlineLevel as number | undefined,

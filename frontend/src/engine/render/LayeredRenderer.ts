@@ -97,20 +97,23 @@ export class LayeredRenderer {
     viewportW: number, viewportH: number, dpr: number,
     pageHeight: number, totalPages: number,
   ): void {
-    const pagesInView = Math.ceil(viewportH / pageHeight) + this.OVERSCAN_PAGES * 2
-    const canvasH = Math.min(pagesInView * pageHeight, totalPages * pageHeight)
+    const scale = this.coordSystem.transform.scale
+    // 视口在文档坐标中的可视范围
+    const docViewportH = viewportH / scale
+    const pagesInView = Math.ceil(docViewportH / pageHeight) + this.OVERSCAN_PAGES * 2
+    const canvasHDoc = Math.min(pagesInView * pageHeight, totalPages * pageHeight)
 
     for (const key of ['static', 'content', 'interact'] as const) {
       const canvas = this.layers[key]!
       canvas.width = Math.ceil(viewportW * dpr)
-      canvas.height = Math.ceil(canvasH * dpr)
+      canvas.height = Math.ceil(canvasHDoc * scale * dpr)
       canvas.style.width = `${viewportW}px`
-      canvas.style.height = `${canvasH}px`
+      canvas.style.height = `${canvasHDoc * scale}px`
     }
 
-    // 更新滚动占位高度 = 全文档高度
+    // 更新滚动占位高度 = 全文档高度 × 缩放
     if (this.spacer) {
-      this.spacer.style.height = `${totalPages * pageHeight}px`
+      this.spacer.style.height = `${totalPages * pageHeight * scale}px`
     }
   }
 

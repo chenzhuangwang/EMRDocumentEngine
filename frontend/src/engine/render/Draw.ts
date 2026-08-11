@@ -15,9 +15,6 @@ import { CoordinateSystem } from '../state/CoordinateSystem'
 import { LayoutEngine } from '../layout/LayoutEngine'
 import { LayeredRenderer, type WatermarkConfig } from './LayeredRenderer'
 import { HitTestIndex } from './HitTestIndex'
-import { TextParticle } from './particles/TextParticle'
-import { SeparatorParticle } from './particles/SeparatorParticle'
-import { ListParticle } from './particles/ListParticle'
 import { MemoryManager } from '../layout/MemoryManager'
 import { cumulativeWidthUpTo } from '../layout/CharWidthHelper'
 import { createFootnoteParticle } from './particles/FootnoteParticle'
@@ -27,6 +24,7 @@ import { createControlParticle } from './particles/ControlParticle'
 import { createChartParticle } from './particles/ChartParticle'
 import { createBarcodeParticle } from './particles/BarcodeParticle'
 import { particleRegistry } from './particles/ParticleRegistry'
+import { textParticle, separatorParticle, listParticle, fieldParticle } from './particles/ParticleAdapters'
 
 interface CaretPos { x: number; y: number; h: number }
 
@@ -98,6 +96,19 @@ export class Draw {
     if (!particleRegistry.has('barcode')) {
       particleRegistry.register(createBarcodeParticle())
     }
+    // 注册核心粒子适配器 (替换 Direct Class Call → Registry)
+    if (!particleRegistry.has('text')) {
+      particleRegistry.register(textParticle)
+    }
+    if (!particleRegistry.has('separator')) {
+      particleRegistry.register(separatorParticle)
+    }
+    if (!particleRegistry.has('listmarker')) {
+      particleRegistry.register(listParticle)
+    }
+    if (!particleRegistry.has('field')) {
+      particleRegistry.register(fieldParticle)
+    }
   }
 
   setDocument(doc: DocumentTree, pool?: NodePool): void {
@@ -132,7 +143,7 @@ export class Draw {
     pool: NodePool,
     paragraphPath: string[],
     offset: number,
-    offsetX: number,
+    _offsetX: number,
     visible: { start: number; end: number },
     pageHeight: number,
     scrollOffset: number,
@@ -184,7 +195,7 @@ export class Draw {
                 bold: item.bold,
                 italic: item.italic,
               })
-              caretX = offsetX + item.x + cumWidth
+              caretX = item.x + cumWidth
               caretY = pageY + yOffset + item.y
               caretH = item.ascent + item.descent
               found = true
@@ -302,23 +313,30 @@ export class Draw {
     const viewportW = this.container.clientWidth
     const viewportH = this.container.clientHeight
     const dpr = this.coordSystem.transform.dpr
+    const scale = this.coordSystem.transform.scale
     const totalPages = this.pages.length
     const pageHeight = this.pages[0]?.height || 1123
     const pageWidth = this.pages[0]?.width || 794
-    const offsetX = Math.max(0, (viewportW - pageWidth) / 2)
+    // 页面水平居中: 缩放后页面可视宽度 = pageWidth * scale
+    const visiblePageW = pageWidth * scale
+    const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
 
     this.renderer.syncSizes(viewportW, viewportH, dpr, pageHeight, totalPages)
 
+    // scrollY 存储为文档坐标, 直接用于文档空间计算
     const scrollY = this.coordSystem.transform.scrollY
-    const visible = this.layoutEngine.getVisiblePages(scrollY, viewportH)
+    const docViewportH = viewportH / scale
+    const visible = this.layoutEngine.getVisiblePages(scrollY, docViewportH)
     // 子页滚动偏移: scrollY 减去看不到的首个完整页, 得到当前页内偏移量 (0 ~ pageHeight)
     const scrollOffset = scrollY - visible.start * pageHeight
+    // canvas 物理像素偏移: offsetX 是 CSS 像素居中偏移, 需转换为物理像素
+    const physOffsetX = offsetX * dpr
 
     // --- 静态层: 页面背景 ---
     {
       const sctx = this.renderer.getStaticCtx()
       if (sctx) {
-        sctx.setTransform(dpr, 0, 0, dpr, offsetX * dpr, 0)
+        sctx.setTransform(scale * dpr, 0, 0, scale * dpr, physOffsetX, 0)
       }
     }
     this.renderer.renderStatic(this.pages, visible, scrollOffset)
@@ -326,7 +344,7 @@ export class Draw {
     // --- 内容层: 文本粒子 + 分隔线 + 页眉页脚 ---
     const ctx = this.renderer.getContentCtx()
     if (ctx) {
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0)
       // TASK-483: 脏区域裁剪 — 仅清除和重绘变更区域
       if (this.dirtyRect) {
         ctx.save()
@@ -335,8 +353,9 @@ export class Draw {
         ctx.clip()
         this.dirtyRect = null
       }
-      ctx.clearRect(0, 0, viewportW, viewportH)
-      ctx.translate(offsetX, 0)
+      ctx.clearRect(0, 0, viewportW / scale, viewportH / scale)
+      // offsetX 已是 CSS 像素, 在文档空间需除以 scale
+      ctx.translate(offsetX / scale, 0)
       const contentWidth = pageWidth - 180 // marginLeft(90) + marginRight(90)
       for (let i = visible.start; i <= visible.end; i++) {
         const page = this.pages[i]
@@ -383,9 +402,10 @@ export class Draw {
         // --- 正文 ---
         for (const item of page.items) {
           if (item.type === 'separator') {
-            SeparatorParticle.render(ctx, {
-              id: item.nodeId, type: item.type,
-            }, item.x, pageY + item.y, contentWidth)
+            const sepRenderer = particleRegistry.get('separator')
+            if (sepRenderer) {
+              sepRenderer.render(ctx, item, item.x, pageY + item.y, { contentWidth })
+            }
           } else if (item.type === 'image') {
             const imageParticle = particleRegistry.get('image')
             if (imageParticle) {
@@ -402,20 +422,14 @@ export class Draw {
             const tp = createTableParticle()
             tp.render(ctx, item, item.x, pageY + item.y)
           } else {
-            // 列表标记独立渲染 (TASK-454)
-            if (item.listMarker) {
-              ListParticle.render(ctx, item.listMarker, (item as { listMarkerX?: number }).listMarkerX ?? item.x, pageY + item.y, item.ascent, {
-                font: item.font, size: item.size, bold: item.bold, color: item.color,
+            // 文本/域代码/控件 — 通过 ParticleRegistry 调度 (含列表标记)
+            const textRenderer = particleRegistry.get(item.nodeType || item.type) || particleRegistry.get('text')
+            if (textRenderer) {
+              textRenderer.render(ctx, { ...item, text: this.resolveFieldText(item, i) }, item.x, pageY + item.y, {
+                showInvisible: this._showInvisible,
+                pageIndex: i,
               })
             }
-            TextParticle.render(ctx, {
-              id: item.nodeId, type: item.type, value: this.resolveFieldText(item, i),
-              font: item.font, size: item.size, bold: item.bold, italic: item.italic,
-              color: item.color, underline: item.underline,
-              underlineStyle: (item as { underlineStyle?: string }).underlineStyle,
-              strikeout: item.strikeout, superscript: item.superscript, subscript: item.subscript,
-              highlight: (item as { highlight?: string }).highlight,
-            }, item.x, pageY + item.y, { showInvisible: this._showInvisible })
           }
         }
 
@@ -485,18 +499,20 @@ export class Draw {
     // 无有效光标位置 → 跳过 interact 层渲染
     if (cursor.paragraphPath.length === 0) return
 
-    ictx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ictx.clearRect(0, 0, viewportW, viewportH)
+    ictx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0)
+    ictx.clearRect(0, 0, viewportW / scale, viewportH / scale)
+    // 页面居中: 与 content 层相同偏移
+    ictx.translate(offsetX / scale, 0)
 
     // --- 选区高亮 (文字下方, 统一包围盒) ---
     const selection = runtimeState.selection
     if (selection.active) {
-      this.renderSelectionUnified(pool, selection, offsetX, visible, pageHeight, scrollOffset, ictx)
+      this.renderSelectionUnified(pool, selection, offsetX / scale, visible, pageHeight, scrollOffset, ictx)
     }
 
     // --- 光标 (文字上方, 仅在 visible 时绘制) ---
     if (cursor.visible) {
-      const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX, visible, pageHeight, scrollOffset)
+      const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX / scale, visible, pageHeight, scrollOffset)
       ictx.fillStyle = '#000000'
       ictx.fillRect(caret.x, caret.y, 2, caret.h)
     }
@@ -509,7 +525,7 @@ export class Draw {
   private renderSelectionUnified(
     pool: NodePool,
     selection: EditorRuntimeState['selection'],
-    offsetX: number,
+    _offsetX: number,
     visible: { start: number; end: number },
     pageHeight: number,
     scrollOffset: number,
@@ -600,7 +616,7 @@ export class Draw {
           ? cumulativeWidthUpTo(item.text || '', localEnd, fontCfg) - dx
           : item.ascent + item.descent  // 空段落用高度作为最小宽度
 
-        ictx.fillRect(offsetX + item.x + dx, spY + item.y, dw, item.ascent + item.descent)
+        ictx.fillRect(item.x + dx, spY + item.y, dw, item.ascent + item.descent)
 
         paraOffsets.set(itemParaId, itemEnd)
       }
@@ -633,17 +649,14 @@ export class Draw {
         }
         continue
       }
-      if (item.listMarker) {
-        ListParticle.render(ctx, item.listMarker, item.x, pageY + item.y, item.ascent, {
-          font: item.font, size: item.size, bold: item.bold, color: item.color,
+      // 文本/域代码 — 通过 Registry 调度 (含列表标记)
+      const textRenderer = particleRegistry.get(item.nodeType || item.type)
+      if (textRenderer) {
+        textRenderer.render(ctx, { ...item, text: this.resolveFieldText(item, pageIndex) }, item.x, pageY + item.y, {
+          showInvisible: this._showInvisible,
+          pageIndex,
         })
       }
-      TextParticle.render(ctx, {
-        id: item.nodeId, type: item.type, value: this.resolveFieldText(item, pageIndex),
-        font: item.font, size: item.size, bold: item.bold, italic: item.italic,
-        color: item.color, underline: item.underline,
-        strikeout: item.strikeout, superscript: item.superscript, subscript: item.subscript,
-      }, item.x, pageY + item.y, { showInvisible: this._showInvisible })
     }
   }
 
@@ -673,21 +686,23 @@ export class Draw {
 
     const viewportW = this.container.clientWidth
     const viewportH = this.container.clientHeight
-    const scrollY = this.coordSystem.transform.scrollY
-    const visible = this.layoutEngine.getVisiblePages(scrollY, viewportH)
+    const scale = this.coordSystem.transform.scale
+    const scrollY = this.coordSystem.transform.scrollY  // 文档坐标
+    const docViewportH = viewportH / scale
+    const visible = this.layoutEngine.getVisiblePages(scrollY, docViewportH)
     const pageWidth = this.pages[0]?.width || 794
     const pageHeight = this.pages[0]?.height || 1123
-    const offsetX = Math.max(0, (viewportW - pageWidth) / 2)
+    const visiblePageW = pageWidth * scale
+    const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
     const scrollOffset = scrollY - visible.start * pageHeight
 
-    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX, visible, pageHeight, scrollOffset)
+    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX / scale, visible, pageHeight, scrollOffset)
 
     const canvas = this.renderer.getInteractCanvas()
     const canvasRect = canvas?.getBoundingClientRect() ?? this.container.getBoundingClientRect()
-    const scale = this.coordSystem.transform.scale
 
     return {
-      left: canvasRect.left + caret.x * scale,
+      left: canvasRect.left + caret.x * scale + offsetX,
       top: canvasRect.top + caret.y * scale,
       width: Math.max(2 * scale, 1),
       height: caret.h * scale,
@@ -695,7 +710,10 @@ export class Draw {
   }
 
   setScale(scale: number): void {
-    this.coordSystem.update({ scale })
+    const oldScale = this.coordSystem.transform.scale
+    // 缩放变更时重新转换 scrollY: 保持视觉滚动位置不变
+    const cssScrollTop = this.coordSystem.transform.scrollY * oldScale
+    this.coordSystem.update({ scale, scrollY: cssScrollTop / scale })
     this.eventBus.emit('scale:changed', scale)
   }
 
@@ -787,31 +805,21 @@ export class Draw {
 
   /** 渲染单个 SLIF 页面到离屏 Canvas 上下文 (用于打印) */
   renderPageToContext(ctx: CanvasRenderingContext2D, page: SLIFPage, pageWidth: number): void {
-    // 绘制正文 items
     for (const item of page.items) {
       if (item.type === 'separator') {
-        SeparatorParticle.render(ctx, { id: item.nodeId, type: item.type }, item.x, item.y, pageWidth - item.x - 90)
+        const sepRenderer = particleRegistry.get('separator')
+        if (sepRenderer) {
+          sepRenderer.render(ctx, item, item.x, item.y, { contentWidth: pageWidth - item.x - 90 })
+        }
       } else if (item.type === 'image') {
         const p = particleRegistry.get('image')
         if (p) p.render(ctx, item, item.x, item.y)
       } else {
-        TextParticle.render(ctx, {
-          id: item.nodeId, type: item.type, value: item.text || '',
-          font: item.font, size: item.size, bold: item.bold, italic: item.italic,
-          color: item.color, underline: item.underline,
-          underlineStyle: (item as { underlineStyle?: string }).underlineStyle,
-          strikeout: item.strikeout, superscript: item.superscript, subscript: item.subscript,
-          highlight: (item as { highlight?: string }).highlight,
-        }, item.x, item.y, { showInvisible: false })
-      }
-    }
-    // 绘制列表标记
-    for (const item of page.items) {
-      if ((item as { listMarker?: string }).listMarker) {
-        const markerItem = item as { listMarker: string; listMarkerX?: number; x: number; y: number; ascent: number; font?: string; size?: number; bold?: boolean; color?: string }
-        ListParticle.render(ctx, markerItem.listMarker, markerItem.listMarkerX ?? markerItem.x ?? 0, markerItem.y ?? 0, markerItem.ascent, {
-          font: markerItem.font, size: markerItem.size, bold: markerItem.bold, color: markerItem.color,
-        })
+        // 文本/域代码 — 通过 Registry 调度 (含列表标记)
+        const textRenderer = particleRegistry.get(item.nodeType || item.type)
+        if (textRenderer) {
+          textRenderer.render(ctx, { ...item, text: item.text || '' }, item.x, item.y, { showInvisible: false })
+        }
       }
     }
   }

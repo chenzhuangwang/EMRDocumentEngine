@@ -62,31 +62,63 @@ export class ListParticle {
   }
 
   /**
-   * 生成有序列表编号
+   * 生成有序列表编号 (带后缀)
    *
    * @param orderNum     序号 (从 1 开始)
    * @param numberStyle  编号样式
-   * @returns 格式化后的编号字符串, 如 "1.", "a)", "(i)", "一、"
+   * @returns 格式化后的编号字符串, 如 "1.", "a.", "i.", "一、"
    */
   static formatOrderedNumber(orderNum: number, numberStyle?: string): string {
+    const raw = ListParticle.formatOrderedNumberRaw(orderNum, numberStyle)
     switch (numberStyle) {
-      case 'lower_alpha':
-        return `${String.fromCharCode(96 + ((orderNum - 1) % 26) + 1)}.`
-      case 'upper_alpha':
-        return `${String.fromCharCode(64 + ((orderNum - 1) % 26) + 1)}.`
-      case 'lower_roman':
-        return `${this.toRoman(orderNum).toLowerCase()}.`
-      case 'upper_roman':
-        return `${this.toRoman(orderNum)}.`
       case 'cjk_ideographic':
-        return `${this.toCjkIdeographic(orderNum)}、`
+        return `${raw}、`
       default:
-        return `${orderNum}.`
+        return `${raw}.`
     }
   }
 
+  /**
+   * 生成有序列表编号 (无后缀, 供 LayoutEngine 调用)
+   *
+   * @param orderNum     序号 (从 1 开始)
+   * @param numberStyle  编号样式
+   * @returns 格式化后的裸编号, 如 "1", "aa", "i", "一"
+   */
+  static formatOrderedNumberRaw(orderNum: number, numberStyle?: string): string {
+    switch (numberStyle) {
+      case 'lower_alpha':
+        return ListParticle.toAlphaBijective(orderNum).toLowerCase()
+      case 'upper_alpha':
+        return ListParticle.toAlphaBijective(orderNum)
+      case 'lower_roman':
+        return ListParticle.toRoman(orderNum).toLowerCase()
+      case 'upper_roman':
+        return ListParticle.toRoman(orderNum)
+      case 'cjk_ideographic':
+        return ListParticle.toCjkIdeographic(orderNum)
+      default:
+        return String(orderNum)
+    }
+  }
+
+  /**
+   * 双射 base-26 编号 (Excel 列风格)
+   * 1→A, 26→Z, 27→AA, 52→AZ, 702→ZZ, 703→AAA
+   */
+  static toAlphaBijective(n: number): string {
+    let result = ''
+    let num = n
+    while (num > 0) {
+      num-- // 调整为 0-based
+      result = String.fromCharCode(65 + (num % 26)) + result
+      num = Math.floor(num / 26)
+    }
+    return result
+  }
+
   /** 阿拉伯数字 → 罗马数字 (大写) */
-  private static toRoman(n: number): string {
+  static toRoman(n: number): string {
     const values = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
     const symbols = ['M', 'CM', 'D', 'CD', 'C', 'XC', 'L', 'XL', 'X', 'IX', 'V', 'IV', 'I']
     let result = ''
@@ -99,15 +131,44 @@ export class ListParticle {
     return result
   }
 
-  /** 阿拉伯数字 → 中文数字 (一、二、三...) */
-  private static toCjkIdeographic(n: number): string {
+  /** 阿拉伯数字 → 中文数字 (支持 0-999, >=1000 回退为数字) */
+  static toCjkIdeographic(n: number): string {
     const digits = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九']
-    if (n < 1) return '零'
-    if (n < 10) return digits[n] || ''
-    if (n < 20) return '十' + (digits[n % 10] || '')
-    if (n < 100) return digits[Math.floor(n / 10)] + '十' + (digits[n % 10] || '')
-    // 简化: 100 以内
-    return String(n)
+    if (n < 0) return String(n)
+    if (n === 0) return '零'
+    if (n <= 9) return digits[n]
+
+    // >= 1000 回退为数字
+    if (n >= 1000) return String(n)
+
+    let result = ''
+    const hundreds = Math.floor(n / 100)
+    const remainder = n % 100
+
+    if (hundreds > 0) {
+      result += digits[hundreds] + '百'
+      if (remainder === 0) return result // e.g., 200 → 二百
+    }
+
+    if (remainder > 0) {
+      if (remainder <= 9) {
+        // e.g., 201 → 二百零一, 101 → 一百零一
+        if (hundreds > 0) result += '零'
+        result += digits[remainder]
+      } else {
+        const tens = Math.floor(remainder / 10)
+        const ones = remainder % 10
+        // "十" only for standalone 10-19 (无百位); with hundreds it's "一十"
+        if (tens === 1 && hundreds === 0) {
+          result += '十'
+        } else {
+          result += digits[tens] + '十'
+        }
+        if (ones > 0) result += digits[ones]
+      }
+    }
+
+    return result
   }
 
   /**
