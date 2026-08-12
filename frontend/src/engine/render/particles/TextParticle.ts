@@ -50,7 +50,8 @@ export class TextParticle {
     if (el.highlight) {
       const tw = ctx.measureText(el.value).width
       ctx.fillStyle = el.highlight
-      ctx.fillRect(x, y - fontSize * 0.8, tw, fontSize * 1.2)
+      // y = 行顶 (pageY + item.y), 文字基线 = y + fontSize*0.8, 行高 ≈ fontSize
+      ctx.fillRect(x, y, tw, fontSize)
       ctx.fillStyle = baseColor // 恢复文字颜色
     }
 
