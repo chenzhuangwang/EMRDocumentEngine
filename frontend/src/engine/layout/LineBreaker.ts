@@ -192,12 +192,40 @@ export class LineBreaker {
         continue
       }
 
-      if (currentLineWidth + elWidth > options.maxWidth && currentLineElements.length > 0) {
+      if (currentLineWidth + elWidth >= options.maxWidth && currentLineElements.length > 0) {
         lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
         currentLineElements = []
         currentLineWidth = 0
         maxAscent = 0
         maxDescent = 0
+      }
+
+      // 文本元素超出单行宽度 → 逐字累加拆分 (CJK + Latin 混排)
+      if ((el.type === 'text' || el.type === 'smarttext' || el.type === 'hyperlink') &&
+          elWidth > options.maxWidth - currentLineWidth &&
+          (el.value || '').length > 0) {
+        const remainingW = options.maxWidth - currentLineWidth
+        const parts = this.splitTextElement(el, remainingW, options)
+
+        // 第一部分: 填入当前行
+        const head = parts[0]
+        currentLineElements.push(head)
+        currentLineWidth += this.getElementWidth(head, options)
+        const hAscent = head.size ? head.size * 0.8 : options.defaultSize * 0.8
+        const hDescent = head.size ? head.size * 0.2 : options.defaultSize * 0.2
+        if (hAscent > maxAscent) maxAscent = hAscent
+        if (hDescent > maxDescent) maxDescent = hDescent
+
+        // 剩余部分: 每部分各占一行
+        for (let p = 1; p < parts.length; p++) {
+          lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
+          const part = parts[p]
+          currentLineElements = [part]
+          currentLineWidth = this.getElementWidth(part, options)
+          maxAscent = part.size ? part.size * 0.8 : options.defaultSize * 0.8
+          maxDescent = part.size ? part.size * 0.2 : options.defaultSize * 0.2
+        }
+        continue
       }
 
       // 零宽字符（占位用）— 保留在行中用于光标位置跟踪，但不占宽度
@@ -402,5 +430,109 @@ export class LineBreaker {
       maxAscent,
       maxDescent,
     }
+  }
+
+  /**
+   * 将超宽文本元素按字符边界拆分, 返回适配当前行宽的部分 + 剩余部分
+   *
+   * 策略:
+   *   1. 逐字符累加宽度, 找到不超出 remainingWidth 的最大字符数
+   *   2. CJK 字符之间可任意断行; Latin 单词尽量在空格处断
+   *   3. 避头尾: 断行点两侧不能是禁止字符
+   *
+   * @returns 拆分后的元素数组 (1个如果全放下, 2个以上如果需要多行)
+   */
+  private splitTextElement(
+    el: LineElement,
+    remainingWidth: number,
+    options: LineBreakOptions,
+  ): LineElement[] {
+    const text = el.value || ''
+    if (text.length === 0) return [el]
+
+    const config = this.getElementFontConfig(el, options)
+    const chars = [...text] // 按 Unicode 码点拆分, 正确处理 CJK
+
+    // ---- 逐字累加宽度, 找断行点 ----
+    let accWidth = 0
+    let splitIdx = -1 // 断行点: 此行最后一个字符的 index (exclusive)
+
+    for (let i = 0; i < chars.length; i++) {
+      const charWidth = this.measurer.measureWidth(chars[i], config)
+      if (accWidth + charWidth > remainingWidth) {
+        // 当前字符会导致溢出 → 在此字符前断行
+        break
+      }
+      accWidth += charWidth
+      splitIdx = i
+    }
+
+    // 所有字符都放得下
+    if (splitIdx === chars.length - 1) return [el]
+
+    // 一个字符都放不下 → 至少放一个 (强制断行)
+    if (splitIdx < 0) {
+      const head: LineElement = { ...el, value: chars[0] }
+      const tail: LineElement = { ...el, value: chars.slice(1).join('') }
+      return [head, tail]
+    }
+
+    // ---- 优化断行点: Latin 单词在空格处断开 ----
+    const rawSplitIdx = splitIdx
+    // 向右扫描最近空格 (Latin 单词边界)
+    const tailStart = splitIdx + 1
+    for (let i = tailStart; i >= Math.max(0, tailStart - 20); i--) {
+      const c = chars[i]
+      if (c === ' ' && i <= rawSplitIdx + 5) {
+        // 空格在附近: 空格留给上一行 (末尾空格), 下行从空格后开始
+        // 但是如果空格本身会导致超出, 就不移动
+        const spaceIdx = i
+        let testW = 0
+        for (let j = 0; j <= spaceIdx; j++) {
+          testW += this.measurer.measureWidth(chars[j], config)
+        }
+        if (testW <= remainingWidth) {
+          splitIdx = spaceIdx
+        }
+        break
+      }
+    }
+
+    // ---- 避头尾: 行尾禁止字符 → 前移 ----
+    for (let adjust = 0; adjust < 2; adjust++) {
+      const lastChar = chars[splitIdx]
+      const nextChar = chars[splitIdx + 1]
+      if (!lastChar || !nextChar) break
+
+      if (LINE_END_FORBIDDEN.has(lastChar) && splitIdx > 0) {
+        splitIdx--
+        continue
+      }
+      if (LINE_START_FORBIDDEN.has(nextChar) && splitIdx < chars.length - 2) {
+        splitIdx++
+        continue
+      }
+      break
+    }
+
+    // 确保至少断一个字符
+    if (splitIdx < 0) splitIdx = 0
+    if (splitIdx >= chars.length - 1) splitIdx = chars.length - 2
+
+    // ---- 拆分为两部分 ----
+    const headText = chars.slice(0, splitIdx + 1).join('')
+    const tailText = chars.slice(splitIdx + 1).join('')
+
+    const head: LineElement = { ...el, value: headText }
+    const tail: LineElement = { ...el, value: tailText }
+
+    // 如果剩余部分仍然超宽, 递归拆分
+    const tailWidth = this.measurer.measureWidth(tailText, config)
+    if (tailWidth > options.maxWidth) {
+      const tailParts = this.splitTextElement(tail, options.maxWidth, options)
+      return [head, ...tailParts]
+    }
+
+    return [head, tail]
   }
 }
