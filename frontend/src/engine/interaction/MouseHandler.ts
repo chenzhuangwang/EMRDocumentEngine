@@ -392,7 +392,7 @@ export class MouseHandler {
     const para = this.findParagraphContaining(nodeId)
     if (!para) return null
 
-    const offset = this.computeOffsetAtX(para, docX, page)
+    const offset = this.computeOffsetAtX(para, docX, localY, page)
     const doc = this.editor.getDocument()
     return { paraPath: [doc.id, para.id], offset }
   }
@@ -407,32 +407,39 @@ export class MouseHandler {
     return null
   }
 
-  private computeOffsetAtX(para: Paragraph, docX: number, page: SLIFPage): number {
-    let accumulated = 0
-    const pool = this.editor.getPool()
+  private computeOffsetAtX(para: Paragraph, docX: number, docY: number, page: SLIFPage): number {
+    // 收集段落关联的所有 SLIF item, 按 Y 排序 (对应文档阅读顺序)
+    const related = page.items
+      .filter(it => para.children.includes(it.nodeId) || it.nodeId === para.id)
+    // items 已按 Y 排序 (LayoutEngine 顺序插入)
 
-    for (const childId of para.children) {
-      const item = page.items.find(it => it.nodeId === childId)
-      const textNode = pool.nodes.get(childId) as unknown as { text?: string; font?: string; size?: number; bold?: boolean; italic?: boolean } | undefined
-      const text = textNode?.text || ''
-      if (item) {
-        const bodyText = item.text || ''
-        const bodyW = item.markerWidth != null ? item.width - item.markerWidth : item.width
+    let accumulated = 0
+
+    for (const item of related) {
+      const itemText = (item as { text?: string }).text || ''
+      const bodyW = (item as { markerWidth?: number }).markerWidth != null
+        ? item.width - (item as { markerWidth: number }).markerWidth
+        : item.width
+
+      // 命中当前行?
+      const yHit = docY >= item.y && docY <= item.y + item.ascent + item.descent
+      if (yHit) {
+        if (docX < item.x) return accumulated
         if (docX <= item.x + bodyW) {
           const relativeX = docX - item.x
-          // 逐字符累积宽度, 正确区分半角/全角字符像素宽度
-          const cumWidths = cumulativeCharWidths(bodyText, {
-            font: textNode?.font || item.font || 'SimSun',
-            size: textNode?.size || item.size || 16,
-            bold: textNode?.bold ?? item.bold,
-            italic: textNode?.italic ?? item.italic,
+          const cumWidths = cumulativeCharWidths(itemText, {
+            font: item.font || 'SimSun', size: item.size || 16,
+            bold: item.bold, italic: item.italic,
           })
-          const charIdx = findCharIndexAtX(relativeX, cumWidths, bodyText.length || 0)
+          const charIdx = findCharIndexAtX(relativeX, cumWidths, itemText.length || 0)
           return Math.max(0, accumulated + charIdx)
         }
+        return accumulated + itemText.length
       }
-      accumulated += text.length
+
+      accumulated += itemText.length
     }
+
     return Math.max(0, accumulated)
   }
 

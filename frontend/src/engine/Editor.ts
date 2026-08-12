@@ -292,7 +292,7 @@ export class Editor {
     if (nodeId) {
       const para = this.findParagraphContaining(nodeId)
       if (para) {
-        const offset = this.computeOffsetAtX(para, docX, page)
+        const offset = this.computeOffsetAtX(para, docX, docY, page)
         setCursor(this.store, [this.doc.id, para.id], offset)
       }
     } else {
@@ -342,33 +342,42 @@ export class Editor {
     return null
   }
 
-  /** 根据文档坐标 X 计算段落内的字符偏移 */
-  private computeOffsetAtX(para: Paragraph, docX: number, page: import('./layout/SLIF').SLIFPage): number {
-    let accumulated = 0
+  /** 根据文档坐标 X/Y 计算段落内的字符偏移 (v20.38: 支持拆行文本的多行命中) */
+  private computeOffsetAtX(para: Paragraph, docX: number, docY: number, page: import('./layout/SLIF').SLIFPage): number {
+    // 收集段落关联的所有 SLIF item, 按 Y 排序 (对应文档阅读顺序)
+    const related = page.items
+      .filter(it => para.children.includes(it.nodeId) || it.nodeId === para.id)
+    // items 已按 Y 排序 (LayoutEngine 顺序插入), 此处不需额外 sort
 
-    for (const childId of para.children) {
-      const item = page.items.find(it => it.nodeId === childId)
-      const textNode = this.pool.nodes.get(childId) as unknown as { text?: string; font?: string; size?: number; bold?: boolean; italic?: boolean } | undefined
-      const text = textNode?.text || ''
-      if (item) {
-        const bodyText = item.text || ''
-        // item.text 是正文 (标记已剥离), item.x 已偏移过标记宽度
-        const bodyW = item.markerWidth != null ? item.width - item.markerWidth : item.width
+    let accumulated = 0
+    for (const item of related) {
+      const itemText = (item as { text?: string }).text || ''
+      const bodyW = (item as { markerWidth?: number }).markerWidth != null
+        ? item.width - (item as { markerWidth: number }).markerWidth
+        : item.width
+
+      // 命中当前行?
+      const yHit = docY >= item.y && docY <= item.y + item.ascent + item.descent
+      if (yHit) {
+        // X 在 item 左侧 → 光标放在 item 行首
+        if (docX < item.x) return accumulated
+        // X 在 item 内部 → 逐字计算偏移
         if (docX <= item.x + bodyW) {
           const relativeX = docX - item.x
-          // 逐字符累积宽度, 正确区分半角/全角字符像素宽度
-          const cumWidths = cumulativeCharWidths(bodyText, {
-            font: textNode?.font || item.font || 'SimSun',
-            size: textNode?.size || item.size || 16,
-            bold: textNode?.bold ?? item.bold,
-            italic: textNode?.italic ?? item.italic,
+          const cumWidths = cumulativeCharWidths(itemText, {
+            font: item.font || 'SimSun', size: item.size || 16,
+            bold: item.bold, italic: item.italic,
           })
-          const charIdx = findCharIndexAtX(relativeX, cumWidths, bodyText.length || 0)
+          const charIdx = findCharIndexAtX(relativeX, cumWidths, itemText.length || 0)
           return Math.max(0, accumulated + charIdx)
         }
+        // X 在 item 右侧 → 光标放在 item 行尾
+        return accumulated + itemText.length
       }
-      accumulated += text.length
+
+      accumulated += itemText.length
     }
+
     return Math.max(0, accumulated)
   }
 
@@ -1306,7 +1315,7 @@ export class Editor {
       if (para) {
         // 定位光标到目标位置 + 清除旧选区, 确保 document:changed 触发 contentChange 时
         // getTextStyle() 读到的是目标段落的格式, 而非旧光标位置
-        const cursorOffset = this.computeOffsetAtX(para, docX, page)
+        const cursorOffset = this.computeOffsetAtX(para, docX, localY, page)
         const paraPath = [this.doc.id, para.id]
         setCursor(this.store, paraPath, cursorOffset)
         // 同步清除选区 — anchor/focus 跟随新光标位置, active=false
