@@ -116,7 +116,7 @@ export class Editor {
       this.store.setDirty(true)
     })
 
-    // document:changed → 重布局 + 重绘 + 自动保存标记 (唯一渲染入口)
+    // document:changed → 重布局 + 重绘 + 自动保存标记 + 工具栏同步 (唯一渲染入口)
     this.eventBus.on('document:changed', (payload: { invalidation: import('./command/ICommand').InvalidationScope }) => {
       const t0 = performance.now()
       this.draw.recomputeLayout(this.pool, payload.invalidation)
@@ -130,6 +130,8 @@ export class Editor {
       this.perfMetrics.recordLayout(t1 - t0)
       this.draw.render(this.pool, this.store.state.runtime)
       this.autoSave.markDirty()
+      // 通知 React 层同步工具栏状态 (格式按钮 active 态、字体/字号等)
+      this.notifyListeners('contentChange', this.doc)
     })
 
     // render:request (undo/redo 等) → 使用当前的 pool 和 state
@@ -224,6 +226,9 @@ export class Editor {
       this.handleClick(e)
     }
     container.addEventListener('click', this._clickToFocus)
+
+    // 格式刷 mouseup: 拖拽选区预览后松手应用格式 (优于 click 因为 mouseup 先触发)
+    container.addEventListener('mouseup', this._onMouseUp)
 
     this.notifyListeners('ready')
   }
@@ -766,6 +771,7 @@ export class Editor {
   /** 切换编辑器模式 (edit/readonly/form/clean/design/print) */
   setMode(mode: import('./state/EditorRuntimeState').EditorMode): void {
     this.store.state.runtime.view.mode = mode
+    this.eventBus.emit('mode:changed', mode)
     this.eventBus.emit('state:changed', {})
   }
 
@@ -1146,24 +1152,125 @@ export class Editor {
     this.commandManager.execute(cmd)
   }
 
-  /** 格式刷: 复制光标处文本样式 (TASK-472), 返回可序列化的样式对象 */
+  /** 格式刷: 复制光标处文本样式 (TASK-472), 返回完整的序列化样式对象 */
   copyFormatPainterStyle(): Record<string, unknown> | null {
     const ts = this.getTextStyle()
     if (!ts) return null
-    const clean: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(ts)) {
-      if (v !== undefined && v !== false) clean[k] = v
+    // 必须包含所有 TextStyle 字段 (含 undefined/false) —
+    // 格式刷是"替换"而非"合并", 源没有的属性目标也应清除
+    return {
+      font: ts.font, size: ts.size,
+      bold: ts.bold, italic: ts.italic, underline: ts.underline,
+      underlineStyle: ts.underlineStyle, strikeout: ts.strikeout,
+      color: ts.color, highlight: ts.highlight,
+      superscript: ts.superscript, subscript: ts.subscript,
+      letterSpacing: ts.letterSpacing,
     }
-    return clean
   }
 
-  /** 格式刷: 激活/取消 */
+  /** 格式刷: mouseup 事件 — 拖拽选区预览后松手应用格式 (先于 click 触发) */
+  private _onMouseUp = (e: MouseEvent) => {
+    if (!this._formatPainterStyle) return
+
+    const selection = this.store.state.runtime.selection
+    if (selection.active) {
+      // 拖拽选区 → 收集选区内的文本节点并批量应用格式
+      this.applyFormatPainterToSelection(this._formatPainterStyle)
+    } else {
+      // 单击 (无拖拽) → 应用到整个段落 (命中原有 hit-test 逻辑)
+      this.handleFormatPainterApply(e)
+    }
+  }
+
+  /** 格式刷: 将样式应用到当前选区内的所有文本节点 (拖拽松手/批量) */
+  private applyFormatPainterToSelection(style: Record<string, unknown>): void {
+    const selection = this.store.state.runtime.selection
+    const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
+    const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
+
+    let nodeIds: string[] = []
+
+    if (anchorParaId === focusParaId) {
+      // 同段落选区
+      const start = Math.min(selection.anchor.offset, selection.focus.offset)
+      const end = Math.max(selection.anchor.offset, selection.focus.offset)
+      if (start < end) {
+        nodeIds = this.collectTextNodeIds(anchorParaId, start, end)
+      }
+    } else {
+      // 跨段落选区
+      const bodyChildren = this.doc.body.children
+      const aIdx = bodyChildren.indexOf(anchorParaId)
+      const fIdx = bodyChildren.indexOf(focusParaId)
+      if (aIdx >= 0 && fIdx >= 0) {
+        const lo = Math.min(aIdx, fIdx)
+        const hi = Math.max(aIdx, fIdx)
+        const loOff = aIdx === lo ? selection.anchor.offset : selection.focus.offset
+        const hiOff = aIdx === hi ? selection.anchor.offset : selection.focus.offset
+        const INF = Number.MAX_SAFE_INTEGER
+
+        for (let i = lo; i <= hi; i++) {
+          const paraId = bodyChildren[i]
+          if (i === lo && i === hi) {
+            if (loOff < hiOff) nodeIds.push(...this.collectTextNodeIds(paraId, loOff, hiOff))
+          } else if (i === lo) {
+            nodeIds.push(...this.collectTextNodeIds(paraId, loOff, INF))
+          } else if (i === hi) {
+            nodeIds.push(...this.collectTextNodeIds(paraId, 0, hiOff))
+          } else {
+            nodeIds.push(...this.collectTextNodeIds(paraId, 0, INF))
+          }
+        }
+      }
+    }
+
+    if (nodeIds.length === 0) {
+      this.setFormatPainterActive(false)
+      return
+    }
+
+    // 移动光标到焦点位置 (拖拽终点) + 清除选区 → 格式应用后只显示光标
+    const focusPath = [...selection.focus.paragraphPath]
+    const focusOffset = selection.focus.offset
+    setCursor(this.store, focusPath, focusOffset)
+    const si = this.store as unknown as {
+      _state: { runtime: { selection: { anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean }; active: boolean; granularity: string } } }
+    }
+    si._state.runtime.selection = {
+      anchor: { paragraphPath: focusPath, offset: focusOffset, visible: false },
+      focus: { paragraphPath: focusPath, offset: focusOffset, visible: false },
+      active: false,
+      granularity: 'character',
+    }
+
+    // 执行格式刷命令 (FormatPainterCommand → document:changed → recomputeLayout + render + contentChange)
+    const cmd = new FormatPainterCommand(
+      generateCommandId(), Date.now(), 'user',
+      nodeIds,
+      style as Partial<import('./document/DocumentModel').TextStyle>,
+    )
+    this.commandManager.execute(cmd)
+
+    // 停用格式刷 (同步通知 React 层)
+    this.setFormatPainterActive(false)
+
+    // 最终渲染: 确保光标正确显示 (document:changed 已触发一次 render, 此处为保险)
+    this.draw.render(this.pool, this.store.state.runtime)
+  }
+
+  /** 格式刷: 激活/取消 — 同步通知 React 层 */
   setFormatPainterActive(active: boolean): void {
     if (active) {
-      this._formatPainterStyle = this.copyFormatPainterStyle()
+      const style = this.copyFormatPainterStyle()
+      if (!style) return // 无样式可复制, 不激活
+      this._formatPainterStyle = style
+      this.container.style.cursor = 'copy'
     } else {
       this._formatPainterStyle = null
+      this.container.style.cursor = ''
     }
+    // 统一通过回调同步到 React 层 (Zustand store)
+    this.notifyFormatPainterChange(active)
   }
 
   /** 格式刷是否激活 */
@@ -1173,12 +1280,12 @@ export class Editor {
   private handleFormatPainterApply(e: MouseEvent): void {
     if (!this._formatPainterStyle) return
 
+    const scale = this.draw.getCoordinateSystem().transform.scale
     const rect = this.container.getBoundingClientRect()
-    const screenX = e.clientX - rect.left
-    const screenY = e.clientY - rect.top + this.draw.getCoordinateSystem().transform.scrollY
+    const screenY = (e.clientY - rect.top) / scale + this.draw.getCoordinateSystem().transform.scrollY
 
     const pages = this.draw.getPages()
-    if (pages.length === 0) { this._formatPainterStyle = null; return }
+    if (pages.length === 0) { this.setFormatPainterActive(false); return }
 
     let pageIndex = 0; let localY = screenY
     for (let i = 0; i < pages.length; i++) {
@@ -1186,29 +1293,43 @@ export class Editor {
       localY -= pages[i].height; pageIndex = i
     }
     const page = pages[pageIndex]
-    if (!page) { this._formatPainterStyle = null; return }
+    if (!page) { this.setFormatPainterActive(false); return }
 
     const viewportW = this.container.clientWidth
-    const offsetX = Math.max(0, (viewportW - page.width) / 2)
-    const docX = screenX - offsetX
+    const visiblePageW = page.width * scale
+    const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
+    const docX = (e.clientX - rect.left - offsetX) / scale
 
     const nodeId = this.draw.getHitTestIndex().hitTest(docX, localY, pageIndex)
     if (nodeId) {
       const para = this.findParagraphContaining(nodeId)
       if (para) {
-        this.applyFormatPainter(para.id, this._formatPainterStyle)
-        // 同时定位光标到点击位置
+        // 定位光标到目标位置 + 清除旧选区, 确保 document:changed 触发 contentChange 时
+        // getTextStyle() 读到的是目标段落的格式, 而非旧光标位置
         const cursorOffset = this.computeOffsetAtX(para, docX, page)
-        setCursor(this.store, [this.doc.id, para.id], cursorOffset)
+        const paraPath = [this.doc.id, para.id]
+        setCursor(this.store, paraPath, cursorOffset)
+        // 同步清除选区 — anchor/focus 跟随新光标位置, active=false
+        const si = this.store as unknown as {
+          _state: { runtime: { selection: { anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean }; active: boolean; granularity: string } } }
+        }
+        si._state.runtime.selection = {
+          anchor: { paragraphPath: [...paraPath], offset: cursorOffset, visible: false },
+          focus: { paragraphPath: [...paraPath], offset: cursorOffset, visible: false },
+          active: false,
+          granularity: 'character',
+        }
+        // applyFormatPainter 内部 commandManager.execute → document:changed → recomputeLayout + render
+        // → notifyListeners('contentChange') → 工具栏读取当前光标位置格式 = 目标段落的新格式 ✓
+        this.applyFormatPainter(para.id, this._formatPainterStyle)
       }
     }
 
-    // 单次使用后退出 (双击模式可扩展)
-    this._formatPainterStyle = null
-    this.draw.render(this.pool, this.store.state.runtime)
+    // 单次使用后退出: setFormatPainterActive 内部会同步通知 React 层
+    this.setFormatPainterActive(false)
 
-    // 通知 React 层更新状态
-    this.notifyFormatPainterChange(false)
+    // 刷新光标位置 (applyFormatPainter 内已通过 document:changed 触发 render, 此处 render 确保光标正确显示)
+    this.draw.render(this.pool, this.store.state.runtime)
   }
 
   private onFormatPainterChange: ((active: boolean) => void) | null = null
@@ -1331,14 +1452,15 @@ export class Editor {
   getTextStyle(): {
     font?: string; size?: number
     bold?: boolean; italic?: boolean; underline?: boolean
+    underlineStyle?: 'single' | 'double' | 'wave'
     strikeout?: boolean; superscript?: boolean; subscript?: boolean
-    color?: string
+    color?: string; highlight?: string; letterSpacing?: number
   } | null {
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return null
     const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
     const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
-    let tn: { font?: string; size?: number; bold?: boolean; italic?: boolean; underline?: boolean; strikeout?: boolean; superscript?: boolean; subscript?: boolean; color?: string } | undefined
+    let tn: { font?: string; size?: number; bold?: boolean; italic?: boolean; underline?: boolean; underlineStyle?: 'single' | 'double' | 'wave'; strikeout?: boolean; superscript?: boolean; subscript?: boolean; color?: string; highlight?: string; letterSpacing?: number } | undefined
     if (resolved) {
       tn = this.pool.nodes.get(resolved.textNodeId) as typeof tn
     } else {
@@ -1355,13 +1477,14 @@ export class Editor {
     return {
       font: tn.font, size: tn.size,
       bold: tn.bold, italic: tn.italic, underline: tn.underline,
+      underlineStyle: tn.underlineStyle,
       strikeout: tn.strikeout, superscript: tn.superscript, subscript: tn.subscript,
-      color: tn.color,
+      color: tn.color, highlight: tn.highlight, letterSpacing: tn.letterSpacing,
     }
   }
 
   /** 获取光标/选区首段落的格式 (供 Toolbar active 状态) */
-  getParagraphStyle(): { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; indent?: number; outlineLevel?: number } | null {
+  getParagraphStyle(): { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; continueNumbering?: boolean; indent?: number; outlineLevel?: number } | null {
     const paraIds = this.getSelectedParagraphIds()
     if (paraIds.length === 0) return null
     const paraId = paraIds[0]
@@ -1372,6 +1495,7 @@ export class Editor {
       listType: para.list ? (para.list as { type: string }).type : undefined,
       listLevel: para.list ? (para.list as { level?: number }).level : undefined,
       numberStyle: para.list ? (para.list as { numberStyle?: string }).numberStyle : undefined,
+      continueNumbering: para.list ? (para.list as { continueNumbering?: boolean }).continueNumbering : undefined,
       indent: para.indent as number | undefined,
       outlineLevel: para.outlineLevel as number | undefined,
     }
@@ -1656,6 +1780,7 @@ export class Editor {
   destroy(): void {
     this.listeners = []
     this.container.removeEventListener('click', this._clickToFocus)
+    this.container.removeEventListener('mouseup', this._onMouseUp)
     this.keyboardHandler.destroy()
     this.mouseHandler.destroy()
     this.inputComposer.destroy()

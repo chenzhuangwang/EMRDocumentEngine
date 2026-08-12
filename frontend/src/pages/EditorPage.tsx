@@ -20,7 +20,10 @@ import { InsertTextCommand } from '@/engine/command/commands/InsertTextCommand'
 import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
 import { buildNodePool } from '@/engine/document/NodePool'
 import { TOCGenerator } from '@/engine/render/TOCGenerator'
+import { ListParticle } from '@/engine/render/particles/ListParticle'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
+import type { EditorMode } from '@/engine'
+import type { ListStyle } from '@/engine/document/DocumentModel'
 
 const PLACEHOLDER_MAP: Record<string, string> = {
   'control-input': '[文本输入]',
@@ -33,13 +36,18 @@ const PLACEHOLDER_MAP: Record<string, string> = {
   'image': '[图片]',
 }
 
-/** HTML 导出: 文本格式标签 */
-function applyHtmlTags(text: string, bold: boolean, italic: boolean, underline: boolean): string {
-  let result = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  if (bold) result = `<strong>${result}</strong>`
-  if (italic) result = `<em>${result}</em>`
-  if (underline) result = `<u>${result}</u>`
-  return `<p>${result}</p>`
+/** 生成列表标记文本 (供 TXT/HTML 导出) */
+function getListMarker(list: ListStyle, orderNum?: number): string {
+  const level = list.level || 1
+  const indent = '  '.repeat(level - 1)
+  if (list.type === 'bullet') {
+    const bulletChar = list.bulletChar || ListParticle.resolveBulletChar(level)
+    return indent + bulletChar + ' '
+  }
+  // ordered list
+  const num = orderNum ?? (list.startAt || 1)
+  const numberStyle = list.numberStyle || 'decimal'
+  return indent + ListParticle.formatOrderedNumberRaw(num, numberStyle) + '. '
 }
 
 export default function EditorPage() {
@@ -108,7 +116,9 @@ function EditorPageInner({
   const findResultsRef = useRef<import('@/engine').MatchResult[]>([])
   const [zoom, setZoom] = useState(1)
   const [showInvisible, setShowInvisible] = useState(false)
-  const [readingMode, setReadingMode] = useState(false)
+  const editorMode = useEditorStore((s) => s.mode)
+  const setEditorMode = useEditorStore((s) => s.setMode)
+  const readingMode = editorMode === 'readonly'
   const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([])
   const [activeOutlineId, setActiveOutlineId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -142,6 +152,24 @@ function EditorPageInner({
     }
   }, [editorRef, setHfEdit])
 
+  // mode:changed 事件桥接: 引擎 → Zustand store (其他来源触发模式变更时同步 UI)
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    const bus = editor.getEventBus()
+    const handleModeChanged = (newMode: EditorMode) => {
+      setEditorMode(newMode)
+      // 切换到受限模式时清除格式刷 (引擎内部可能直接触发模式变更)
+      if (newMode === 'readonly' || newMode === 'clean' || newMode === 'print') {
+        if (editor.isFormatPainterActive) {
+          editor.setFormatPainterActive(false)
+        }
+      }
+    }
+    bus.on('mode:changed', handleModeChanged)
+    return () => { bus.off('mode:changed', handleModeChanged) }
+  }, [editorRef, setEditorMode])
+
   // 格式刷状态同步: Editor ↔ Zustand store
   useEffect(() => {
     const editor = editorRef.current
@@ -170,7 +198,7 @@ function EditorPageInner({
     return () => container.removeEventListener('scroll', onScroll)
   }, [editorRef, containerRef])
 
-  // 缩放: Ctrl+滚轮
+  // 缩放: Ctrl+滚轮 (绑在容器 div 上, 避免 Chrome 对 document 强制 passive)
   useEffect(() => {
     const editor = editorRef.current
     const container = containerRef.current
@@ -179,15 +207,19 @@ function EditorPageInner({
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return
       e.preventDefault()
-      const delta = -e.deltaY * 0.005 // 向上滚=放大, 向下=缩小
-      const newZoom = Math.min(4, Math.max(0.25, zoom + delta))
-      setZoom(newZoom)
-      editor.setScale(newZoom)
-      editor.getDraw().render(editor.getPool(), editor.getStore().state.runtime)
+      e.stopImmediatePropagation()
+      const delta = -e.deltaY * 0.005
+      setZoom(z => {
+        const newZoom = Math.min(4, Math.max(0.25, z + delta))
+        editor.setScale(newZoom)
+        editor.getDraw().render(editor.getPool(), editor.getStore().state.runtime)
+        return newZoom
+      })
     }
-    container.addEventListener('wheel', onWheel, { passive: false })
-    return () => container.removeEventListener('wheel', onWheel)
-  }, [editorRef, containerRef, zoom])
+    // Chrome 73+ 对 document/window/body 上的 wheel 强制 passive, 必须绑在普通 DOM 元素上
+    container.addEventListener('wheel', onWheel, { passive: false, capture: true })
+    return () => container.removeEventListener('wheel', onWheel, { capture: true })
+  }, [editorRef, containerRef, setZoom])
 
   // 缩放: Ctrl+plus/minus + Ctrl+0 重置
   useEffect(() => {
@@ -240,6 +272,21 @@ function EditorPageInner({
       return nv
     })
   }, [editorRef])
+
+  // 编辑器模式切换
+  const handleEditorModeChange = useCallback((newMode: EditorMode) => {
+    const editor = editorRef.current
+    if (editor) {
+      editor.setMode(newMode)
+      // 切换到受限模式时清除格式刷状态
+      if (newMode === 'readonly' || newMode === 'clean' || newMode === 'print') {
+        if (editor.isFormatPainterActive) {
+          editor.setFormatPainterActive(false)
+        }
+      }
+    }
+    setEditorMode(newMode)
+  }, [editorRef, setEditorMode])
 
   // 字数统计 + 段落样式 + 大纲 — 订阅 contentChange 事件
   useEffect(() => {
@@ -467,6 +514,8 @@ function EditorPageInner({
       if ((e.ctrlKey || e.metaKey) && e.key === 'h') { e.preventDefault(); setFindReplaceOpen(true) }
       // Ctrl+Shift+8: 切换格式标记显示 (Word 兼容快捷键)
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === '8') { e.preventDefault(); handleToggleInvisible() }
+      // Ctrl+Shift+L: 快速切换无序列表 (Word 兼容)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'L') { e.preventDefault(); handleFormat('toggleBulletList') }
       // Word 兼容文本格式快捷键
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') { e.preventDefault(); handleFormat('bold') }
       if ((e.ctrlKey || e.metaKey) && e.key === 'i') { e.preventDefault(); handleFormat('italic') }
@@ -479,10 +528,10 @@ function EditorPageInner({
       if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); handleFormat('indent') }
       // Shift+Tab: 减少缩进
       if (e.key === 'Tab' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); handleFormat('outdent') }
-      // ESC: 取消格式刷
+      // ESC: 取消格式刷 (setFormatPainterActive 内部同步 Zustand)
       if (e.key === 'Escape') {
         const ed = editorRef.current
-        if (ed?.isFormatPainterActive) { ed.setFormatPainterActive(false); setFormatPainter(false) }
+        if (ed?.isFormatPainterActive) { ed.setFormatPainterActive(false) }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -502,18 +551,9 @@ function EditorPageInner({
       case 'subscript': ed.toggleFormat({ subscript: true }); break
       case 'clearFormat': ed.clearFormat(); break
       case 'openBookmark': setBookmarkOpen(true); break
-      // 格式刷: 切换激活状态
+      // 格式刷: 切换激活状态 (引擎内部处理样式复制+Zustand同步)
       case 'formatPainter':
-        if (ed.isFormatPainterActive) {
-          ed.setFormatPainterActive(false)
-          setFormatPainter(false)
-        } else {
-          const style = ed.copyFormatPainterStyle()
-          if (style) {
-            ed.setFormatPainterActive(true)
-            setFormatPainter(true, style)
-          }
-        }
+        ed.setFormatPainterActive(!ed.isFormatPainterActive)
         break
       case 'font': ed.toggleFormat({ font: String(_value ?? 'SimSun') }); break
       case 'fontSize': ed.toggleFormat({ size: Number(_value ?? 16) }); break
@@ -524,6 +564,16 @@ function EditorPageInner({
       case 'alignCenter': ed.setParagraphStyle({ alignment: 'center' }); break
       case 'alignRight': ed.setParagraphStyle({ alignment: 'right' }); break
       case 'alignJustify': ed.setParagraphStyle({ alignment: 'justify' }); break
+      case 'toggleBulletList': {
+        // Ctrl+Shift+L: 快速切换无序列表
+        const ps = ed.getParagraphStyle()
+        if (ps?.listType === 'bullet') {
+          ed.setParagraphStyle({ list: undefined, indent: undefined })
+        } else {
+          ed.setParagraphStyle({ list: { type: 'bullet', level: 1 } as unknown as import('@/engine').ListStyle, indent: 0 })
+        }
+        break
+      }
       case 'unorderedList': {
         const ps = ed.getParagraphStyle()
         const turningOn = ps?.listType !== 'bullet'
@@ -541,6 +591,14 @@ function EditorPageInner({
         const ns = String(_value ?? 'decimal')
         const ps = ed.getParagraphStyle()
         ed.setParagraphStyle({ list: { type: 'ordered', level: ps?.listLevel ?? 1, numberStyle: ns } as unknown as import('@/engine').ListStyle })
+        break
+      }
+      case 'continueNumbering': {
+        const ps = ed.getParagraphStyle()
+        if (ps?.listType === 'ordered') {
+          const turningOn = !ps?.continueNumbering
+          ed.setParagraphStyle({ list: { type: 'ordered', level: ps?.listLevel ?? 1, numberStyle: ps?.numberStyle ?? 'decimal', continueNumbering: turningOn } as unknown as import('@/engine').ListStyle })
+        }
         break
       }
       case 'indent': {
@@ -594,8 +652,7 @@ function EditorPageInner({
           const doc = ed.getDocument()
           const targetIds = section === 'header' ? doc.header! : doc.footer!
           if (targetIds.length === 0) {
-            const paraId = ed.ensureHeaderFooterParagraph(section)
-            targetIds.push(paraId)
+            ed.ensureHeaderFooterParagraph(section)
           }
 
           // 自动将光标定位到对应区域的第一个段落
@@ -643,10 +700,34 @@ function EditorPageInner({
       URL.revokeObjectURL(url)
     } else if (format === 'txt') {
       const lines: string[] = []
+      // 有序列表编号计数器: 按 level 追踪
+      const orderedCounters = new Map<number, number>()
+      let lastListLevel = 0
       for (const paraId of doc.body.children) {
-        const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+        const para = pool.nodes.get(paraId) as { children?: string[]; list?: ListStyle } | undefined
         if (para?.children) {
           let line = ''
+          // 列表标记
+          if (para.list) {
+            const level = para.list.level || 1
+            // 非有序 → 重置计数器
+            if (para.list.type !== 'ordered' || level !== lastListLevel) {
+              if (lastListLevel > 0) orderedCounters.delete(lastListLevel)
+            }
+            lastListLevel = level
+            if (para.list.type === 'ordered' && !para.list.startAt) {
+              const count = (orderedCounters.get(level) || 0) + 1
+              orderedCounters.set(level, count)
+              line += getListMarker(para.list, count)
+            } else {
+              if (para.list.startAt) {
+                orderedCounters.set(level, para.list.startAt)
+              }
+              line += getListMarker(para.list)
+            }
+          } else {
+            lastListLevel = 0
+          }
           for (const childId of para.children) {
             const node = pool.nodes.get(childId) as { text?: string; type?: string } | undefined
             if (node?.type === 'text') line += (node.text || '')
@@ -660,26 +741,77 @@ function EditorPageInner({
       a.href = url; a.download = `document-${Date.now()}.txt`; a.click()
       URL.revokeObjectURL(url)
     } else if (format === 'html') {
-      const lines: string[] = ['<!DOCTYPE html><html><head><meta charset="utf-8"><title>', doc.title, '</title></head><body>']
+      const result: string[] = ['<!DOCTYPE html><html><head><meta charset="utf-8"><title>', doc.title, '</title></head><body>']
+      const orderedCounters = new Map<number, number>()
+      let inListType = ''       // 'bullet' | 'ordered' | ''
+      let inListLevel = 0
+
+      const flushList = () => {
+        if (inListType) { result.push(inListType === 'ordered' ? '</ol>' : '</ul>'); inListType = ''; inListLevel = 0 }
+      }
+
       for (const paraId of doc.body.children) {
-        const para = pool.nodes.get(paraId) as { children?: string[]; outlineLevel?: number; alignment?: string } | undefined
+        const para = pool.nodes.get(paraId) as { children?: string[]; outlineLevel?: number; alignment?: string; list?: ListStyle } | undefined
         if (!para?.children) continue
+
+        // 收集段落文本
         let text = ''
         let bold = false; let italic = false; let underline = false
+        const fragments: string[] = []
+        const flushText = () => {
+          if (!text) return
+          let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          if (bold) html = `<strong>${html}</strong>`
+          if (italic) html = `<em>${html}</em>`
+          if (underline) html = `<u>${html}</u>`
+          fragments.push(html)
+          text = ''
+        }
         for (const childId of para.children) {
-          const node = pool.nodes.get(childId) as { text?: string; type?: string; bold?: boolean; italic?: boolean; underline?: boolean; font?: string; size?: number } | undefined
+          const node = pool.nodes.get(childId) as { text?: string; type?: string; bold?: boolean; italic?: boolean; underline?: boolean } | undefined
           if (node?.type === 'text') {
             if (node.bold !== bold || node.italic !== italic || node.underline !== underline) {
-              if (text) { lines.push(applyHtmlTags(text, bold, italic, underline)); text = '' }
+              flushText()
               bold = !!node.bold; italic = !!node.italic; underline = !!node.underline
             }
             text += (node.text || '')
           }
         }
-        if (text) lines.push(applyHtmlTags(text, bold, italic, underline))
+        flushText()
+        const htmlText = fragments.join('')
+
+        if (para.list) {
+          const listType = para.list.type
+          const level = para.list.level || 1
+
+          // 列表类型或层级变化 → 刷新旧列表, 开新列表
+          if (inListType !== listType || inListLevel !== level) {
+            flushList()
+            inListType = listType; inListLevel = level
+            orderedCounters.clear()
+            result.push(listType === 'ordered' ? '<ol>' : '<ul>')
+          }
+
+          // 生成标记
+          let marker = ''
+          if (listType === 'ordered' && !para.list.startAt) {
+            const count = (orderedCounters.get(level) || 0) + 1
+            orderedCounters.set(level, count)
+            marker = getListMarker(para.list, count)
+          } else {
+            if (para.list.startAt) orderedCounters.set(level, para.list.startAt)
+            marker = getListMarker(para.list)
+          }
+
+          result.push(`<li>${marker}${htmlText}</li>`)
+        } else {
+          flushList()
+          if (htmlText) result.push(`<p>${htmlText}</p>`)
+        }
       }
-      lines.push('</body></html>')
-      const blob = new Blob([lines.join('\n')], { type: 'text/html' })
+      flushList()
+      result.push('</body></html>')
+      const blob = new Blob([result.join('\n')], { type: 'text/html' })
       const url = URL.createObjectURL(blob)
       const a = window.document.createElement('a')
       a.href = url; a.download = `document-${Date.now()}.html`; a.click()
@@ -712,9 +844,11 @@ function EditorPageInner({
   }, [])
 
   return (
-    <ReadingModeOverlay active={readingMode} onToggle={() => setReadingMode(v => !v)}>
+    <ReadingModeOverlay active={readingMode} onToggle={() => handleEditorModeChange('edit')}>
     <EditorLayout
       readingMode={readingMode}
+      mode={editorMode}
+      onModeChange={handleEditorModeChange}
       documentTitle={documentTitle}
       onTitleChange={onTitleChange}
       onSave={handleSave}

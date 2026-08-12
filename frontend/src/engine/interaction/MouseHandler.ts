@@ -154,8 +154,9 @@ export class MouseHandler {
         }
         this.anchorParaPath = [doc.id, paraId]
         this.anchorOffset = 0
+        // 重布局让新创建的页眉/页脚段落在 page.footerItems/page.headerItems 中出现
+        this.editor.getDraw().recomputeLayout(this.editor.getPool())
         this.editor.getDraw().render(this.editor.getPool(), store.state.runtime)
-        return
         return
       }
       // 单击不处理 (拖拽选区对 header/footer 无意义)

@@ -4,11 +4,12 @@
 
 import { create } from 'zustand'
 import type { DocumentDetail, UserInfo } from '@/services/api'
+import type { EditorMode } from '@/engine'
 
 // ---- 编辑器状态 ----
 
 interface EditorState {
-  mode: string
+  mode: EditorMode
   pageMode: string
   documentId: string | null
   document: DocumentDetail | null
@@ -16,7 +17,7 @@ interface EditorState {
   saveStatus: 'saved' | 'saving' | 'unsaved' | 'error'
   onlineUsers: number
   validationResults: ValidationResult[]
-  paragraphStyle: { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; indent?: number; outlineLevel?: number } | null
+  paragraphStyle: { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; continueNumbering?: boolean; indent?: number; outlineLevel?: number } | null
   /** 光标处文本样式 (供 Toolbar 按钮状态同步) */
   textStyle: {
     font?: string; size?: number
@@ -28,14 +29,14 @@ interface EditorState {
   headerFooterEdit: { active: boolean; section: 'header' | 'footer' }
   headerFooterConfig: { differentFirstPage: boolean; differentOddEven: boolean }
 
-  setMode: (mode: string) => void
+  setMode: (mode: EditorMode) => void
   setPageMode: (mode: string) => void
   setDocument: (doc: DocumentDetail | null) => void
   setDirty: (dirty: boolean) => void
   setSaveStatus: (status: 'saved' | 'saving' | 'unsaved' | 'error') => void
   setOnlineUsers: (count: number) => void
   setValidationResults: (results: ValidationResult[]) => void
-  setParagraphStyle: (style: { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; indent?: number; outlineLevel?: number } | null) => void
+  setParagraphStyle: (style: { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; continueNumbering?: boolean; indent?: number; outlineLevel?: number } | null) => void
   setTextStyle: (style: {
     font?: string; size?: number
     bold?: boolean; italic?: boolean; underline?: boolean

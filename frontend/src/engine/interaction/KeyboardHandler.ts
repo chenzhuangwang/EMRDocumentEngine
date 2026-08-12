@@ -83,6 +83,14 @@ export class KeyboardHandler {
       return
     }
 
+    // Shift+Enter — 软换行 (在同一段落/列表项内换行, 不创建新列表项)
+    if (e.key === 'Enter' && e.shiftKey) {
+      e.preventDefault()
+      if (blockEdit || cursor.paragraphPath.length === 0) return
+      ed.execCommand(new InsertTextCommand(id, ts, author, cursor.paragraphPath, cursor.offset, '\n'))
+      return
+    }
+
     // Backspace — 有选区则删选区, 无选区则删前一字符
     if (e.key === 'Backspace') {
       e.preventDefault()

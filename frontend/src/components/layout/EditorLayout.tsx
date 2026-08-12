@@ -11,6 +11,7 @@ import { PropertiesPanel } from './PropertiesPanel'
 import { useEditorStore, useUIStore } from '@/store'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
 import type { CommentThread } from '@/engine/document/DocumentModel'
+import type { EditorMode } from '@/engine'
 
 interface EditorLayoutProps {
   children: ReactNode
@@ -45,6 +46,10 @@ interface EditorLayoutProps {
   onAddCommentReply?: (threadId: string, content: string) => void
   /** 阅读模式 (R40) */
   readingMode?: boolean
+  /** 当前编辑模式 */
+  mode?: EditorMode
+  /** 模式切换回调 */
+  onModeChange?: (mode: EditorMode) => void
 }
 
 export function EditorLayout({
@@ -75,6 +80,8 @@ export function EditorLayout({
   onResolveCommentThread,
   onAddCommentReply,
   readingMode = false,
+  mode,
+  onModeChange,
 }: EditorLayoutProps) {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen) && !readingMode
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
@@ -133,6 +140,8 @@ export function EditorLayout({
             onScaleChange={onScaleChange}
             showInvisible={showInvisible}
             onToggleInvisible={onToggleInvisible}
+            mode={mode}
+            onModeChange={onModeChange}
           />
           )}
         </div>

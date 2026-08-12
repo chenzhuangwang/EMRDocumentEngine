@@ -77,7 +77,21 @@ export class ClearFormatCommand implements ICommand {
       const node = pool.nodes.get(nodeId) as TextNode | undefined
       if (!node) continue
       this.oldStyles.set(nodeId, extractStyle(node))
-      pool.updateNode(nodeId, { font: 'SimSun', size: 16 } as Partial<TextNode>)
+      // 重置为默认样式 — 必须显式清除所有格式字段 (Object.assign 是浅合并)
+      pool.updateNode(nodeId, {
+        font: 'SimSun',
+        size: 16,
+        bold: undefined,
+        italic: undefined,
+        underline: undefined,
+        underlineStyle: undefined,
+        strikeout: undefined,
+        color: undefined,
+        highlight: undefined,
+        superscript: undefined,
+        subscript: undefined,
+        letterSpacing: undefined,
+      } as Partial<TextNode>)
       pool.bumpNodeVersion(nodeId)
     }
     return { invalidation: 'node' }
@@ -123,7 +137,21 @@ export class FormatPainterCommand implements ICommand {
       const node = pool.nodes.get(nodeId) as TextNode | undefined
       if (!node) continue
       this.oldStyles.set(nodeId, extractStyle(node))
-      pool.updateNode(nodeId, { ...this.sourceStyle } as Partial<TextNode>)
+      // 格式刷是"替换"而非"合并": 源没有的属性目标也应清除
+      pool.updateNode(nodeId, {
+        font: this.sourceStyle.font ?? 'SimSun',
+        size: this.sourceStyle.size ?? 16,
+        bold: this.sourceStyle.bold ?? undefined,
+        italic: this.sourceStyle.italic ?? undefined,
+        underline: this.sourceStyle.underline ?? undefined,
+        underlineStyle: this.sourceStyle.underlineStyle ?? undefined,
+        strikeout: this.sourceStyle.strikeout ?? undefined,
+        color: this.sourceStyle.color ?? undefined,
+        highlight: this.sourceStyle.highlight ?? undefined,
+        superscript: this.sourceStyle.superscript ?? undefined,
+        subscript: this.sourceStyle.subscript ?? undefined,
+        letterSpacing: this.sourceStyle.letterSpacing ?? undefined,
+      } as Partial<TextNode>)
       pool.bumpNodeVersion(nodeId)
     }
     return { invalidation: 'node' }

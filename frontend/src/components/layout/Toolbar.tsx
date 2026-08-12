@@ -9,7 +9,7 @@ import {
   AlignJustify, List, ListOrdered, Indent, Outdent,
   ChevronsUpDown, Type, ListFilter, Calendar, CheckSquare,
   Circle, Hash, RectangleEllipsis, FileText, Heading,
-  PanelTop, Eraser, Settings, Paintbrush, Minus,
+  PanelTop, Eraser, Settings, Paintbrush, Minus, WrapText,
   Clock, User, Highlighter, Bookmark,
   Combine, Ungroup,
 } from 'lucide-react'
@@ -213,6 +213,15 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
             selected={paraStyle?.numberStyle || 'decimal'}
             onSelect={(ns) => onFormat?.('orderedListNumberStyle', ns)}
           />
+        )}
+        {paraStyle?.listType === 'ordered' && (
+          <ToolbarButton
+            title="继续上一列表编号"
+            active={paraStyle?.continueNumbering}
+            onClick={() => onFormat?.('continueNumbering')}
+          >
+            <WrapText size={16} />
+          </ToolbarButton>
         )}
         <ToolbarButton title="减少缩进" onClick={() => onFormat?.('outdent')}>
           <Outdent size={16} />

@@ -5,6 +5,8 @@
 import { FileText, Type, Wifi, WifiOff, Minus, Plus, Pilcrow } from 'lucide-react'
 import { useEditorStore } from '@/store'
 import { cn, formatWordCount } from '@/lib/utils'
+import { ModeSwitcher } from '@/components/views/ModeSwitcher'
+import type { EditorMode } from '@/engine'
 
 interface StatusBarProps {
   pageIndex?: number
@@ -19,6 +21,10 @@ interface StatusBarProps {
   showInvisible?: boolean
   /** 不可见字符切换回调 */
   onToggleInvisible?: () => void
+  /** 当前编辑模式 */
+  mode?: EditorMode
+  /** 模式切换回调 */
+  onModeChange?: (mode: EditorMode) => void
 }
 
 export function StatusBar({
@@ -30,6 +36,8 @@ export function StatusBar({
   onScaleChange,
   showInvisible = false,
   onToggleInvisible,
+  mode,
+  onModeChange,
 }: StatusBarProps) {
   const saveStatus = useEditorStore((s) => s.saveStatus)
 
@@ -102,6 +110,11 @@ export function StatusBar({
       <div className="flex items-center gap-4">
         {/* 保存状态 */}
         <SaveStatusIcon status={saveStatus} />
+
+        {/* 模式切换 */}
+        {mode && onModeChange && (
+          <ModeSwitcher mode={mode} onModeChange={onModeChange} />
+        )}
 
         {/* 在线状态 */}
         <div className="flex items-center gap-1.5">
