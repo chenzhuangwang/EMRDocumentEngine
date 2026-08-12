@@ -21,12 +21,14 @@ import { FormatTextCommand } from './command/commands/FormatTextCommand'
 import { ClearFormatCommand } from './command/commands/FormatTextCommand'
 import { FormatPainterCommand } from './command/commands/FormatTextCommand'
 import { ParagraphStyleCommand } from './command/commands/ParagraphStyleCommand'
+import { MergeParagraphCommand } from './command/commands/MergeParagraphCommand'
 import { ClipboardManager } from './command/ClipboardManager'
 import { EditorStore } from './state/EditorStore'
 import type { EditorRuntimeState } from './state/EditorRuntimeState'
 import { FindReplaceEngine } from './FindReplaceEngine'
 import type { FindOptions, MatchResult } from './FindReplaceEngine'
 import { cumulativeCharWidths, findCharIndexAtX } from './layout/CharWidthHelper'
+import { getFlatPageItems } from './layout/SLIF'
 
 /** 辅助: 绕开 Readonly 直接写 store._state.runtime.cursor */
 type StoreInternal = { _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean } } } }
@@ -304,18 +306,33 @@ export class Editor {
         // 点击在所有内容下方 → 光标移到最后一个段落末尾
         const bodyChildren = this.doc.body.children
         if (bodyChildren.length > 0) {
-          const lastParaId = bodyChildren[bodyChildren.length - 1]
-          const lastPara = this.pool.nodes.get(lastParaId) as unknown as Paragraph | undefined
-          if (lastPara) {
-            const endOffset = this.getParagraphTextLength(lastPara)
-            setCursor(this.store, [this.doc.id, lastParaId], endOffset)
+          // 从后往前找最后一个段落 (跳过 table/separator/section_break)
+          let lastParaId: string | null = null
+          for (let i = bodyChildren.length - 1; i >= 0; i--) {
+            const node = this.pool.nodes.get(bodyChildren[i])
+            if (node && node.type === 'paragraph') { lastParaId = bodyChildren[i]; break }
+          }
+          if (lastParaId) {
+            const lastPara = this.pool.nodes.get(lastParaId) as unknown as Paragraph | undefined
+            if (lastPara) {
+              const endOffset = this.getParagraphTextLength(lastPara)
+              setCursor(this.store, [this.doc.id, lastParaId], endOffset)
+            }
           }
         }
       } else if (firstItemTop >= 0 && docY < firstItemTop) {
         // 点击在所有内容上方 → 光标移到第一个段落开头
         const bodyChildren = this.doc.body.children
         if (bodyChildren.length > 0) {
-          setCursor(this.store, [this.doc.id, bodyChildren[0]], 0)
+          // 从前往后找第一个段落 (跳过 table/separator/section_break)
+          let firstParaId: string | null = null
+          for (let i = 0; i < bodyChildren.length; i++) {
+            const node = this.pool.nodes.get(bodyChildren[i])
+            if (node && node.type === 'paragraph') { firstParaId = bodyChildren[i]; break }
+          }
+          if (firstParaId) {
+            setCursor(this.store, [this.doc.id, firstParaId], 0)
+          }
         }
       }
       // 行间空白 (在内容范围内但未命中任何 item) → 光标保持原位, 不移动
@@ -345,7 +362,8 @@ export class Editor {
   /** 根据文档坐标 X/Y 计算段落内的字符偏移 (v20.38: 支持拆行文本的多行命中) */
   private computeOffsetAtX(para: Paragraph, docX: number, docY: number, page: import('./layout/SLIF').SLIFPage): number {
     // 收集段落关联的所有 SLIF item, 按 Y 排序 (对应文档阅读顺序)
-    const related = page.items
+    // 使用 getFlatPageItems 以包含表格 cell 内嵌项
+    const related = getFlatPageItems(page)
       .filter(it => para.children.includes(it.nodeId) || it.nodeId === para.id)
     // items 已按 Y 排序 (LayoutEngine 顺序插入), 此处不需额外 sort
 
@@ -670,6 +688,13 @@ export class Editor {
       this.doc.body.children.push(tableId)
     }
 
+    // 表格后创建空段落, 确保光标可定位到表格之后
+    const trailPara = createParagraph([createTextNode('').id])
+    this.pool.nodes.set(trailPara.id, trailPara)
+    this.doc.body.children.splice(
+      this.doc.body.children.indexOf(tableId) + 1, 0, trailPara.id,
+    )
+
     this.draw.recomputeLayout(this.pool)
     this.draw.render(this.pool, this.store.state.runtime)
     this.notifyListeners('contentChange', this.doc)
@@ -990,8 +1015,95 @@ export class Editor {
     }
   }
 
-  /** 粘贴: 通过 InsertNodesCommand 执行 (支持 undo/redo) */
+  /** 删除当前选区内容 (跨段落逐段删除 + 合并), 用于粘贴前替换选区 */
+  private deleteSelectedRange(): boolean {
+    const selection = this.store.state.runtime.selection
+    if (!selection.active) return false
+
+    const aId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
+    const fId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
+    const siblings = this.doc.body.children
+    const aIdx = siblings.indexOf(aId)
+    const fIdx = siblings.indexOf(fId)
+    if (aIdx < 0 || fIdx < 0) return false
+
+    const lo = Math.min(aIdx, fIdx)
+    const hi = Math.max(aIdx, fIdx)
+    const loOff = aIdx === lo ? selection.anchor.offset : selection.focus.offset
+    const hiOff = fIdx === hi ? selection.focus.offset : selection.anchor.offset
+
+    // 从后往前删, 避免索引漂移
+    for (let pi = hi; pi >= lo; pi--) {
+      const paraId = siblings[pi]
+      if (!paraId) continue
+      const node = this.pool.nodes.get(paraId)
+      if (!node || node.type !== 'paragraph') continue
+      const path = [...selection.anchor.paragraphPath.slice(0, -1), paraId]
+
+      if (pi === lo && pi === hi) {
+        // 同段落选区: 仅删除 offset 范围内的字符
+        const start = Math.min(loOff, hiOff)
+        const end = Math.max(loOff, hiOff)
+        if (end > start) {
+          this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, start, end))
+        }
+      } else if (pi === hi) {
+        // 末段: 删除段落开头到 hiOff 的字符
+        if (hiOff > 0) {
+          this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, hiOff))
+        }
+      } else if (pi === lo) {
+        // 首段: 删除 loOff 到段落末尾的字符
+        const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+        let totalLen = 0
+        if (para?.children) {
+          for (const cid of para.children) {
+            const n = this.pool.nodes.get(cid) as { type?: string; text?: string } | undefined
+            totalLen += n?.type === 'text' ? (n.text || '').length : 1
+          }
+        }
+        if (loOff < totalLen) {
+          this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, loOff, totalLen))
+        }
+      } else {
+        // 中间段落: 删除全部内容
+        const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+        let totalLen = 0
+        if (para?.children) {
+          for (const cid of para.children) {
+            const n = this.pool.nodes.get(cid) as { type?: string; text?: string } | undefined
+            totalLen += n?.type === 'text' ? (n.text || '').length : 1
+          }
+        }
+        if (totalLen > 0) {
+          this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, totalLen))
+        }
+      }
+    }
+
+    // 跨段落选区: 合并残段
+    if (lo < hi) {
+      for (let mergeCount = hi - lo; mergeCount > 0; mergeCount--) {
+        const currentSiblings = this.doc.body.children
+        const nextParaId = currentSiblings[lo + 1]
+        if (!nextParaId) break
+        const mergePath = [...selection.anchor.paragraphPath.slice(0, -1), nextParaId]
+        this.commandManager.execute(new MergeParagraphCommand(generateCommandId(), Date.now(), 'user', mergePath))
+      }
+    }
+
+    // 光标重置到删除起点 (selection.anchor 的段落可能已在合并中变化, 用 loParaId 定位)
+    const loParaId = siblings[lo]
+    setCursor(this.store, [...selection.anchor.paragraphPath.slice(0, -1), loParaId], loOff)
+
+    return true
+  }
+
+  /** 粘贴: 先删选区再插入 (支持 undo/redo) */
   paste(): void {
+    // 有选区时先删除选中内容
+    this.deleteSelectedRange()
+
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return
 
@@ -1468,27 +1580,44 @@ export class Editor {
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return null
     const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+
+    // 读取段落 outlineLevel: LayoutEngine 对标题强制加粗+缩放字号 (见 HEADING_SCALE)
+    const para = this.pool.nodes.get(paraId) as { children?: string[]; outlineLevel?: number } | undefined
+    const outlineLevel = para?.outlineLevel ?? 0
+    const isHeading = outlineLevel > 0
+    const HEADING_SCALE: Record<number, number> = { 1: 2.0, 2: 1.5, 3: 1.25, 4: 1.125, 5: 1.0, 6: 0.875 }
+    const headingScale = isHeading ? (HEADING_SCALE[outlineLevel] ?? 1) : 1
+
     const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
     let tn: { font?: string; size?: number; bold?: boolean; italic?: boolean; underline?: boolean; underlineStyle?: 'single' | 'double' | 'wave'; strikeout?: boolean; superscript?: boolean; subscript?: boolean; color?: string; highlight?: string; letterSpacing?: number } | undefined
     if (resolved) {
       tn = this.pool.nodes.get(resolved.textNodeId) as typeof tn
     } else {
       // 光标在段尾 → 取最后一个 text node 的样式
-      const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
-      if (para?.children) {
-        for (let i = para.children.length - 1; i >= 0; i--) {
-          const n = this.pool.nodes.get(para.children[i]) as { type?: string } & typeof tn
+      const paraChildren = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+      if (paraChildren?.children) {
+        for (let i = paraChildren.children.length - 1; i >= 0; i--) {
+          const n = this.pool.nodes.get(paraChildren.children[i]) as { type?: string } & typeof tn
           if (n?.type === 'text') { tn = n; break }
         }
       }
     }
     if (!tn) return null
+    // 标题: LayoutEngine 渲染时强制 bold=true + 缩放字号, 工具栏必须同步反映
+    const baseSize = tn.size || 16
     return {
-      font: tn.font, size: tn.size,
-      bold: tn.bold, italic: tn.italic, underline: tn.underline,
+      font: tn.font,
+      size: isHeading ? Math.round(baseSize * headingScale) : tn.size,
+      bold: isHeading ? true : tn.bold,
+      italic: tn.italic,
+      underline: tn.underline,
       underlineStyle: tn.underlineStyle,
-      strikeout: tn.strikeout, superscript: tn.superscript, subscript: tn.subscript,
-      color: tn.color, highlight: tn.highlight, letterSpacing: tn.letterSpacing,
+      strikeout: tn.strikeout,
+      superscript: tn.superscript,
+      subscript: tn.subscript,
+      color: tn.color,
+      highlight: tn.highlight,
+      letterSpacing: tn.letterSpacing,
     }
   }
 

@@ -8,6 +8,7 @@
 import type { Editor } from '../Editor'
 import type { Paragraph } from '../document/DocumentModel'
 import type { SLIFPage } from '../layout/SLIF'
+import { getFlatPageItems } from '../layout/SLIF'
 import { cumulativeCharWidths, findCharIndexAtX } from '../layout/CharWidthHelper'
 
 /** 双击时间阈值 (ms) */
@@ -409,7 +410,8 @@ export class MouseHandler {
 
   private computeOffsetAtX(para: Paragraph, docX: number, docY: number, page: SLIFPage): number {
     // 收集段落关联的所有 SLIF item, 按 Y 排序 (对应文档阅读顺序)
-    const related = page.items
+    // 使用 getFlatPageItems 以包含表格 cell 内嵌项
+    const related = getFlatPageItems(page)
       .filter(it => para.children.includes(it.nodeId) || it.nodeId === para.id)
     // items 已按 Y 排序 (LayoutEngine 顺序插入)
 

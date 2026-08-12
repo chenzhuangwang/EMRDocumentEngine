@@ -281,7 +281,7 @@ export class KeyboardHandler {
     const pool = ed.getPool()
 
     // 获取当前段落所属区域的兄弟列表
-    const siblings = this.getParagraphSiblings(paraId, doc)
+    const siblings = this.getParagraphSiblings(paraId, doc, pool)
     const idx = siblings.indexOf(paraId)
     if (idx < 0) return
 
@@ -454,11 +454,27 @@ export class KeyboardHandler {
     return null
   }
 
-  /** 获取段落所在区域的兄弟段落列表 (body / header / footer) */
-  private getParagraphSiblings(paraId: string, doc: { body: { children: string[] }; header?: string[]; footer?: string[] }): string[] {
-    if (doc.body.children.includes(paraId)) return doc.body.children
-    if (doc.header?.includes(paraId)) return doc.header
-    if (doc.footer?.includes(paraId)) return doc.footer
+  /** 获取段落所在区域的兄弟段落列表 (body / header / footer), 过滤掉非段落节点 */
+  private getParagraphSiblings(paraId: string, doc: { body: { children: string[] }; header?: string[]; footer?: string[] }, pool?: { nodes: Map<string, { type: string }> }): string[] {
+    const filterParas = (ids: string[]) => {
+      if (!pool) return ids.filter(id => id === paraId || true)  // 无 pool 时不过滤
+      return ids.filter(id => {
+        if (id === paraId) return true
+        const node = pool.nodes.get(id)
+        return node?.type === 'paragraph'
+      })
+    }
+    if (doc.body.children.includes(paraId)) return filterParas(doc.body.children)
+    // 检查 paraId 是否在表格单元格内 — 向上回溯到 table, 返回 table 的 body 兄弟
+    if (pool) {
+      for (const [, n] of pool.nodes) {
+        if (n.type !== 'cell') continue
+        const cell = n as unknown as { children?: string[] }
+        if (cell.children?.includes(paraId)) return [paraId]  // 单元格内段落独立导航
+      }
+    }
+    if (doc.header?.includes(paraId)) return filterParas(doc.header)
+    if (doc.footer?.includes(paraId)) return filterParas(doc.footer)
     return []
   }
 

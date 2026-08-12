@@ -75,3 +75,45 @@ export interface SLIF {
   documentId: string
   pages: SLIFPage[]
 }
+
+/** 将 SLIF 页面的所有 item 展平为绝对坐标列表 (含表格 cell 内嵌项) */
+export function getFlatPageItems(page: SLIFPage): SLIFItem[] {
+  const result: SLIFItem[] = []
+  for (const item of page.items) {
+    if (item.type === 'table' && item.rows && item.rows.length > 0) {
+      const maxCols = Math.max(...item.rows.map(r => r.cells.length))
+      const colWidths = item.columnWidths && item.columnWidths.length === maxCols
+        ? item.columnWidths
+        : calcUniformColWidths(item.width, maxCols)
+      let rowY = item.y
+      for (const row of item.rows) {
+        const rowHeight = Math.max(row.height || 24, 24)
+        let cellX = item.x
+        for (let ci = 0; ci < row.cells.length; ci++) {
+          const cell = row.cells[ci]
+          const cw = colWidths[ci] || 40
+          const CELL_PAD = 6
+          for (const cellItem of cell.items) {
+            result.push({
+              ...cellItem,
+              x: cellX + CELL_PAD + (cellItem.x || 0),
+              y: rowY + (cellItem.y || 0),
+              width: cellItem.width || (cw - CELL_PAD * 2),
+              height: cellItem.height || 20,
+            })
+          }
+          cellX += cw
+        }
+        rowY += rowHeight + 1
+      }
+    }
+    result.push(item)
+  }
+  return result
+}
+
+function calcUniformColWidths(totalWidth: number, numCols: number): number[] {
+  if (numCols === 0) return []
+  const w = Math.max(Math.floor(totalWidth / numCols), 40)
+  return Array.from({ length: numCols }, () => w)
+}

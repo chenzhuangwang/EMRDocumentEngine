@@ -9,6 +9,7 @@
 import type { DocumentTree } from '../document/DocumentModel'
 import type { NodePool } from '../document/NodePool'
 import type { SLIFPage, SLIFItem } from '../layout/SLIF'
+import { getFlatPageItems } from '../layout/SLIF'
 import type { EventBus } from '../interaction/EventBus'
 import type { EditorRuntimeState } from '../state/EditorRuntimeState'
 import { CoordinateSystem } from '../state/CoordinateSystem'
@@ -178,7 +179,7 @@ export class Draw {
           searchItems = page.footerItems || []
           yOffset = pageHeight - (page.footerHeight || 42) // 页脚区从页面底部偏移
         } else {
-          searchItems = page.items
+          searchItems = getFlatPageItems(page)
           yOffset = 0
         }
 

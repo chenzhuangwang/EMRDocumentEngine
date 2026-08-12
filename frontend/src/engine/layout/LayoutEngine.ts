@@ -20,6 +20,10 @@ import { DEFAULT_PAGE_SETUP } from '../document/DocumentModel'
 import { FootnoteLayout } from './FootnoteLayout'
 import { ListParticle } from '../render/particles/ListParticle'
 
+/** 标题级别 → 字体缩放倍率 (基于正文默认 16px: H1=32, H2=24, H3=20, H4=18, H5=16, H6=14) */
+const HEADING_SCALE: Record<number, number> = { 1: 2.0, 2: 1.5, 3: 1.25, 4: 1.125, 5: 1.0, 6: 0.875 }
+const BASE_FONT_SIZE = 16
+
 /** 布局配置 */
 export interface LayoutConfig {
   pageWidth: number
@@ -121,6 +125,11 @@ export class LayoutEngine {
           savedListMarker = listMarker
         }
 
+        // 标题样式: outlineLevel > 0 时缩放字体 + 加粗
+        const outlineLevel = para.outlineLevel ?? 0
+        const headingScale = outlineLevel > 0 ? (HEADING_SCALE[outlineLevel] ?? 1) : 1
+        const isHeading = outlineLevel > 0
+
         for (const childId of para.children) {
           const child = pool.nodes.get(childId)
           if (!child) continue
@@ -133,9 +142,13 @@ export class LayoutEngine {
               : tn.text
             const value = listMarker ? listMarker + textVal : textVal
             if (listMarker) listMarker = '' // 仅首节点添加
+            // 标题: 缩放字号 + 加粗
+            const baseSize = tn.size || BASE_FONT_SIZE
+            const headingSize = isHeading ? Math.round(baseSize * headingScale) : undefined
             elements.push({
               id: tn.id, type: childType, value,
-              font: tn.font, size: tn.size, bold: tn.bold, italic: tn.italic,
+              font: tn.font, size: headingSize ?? tn.size,
+              bold: isHeading ? true : tn.bold, italic: tn.italic,
               color: tn.color, underline: tn.underline,
               underlineStyle: (tn as { underlineStyle?: string }).underlineStyle,
               strikeout: tn.strikeout, superscript: tn.superscript, subscript: tn.subscript,
@@ -155,10 +168,11 @@ export class LayoutEngine {
             elements.push({ id: child.id, type: 'footnote_ref', value: '' })
           } else if (childType === 'field') {
             const fn = child as unknown as Record<string, unknown>
+            const fBaseSize = (fn.size as number) || BASE_FONT_SIZE
             elements.push({
               id: child.id, type: 'field', value: (fn.cachedValue as string) || '',
-              font: fn.font as string, size: fn.size as number,
-              bold: fn.bold as boolean, italic: fn.italic as boolean,
+              font: fn.font as string, size: isHeading ? Math.round(fBaseSize * headingScale) : fn.size as number,
+              bold: isHeading ? true : (fn.bold as boolean), italic: fn.italic as boolean,
               fieldType: fn.fieldType as string,
             })
           }
@@ -166,13 +180,13 @@ export class LayoutEngine {
 
         if (elements.length === 0) {
           // 空段落占位行 — 确保每个段落都有布局位置, 光标可定位
-          const defaultSize = 16
+          const emptySize = isHeading ? Math.round(BASE_FONT_SIZE * headingScale) : BASE_FONT_SIZE
           allLines.push({
             elements: [{ id: para.id, type: 'text', value: '' }],
             width: 0,
-            height: defaultSize,
-            maxAscent: defaultSize * 0.8,
-            maxDescent: defaultSize * 0.2,
+            height: emptySize,
+            maxAscent: emptySize * 0.8,
+            maxDescent: emptySize * 0.2,
             alignment: para.alignment,
             indent: para.indent,
             listMarker: savedListMarker || undefined,
