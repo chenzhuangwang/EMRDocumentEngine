@@ -31,8 +31,11 @@ export class MergeParagraphCommand extends PositionalCommand {
     if (siblings.length === 0) return null
     const currentIdx = siblings.indexOf(currentPara.id)
     if (currentIdx <= 0) return null
-    const prevPara = pool.nodes.get(siblings[currentIdx - 1]) as Paragraph | undefined
-    if (!prevPara) return null
+    const prevNode = pool.nodes.get(siblings[currentIdx - 1])
+    // 上一兄弟必须是段落, 才能合并; 否则 (表格/图片/分隔符等) 退格不并段,
+    // 避免把 text 节点误插进表格的 children (rows) 破坏结构
+    if (!prevNode || prevNode.type !== 'paragraph') return null
+    const prevPara = prevNode as Paragraph
 
     // 2. 快照被删段落子树
     this.deletedParaId = currentPara.id

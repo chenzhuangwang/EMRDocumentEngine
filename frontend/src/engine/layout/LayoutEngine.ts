@@ -11,12 +11,13 @@
 
 import type { DocumentTree, Paragraph, TextNode } from '../document/DocumentModel'
 import type { NodePool } from '../document/NodePool'
-import type { SLIFPage, SLIFItem } from './SLIF'
+import type { SLIFPage, SLIFItem, SLIFRow, SLIFCell } from './SLIF'
 import type { EventBus } from '../interaction/EventBus'
 import { textMeasurer, type TextMeasurer } from './TextMeasurer'
 import { LineBreaker, type LineElement } from './LineBreaker'
 import { PageBreaker, type ILine, type IPage } from './PageBreaker'
 import { DEFAULT_PAGE_SETUP } from '../document/DocumentModel'
+import { MergeMatrix } from '../document/MergeMatrix'
 import { FootnoteLayout } from './FootnoteLayout'
 import { ListParticle } from '../render/particles/ListParticle'
 
@@ -229,7 +230,7 @@ export class LayoutEngine {
             pageBreak?: { repeatHeader?: boolean; minRowsBeforeBreak?: number; continuationLabel?: string }
           } | undefined
           if (tbl) {
-            const allRows = this.buildTableRows(tbl, pool, contentWidth)
+            const { rows: allRows, columnWidths } = this.buildTableRows(tbl, pool, contentWidth, lineBreaker)
             const pageBreak = tbl.pageBreak
             const headerRowCount = pageBreak?.repeatHeader ? 1 : 0
             const minRows = pageBreak?.minRowsBeforeBreak || 2
@@ -242,7 +243,9 @@ export class LayoutEngine {
 
             if (totalTableH <= remainingSpace || allRows.length <= minRows) {
               // 表格完整放入当前页
-              items.push(this.createTableItem(tbl.id, allRows, contentWidth, y, totalTableH, headerRowCount))
+              items.push(this.createTableItem(tbl.id, allRows, contentWidth, y, totalTableH, headerRowCount, columnWidths))
+              // 关键: 推进 y, 否则表格后续内容会与表格重叠 (光标无法定位到表格之后)
+              y += totalTableH
             } else {
               // 跨页拆分 (TASK-702)
               let rowStart = 0
@@ -265,7 +268,7 @@ export class LayoutEngine {
                 if (pageRows.length === 0) break
 
                 const item = this.createTableItem(tbl.id, pageRows, contentWidth, y,
-                  pageH, isFirstPage ? headerRowCount : headerRowCount)
+                  pageH, isFirstPage ? headerRowCount : headerRowCount, columnWidths)
                 if (!isFirstPage) {
                   item.continuationLabel = label
                   y += 20 // 续表标记占用
@@ -481,71 +484,323 @@ export class LayoutEngine {
 
   getPages(): SLIFPage[] { return this.pages }
 
-  /** 将 Table 节点展开为 SLIFRow[] (R37+R65: 跨页断表支持) */
+  /**
+   * 将 Table 节点展开为 SLIFRow[] + columnWidths (Phase 1, v21.0)
+   *
+   * 列宽优先级 (对齐 Word): fixed > percentage > auto
+   *   - fixed: ColumnDefinition.width 为像素宽
+   *   - percentage: ColumnDefinition.width 为百分比 (0-100), 基于 contentWidth 换算
+   *   - auto / 无 mode: 剩余宽度均匀分配
+   *
+   * cell x 位置按累积列宽计算 (支持非均匀列宽)。
+   */
   private buildTableRows(
-    table: { id: string; columns?: { width: number }[]; children: string[]; pageBreak?: { repeatHeader?: boolean; minRowsBeforeBreak?: number; continuationLabel?: string } },
+    table: {
+      id: string
+      columns?: { width: number; minWidth?: number; mode?: 'fixed' | 'percentage' | 'auto' }[]
+      children: string[]
+      pageBreak?: { repeatHeader?: boolean; minRowsBeforeBreak?: number; continuationLabel?: string }
+    },
     pool: NodePool,
     contentWidth: number,
-  ): import('./SLIF').SLIFRow[] {
-    const numCols = table.columns?.length || 2
-    const colWidth = Math.floor(contentWidth / numCols)
-    const rows: import('./SLIF').SLIFRow[] = []
+    lineBreaker: LineBreaker,
+  ): { rows: SLIFRow[]; columnWidths: number[] } {
+    const CELL_PAD = 6
+    const MIN_ROW_HEIGHT = 24
 
-    for (const rowId of table.children) {
-      const row = pool.nodes.get(rowId) as { type?: string; height?: number; children: string[] } | undefined
-      if (!row || row.type !== 'row') continue
+    const colDefs = table.columns
+    const numCols = colDefs?.length || 2
+    const columnWidths = this.computeColumnWidths(colDefs || [], numCols, contentWidth)
 
-      const cells: import('./SLIF').SLIFCell[] = []
-      for (let ci = 0; ci < row.children.length; ci++) {
-        const cellId = row.children[ci]
+    // 计算列累积 X (用于 cell x 定位)
+    const cumulativeX: number[] = [0]
+    for (let i = 0; i < columnWidths.length - 1; i++) {
+      cumulativeX.push(cumulativeX[i] + columnWidths[i])
+    }
+
+    // 预收集行节点 + 声明行高 (rowspan 合并高度基准)
+    const rowNodes = table.children
+      .map(id => pool.nodes.get(id) as { type?: string; height?: number; children: string[] } | undefined)
+      .filter((n): n is { type?: string; height?: number; children: string[] } => !!n && n.type === 'row')
+    const numRows = rowNodes.length
+    const rowHeights = rowNodes.map(r => Math.max(r.height || MIN_ROW_HEIGHT, MIN_ROW_HEIGHT))
+
+    // 占用矩阵: 追踪 colspan/rowspan 已占用的格子
+    const matrix = new MergeMatrix(numRows, columnWidths.length)
+
+    // ---- 第一遍: 布局每个 cell 的内容 (换行 + 多段落), 记录 (row,col) 定位 + contentHeight ----
+    interface CellLayout {
+      id: string
+      row: number
+      col: number
+      colspan: number
+      rowspan: number
+      x: number
+      width: number
+      isHeader?: boolean
+      backgroundColor?: string
+      verticalAlign?: 'top' | 'middle' | 'bottom'
+      items: SLIFItem[]
+      contentHeight: number
+    }
+    const cellLayouts: CellLayout[] = []
+
+    for (let ri = 0; ri < numRows; ri++) {
+      const row = rowNodes[ri]
+      // colCursor: 当前单元格的起始列索引 (跳过 rowspan/colspan 已占用的列)
+      let colCursor = 0
+      for (const cellId of row.children) {
+        while (colCursor < columnWidths.length && matrix.isOccupied(ri, colCursor)) colCursor++
+        if (colCursor >= columnWidths.length) break
+
         const cell = pool.nodes.get(cellId) as {
           type?: string; colspan?: number; rowspan?: number
           isHeader?: boolean; backgroundColor?: string
-          verticalAlign?: string; children: string[]
+          verticalAlign?: 'top' | 'middle' | 'bottom'; children: string[]
         } | undefined
         if (!cell) continue
 
-        const items: import('./SLIF').SLIFItem[] = []
-        for (const paraId of cell.children) {
-          const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
-          if (para?.children) {
-            for (const textId of para.children) {
-              const tn = pool.nodes.get(textId) as { type?: string; text?: string; font?: string; size?: number; bold?: boolean; color?: string } | undefined
-              if (tn?.type === 'text') {
-                items.push({
-                  nodeId: textId, nodeType: 'text', type: 'text',
-                  x: 0, y: 0, width: colWidth - 12, height: 20,
-                  ascent: 14, descent: 6,
-                  font: tn.font || 'SimSun', size: tn.size || 12,
-                  bold: tn.bold, color: tn.color,
-                  text: tn.text || '',
-                })
-              }
-            }
-          }
+        const cellSpan = cell.colspan || 1
+        const rowSpan = cell.rowspan || 1
+        let cellWidth = 0
+        for (let s = 0; s < cellSpan && colCursor + s < columnWidths.length; s++) {
+          cellWidth += columnWidths[colCursor + s] || 40
+        }
+        if (cellWidth === 0) cellWidth = 40
+
+        // 布局 cell 内文本: 换行 + 多段落堆叠 (y 从 0 顶部对齐)
+        const { items, contentHeight } = this.layoutCellItems(cell.children, cellWidth, pool, lineBreaker, CELL_PAD)
+
+        cellLayouts.push({
+          id: cellId, row: ri, col: colCursor,
+          colspan: cellSpan, rowspan: rowSpan,
+          x: cumulativeX[colCursor] || 0, width: cellWidth,
+          isHeader: cell.isHeader, backgroundColor: cell.backgroundColor,
+          verticalAlign: cell.verticalAlign,
+          items, contentHeight,
+        })
+
+        matrix.placeCell(cellId, ri, colCursor, cellSpan, rowSpan)
+        colCursor += cellSpan
+      }
+    }
+
+    // ---- 第二遍: 根据内容高度增长行高 (避免换行文本溢出/与下一行重叠) ----
+    for (const cl of cellLayouts) {
+      // cell 渲染高度 = sum(行高) + (rowSpan-1) 个 1px 行间隙
+      // 内容需满足: sum(行高) >= contentHeight + 2*CELL_PAD - (rowSpan-1)
+      const need = cl.contentHeight + CELL_PAD * 2 - (cl.rowspan - 1)
+      if (cl.rowspan <= 1) {
+        if (rowHeights[cl.row] < need) rowHeights[cl.row] = need
+      } else {
+        let spanH = 0
+        for (let s = 0; s < cl.rowspan && cl.row + s < numRows; s++) {
+          spanH += rowHeights[cl.row + s]
+        }
+        if (spanH < need) {
+          const lastRow = Math.min(cl.row + cl.rowspan - 1, numRows - 1)
+          rowHeights[lastRow] += need - spanH
+        }
+      }
+    }
+
+    // ---- 第三遍: 构建 SLIFRow[] (应用行高增长 + 垂直对齐) ----
+    const rows: SLIFRow[] = []
+    for (let ri = 0; ri < numRows; ri++) {
+      const cells: SLIFCell[] = []
+      for (const cl of cellLayouts) {
+        if (cl.row !== ri) continue
+
+        // 合并单元格高度 = 从 ri 起的 rowspan 行高之和 + (rowSpan-1) 个 1px 间隙
+        let cellHeight = 0
+        for (let s = 0; s < cl.rowspan && ri + s < numRows; s++) {
+          cellHeight += rowHeights[ri + s]
+        }
+        cellHeight += cl.rowspan - 1
+        if (cellHeight < MIN_ROW_HEIGHT) cellHeight = MIN_ROW_HEIGHT
+
+        // 垂直对齐: 内容顶部偏移 (默认 top)
+        let contentTop = CELL_PAD
+        if (cl.verticalAlign === 'middle') {
+          contentTop = Math.max(CELL_PAD, Math.floor((cellHeight - cl.contentHeight) / 2))
+        } else if (cl.verticalAlign === 'bottom') {
+          contentTop = Math.max(CELL_PAD, cellHeight - cl.contentHeight - CELL_PAD)
         }
 
+        const items = cl.items.map(it => ({ ...it, y: it.y + contentTop }))
+
         cells.push({
-          x: ci * colWidth, y: 0,
-          width: colWidth, height: row.height || 24,
-          colspan: cell.colspan, rowspan: cell.rowspan,
-          isHeader: cell.isHeader,
-          backgroundColor: cell.backgroundColor,
+          id: cl.id,
+          x: cl.x, y: 0,
+          width: cl.width, height: cellHeight,
+          colspan: cl.colspan > 1 ? cl.colspan : undefined,
+          rowspan: cl.rowspan > 1 ? cl.rowspan : undefined,
+          isHeader: cl.isHeader,
+          backgroundColor: cl.backgroundColor,
           items,
         })
       }
-
-      rows.push({ height: row.height || 24, cells })
+      rows.push({ height: rowHeights[ri], cells })
     }
 
-    return rows
+    return { rows, columnWidths }
   }
 
-  /** 计算有序列表编号: 统计前面同类型同级别段落数 + 1 */
-  /** 创建表格 SLIFItem (TASK-702) */
+  /**
+   * 布局单元格内文本 — 换行 + 多段落堆叠 (Phase 3, v21.0)
+   *
+   * @param paraIds    cell 内的段落 ID 列表
+   * @param cellWidth  单元格内容区宽度 (px)
+   * @returns 已布局的文本 items (y 为 cell 局部坐标, 顶部对齐从 0 开始) + 内容总高度
+   */
+  private layoutCellItems(
+    paraIds: string[],
+    cellWidth: number,
+    pool: NodePool,
+    lineBreaker: LineBreaker,
+    CELL_PAD: number,
+  ): { items: SLIFItem[]; contentHeight: number } {
+    const items: SLIFItem[] = []
+    const maxTextWidth = Math.max(cellWidth - CELL_PAD * 2, 1)
+    const DEFAULT_SIZE = 12
+    let lineY = 0
+
+    for (const paraId of paraIds) {
+      const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+      const elements: LineElement[] = []
+
+      if (para?.children) {
+        for (const textId of para.children) {
+          const tn = pool.nodes.get(textId) as {
+            type?: string; text?: string; font?: string; size?: number
+            bold?: boolean; italic?: boolean; color?: string
+            underline?: boolean; strikeout?: boolean
+            superscript?: boolean; subscript?: boolean
+          } | undefined
+          if (tn?.type === 'text') {
+            elements.push({
+              id: textId, type: 'text', value: tn.text || '',
+              font: tn.font, size: tn.size, bold: tn.bold, italic: tn.italic,
+              color: tn.color, underline: tn.underline, strikeout: tn.strikeout,
+              superscript: tn.superscript, subscript: tn.subscript,
+            })
+          }
+        }
+      }
+
+      if (elements.length === 0) {
+        // 空段落: 占一行 (默认行高), 附带空占位 item 供光标定位
+        const blankH = DEFAULT_SIZE
+        items.push({
+          nodeId: paraId, nodeType: 'text', type: 'text',
+          x: 0, y: lineY, width: 0, height: blankH,
+          ascent: blankH * 0.8, descent: blankH * 0.2,
+          font: 'SimSun', size: DEFAULT_SIZE, text: '',
+        })
+        lineY += blankH
+        continue
+      }
+
+      const lines = lineBreaker.breakLines(elements, {
+        maxWidth: maxTextWidth, wordBreak: 'break-all',
+        defaultFont: 'SimSun', defaultSize: DEFAULT_SIZE,
+      })
+
+      for (const line of lines) {
+        // 逐元素计算行内 x 偏移 (多样式 run 正确拼接)
+        let elX = 0
+        for (const el of line.elements) {
+          if (el.type !== 'text') continue
+          const elWidth = textMeasurer.measureWidth(el.value || '', {
+            font: el.font || 'SimSun', size: el.size || DEFAULT_SIZE,
+            bold: el.bold, italic: el.italic,
+          })
+          items.push({
+            nodeId: el.id, nodeType: 'text', type: 'text',
+            x: elX, y: lineY,
+            width: elWidth, height: line.height,
+            ascent: line.maxAscent, descent: line.maxDescent,
+            font: el.font || 'SimSun', size: el.size || DEFAULT_SIZE,
+            bold: el.bold, italic: el.italic,
+            color: el.color, underline: el.underline, strikeout: el.strikeout,
+            superscript: el.superscript, subscript: el.subscript,
+            text: el.value || '',
+          })
+          elX += elWidth
+        }
+        lineY += line.height
+      }
+    }
+
+    return { items, contentHeight: lineY }
+  }
+
+  /**
+   * 计算表格列宽 — 实现 fixed > percentage > auto 优先级 (Phase 1, v21.0)
+   *
+   * @param colDefs      ColumnDefinition[]
+   * @param numCols      实际列数
+   * @param contentWidth 表格可用内容宽度 (contentWidth)
+   * @returns 每列像素宽度数组
+   */
+  private computeColumnWidths(
+    colDefs: { width: number; minWidth?: number; mode?: 'fixed' | 'percentage' | 'auto' }[],
+    numCols: number,
+    contentWidth: number,
+  ): number[] {
+    const MIN_WIDTH = 40
+    const widths: number[] = new Array(numCols).fill(0)
+    const accounted = new Array(numCols).fill(false)
+
+    // Phase 1: fixed 列 — 直接使用 width
+    let usedWidth = 0
+    for (let i = 0; i < colDefs.length && i < numCols; i++) {
+      const def = colDefs[i]
+      if (def.mode === 'fixed') {
+        widths[i] = Math.max(def.width || MIN_WIDTH, def.minWidth || MIN_WIDTH)
+        accounted[i] = true
+        usedWidth += widths[i]
+      }
+    }
+
+    // Phase 2: percentage 列 — 按 contentWidth 百分比计算
+    for (let i = 0; i < colDefs.length && i < numCols; i++) {
+      const def = colDefs[i]
+      if (def.mode === 'percentage' && !accounted[i]) {
+        const pct = Math.min(100, Math.max(0, def.width || 0))
+        widths[i] = Math.max(Math.floor(contentWidth * pct / 100), def.minWidth || MIN_WIDTH)
+        accounted[i] = true
+        usedWidth += widths[i]
+      }
+    }
+
+    // Phase 3: auto / 未指定 mode — 剩余宽度均匀分配
+    const autoCols = accounted.filter(a => !a).length
+    if (autoCols > 0) {
+      const remaining = Math.max(0, contentWidth - usedWidth)
+      const autoWidth = Math.max(MIN_WIDTH, Math.floor(remaining / autoCols))
+      for (let i = 0; i < numCols; i++) {
+        if (!accounted[i]) {
+          widths[i] = autoWidth
+        }
+      }
+    }
+
+    // 兜底: 无 colDefs 的列 (numCols > colDefs.length)
+    for (let i = 0; i < numCols; i++) {
+      if (widths[i] === 0) {
+        widths[i] = Math.max(MIN_WIDTH, Math.floor(contentWidth / numCols))
+      }
+    }
+
+    return widths
+  }
+
+  /** 创建表格 SLIFItem (TASK-702, v21.0: +columnWidths) */
   private createTableItem(
     tableId: string, rows: import('./SLIF').SLIFRow[], contentWidth: number,
     y: number, height: number, headerRowCount?: number,
+    columnWidths?: number[],
   ): import('./SLIF').SLIFItem {
     return {
       nodeId: tableId, nodeType: 'table', type: 'table',
@@ -555,6 +810,7 @@ export class LayoutEngine {
       font: 'SimSun', size: 12,
       rows,
       headerRowCount,
+      columnWidths,
     }
   }
 

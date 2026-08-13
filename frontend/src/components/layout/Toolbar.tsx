@@ -12,6 +12,7 @@ import {
   PanelTop, Eraser, Settings, Paintbrush, Minus, WrapText,
   Clock, User, Highlighter, Bookmark,
   Combine, Ungroup,
+  Rows3, Rows, Columns3, Columns,
 } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { cn } from '@/lib/utils'
@@ -169,6 +170,18 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
         </ToolbarButton>
         <ToolbarButton title="拆分单元格" onClick={() => onFormat?.('splitCell')}>
           <Ungroup size={16} />
+        </ToolbarButton>
+        <ToolbarButton title="插入行" onClick={() => onFormat?.('insertRow')}>
+          <Rows3 size={16} />
+        </ToolbarButton>
+        <ToolbarButton title="删除行" onClick={() => onFormat?.('deleteRow')}>
+          <Rows size={16} />
+        </ToolbarButton>
+        <ToolbarButton title="插入列" onClick={() => onFormat?.('insertColumn')}>
+          <Columns3 size={16} />
+        </ToolbarButton>
+        <ToolbarButton title="删除列" onClick={() => onFormat?.('deleteColumn')}>
+          <Columns size={16} />
         </ToolbarButton>
         <ToolbarButton title="插入图片" onClick={() => onInsert?.('image')}>
           <Image size={16} />

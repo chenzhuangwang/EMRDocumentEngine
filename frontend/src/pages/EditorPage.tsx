@@ -627,6 +627,10 @@ function EditorPageInner({
       case 'letterSpacing': ed.toggleFormat({ letterSpacing: Number(_value ?? 0) }); break
       case 'mergeCells': ed.mergeSelectedCells(); break
       case 'splitCell': ed.splitSelectedCell(); break
+      case 'insertRow': ed.insertTableRow(); break
+      case 'deleteRow': ed.deleteTableRow(); break
+      case 'insertColumn': ed.insertTableColumn(); break
+      case 'deleteColumn': ed.deleteTableColumn(); break
       // 标题样式: outlineLevel 0=正文, 1-6=Heading
       case 'heading':
         ed.setParagraphStyle({ outlineLevel: Number(_value ?? 0) })

@@ -28,7 +28,11 @@ import type { EditorRuntimeState } from './state/EditorRuntimeState'
 import { FindReplaceEngine } from './FindReplaceEngine'
 import type { FindOptions, MatchResult } from './FindReplaceEngine'
 import { cumulativeCharWidths, findCharIndexAtX } from './layout/CharWidthHelper'
-import { getFlatPageItems } from './layout/SLIF'
+import { resolveCellPosition } from './state/CaretScope'
+import { screenToDoc, findPageByDocY, pageCenteringOffset } from './layout/TableCoordUtil'
+import { insertRow, deleteRow, insertColumn, deleteColumn, getCellGridPosition, buildCellGrid, normalizeRange } from './document/TableOps'
+import type { CellRange } from './document/TableOps'
+import { createTableCell } from './document/ElementFormatter'
 
 /** 辅助: 绕开 Readonly 直接写 store._state.runtime.cursor */
 type StoreInternal = { _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean } } } }
@@ -60,6 +64,8 @@ export class Editor {
   private _selectedTableId: string | null = null
   private _selectedCellRow = -1
   private _selectedCellCol = -1
+  // 单元格框选范围 (网格坐标)
+  private _cellRange: CellRange | null = null
   private listeners: EditorListener[] = []
   private _clickToFocus: (e: MouseEvent) => void
 
@@ -120,20 +126,7 @@ export class Editor {
 
     // document:changed → 重布局 + 重绘 + 自动保存标记 + 工具栏同步 (唯一渲染入口)
     this.eventBus.on('document:changed', (payload: { invalidation: import('./command/ICommand').InvalidationScope }) => {
-      const t0 = performance.now()
-      this.draw.recomputeLayout(this.pool, payload.invalidation)
-      const t1 = performance.now()
-      const cursor = this.store.state.runtime.cursor
-      console.debug(
-        `[Editor] document:changed(${payload.invalidation}) → recomputeLayout ${(t1 - t0).toFixed(1)}ms, ` +
-        `cursor=(${cursor.paragraphPath.join('/')}, offset=${cursor.offset}), ` +
-        `bodyChildren=[${this.doc.body.children.join(',')}]`
-      )
-      this.perfMetrics.recordLayout(t1 - t0)
-      this.draw.render(this.pool, this.store.state.runtime)
-      this.autoSave.markDirty()
-      // 通知 React 层同步工具栏状态 (格式按钮 active 态、字体/字号等)
-      this.notifyListeners('contentChange', this.doc)
+      this.commitDocumentChange(payload.invalidation)
     })
 
     // render:request (undo/redo 等) → 使用当前的 pool 和 state
@@ -141,6 +134,8 @@ export class Editor {
       this.draw.recomputeLayout(this.pool)
       this.draw.render(this.pool, this.store.state.runtime)
     })
+
+    // ---- 初始化 ----
 
     // IME 输入法: compositionstart → 更新候选窗位置
     this.inputComposer.onCompositionStart(() => {
@@ -254,6 +249,32 @@ export class Editor {
     }
   }
 
+  /**
+   * 固定文档变更流水线 — 所有文档变动的唯一渲染入口 (v20.35)
+   *
+   * 强制顺序:
+   *   1. 重布局 (全量/增量) → 更新嵌套 SLIF 树
+   *   2. HitTestIndex 全量重建 (recomputeLayout 内部)
+   *   3. 渲染 (含光标)
+   *   4. 自动保存标记
+   *   5. 工具栏/状态栏同步 (notifyListeners 'contentChange')
+   */
+  private commitDocumentChange(invalidation: import('./command/ICommand').InvalidationScope): void {
+    const t0 = performance.now()
+    this.draw.recomputeLayout(this.pool, invalidation)
+    const t1 = performance.now()
+    const cursor = this.store.state.runtime.cursor
+    console.debug(
+      `[Editor] document:changed(${invalidation}) → recomputeLayout ${(t1 - t0).toFixed(1)}ms, ` +
+      `cursor=(${cursor.paragraphPath.join('/')}, offset=${cursor.offset}), ` +
+      `bodyChildren=[${this.doc.body.children.join(',')}]`
+    )
+    this.perfMetrics.recordLayout(t1 - t0)
+    this.draw.render(this.pool, this.store.state.runtime)
+    this.autoSave.markDirty()
+    this.notifyListeners('contentChange', this.doc)
+  }
+
   /** 点击命中检测 → 更新光标到点击位置 */
   private handleClick(e: MouseEvent): void {
     // 页眉页脚编辑模式下, 光标定位已在 MouseHandler.onMouseDown 中完成,
@@ -267,25 +288,21 @@ export class Editor {
     }
 
     const rect = this.container.getBoundingClientRect()
-    const screenX = e.clientX - rect.left
-    const screenY = e.clientY - rect.top + this.draw.getCoordinateSystem().transform.scrollY
+    const { scale, scrollY } = this.draw.getCoordinateSystem().transform
+
+    // 屏幕坐标 → 文档坐标 (统一通过 TableCoordUtil, v20.35 修复: 之前缺少 /scale)
+    const { x: docX0, y: docY0 } = screenToDoc(e.clientX, e.clientY, scale, scrollY, rect)
 
     const pages = this.draw.getPages()
     if (pages.length === 0) return
 
-    let pageIndex = 0
-    let localY = screenY
-    for (let i = 0; i < pages.length; i++) {
-      if (localY < pages[i].height) { pageIndex = i; break }
-      localY -= pages[i].height
-      pageIndex = i
-    }
+    const { pageIndex, localY } = findPageByDocY(docY0, pages)
     const page = pages[pageIndex]
     if (!page) return
 
     const viewportW = this.container.clientWidth
-    const offsetX = Math.max(0, (viewportW - page.width) / 2)
-    const docX = screenX - offsetX
+    const offsetX = pageCenteringOffset(page.width, viewportW, scale)
+    const docX = docX0 - offsetX / scale
     const docY = localY
 
     // 命中检测 — 可能返回 null (空段落/点击在内容下方)
@@ -359,11 +376,10 @@ export class Editor {
     return null
   }
 
-  /** 根据文档坐标 X/Y 计算段落内的字符偏移 (v20.38: 支持拆行文本的多行命中) */
+  /** 根据文档坐标 X/Y 计算段落内的字符偏移 — Phase 5 使用 page.items 直接过滤 */
   private computeOffsetAtX(para: Paragraph, docX: number, docY: number, page: import('./layout/SLIF').SLIFPage): number {
-    // 收集段落关联的所有 SLIF item, 按 Y 排序 (对应文档阅读顺序)
-    // 使用 getFlatPageItems 以包含表格 cell 内嵌项
-    const related = getFlatPageItems(page)
+    // Phase 5: 使用 page.items 直接过滤 (不再需要 getFlatPageItems 展平)
+    const related = page.items
       .filter(it => para.children.includes(it.nodeId) || it.nodeId === para.id)
     // items 已按 Y 排序 (LayoutEngine 顺序插入), 此处不需额外 sort
 
@@ -572,9 +588,11 @@ export class Editor {
 
     // 创建脚注内容 (空段落, 用户后续编辑)
     const fnContent = createFootnoteContent('')
-    const contentPara = createParagraph([createTextNode('').id])
+    const contentText = createTextNode('')
+    const contentPara = createParagraph([contentText.id])
     fnContent.children = [contentPara.id]
     this.pool.nodes.set(fnContent.id, fnContent)
+    this.pool.nodes.set(contentText.id, contentText)
     this.pool.nodes.set(contentPara.id, contentPara)
 
     // 注册到文档级别
@@ -658,7 +676,9 @@ export class Editor {
       const cellIds: string[] = []
       for (let c = 0; c < cols; c++) {
         const cellId = generateCommandId()
-        const para = createParagraph([createTextNode('').id])
+        const text = createTextNode('')
+        const para = createParagraph([text.id])
+        this.pool.nodes.set(text.id, text)
         this.pool.nodes.set(para.id, para)
         this.pool.nodes.set(cellId, {
           type: 'cell' as const, id: cellId,
@@ -689,7 +709,9 @@ export class Editor {
     }
 
     // 表格后创建空段落, 确保光标可定位到表格之后
-    const trailPara = createParagraph([createTextNode('').id])
+    const trailText = createTextNode('')
+    const trailPara = createParagraph([trailText.id])
+    this.pool.nodes.set(trailText.id, trailText)
     this.pool.nodes.set(trailPara.id, trailPara)
     this.doc.body.children.splice(
       this.doc.body.children.indexOf(tableId) + 1, 0, trailPara.id,
@@ -700,76 +722,227 @@ export class Editor {
     this.notifyListeners('contentChange', this.doc)
   }
 
-  /** 选中表格单元格 (供鼠标点击使用) */
+  /** 选中表格单元格 (供鼠标点击使用) — 同时启动单格框选 */
   selectTableCell(tableId: string, row: number, col: number): void {
     if (this._selectedTableId === tableId && this._selectedCellRow === row && this._selectedCellCol === col) {
       // 再次点击同一单元格 → 清除选择
-      this._selectedTableId = null; this._selectedCellRow = -1; this._selectedCellCol = -1
+      this.clearTableSelection()
     } else {
       this._selectedTableId = tableId; this._selectedCellRow = row; this._selectedCellCol = col
+      // 同步框选为单格 (网格坐标)
+      const gp = getCellGridPosition(this.pool, tableId, row, col)
+      if (gp) this.startCellBoxSelection(tableId, gp.row, gp.col)
+      else this.draw.render(this.pool, this.store.state.runtime)
     }
+  }
+
+  /** 开始框选 (锚点 = 起点, 单格) */
+  startCellBoxSelection(tableId: string, row: number, col: number): void {
+    this._cellRange = { tableId, startRow: row, startCol: col, endRow: row, endCol: col }
+    this.syncCellSelection()
+  }
+
+  /** 扩展框选终点到 (row, col) (网格坐标) */
+  extendCellBoxSelection(tableId: string, row: number, col: number): void {
+    if (!this._cellRange || this._cellRange.tableId !== tableId) return
+    this._cellRange.endRow = row
+    this._cellRange.endCol = col
+    this.syncCellSelection()
+  }
+
+  /** 清除表格选择 (焦点 cell + 框选) */
+  clearTableSelection(): void {
+    this._selectedTableId = null; this._selectedCellRow = -1; this._selectedCellCol = -1
+    this._cellRange = null
+    this.draw.cellSelection = null
     this.draw.render(this.pool, this.store.state.runtime)
   }
 
   get selectedTableId(): string | null { return this._selectedTableId }
   get selectedCellRow(): number { return this._selectedCellRow }
   get selectedCellCol(): number { return this._selectedCellCol }
+  get cellRange(): CellRange | null { return this._cellRange }
 
-  /** 合并选中的相邻单元格 */
-  mergeSelectedCells(): void {
-    if (!this._selectedTableId || this._selectedCellRow < 0) return
-    // 简化实现: 将当前单元格与右侧单元格合并 (rowspan=1, colspan=2)
-    const table = this.pool.nodes.get(this._selectedTableId) as { children?: string[] } | undefined
-    if (!table?.children) return
-    const rowId = table.children[this._selectedCellRow]
-    if (!rowId) return
-    const row = this.pool.nodes.get(rowId) as { children?: string[] } | undefined
-    if (!row?.children) return
-    const cellId = row.children[this._selectedCellCol]
-    const nextCellId = row.children[this._selectedCellCol + 1]
-    if (!cellId || !nextCellId) return
-
-    const cell = this.pool.nodes.get(cellId) as { colspan?: number; children?: string[] } | undefined
-    if (cell) {
-      cell.colspan = (cell.colspan || 1) + 1
-      // 移除下一个单元格的子节点添加到当前单元格
-      const nextCell = this.pool.nodes.get(nextCellId) as { children?: string[] } | undefined
-      if (nextCell?.children) {
-        cell.children = [...(cell.children || []), ...nextCell.children]
-        this.pool.nodes.delete(nextCellId)
-        row.children.splice(this._selectedCellCol + 1, 1)
-      }
-    }
-    this._selectedTableId = null; this._selectedCellRow = -1; this._selectedCellCol = -1
-    this.draw.recomputeLayout(this.pool)
+  /** 同步框选到 Draw + 重渲染 */
+  private syncCellSelection(): void {
+    this.draw.cellSelection = this._cellRange ? { ...this._cellRange } : null
     this.draw.render(this.pool, this.store.state.runtime)
-    this.notifyListeners('contentChange', this.doc)
   }
 
-  /** 拆分合并的单元格 */
-  splitSelectedCell(): void {
-    if (!this._selectedTableId || this._selectedCellRow < 0) return
-    const table = this.pool.nodes.get(this._selectedTableId) as { children?: string[] } | undefined
+  /** 合并选中的相邻单元格 (单格右合并 / 框选矩形合并) */
+  mergeSelectedCells(): void {
+    // 框选多格 → 矩形合并
+    if (this._cellRange && (this._cellRange.startRow !== this._cellRange.endRow || this._cellRange.startCol !== this._cellRange.endCol)) {
+      this.mergeSelectedRange(this._cellRange)
+      return
+    }
+    if (!this._selectedTableId || this._selectedCellRow < 0 || this._selectedCellCol < 0) return
+    const tableId = this._selectedTableId
+    const rowIdx = this._selectedCellRow
+    const colIdx = this._selectedCellCol
+    const table = this.pool.nodes.get(tableId) as { children?: string[] } | undefined
     if (!table?.children) return
-    const rowId = table.children[this._selectedCellRow]
+    const rowId = table.children[rowIdx]
     if (!rowId) return
     const row = this.pool.nodes.get(rowId) as { children?: string[] } | undefined
     if (!row?.children) return
-    const cellId = row.children[this._selectedCellCol]
-    const cell = this.pool.nodes.get(cellId) as { colspan?: number; children?: string[] } | undefined
-    if (!cell || (cell.colspan || 1) <= 1) return
+    const cellId = row.children[colIdx]
+    const nextCellId = row.children[colIdx + 1]
+    if (!cellId || !nextCellId) return
 
-    // 恢复为普通单元格: colspan → 1, 为新单元格创建段落
-    cell.colspan = 1
-    const newCellId = generateCommandId()
-    this.pool.nodes.set(newCellId, {
-      type: 'cell' as const, id: newCellId,
-      children: [createParagraph([createTextNode('').id]).id],
-      colspan: 1, rowspan: 1,
-    } as unknown as BaseNode)
-    row.children.splice(this._selectedCellCol + 1, 0, newCellId)
+    const cell = this.pool.nodes.get(cellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
+    const nextCell = this.pool.nodes.get(nextCellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
+    if (!cell || !nextCell) return
 
+    // 仅支持同一行内相邻、且两侧均未跨行的合并 (跨行合并方向复杂, 暂不支持)
+    if ((cell.rowspan || 1) > 1 || (nextCell.rowspan || 1) > 1) return
+
+    // 水平合并: colspan 累加右侧单元格的 colspan
+    cell.colspan = (cell.colspan || 1) + (nextCell.colspan || 1)
+    // 右侧单元格内容并入当前单元格
+    cell.children = [...(cell.children || []), ...(nextCell.children || [])]
+    this.pool.nodes.delete(nextCellId)
+    row.children.splice(colIdx + 1, 1)
+
+    this.afterTableMutation()
+  }
+
+  /** 合并框选矩形为一个单元格 (colspan×rowspan) */
+  mergeSelectedRange(range: CellRange): void {
+    const { r0, r1, c0, c1 } = normalizeRange(range)
+    if (r0 === r1 && c0 === c1) return
+    const grid = buildCellGrid(this.pool, range.tableId)
+    const boxCells = grid.cells.filter(gc => gc.row >= r0 && gc.row <= r1 && gc.col >= c0 && gc.col <= c1)
+    if (boxCells.length < 2) return
+
+    // 左上角 cell 作为合并目标
+    const target = boxCells.find(gc => gc.row === r0 && gc.col === c0)
+    if (!target) return
+    const targetCell = this.pool.nodes.get(target.cellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
+    if (!targetCell) return
+
+    // 其余 cell 内容并入目标 cell, 并从各自行移除
+    for (const gc of boxCells) {
+      if (gc.cellId === target.cellId) continue
+      const cell = this.pool.nodes.get(gc.cellId) as { children?: string[] } | undefined
+      if (cell?.children?.length) {
+        targetCell.children = [...(targetCell.children || []), ...cell.children]
+        // 关键: 清空引用, 防止 removeChild 级联删除已并入目标 cell 的段落
+        cell.children = []
+      }
+      const row = this.pool.nodes.get(grid.rowIds[gc.row]) as { id: string; children?: string[] } | undefined
+      const idx = row?.children?.indexOf(gc.cellId)
+      if (row && idx !== undefined && idx >= 0) this.pool.removeChild(row.id, idx)
+    }
+
+    // 目标 cell span = 矩形宽×高
+    const spanCol = c1 - c0 + 1
+    const spanRow = r1 - r0 + 1
+    if (spanCol > 1) targetCell.colspan = spanCol; else delete targetCell.colspan
+    if (spanRow > 1) targetCell.rowspan = spanRow; else delete targetCell.rowspan
+
+    this.afterTableMutation()
+  }
+
+  /** 拆分合并的单元格 (支持 colspan 水平拆分 / rowspan 垂直拆分) */
+  splitSelectedCell(): void {
+    if (!this._selectedTableId || this._selectedCellRow < 0 || this._selectedCellCol < 0) return
+    const tableId = this._selectedTableId
+    const rowIdx = this._selectedCellRow
+    const colIdx = this._selectedCellCol
+    const table = this.pool.nodes.get(tableId) as { children?: string[] } | undefined
+    if (!table?.children) return
+    const rowId = table.children[rowIdx]
+    if (!rowId) return
+    const row = this.pool.nodes.get(rowId) as { children?: string[] } | undefined
+    if (!row?.children) return
+    const cellId = row.children[colIdx]
+    if (!cellId) return
+    const cell = this.pool.nodes.get(cellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
+    if (!cell) return
+
+    const colspan = cell.colspan || 1
+    const rowspan = cell.rowspan || 1
+    if (colspan <= 1 && rowspan <= 1) return
+
+    // 新单元格 (含一个空段落)
+    const text = createTextNode('')
+    const para = createParagraph([text.id])
+    this.pool.nodes.set(text.id, text as unknown as BaseNode)
+    this.pool.nodes.set(para.id, para as unknown as BaseNode)
+    const newCell = createTableCell([para.id])
+    this.pool.nodes.set(newCell.id, newCell as unknown as BaseNode)
+
+    if (colspan > 1) {
+      // 水平拆分: 原 cell 缩为 colspan=1, 右侧新增 cell (保留剩余 colspan + 相同 rowspan)
+      cell.colspan = 1
+      if (colspan > 2) newCell.colspan = colspan - 1
+      if (rowspan > 1) newCell.rowspan = rowspan
+      row.children.splice(colIdx + 1, 0, newCell.id)
+    } else {
+      // 垂直拆分: 原 cell 缩为 rowspan=1, 下一行对应列新增 cell (保留剩余 rowspan)
+      const rowBelowId = table.children[rowIdx + 1]
+      const rowBelow = rowBelowId
+        ? (this.pool.nodes.get(rowBelowId) as { children?: string[] } | undefined)
+        : undefined
+      if (!rowBelow?.children) { this.pool.nodes.delete(newCell.id); return }
+
+      cell.rowspan = 1
+      if (rowspan > 2) newCell.rowspan = rowspan - 1
+      if (colspan > 1) newCell.colspan = colspan
+
+      // 在下一行中, 找到网格列对应的插入点
+      const gp = getCellGridPosition(this.pool, tableId, rowIdx, colIdx)
+      const targetCol = gp?.col ?? colIdx
+      const grid = buildCellGrid(this.pool, tableId)
+      let insertIdx = rowBelow.children.length
+      for (let i = 0; i < rowBelow.children.length; i++) {
+        const gc = grid.byId.get(rowBelow.children[i])
+        if (gc && gc.col > targetCol) { insertIdx = i; break }
+      }
+      rowBelow.children.splice(insertIdx, 0, newCell.id)
+    }
+
+    this.afterTableMutation()
+  }
+
+  /** 插入行 (选中单元格下方) */
+  insertTableRow(): void {
+    if (!this._selectedTableId || this._selectedCellRow < 0) return
+    insertRow(this.pool, this._selectedTableId, this._selectedCellRow)
+    this.afterTableMutation()
+  }
+
+  /** 删除选中单元格所在行 */
+  deleteTableRow(): void {
+    if (!this._selectedTableId || this._selectedCellRow < 0) return
+    deleteRow(this.pool, this._selectedTableId, this._selectedCellRow)
+    this.afterTableMutation()
+  }
+
+  /** 插入列 (选中单元格右侧) */
+  insertTableColumn(): void {
+    if (!this._selectedTableId || this._selectedCellRow < 0 || this._selectedCellCol < 0) return
+    const gp = getCellGridPosition(this.pool, this._selectedTableId, this._selectedCellRow, this._selectedCellCol)
+    if (!gp) return
+    insertColumn(this.pool, this._selectedTableId, gp.col)
+    this.afterTableMutation()
+  }
+
+  /** 删除选中单元格所在列 */
+  deleteTableColumn(): void {
+    if (!this._selectedTableId || this._selectedCellRow < 0 || this._selectedCellCol < 0) return
+    const gp = getCellGridPosition(this.pool, this._selectedTableId, this._selectedCellRow, this._selectedCellCol)
+    if (!gp) return
+    deleteColumn(this.pool, this._selectedTableId, gp.col)
+    this.afterTableMutation()
+  }
+
+  /** 表格结构变更后的统一收尾: 清选择 + 重布局 + 渲染 + 通知 */
+  private afterTableMutation(): void {
     this._selectedTableId = null; this._selectedCellRow = -1; this._selectedCellCol = -1
+    this._cellRange = null
+    this.draw.cellSelection = null
     this.draw.recomputeLayout(this.pool)
     this.draw.render(this.pool, this.store.state.runtime)
     this.notifyListeners('contentChange', this.doc)
@@ -1016,21 +1189,66 @@ export class Editor {
   }
 
   /** 删除当前选区内容 (跨段落逐段删除 + 合并), 用于粘贴前替换选区 */
+  /**
+   * 删除选区内容 — v21.0 Phase 4: 区分 body/cell 作用域
+   *
+   * 同 cell 内选区: 在 cell.children 上操作
+   * body 内选区: 在 doc.body.children 上操作 (原有逻辑)
+   * 跨域选区: 不允许, 直接返回 false
+   */
   private deleteSelectedRange(): boolean {
     const selection = this.store.state.runtime.selection
     if (!selection.active) return false
 
     const aId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
     const fId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
-    const siblings = this.doc.body.children
+    const aOff = selection.anchor.offset
+    const fOff = selection.focus.offset
+
+    // 同段落选区 — 不需要查找 siblings, 直接删除偏移范围
+    if (aId === fId) {
+      const start = Math.min(aOff, fOff)
+      const end = Math.max(aOff, fOff)
+      if (end > start) {
+        this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', selection.anchor.paragraphPath, start, end))
+      }
+      setCursor(this.store, selection.anchor.paragraphPath, start)
+      return true
+    }
+
+    // v21.0 Phase 4: 检测 scope 并获取 siblings
+    const aCell = resolveCellPosition(aId, this.pool)
+    const fCell = resolveCellPosition(fId, this.pool)
+
+    // 跨域选区禁止
+    if ((aCell && !fCell) || (!aCell && fCell)) return false
+    // 不同 cell 的选区暂不支持
+    if (aCell && fCell && (aCell.tableId !== fCell.tableId || aCell.row !== fCell.row || aCell.col !== fCell.col)) return false
+
+    let siblings: string[]
+
+    if (aCell) {
+      // 同 cell 内选区: 使用 cell.children
+      const tableNode = this.pool.nodes.get(aCell.tableId) as { children?: string[] } | undefined
+      if (!tableNode?.children) return false
+      const rowNode = this.pool.nodes.get(tableNode.children[aCell.row]) as { children?: string[] } | undefined
+      if (!rowNode?.children) return false
+      const cellNode = this.pool.nodes.get(rowNode.children[aCell.col]) as { children?: string[] } | undefined
+      if (!cellNode?.children) return false
+      siblings = cellNode.children
+    } else {
+      // body 内选区
+      siblings = this.doc.body.children
+    }
+
     const aIdx = siblings.indexOf(aId)
     const fIdx = siblings.indexOf(fId)
     if (aIdx < 0 || fIdx < 0) return false
 
     const lo = Math.min(aIdx, fIdx)
     const hi = Math.max(aIdx, fIdx)
-    const loOff = aIdx === lo ? selection.anchor.offset : selection.focus.offset
-    const hiOff = fIdx === hi ? selection.focus.offset : selection.anchor.offset
+    const loOff = aIdx === lo ? aOff : fOff
+    const hiOff = fIdx === hi ? fOff : aOff
 
     // 从后往前删, 避免索引漂移
     for (let pi = hi; pi >= lo; pi--) {
@@ -1041,19 +1259,16 @@ export class Editor {
       const path = [...selection.anchor.paragraphPath.slice(0, -1), paraId]
 
       if (pi === lo && pi === hi) {
-        // 同段落选区: 仅删除 offset 范围内的字符
         const start = Math.min(loOff, hiOff)
         const end = Math.max(loOff, hiOff)
         if (end > start) {
           this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, start, end))
         }
       } else if (pi === hi) {
-        // 末段: 删除段落开头到 hiOff 的字符
         if (hiOff > 0) {
           this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, hiOff))
         }
       } else if (pi === lo) {
-        // 首段: 删除 loOff 到段落末尾的字符
         const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
         let totalLen = 0
         if (para?.children) {
@@ -1066,7 +1281,6 @@ export class Editor {
           this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, loOff, totalLen))
         }
       } else {
-        // 中间段落: 删除全部内容
         const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
         let totalLen = 0
         if (para?.children) {
@@ -1084,7 +1298,13 @@ export class Editor {
     // 跨段落选区: 合并残段
     if (lo < hi) {
       for (let mergeCount = hi - lo; mergeCount > 0; mergeCount--) {
-        const currentSiblings = this.doc.body.children
+        const currentSiblings = aCell
+          ? ((() => {
+              const tn = this.pool.nodes.get(aCell.tableId) as { children?: string[] } | undefined
+              const rn = this.pool.nodes.get(tn?.children?.[aCell.row] || '') as { children?: string[] } | undefined
+              return (this.pool.nodes.get(rn?.children?.[aCell.col] || '') as { children?: string[] } | undefined)?.children || siblings
+            })())
+          : this.doc.body.children
         const nextParaId = currentSiblings[lo + 1]
         if (!nextParaId) break
         const mergePath = [...selection.anchor.paragraphPath.slice(0, -1), nextParaId]
@@ -1092,7 +1312,6 @@ export class Editor {
       }
     }
 
-    // 光标重置到删除起点 (selection.anchor 的段落可能已在合并中变化, 用 loParaId 定位)
     const loParaId = siblings[lo]
     setCursor(this.store, [...selection.anchor.paragraphPath.slice(0, -1), loParaId], loOff)
 
@@ -1401,25 +1620,20 @@ export class Editor {
   private handleFormatPainterApply(e: MouseEvent): void {
     if (!this._formatPainterStyle) return
 
-    const scale = this.draw.getCoordinateSystem().transform.scale
     const rect = this.container.getBoundingClientRect()
-    const screenY = (e.clientY - rect.top) / scale + this.draw.getCoordinateSystem().transform.scrollY
+    const { scale, scrollY } = this.draw.getCoordinateSystem().transform
+
+    const { x: docX0, y: docY0 } = screenToDoc(e.clientX, e.clientY, scale, scrollY, rect)
 
     const pages = this.draw.getPages()
     if (pages.length === 0) { this.setFormatPainterActive(false); return }
 
-    let pageIndex = 0; let localY = screenY
-    for (let i = 0; i < pages.length; i++) {
-      if (localY < pages[i].height) { pageIndex = i; break }
-      localY -= pages[i].height; pageIndex = i
-    }
+    const { pageIndex, localY } = findPageByDocY(docY0, pages)
     const page = pages[pageIndex]
     if (!page) { this.setFormatPainterActive(false); return }
 
-    const viewportW = this.container.clientWidth
-    const visiblePageW = page.width * scale
-    const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
-    const docX = (e.clientX - rect.left - offsetX) / scale
+    const offsetX = pageCenteringOffset(page.width, this.container.clientWidth, scale)
+    const docX = docX0 - offsetX / scale
 
     const nodeId = this.draw.getHitTestIndex().hitTest(docX, localY, pageIndex)
     if (nodeId) {

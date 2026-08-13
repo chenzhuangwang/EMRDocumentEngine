@@ -8,8 +8,10 @@
 import type { Editor } from '../Editor'
 import type { Paragraph } from '../document/DocumentModel'
 import type { SLIFPage } from '../layout/SLIF'
-import { getFlatPageItems } from '../layout/SLIF'
 import { cumulativeCharWidths, findCharIndexAtX } from '../layout/CharWidthHelper'
+import { screenToDoc, findPageByDocY, pageCenteringOffset } from '../layout/TableCoordUtil'
+import { HitTestIndex } from '../render/HitTestIndex'
+import { getCellGridPosition } from '../document/TableOps'
 
 /** 双击时间阈值 (ms) */
 const DOUBLE_CLICK_THRESHOLD = 400
@@ -42,6 +44,10 @@ export class MouseHandler {
   // 双击/三击标记: 阻止后续 click 事件清空选区 (Editor.handleClick 检查)
   private _wasMultiClick = false
 
+  // 单元格框选拖拽状态
+  private cellBoxActive = false
+  private cellBoxTableId = ''
+
   constructor(editor: Editor, container: HTMLElement) {
     this.editor = editor
     this.container = container
@@ -65,6 +71,7 @@ export class MouseHandler {
   private onMouseDown = (e: MouseEvent) => {
     this.dragging = true
     this.dragMoved = false
+    this.cellBoxActive = false
     this.dragStartX = e.clientX
     this.dragStartY = e.clientY
 
@@ -267,16 +274,19 @@ export class MouseHandler {
     this.anchorParaPath = [...result.paraPath]
     this.anchorOffset = result.offset
 
-    // 检查是否在表格单元格内 → 选中单元格 (Shift+Click 用于合并/拆分)
+    // 检查是否在表格单元格内 → 启动单元格框选 (拖拽扩展)
     if (!e.shiftKey) {
       const tableInfo = this.findTableAndCell(result.paraPath)
       if (tableInfo) {
         this.editor.selectTableCell(tableInfo.tableId, tableInfo.row, tableInfo.col)
+        this.cellBoxActive = true
+        this.cellBoxTableId = tableInfo.tableId
         return
       }
     }
 
-    this.editor.getDraw().render(this.editor.getPool(), store.state.runtime)
+    // 非表格区域点击 → 清除表格框选
+    this.editor.clearTableSelection()
   }
 
   /** 查找段落所属的表格和单元格位置 */
@@ -321,6 +331,19 @@ export class MouseHandler {
       this.dragMoved = true
     }
 
+    // 单元格框选拖拽 → 扩展框选终点
+    if (this.cellBoxActive) {
+      const result = this.hitTest(e.clientX, e.clientY)
+      if (result) {
+        const tableInfo = this.findTableAndCell(result.paraPath)
+        if (tableInfo && tableInfo.tableId === this.cellBoxTableId) {
+          const gp = getCellGridPosition(this.editor.getPool(), tableInfo.tableId, tableInfo.row, tableInfo.col)
+          if (gp) this.editor.extendCellBoxSelection(tableInfo.tableId, gp.row, gp.col)
+        }
+      }
+      return
+    }
+
     const result = this.hitTest(e.clientX, e.clientY)
     if (!result) return
 
@@ -359,45 +382,68 @@ export class MouseHandler {
 
   private onMouseUp = () => {
     this.dragging = false
+    this.cellBoxActive = false
   }
 
-  /** 命中检测 — 返回段落路径 + 字符偏移 */
+  /** 命中检测 — Phase 2: 二级碰撞检测
+   *  Level 1: HitTestIndex 顶级块索引
+   *  Level 2: 命中 table 外框 → hitTestTable() cell 内精确定位
+   */
   private hitTest(clientX: number, clientY: number): { paraPath: string[]; offset: number } | null {
     const rect = this.container.getBoundingClientRect()
     const coord = this.editor.getDraw().getCoordinateSystem()
-    const scale = coord.transform.scale
-    // 屏幕坐标 → 文档坐标: 客户端 CSS px 除以 scale
-    const screenX = (clientX - rect.left) / scale
-    const screenY = (clientY - rect.top) / scale + coord.transform.scrollY
+    const { scale, scrollY } = coord.transform
+
+    // 屏幕坐标 → 文档坐标 (统一通过 TableCoordUtil)
+    const { x: docX0, y: docY0 } = screenToDoc(clientX, clientY, scale, scrollY, rect)
 
     const pages = this.editor.getDraw().getPages()
     if (pages.length === 0) return null
 
-    let pageIndex = 0; let localY = screenY
-    for (let i = 0; i < pages.length; i++) {
-      if (localY < pages[i].height) { pageIndex = i; break }
-      localY -= pages[i].height; pageIndex = i
-    }
+    const { pageIndex, localY } = findPageByDocY(docY0, pages)
     const page = pages[pageIndex]
     if (!page) return null
 
     const viewportW = this.container.clientWidth
-    // offsetX = 页面居中偏移 (CSS px)
-    const visiblePageW = page.width * scale
-    const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
-    const docX = screenX - offsetX / scale
+    const offsetX = pageCenteringOffset(page.width, viewportW, scale)
+    const docX = docX0 - offsetX / scale
 
-    const nodeId = this.editor.getDraw().getHitTestIndex().hitTest(docX, localY, pageIndex)
+    // Level 1: 顶级块索引命中
+    const hitIndex = this.editor.getDraw().getHitTestIndex()
+    const nodeId = hitIndex.hitTest(docX, localY, pageIndex)
     if (!nodeId) return null
 
-    const para = this.findParagraphContaining(nodeId)
-    if (!para) return null
-
-    const offset = this.computeOffsetAtX(para, docX, localY, page)
     const doc = this.editor.getDocument()
-    return { paraPath: [doc.id, para.id], offset }
+
+    // Level 2: 命中表格 → cell 内精确定位
+    const entryType = hitIndex.getEntryType(pageIndex, nodeId)
+    if (entryType === 'table') {
+      const tableItem = hitIndex.getTableItem(pageIndex, nodeId)
+      if (tableItem) {
+        const tableResult = HitTestIndex.hitTestTable(tableItem, docX, localY, this.editor.getPool(), doc.id)
+        if (tableResult) return tableResult
+      }
+      // 表格命中但 Level 2 失败 → 不 fallback 到 getFlatPageItems
+      return null
+    }
+
+    // 正文段落命中 → 现有流程
+    const para = this.findParagraphContaining(nodeId)
+    if (para) {
+      const offset = this.computeOffsetAtX(para, docX, localY, page)
+      return { paraPath: [doc.id, para.id], offset }
+    }
+
+    // 命中图片/分隔符/分节符等非段落块 → 定位到最近段落 (避免图片成为导航死区)
+    const nearest = this.findNearestParagraph(nodeId)
+    if (nearest) {
+      const offset = this.computeOffsetAtX(nearest, docX, localY, page)
+      return { paraPath: [doc.id, nearest.id], offset }
+    }
+    return null
   }
 
+  /** 查找 nodeId 所属段落, 无则返回 null */
   private findParagraphContaining(nodeId: string): Paragraph | null {
     for (const [, node] of this.editor.getPool().nodes) {
       if (node.type === 'paragraph') {
@@ -408,10 +454,30 @@ export class MouseHandler {
     return null
   }
 
+  /**
+   * 定位非段落正文块 (image/separator/section_break) 附近的段落。
+   * 优先取正文块序列中前一个最近的段落, 否则取后一个。
+   */
+  private findNearestParagraph(nodeId: string): Paragraph | null {
+    const doc = this.editor.getDocument()
+    const pool = this.editor.getPool()
+    const idx = doc.body.children.indexOf(nodeId)
+    if (idx < 0) return null
+    for (let i = idx - 1; i >= 0; i--) {
+      const n = pool.nodes.get(doc.body.children[i])
+      if (n?.type === 'paragraph') return n as unknown as Paragraph
+    }
+    for (let i = idx + 1; i < doc.body.children.length; i++) {
+      const n = pool.nodes.get(doc.body.children[i])
+      if (n?.type === 'paragraph') return n as unknown as Paragraph
+    }
+    return null
+  }
+
   private computeOffsetAtX(para: Paragraph, docX: number, docY: number, page: SLIFPage): number {
-    // 收集段落关联的所有 SLIF item, 按 Y 排序 (对应文档阅读顺序)
-    // 使用 getFlatPageItems 以包含表格 cell 内嵌项
-    const related = getFlatPageItems(page)
+    // Phase 2: 使用 page.items 直接过滤 (不再需要 getFlatPageItems 展平)
+    // 正文段落的文本行 items 直接存在于 page.items 中
+    const related = page.items
       .filter(it => para.children.includes(it.nodeId) || it.nodeId === para.id)
     // items 已按 Y 排序 (LayoutEngine 顺序插入)
 
@@ -449,26 +515,20 @@ export class MouseHandler {
   private detectHeaderFooterRegion(clientX: number, clientY: number): 'header' | 'footer' | null {
     const rect = this.container.getBoundingClientRect()
     const coord = this.editor.getDraw().getCoordinateSystem()
-    const scale = coord.transform.scale
-    const screenY = (clientY - rect.top) / scale + coord.transform.scrollY
+    const { scale, scrollY } = coord.transform
+
+    const { x: docX0, y: docY0 } = screenToDoc(clientX, clientY, scale, scrollY, rect)
 
     const pages = this.editor.getDraw().getPages()
     if (pages.length === 0) return null
 
-    // 计算点击在哪一页
-    let pageIndex = 0; let localY = screenY
-    for (let i = 0; i < pages.length; i++) {
-      if (localY < pages[i].height) { pageIndex = i; break }
-      localY -= pages[i].height; pageIndex = i
-    }
+    const { pageIndex, localY } = findPageByDocY(docY0, pages)
     const page = pages[pageIndex]
     if (!page) return null
 
-    // 检查视口偏移
-    const viewportW = this.container.clientWidth
-    const visiblePageW = page.width * scale
-    const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
-    const docX = (clientX - rect.left - offsetX) / scale
+    // 检查是否在页面宽度内
+    const offsetX = pageCenteringOffset(page.width, this.container.clientWidth, scale)
+    const docX = docX0 - offsetX / scale
     if (docX < 0 || docX > page.width) return null // 超出页面宽度
 
     // 页眉区域: y 0 ~ headerHeight
@@ -493,26 +553,19 @@ export class MouseHandler {
   ): { paraPath: string[]; offset: number } | null {
     const rect = this.container.getBoundingClientRect()
     const coord = this.editor.getDraw().getCoordinateSystem()
-    const scale = coord.transform.scale
-    // 屏幕坐标 → 文档坐标
-    const screenX = (clientX - rect.left) / scale
-    const screenY = (clientY - rect.top) / scale + coord.transform.scrollY
+    const { scale, scrollY } = coord.transform
+
+    const { x: docX0, y: docY0 } = screenToDoc(clientX, clientY, scale, scrollY, rect)
 
     const pages = this.editor.getDraw().getPages()
     if (pages.length === 0) return null
 
-    let pageIndex = 0; let localY = screenY
-    for (let i = 0; i < pages.length; i++) {
-      if (localY < pages[i].height) { pageIndex = i; break }
-      localY -= pages[i].height; pageIndex = i
-    }
+    const { pageIndex, localY } = findPageByDocY(docY0, pages)
     const page = pages[pageIndex]
     if (!page) return null
 
-    const viewportW = this.container.clientWidth
-    const visiblePageW = page.width * scale
-    const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
-    const docX = screenX - offsetX / scale
+    const offsetX = pageCenteringOffset(page.width, this.container.clientWidth, scale)
+    const docX = docX0 - offsetX / scale
 
     // 使用 Draw 的页眉页脚命中检测
     const result = this.editor.getDraw().findHeaderFooterItemAt(docX, localY, pageIndex, section)

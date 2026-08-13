@@ -1,8 +1,11 @@
 # 架构设计文档 - 文档编辑器引擎
 
-> 版本: v20.34 | 日期: 2026-07-30 | 阶段: docs
+> 版本: v21.0 | 日期: 2026-08-12 | 阶段: docs
 >
-> **v20.34 变更**: P1 收尾 —— P1-1 四条流水线时序图; P1-2 EditorProvider→Zustand桥; P1-3 产品/SDK双默认; P1-5 paragraphPath 末段语义纠正; P1-7 MVP 限定10页验收
+> **v21.0 变更**: 6 阶段架构重构 — 废弃编辑态 getFlatPageItems 全局扁平化, 回归树形嵌套.
+> 二级碰撞检测 (§7.6) | 坐标转换工具 (TableCoordUtil, §7.7) | CaretScope 光标域 (§7.7b) |
+> SLIF 嵌套表格结构 (§7.7c) | LayoutEngine 列宽计算落地 (computeColumnWidths, §9.1) |
+> MergeMatrix.findCellAt 空间点查 (§9.2) | 编辑态 cell 内分隔/回车/删除/选区域隔离
 
 ---
 
@@ -3139,76 +3142,138 @@ DOM scroll event (EditorArea.onscroll)
 
 **全文档高度 vs Canvas 尺寸**: Spacer 高度 = 全文档(可能百页)，Canvas 物理尺寸 = 视口 + overscan 1页(§7.5)。内存由 Canvas 控制，滚动条范围由 spacer 提供——两者解耦。
 
-### 7.6 命中检测体系
+### 7.6 命中检测体系 (v21.0: 二级碰撞检测)
 
 **问题**: 「坐标 → 节点」反向查找无标准方案，交互逻辑散落在各 Handler 中。
+此前 v20.35 使用 `getFlatPageItems()` 将所有 cell 内文字展平为一维数组混入空间索引，
+导致表格内外不分、cell 内段落无法正确解析。
 
-**方案**: 统一 `hitTest()` + 布局包围盒 + 空间索引。
+**方案 (v21.0)**: **二级碰撞检测** — Level 1 仅索引顶级块，Level 2 精确到 cell 内字符。
+
+```
+点击 (screenX, screenY)
+  → screenToLogical() → (docX, docY, pageIndex, localY)
+  → Level 1: HitTestIndex.hitTest(docX, localY, pageIndex)
+      ├── 命中 paragraph/image/separator → 返回 nodeId → 现有流程
+      ├── 命中 table 外框 → 进入 Level 2
+      └── 未命中 → null
+  → Level 2: HitTestIndex.hitTestTable(tableItem, docX, localY, pool, docId)
+      ├── 遍历 rows → cells 定位 (r, c)
+      ├── 空 cell → 返回 cell 内首段落末尾 offset
+      ├── 有内容 → cell.innerItems 局部坐标二分查找字符偏移
+      └── 返回 { paragraphPath, offset }
+```
 
 ```typescript
-interface HitTestable {
-  hitTest(docX: number, docY: number): string | null  // 返回命中节点 ID 或 null
-}
-// IParticle 继承 HitTestable
-interface IParticle extends HitTestable { /* ... */ }
-
 class HitTestIndex {
-  /** 按页分桶: pageIndex → 该页所有 items (按 y 升序) */
-  private buckets = new Map<number, { rect: RenderRect; nodeId: string; particle: IParticle }[]>()
+  private buckets = new Map<number, HitEntry[]>()
 
-  rebuild(pageItems: PageItem[], registry: ParticleRegistry): void {
+  /** Phase 2 (v21.0): 仅索引顶级块, table 作为单个外框 entry */
+  rebuild(pages: SLIFPage[]): void {
     this.buckets.clear()
-    for (const item of pageItems) {
-      const particle = registry.get(item.nodeType)
-      if (!particle) continue
-      const entry = { rect: item as RenderRect, nodeId: item.nodeId, particle }
-      const bucket = this.buckets.get(item.pageIndex) ?? []
-      bucket.push(entry)
-      this.buckets.set(item.pageIndex, bucket)
-    }
-    // 每页桶内按 y 排序，用于二分查找
-    for (const bucket of this.buckets.values()) {
-      bucket.sort((a, b) => a.rect.y - b.rect.y)
+    for (const page of pages) {
+      const entries: HitEntry[] = []
+      for (const item of page.items) {
+        if (item.type === 'table') {
+          // 表格外框 — 单条目, 持有原始 SLIFItem 引用用于 Level 2
+          entries.push({ nodeId: item.nodeId, /* ...bounds... */, itemType: 'table', tableItem: item })
+        } else {
+          // 正文段落 / 图片 / 分隔符 — 直接索引
+          entries.push({ nodeId: item.nodeId, /* ...bounds... */, itemType: item.type })
+        }
+      }
+      entries.sort((a, b) => a.y - b.y)
+      this.buckets.set(page.pageIndex, entries)
     }
   }
 
-  hitTest(docX: number, docY: number, pageIndex: number): string | null {
-    // Step 1: 按页分桶定位 — O(1)
-    const bucket = this.buckets.get(pageIndex)
-    if (!bucket) return null
+  /** Level 1: y-二分 + x-扫描 (同 v20.35, 但仅查顶级块) */
+  hitTest(docX: number, docY: number, pageIndex: number): string | null { /* O(log m + k) */ }
 
-    // Step 2: 页内二分 y 定位 (第一个 rect.y + rect.height >= docY 的 item)
-    let lo = 0, hi = bucket.length - 1, firstBeyond = -1
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1
-      if (bucket[mid].rect.y + bucket[mid].rect.height >= docY) {
-        firstBeyond = mid
-        hi = mid - 1
-      } else {
-        lo = mid + 1
-      }
-    }
-    if (firstBeyond < 0) return null
-
-    // Step 3: 从二分定位点向后扫描, 直到 rect.y > docY (y 范围外的 item 不可能命中)
-    for (let i = firstBeyond; i < bucket.length && bucket[i].rect.y <= docY; i++) {
-      const { rect, particle } = bucket[i]
-      if (docX >= rect.x && docX <= rect.x + rect.width) {
-        const hit = particle.hitTest(docX, docY)
-        if (hit) return hit
-      }
-    }
-    return null
+  /** Level 2: cell 内精确定位 (静态方法, 独立于实例) */
+  static hitTestTable(
+    tableItem: SLIFItem, docX: number, docY: number,
+    pool: NodePool, docId: string,
+  ): TableHitResult | null {
+    // 1. 计算列宽 (优先 columnWidths, 兜底均分)
+    // 2. 累积行高/列宽定位 cell
+    // 3. cell.items 局部坐标二分查找字符偏移
+    // 4. 空 cell → findFirstParagraphInCell → 末尾 offset
   }
 }
-// 复杂度:
-//   全量 rebuild: O(n log n) (每页桶内排序, n = 页内 item 数)
-//   hitTest: O(log m + k) (m = 页内 item 数, k = y 范围内候选数, 通常 < 5)
-//   百页文档 mousemove: 先 MouseHandler 由 docY 计算 pageIndex → hitTest(pageIndex) → 单页查找
-```
 ```
 
-### 7.7 布局中间格式定义 (SLIF)
+**不变量**:
+- `getFlatPageItems()` 不再被 HitTestIndex 消费 — 仅用于导出/打印/文本提取
+- cell 内文字不进入 Level 1 索引
+- 表格命中后由调用方 (MouseHandler.hitTest) 决定是否进入 Level 2
+- 复杂度: Level 1 O(log m + k), Level 2 O(rows × cols × innerItems) — table 规模远小于全页
+```
+
+### 7.7 坐标转换工具 (TableCoordUtil) — v21.0 新增
+
+**目的**: 全项目统一坐标换算，禁止调用方手动内联计算。
+
+四层坐标系统:
+
+| 层 | 名称 | 描述 |
+|----|------|------|
+| 1 | 屏幕坐标 | CSS px, 相对浏览器视口 |
+| 2 | 逻辑文档坐标 | 逻辑 px, 含 scrollY, 未扣除页面偏移 |
+| 3 | 页面内坐标 | 逻辑 px, 已扣除 scrollY + 居中偏移 |
+| 4 | 单元格局部坐标 | cell 内 item 从 (0,0) 开始 |
+
+核心函数 (v21.0 正式命名):
+
+```typescript
+// 屏幕 → 逻辑文档 (原 screenToDoc, 保留别名过渡)
+screenToLogical(screenX, screenY, scale, scrollY, containerRect) → { x, y }
+
+// 逻辑文档 → 屏幕 (原 docToScreen)
+logicalToScreen(docX, docY, scale, scrollY, containerRect) → { x, y }
+
+// cell 局部 → 文档全局 (原 cellToDoc)
+cellLocalToGlobal(localX, localY, cellX, cellY, padding=6) → { x, y }
+
+// 文档全局 → cell 局部 (v21.0 NEW)
+globalToCellLocal(docX, docY, cellX, cellY, padding=6) → { x, y }
+
+// 综合转换: screen → 页面内坐标 (合并 screenToLogical + findPageByDocY + pageCenteringOffset)
+screenToPage(screenX, screenY, scale, scrollY, containerRect, pages, viewportW) → PageDocCoords | null
+```
+
+**调用方强制约束**: MouseHandler / Editor / Draw 三处坐标计算全部通过此模块，删除所有手写公式。
+
+### 7.7b CaretScope — 光标域 (v21.0 新增)
+
+**问题**: cursor 的 `paragraphPath` 始终为 `[docId, paragraphId]`，不包含 table/row/cell 层级。
+需要一种机制判断光标在 body 还是 cell 内。
+
+**方案**: `CaretScope` 从 `paragraphPath + NodePool` 实时派生，不另存状态。
+
+```typescript
+type CaretScope =
+  | { type: 'body' }
+  | { type: 'cell'; tableId: string; row: number; col: number }
+
+// 派生规则: 沿 pool.nodes 反向查找 cell 祖先
+function getCaretScope(paragraphPath: string[], pool: NodePool): CaretScope
+
+// 反向查找: paragraphId → cell → row → table → { tableId, row, col }
+function resolveCellPosition(paraId: string, pool: NodePool): CellPosition | null
+
+// 同域校验
+function isSameScope(a: CaretScope, b: CaretScope): boolean
+```
+
+**使用场景**:
+- KeyboardHandler: Enter 键 cell 内 → 新段落插入 cell.children (非 FlowBody)
+- KeyboardHandler: Delete 键 cell 内段尾 → 合并 cell 内下一段落 (非 body 下一段落)
+- Editor.deleteSelectedRange: cell 内选区 → 在 cell.children 上操作
+- MouseHandler: Shift+拖动选区 → 跨 cell 选区禁止 (Phase 4 初级阶段)
+- SplitParagraphCommand.insertAndReturn: cell 内段落 → 查找 cell 父节点插入
+
+### 7.7c SLIF 标准布局中间格式定义 (v21.0: 嵌套表格结构)
 
 ```typescript
 /**
@@ -3218,6 +3283,8 @@ class HitTestIndex {
  *       保证「所见即所得」—— Canvas 上看到的和 PDF 打印出的完全一致。
  *
  * 流程: DocumentTree → LayoutEngine → SLIF JSON → Canvas 渲染 / iText PDF 渲染
+ * v21.0: 表格采用嵌套结构 (SLIFRow → SLIFCell → items),
+ *        cell 内 item 坐标从 (0,0) 开始 (单元格局部坐标)。
  */
 
 interface SLIF {
@@ -3230,7 +3297,11 @@ interface SLIF {
 interface SLIFPage {
   pageIndex: number
   width: number; height: number
-  items: SLIFItem[]
+  items: SLIFItem[]                // 顶级块 (paragraph/table/image/separator)
+  headerItems?: SLIFItem[]         // 页眉渲染项
+  footerItems?: SLIFItem[]         // 页脚渲染项
+  headerHeight?: number
+  footerHeight?: number
 }
 
 interface SLIFItem {
@@ -3248,11 +3319,58 @@ interface SLIFItem {
   ascent: number; descent: number
   font: string; size: number
   bold?: boolean; italic?: boolean
-  underline?: boolean; strikeout?: boolean
+  underline?: boolean; underlineStyle?: string; strikeout?: boolean
   color?: string; highlight?: string
   superscript?: boolean; subscript?: boolean
-  // table 扩展: rows: SLIFRow[], image 扩展: imageUrl, 等等
+
+  // ---- table 扩展 (v21.0) ----
+  rows?: SLIFRow[]                     // 表格结构 (嵌套, 非展平)
+  headerRowCount?: number              // 表头行数 (跨页重复)
+  continuationLabel?: string           // 续表标记文本
+  columnWidths?: number[]              // 每列像素宽度 (LayoutEngine 计算后挂载)
+
+  // ---- image 扩展 ----
+  imageUrl?: string
+
+  // ---- list 扩展 ----
+  listMarker?: string                  // 列表标记文本
+  listMarkerX?: number                 // 列表标记 X 坐标
+  markerWidth?: number                 // 列表标记像素宽度
+
+  // ---- field 扩展 ----
+  fieldType?: string                   // 域类型
+
+  // ---- 展平元数据 (由 getFlatPageItems 自动填充, 非编辑态使用) ----
+  ownerTableId?: string                // 所属表格 ID (展平项专用)
+  cellIndex?: { row: number; col: number }    // 单元格下标 (展平项专用)
+  cellRect?: { x: number; y: number; width: number; height: number }  // 单元格边界 (展平项专用)
 }
+
+/** 表格行 */
+interface SLIFRow {
+  height: number                       // 行高 (px)
+  cells: SLIFCell[]
+}
+
+/** 表格单元格 */
+interface SLIFCell {
+  x: number; y: number                // cell 坐标 (相对 table item 原点)
+  width: number; height: number
+  colspan?: number; rowspan?: number
+  isHeader?: boolean
+  backgroundColor?: string
+  items: SLIFItem[]                   // cell 内部渲染项 (局部坐标, 从 0,0 开始)
+}
+
+/**
+ * 展平函数 (v21.0: 仅用于导出/打印/文本提取, 禁用于编辑交互)
+ *
+ * 将 cell 内 item 转换到文档绝对坐标并挂载元数据 (ownerTableId/cellIndex/cellRect)。
+ * 表格容器 item 本身不进入展平列表。
+ *
+ * @deprecated 编辑态交互层 — 不得调用此函数。使用 HitTestIndex + hitTestTable 二级命中替代。
+ */
+function getFlatPageItems(page: SLIFPage): SLIFItem[] { /* ... */ }
 
 /** PageItem — @deprecated v20.19: ModelA 残留, 统一使用 SLIFItem */
 type PageItem = SLIFItem
@@ -3261,7 +3379,19 @@ type LayoutBox = SLIFItem
 /** ExportItem — @deprecated v20.19: 与 SLIFItem 字段重复, 统一使用 SLIFItem */
 type ExportItem = SLIFItem
 ```
-### 7.8 文档比较 diff 引擎
+**v21.0 `getFlatPageItems` 使用边界**:
+
+| 场景 | 允许 | 说明 |
+|------|------|------|
+| PDF 导出 (后端 iText/PDFBox) | ✅ | 后端消费展平坐标逐项渲染 |
+| 打印 (浏览器 print) | ✅ | 与 PDF 导出共享同一 SLIF JSON |
+| 全文文本提取 (搜索/复制全部) | ✅ | 展平遍历即可获取所有文字 |
+| 光标/点击命中检测 | ❌ | 使用 HitTestIndex 二级检测 (7.6) |
+| 选区扩展/拖拽 | ❌ | 使用 CaretScope 域隔离 (7.7b) |
+| 键盘导航 (上下左右) | ❌ | 使用 KeyboardHandler 树形遍历 |
+| 回车/删除/退格 | ❌ | 使用 resolveCellPosition 查找 cell 上下文 |
+| 粘贴文本 | ❌ | 使用 Editor 基于 scope 的插入逻辑 |
+### 7.8 文档比较 diff 引擎 (v21.0 保留)
 
 **问题**: 质控审核需要对比两个版本文档的差异——并排展示、高亮新增/删除/修改内容。需要文档级的结构化 diff 算法。
 
@@ -3657,6 +3787,8 @@ class PluginManager {
 
 ### 9.1 列宽计算规则
 
+**v21.0**: 已落地为 `LayoutEngine.computeColumnWidths()`, 输入 `ColumnDefinition[]` + 内容宽度, 输出 `number[]` (每列像素宽度)。结果挂载到 `SLIFItem.columnWidths` 供 HitTestIndex 和渲染消费。
+
 ```
 优先级 (高 → 低):
   1. 固定宽度 (mode='fixed')     — 直接使用 ColumnDefinition.width, 不参与自适应
@@ -3668,7 +3800,18 @@ class PluginManager {
   each auto column width = max(column.minWidth, availableWidth / autoColumnCount)
 ```
 
+```typescript
+// v21.0 实现签名
+function computeColumnWidths(
+  colDefs: ColumnDefinition[],  // 每列定义 (来自 TableNode.columns)
+  numCols: number,              // 实际列数 (不含 colspan 扩展, 与 grid 列数一致)
+  contentWidth: number          // 可用内容宽度 (pageWidth - margins - borders)
+): number[]                     // 每列像素宽度, 长度为 numCols
+```
+
 ### 9.2 合并单元格网格矩阵
+
+**v21.0**: 新增 `findCellAt(docX, docY, columnWidths, rowHeights)` 空间定位方法，用于 HitTestIndex Level 2 的 cell 级命中检测。
 
 ```typescript
 /**
@@ -3681,6 +3824,25 @@ class PluginManager {
  * 5. 选区逻辑: 基于 grid 矩阵做矩形选区, 自动跳过 null 格
  * 6. 命中检测: docX 落在单元格的合并矩形区域内 → 返回主格 ID
  */
+
+interface CellGridHit {
+  cellId: string
+  row: number
+  col: number
+  span?: { colspan: number; rowspan: number }
+}
+
+// v21.0 新增: 空间点查 — 给定文档坐标, 定位命中的单元格
+findCellAt(
+  docX: number,           // 相对表格 origin 的 X 坐标
+  docY: number,           // 相对表格 origin 的 Y 坐标
+  columnWidths: number[], // 每列像素宽度 (累积定位)
+  rowHeights: number[]    // 每行像素高度 (累积定位)
+): CellGridHit | null {
+  // 1. 逐列累积 columnWidths, 找到 col 下标
+  // 2. 逐行累积 rowHeights, 找到 row 下标
+  // 3. 返回 grid[row][col] → cellId (含 colspan/rowspan 信息)
+}
 
 function buildMergeMatrix(table: Table, pool: NodePool): MergeMatrix {  // v20.31: 补 pool 参数, children 全 ID 化修正
   const rowIds = table.children

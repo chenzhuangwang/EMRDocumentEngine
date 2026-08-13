@@ -26,6 +26,7 @@ import { createChartParticle } from './particles/ChartParticle'
 import { createBarcodeParticle } from './particles/BarcodeParticle'
 import { particleRegistry } from './particles/ParticleRegistry'
 import { textParticle, separatorParticle, listParticle, fieldParticle } from './particles/ParticleAdapters'
+import { buildCellGrid } from '../document/TableOps'
 
 interface CaretPos { x: number; y: number; h: number }
 
@@ -56,6 +57,9 @@ export class Draw {
 
   // 脏区域裁剪 (TASK-483): 非 null 时仅重绘该区域
   private dirtyRect: { x: number; y: number; w: number; h: number } | null = null
+
+  // 单元格框选范围 (网格坐标, 由 Editor 注入)
+  cellSelection: { tableId: string; startRow: number; startCol: number; endRow: number; endCol: number } | null = null
 
   constructor(
     container: HTMLElement,
@@ -511,6 +515,11 @@ export class Draw {
       this.renderSelectionUnified(pool, selection, offsetX / scale, visible, pageHeight, scrollOffset, ictx)
     }
 
+    // --- 单元格框选高亮 (文字下方) ---
+    if (this.cellSelection) {
+      this.renderCellSelection(pool, this.cellSelection, visible, pageHeight, scrollOffset, ictx)
+    }
+
     // --- 光标 (文字上方, 仅在 visible 时绘制) ---
     if (cursor.visible) {
       const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX / scale, visible, pageHeight, scrollOffset)
@@ -622,6 +631,56 @@ export class Draw {
         paraOffsets.set(itemParaId, itemEnd)
       }
     }
+  }
+
+  /** 渲染单元格框选高亮 — 高亮范围内 (起始网格坐标落在矩形内) 的单元格 */
+  private renderCellSelection(
+    pool: NodePool,
+    range: { tableId: string; startRow: number; startCol: number; endRow: number; endCol: number },
+    visible: { start: number; end: number },
+    pageHeight: number,
+    scrollOffset: number,
+    ictx: CanvasRenderingContext2D,
+  ): void {
+    const r0 = Math.min(range.startRow, range.endRow)
+    const r1 = Math.max(range.startRow, range.endRow)
+    const c0 = Math.min(range.startCol, range.endCol)
+    const c1 = Math.max(range.startCol, range.endCol)
+
+    // 选中 cell id 集合
+    const selected = new Set<string>()
+    for (const gc of buildCellGrid(pool, range.tableId).cells) {
+      if (gc.row >= r0 && gc.row <= r1 && gc.col >= c0 && gc.col <= c1) selected.add(gc.cellId)
+    }
+
+    ictx.save()
+    ictx.fillStyle = 'rgba(59, 130, 246, 0.16)'
+    ictx.strokeStyle = 'rgba(37, 99, 235, 0.85)'
+    ictx.lineWidth = 1.5
+
+    for (let i = visible.start; i <= visible.end; i++) {
+      const sp = this.pages[i]
+      if (!sp) continue
+      const spY = (i - visible.start) * pageHeight - scrollOffset
+      for (const item of sp.items) {
+        if (item.type !== 'table' || item.nodeId !== range.tableId) continue
+        let rowY = item.y
+        for (const row of item.rows || []) {
+          const rowHeight = Math.max(row.height || 24, 24)
+          for (const cell of row.cells) {
+            if (!cell.id || !selected.has(cell.id)) continue
+            const cw = cell.width || 40
+            const ch = cell.height || rowHeight
+            const cellX = item.x + (cell.x || 0)
+            const cellY = spY + rowY
+            ictx.fillRect(cellX, cellY, cw, ch)
+            ictx.strokeRect(cellX + 0.5, cellY + 0.5, cw - 1, ch - 1)
+          }
+          rowY += rowHeight + 1
+        }
+      }
+    }
+    ictx.restore()
   }
 
   /** 查找 SLIF item 所属段落 ID (保留, 供选区渲染使用) */

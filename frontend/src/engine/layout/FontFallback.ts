@@ -95,6 +95,12 @@ export class FontFallback {
    */
   detectMissingGlyphs(text: string, family: string): Set<string> {
     const missing = new Set<string>()
+
+    // jsdom / 无 FontFaceSet 环境: 无法检测, 视为全部存在 (降级为默认字体渲染)
+    if (!document.fonts || typeof document.fonts.check !== 'function') {
+      return missing
+    }
+
     const uniqueChars = new Set([...text])
 
     // 构建字体描述字符串

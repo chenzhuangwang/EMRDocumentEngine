@@ -6,7 +6,7 @@
 // ============================================================
 
 import type { IParticle, RenderOptions } from './IParticle'
-import type { SLIFItem, SLIFRow } from '../../layout/SLIF'
+import type { SLIFItem } from '../../layout/SLIF'
 
 const BORDER_COLOR = '#9CA3AF'
 const HEADER_BG = '#F3F4F6'
@@ -32,75 +32,58 @@ export function createTableParticle(): IParticle {
         y += 20 // 续表标记占位
       }
 
-      // 计算列宽: 优先使用 columnWidths, 否则平均分配
-      const maxCols = Math.max(...rows.map(r => r.cells.length))
-      const colWidths = item.columnWidths && item.columnWidths.length === maxCols
-        ? item.columnWidths
-        : calculateColumnWidths(item.width, maxCols, rows)
-
       let rowY = y
 
       for (const row of rows) {
         const rowHeight = Math.max(row.height || MIN_ROW_HEIGHT, MIN_ROW_HEIGHT)
-        let cellX = x
 
-        for (let ci = 0; ci < row.cells.length; ci++) {
-          const cell = row.cells[ci]
-          const cw = colWidths[ci] || MIN_CELL_WIDTH
+        for (const cell of row.cells) {
+          // 使用 SLIFCell 已算好的合并宽度/高度/起始 x (含 colspan/rowspan, v21.0 Phase 2)
+          const cw = cell.width || MIN_CELL_WIDTH
+          const ch = cell.height || rowHeight
+          const cellX = x + (cell.x || 0)
+          const cellY = rowY
 
           // 背景
           ctx.save()
           if (cell.isHeader) {
             ctx.fillStyle = HEADER_BG
-            ctx.fillRect(cellX, rowY, cw, rowHeight)
+            ctx.fillRect(cellX, cellY, cw, ch)
           } else if (cell.backgroundColor) {
             ctx.fillStyle = cell.backgroundColor
-            ctx.fillRect(cellX, rowY, cw, rowHeight)
+            ctx.fillRect(cellX, cellY, cw, ch)
           }
 
           // 边框
           ctx.strokeStyle = BORDER_COLOR
           ctx.lineWidth = 0.5
-          ctx.strokeRect(cellX + 0.25, rowY + 0.25, cw - 0.5, rowHeight - 0.5)
+          ctx.strokeRect(cellX + 0.25, cellY + 0.25, cw - 0.5, ch - 0.5)
 
-          // 单元格内容 (渲染 cell.items 中的文本)
+          // 单元格内容 (渲染 cell.items 中的文本, 按行内 x / 行 y 定位)
           if (cell.items && cell.items.length > 0) {
             // 裁剪区域
             ctx.beginPath()
-            ctx.rect(cellX + CELL_PADDING, rowY + 2, cw - CELL_PADDING * 2, rowHeight - 4)
+            ctx.rect(cellX + CELL_PADDING, cellY + 2, cw - CELL_PADDING * 2, ch - 4)
             ctx.clip()
 
             for (const ci2 of cell.items) {
-              if (ci2.text) {
-                const font = ci2.font || 'SimSun'
-                const size = ci2.size || 12
-                ctx.font = `${ci2.bold ? 'bold ' : ''}${size}px "${font}"`
-                ctx.fillStyle = ci2.color || '#1F2937'
-                ctx.textBaseline = 'middle'
-                ctx.fillText(ci2.text, cellX + CELL_PADDING, rowY + rowHeight / 2)
-              }
+              if (!ci2.text) continue
+              const font = ci2.font || 'SimSun'
+              const size = ci2.size || 12
+              ctx.font = `${ci2.bold ? 'bold ' : ''}${size}px "${font}"`
+              ctx.fillStyle = ci2.color || '#1F2937'
+              ctx.textBaseline = 'alphabetic'
+              // ci2.y 为行顶 (cell 局部坐标), ascent 为基线相对行顶的偏移
+              const baselineY = cellY + (ci2.y || 0) + (ci2.ascent ?? size * 0.8)
+              ctx.fillText(ci2.text, cellX + CELL_PADDING + (ci2.x || 0), baselineY)
             }
           }
 
           ctx.restore()
-          cellX += cw
         }
 
         rowY += rowHeight + 1  // 1px row gap
       }
     },
   }
-}
-
-/** 计算列宽: 平均分配内容宽度 */
-function calculateColumnWidths(
-  totalWidth: number,
-  numCols: number,
-  _rows: SLIFRow[],
-): number[] {
-  if (numCols === 0) return []
-
-  // 简单均分
-  const width = Math.max(Math.floor(totalWidth / numCols), MIN_CELL_WIDTH)
-  return Array.from({ length: numCols }, () => width)
 }

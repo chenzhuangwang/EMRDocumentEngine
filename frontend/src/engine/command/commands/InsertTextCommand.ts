@@ -57,8 +57,8 @@ export class InsertTextCommand extends PositionalCommand {
           invalidation: 'paragraph',
         }
       }
-      // 样式不同 → 拆分 TextNode + 插入新 TextNode
       if (textNode) {
+        // 样式不同 → 拆分 TextNode + 插入新 TextNode
         const before = textNode.text.slice(0, localOffset)
         const after = textNode.text.slice(localOffset)
         pool.updateNode(textNode.id, { text: before || '' } as Partial<TextNode>)
@@ -71,6 +71,14 @@ export class InsertTextCommand extends PositionalCommand {
           pool.nodes.set(afterNode.id, afterNode)
           pool.insertChild(para.id, afterNode.id, idx + 2)
         }
+      } else {
+        // 悬空引用: textNodeId 指向的节点不在池中 → 清理孤儿 id 后头部插入,
+        // 避免静默吞掉输入 (否则光标 offset 递增但无文字写入)
+        const danglingIdx = para.children.indexOf(textNodeId)
+        if (danglingIdx >= 0) para.children.splice(danglingIdx, 1)
+        const newNode = createTextNode(this.text, style)
+        pool.nodes.set(newNode.id, newNode)
+        pool.insertChild(para.id, newNode.id, 0)
       }
     } else {
       // offset=0 或空段落 → 在 para.children 头部插入

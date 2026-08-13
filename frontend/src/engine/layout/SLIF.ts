@@ -41,6 +41,12 @@ export interface SLIFItem {
   markerWidth?: number
   /** 域类型 (FieldNode.fieldType), 渲染时动态计算值 */
   fieldType?: string
+  /** 所属表格 ID (由 getFlatPageItems 自动填充, 非表格项为 undefined) */
+  ownerTableId?: string
+  /** 单元格下标 (由 getFlatPageItems 自动填充) */
+  cellIndex?: { row: number; col: number }
+  /** 单元格边界矩形 — 文档绝对坐标 (由 getFlatPageItems 自动填充) */
+  cellRect?: { x: number; y: number; width: number; height: number }
 }
 
 export interface SLIFRow {
@@ -49,6 +55,8 @@ export interface SLIFRow {
 }
 
 export interface SLIFCell {
+  /** 单元格节点 ID (cell nodeId), 供 MergeMatrix 命中反查 (v21.0 Phase 1) */
+  id?: string
   x: number; y: number; width: number; height: number
   colspan?: number; rowspan?: number
   isHeader?: boolean
@@ -76,23 +84,31 @@ export interface SLIF {
   pages: SLIFPage[]
 }
 
-/** 将 SLIF 页面的所有 item 展平为绝对坐标列表 (含表格 cell 内嵌项) */
+/** 将 SLIF 页面的所有 item 展平为绝对坐标列表 (含表格 cell 内嵌项 + 嵌套元数据)
+
+  每个展平项挂载:
+  - ownerTableId: 所属表格 ID (非表格项为 undefined)
+  - cellIndex: 单元格下标 {row, col} (非表格项为 undefined)
+  - cellRect: 单元格边界矩形 — 文档绝对坐标 (非表格项为 undefined)
+
+  表格容器 item 本身不进入展平列表, 只包含 cell 内嵌项。 */
 export function getFlatPageItems(page: SLIFPage): SLIFItem[] {
   const result: SLIFItem[] = []
   for (const item of page.items) {
     if (item.type === 'table' && item.rows && item.rows.length > 0) {
-      const maxCols = Math.max(...item.rows.map(r => r.cells.length))
-      const colWidths = item.columnWidths && item.columnWidths.length === maxCols
-        ? item.columnWidths
-        : calcUniformColWidths(item.width, maxCols)
       let rowY = item.y
-      for (const row of item.rows) {
+      for (let ri = 0; ri < item.rows.length; ri++) {
+        const row = item.rows[ri]
         const rowHeight = Math.max(row.height || 24, 24)
-        let cellX = item.x
         for (let ci = 0; ci < row.cells.length; ci++) {
           const cell = row.cells[ci]
-          const cw = colWidths[ci] || 40
+          // 使用 SLIFCell 已算好的合并宽度/起始 x (含 colspan, v21.0 Phase 1)
+          const cw = cell.width || 40
+          const ch = cell.height || rowHeight
+          const cellX = item.x + (cell.x || 0)
           const CELL_PAD = 6
+          // 单元格绝对边界矩形 (文档坐标, 高度含 rowspan 合并)
+          const cellRect = { x: cellX, y: rowY, width: cw, height: ch }
           for (const cellItem of cell.items) {
             result.push({
               ...cellItem,
@@ -100,20 +116,19 @@ export function getFlatPageItems(page: SLIFPage): SLIFItem[] {
               y: rowY + (cellItem.y || 0),
               width: cellItem.width || (cw - CELL_PAD * 2),
               height: cellItem.height || 20,
+              // 嵌套元数据挂载
+              ownerTableId: item.nodeId,
+              cellIndex: { row: ri, col: ci },
+              cellRect,
             })
           }
-          cellX += cw
         }
         rowY += rowHeight + 1
       }
+      // 表格容器 item 不进入展平列表 — 展平后只需单元格内容
+    } else {
+      result.push(item)
     }
-    result.push(item)
   }
   return result
-}
-
-function calcUniformColWidths(totalWidth: number, numCols: number): number[] {
-  if (numCols === 0) return []
-  const w = Math.max(Math.floor(totalWidth / numCols), 40)
-  return Array.from({ length: numCols }, () => w)
 }
