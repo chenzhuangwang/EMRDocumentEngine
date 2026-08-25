@@ -73,6 +73,17 @@ export class NodePool {
     return removedId
   }
 
+  /**
+   * 从父节点 children 中摘除子节点, 但不删除其子树 (区别于 removeChild)。
+   * 供撤销等需要保留子树节点引用 (再单独清理) 的场景使用。
+   */
+  detachChild(parentId: string, index: number): string {
+    const children = this.resolveChildren(parentId)
+    const removedId = children.splice(index, 1)[0]
+    this._structureVersion++
+    return removedId
+  }
+
   moveChild(parentId: string, fromIndex: number, toIndex: number): void {
     const children = this.resolveChildren(parentId)
     const [moved] = children.splice(fromIndex, 1)

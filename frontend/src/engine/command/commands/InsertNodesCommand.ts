@@ -1,21 +1,23 @@
 // ================================================================
-// InsertNodesCommand — 粘贴命令 (v3 精简修复)
+// InsertNodesCommand — 粘贴命令 (v4 就地拼接修复)
 //
 // forward:
 //   1. 光标处拆分当前段落, 右半文本+子节点暂存
-//   2. 反序列化粘贴段落 → 全部注册到 pool → 批量 insertChild
-//   3. 右半追加到最后一个段落后
-//   4. 光标定位到粘贴内容首段
+//   2. 反序列化粘贴段落
+//   3. 首段并入左半 (当前段落) — 单段落粘贴就地追加, 不产生新段落
+//   4. 其余段落作为新段落插入
+//   5. 右半追加到末段
+//   6. 光标定位到粘贴内容末尾
 //
 // 关键修复:
-//   - 简化插入索引: 从 currentPara 位置 +1 开始连续插入
-//   - 右半空文本不再创建新节点
-//   - deserialize 过滤 id/type/children 防止覆盖
+//   - 单段落粘贴: 就地拼接, 不再多出一个空行/新段落
+//   - 多段落粘贴: 首段并入左半, 末段与右半合并, 与标准编辑器语义一致
+//   - 撤销: detachChild 摘除 + createdLeafIds 精确清理, 不误删原始右半节点
 // ================================================================
 
-import type { Paragraph, TextStyle } from '../../document/DocumentModel'
+import type { Paragraph, TextNode, TextStyle, ElementMeta } from '../../document/DocumentModel'
 import {
-  createParagraph, createTextNode, extractStyle,
+  createParagraph, createTextNode, createSmartTextNode, extractStyle,
 } from '../../document/ElementFormatter'
 import { generateId } from '../../document/DocumentModel'
 import {
@@ -23,6 +25,7 @@ import {
   SerializedCommand, PositionalCommand, generateCommandId,
 } from '../ICommand'
 import type { SerializedPara } from '../ClipboardManager'
+import { normalizeParagraph } from './ParagraphUtils'
 
 /** 文本样式字段 (过滤掉 id/type/children) */
 const TEXT_STYLE_KEYS = [
@@ -34,6 +37,8 @@ export class InsertNodesCommand extends PositionalCommand {
   readonly type = 'insert-nodes'
   readonly nodes: SerializedPara[]
   private insertedParaIds: string[] = []
+  /** 本次 forward 新建的叶节点 (文本/smarttext/...) id, 供撤销精确清理 */
+  private createdLeafIds: string[] = []
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -48,9 +53,6 @@ export class InsertNodesCommand extends PositionalCommand {
 
   // undo 快照
   private _snapshot: {
-    rightText: string
-    rightStyle: TextStyle | undefined
-    rightChildren: string[]
     currentParaChildren: string[]
     truncatedTextNodeId: string | null
     originalText: string
@@ -67,18 +69,19 @@ export class InsertNodesCommand extends PositionalCommand {
     const parentId = this.path.length >= 2 ? this.path[this.path.length - 2] : pool.rootIds.body
 
     // ================================================================
-    // Step 1: 光标处拆分当前段落
+    // 撤销快照
     // ================================================================
-    // 先保存撤销快照
     this._snapshot = {
-      rightText: '',
-      rightStyle: undefined,
-      rightChildren: [],
       currentParaChildren: [...currentPara.children],
       truncatedTextNodeId: null,
       originalText: '',
     }
+    this.insertedParaIds = []
+    this.createdLeafIds = []
 
+    // ================================================================
+    // Step 1: 光标处拆分当前段落 → 左半 (currentPara) + 右半 (rightText/rightChildren)
+    // ================================================================
     let rightText = ''
     let rightStyle: TextStyle | undefined
     const rightChildren: string[] = []
@@ -93,7 +96,7 @@ export class InsertNodesCommand extends PositionalCommand {
         rightText = textNode.text.slice(resolved.localOffset)
         // 仅当有右侧文本时才截断原节点
         if (rightText.length > 0) {
-          rightStyle = extractStyle(textNode as unknown as import('../../document/DocumentModel').TextNode)
+          rightStyle = extractStyle(textNode as unknown as TextNode)
           pool.updateNode(resolved.textNodeId,
             { text: textNode.text.slice(0, resolved.localOffset) } as Partial<unknown>)
         }
@@ -106,68 +109,60 @@ export class InsertNodesCommand extends PositionalCommand {
       }
     }
 
-    // 完成快照: 记录拆分后的右侧数据
-    this._snapshot.rightText = rightText
-    this._snapshot.rightStyle = rightStyle
-    this._snapshot.rightChildren = [...rightChildren]
+    // ================================================================
+    // Step 2: 反序列化粘贴段落
+    // ================================================================
+    const pastedParas = this.nodes.map(sn => this.deserializePara(sn, pool))
+    const first = pastedParas[0]
+    const last = pastedParas[pastedParas.length - 1]
 
     // ================================================================
-    // Step 2: 反序列化粘贴段落, 批量插入
+    // Step 3: 首段并入左半 (currentPara) — 单段落粘贴 = 就地追加, 不产生新段
     // ================================================================
-    this.insertedParaIds = []
+    for (const childId of first.children) {
+      currentPara.children.push(childId)
+    }
+    pool.nodes.delete(first.id)  // 首段包装节点已并入 currentPara, 丢弃
+    normalizeParagraph(currentPara, pool)
 
-    // 固定插入位置: currentPara 之后
+    // ================================================================
+    // Step 4: 其余段落作为新段落插入 (currentPara 之后)
+    // ================================================================
     const siblings = [...pool.getChildren(parentId)]
     const baseIdx = siblings.indexOf(currentPara.id)
     let insertAt = baseIdx + 1
-
-    for (const sn of this.nodes) {
-      const newPara = this.deserializePara(sn, pool)
-      this.insertedParaIds.push(newPara.id)
-      pool.insertChild(parentId, newPara.id, insertAt)
+    for (let i = 1; i < pastedParas.length; i++) {
+      pool.insertChild(parentId, pastedParas[i].id, insertAt)
+      this.insertedParaIds.push(pastedParas[i].id)
       insertAt++
     }
 
     // ================================================================
-    // Step 3: 右半追加到最后一个段落
+    // Step 5: 光标定位到粘贴内容末尾 (右半追加之前)
     // ================================================================
-    const lastParaId = this.insertedParaIds[this.insertedParaIds.length - 1]
-    const lastPara = lastParaId ? pool.nodes.get(lastParaId) as Paragraph | undefined : undefined
-
-    if (lastPara && (rightText.length > 0 || rightChildren.length > 0)) {
-      if (rightText.length > 0) {
-        const tn = createTextNode(rightText, rightStyle)
-        pool.nodes.set(tn.id, tn)
-        lastPara.children.push(tn.id)
-      }
-      for (const childId of rightChildren) {
-        lastPara.children.push(childId)
-      }
-    } else if (!lastPara && (rightText.length > 0 || rightChildren.length > 0)) {
-      // 粘贴内容为空 → 右半回退到原段落
-      if (rightText.length > 0) {
-        const tn = createTextNode(rightText, rightStyle)
-        pool.nodes.set(tn.id, tn)
-        currentPara.children.push(tn.id)
-      }
-      for (const childId of rightChildren) {
-        currentPara.children.push(childId)
-      }
+    const cursorPara = pastedParas.length >= 2 ? last : currentPara
+    let cursorOffset = 0
+    for (const cid of cursorPara.children) {
+      const n = pool.nodes.get(cid) as { type?: string; text?: string } | undefined
+      cursorOffset += n?.type === 'text' ? ((n.text || '').length) : 1
     }
 
     // ================================================================
-    // Step 4: 光标定位到粘贴内容末尾 + 清空选区
-    const lastId = this.insertedParaIds[this.insertedParaIds.length - 1] || this.insertedParaIds[0] || currentPara.id
-    const lastPlaced = pool.nodes.get(lastId) as Paragraph | undefined
-    let endOffset = 0
-    if (lastPlaced) {
-      for (const cid of lastPlaced.children) {
-        const n = pool.nodes.get(cid) as { type?: string; text?: string } | undefined
-        endOffset += n?.type === 'text' ? ((n.text || '').length) : 1
-      }
+    // Step 6: 右半追加到末段 (cursorPara)
+    // ================================================================
+    if (rightText.length > 0) {
+      const tn = createTextNode(rightText, rightStyle)
+      pool.nodes.set(tn.id, tn)
+      this.createdLeafIds.push(tn.id)
+      cursorPara.children.push(tn.id)
     }
+    for (const childId of rightChildren) {
+      cursorPara.children.push(childId)
+    }
+    normalizeParagraph(cursorPara, pool)
+
     return {
-      cursor: { paragraphPath: [...this.path.slice(0, -1), lastId], offset: endOffset },
+      cursor: { paragraphPath: [...this.path.slice(0, -1), cursorPara.id], offset: cursorOffset },
       selection: {
         anchor: { paragraphPath: [], offset: 0, visible: false },
         focus: { paragraphPath: [], offset: 0, visible: false },
@@ -181,6 +176,7 @@ export class InsertNodesCommand extends PositionalCommand {
   // 反序列化: 段落 + 子节点 → 注册到 pool
   // 关键: createParagraph/createTextNode 自动生成新 UUID,
   //       禁止从序列化数据中恢复旧 ID, 防止池冲突
+  // 副作用: 新建叶节点 id 记入 createdLeafIds, 供撤销清理
   // ================================================================
   private deserializePara(sn: SerializedPara, pool: import('../../document/NodePool').NodePool): Paragraph {
     const para = createParagraph()
@@ -189,12 +185,23 @@ export class InsertNodesCommand extends PositionalCommand {
     para.children = []
 
     for (const childSn of sn.children) {
-      if (childSn.type === 'text' || childSn.type === 'smarttext') {
+      if (childSn.type === 'smarttext') {
+        // smarttext: 保持结构化字段类型 (避免降级为 text)
+        const style: Record<string, unknown> = {}
+        for (const k of TEXT_STYLE_KEYS) { if (k in childSn) style[k] = childSn[k] }
+        const element = (childSn.element as ElementMeta) ||
+          { code: { internal: '', dataElement: '' }, name: '' }
+        const st = createSmartTextNode((childSn.text as string) || '', element, style as unknown as TextStyle)
+        pool.nodes.set(st.id, st)
+        this.createdLeafIds.push(st.id)
+        para.children.push(st.id)
+      } else if (childSn.type === 'text') {
         const style: Record<string, unknown> = {}
         for (const k of TEXT_STYLE_KEYS) { if (k in childSn) style[k] = childSn[k] }
         const tn = createTextNode((childSn.text as string) || '', style as unknown as TextStyle)
         if (childSn.element) (tn as unknown as Record<string, unknown>).element = childSn.element
         pool.nodes.set(tn.id, tn)
+        this.createdLeafIds.push(tn.id)
         para.children.push(tn.id)
       } else {
         // 非文本: 全字段复制, 但重新生成 ID
@@ -202,6 +209,7 @@ export class InsertNodesCommand extends PositionalCommand {
         delete node.id // 擦除旧 ID
         node.id = generateId() // 新节点 UUID
         pool.nodes.set(node.id as string, node as unknown as import('../../document/DocumentModel').BaseNode)
+        this.createdLeafIds.push(node.id as string)
         para.children.push(node.id as string)
       }
     }
@@ -211,11 +219,11 @@ export class InsertNodesCommand extends PositionalCommand {
   }
 
   invert(_ctx: CommandContext): ICommand | null {
-    if (this.insertedParaIds.length === 0 || !this._snapshot) return null
-    // 返回一个执行反向操作的命令: 删除插入的段落 + 恢复原状
+    if (!this._snapshot) return null
+    // 返回一个执行反向操作的命令: 摘除插入段落 + 清理新建叶节点 + 恢复原状
     return new UndoPasteCommand(
       generateCommandId(), Date.now(), this.author,
-      this.path, this.insertedParaIds, this._snapshot,
+      this.path, this.insertedParaIds, this.createdLeafIds, this._snapshot,
     )
   }
 
@@ -229,7 +237,7 @@ export class InsertNodesCommand extends PositionalCommand {
 }
 
 // ================================================================
-// UndoPasteCommand — 粘贴撤销: 删除插入段落 + 恢复原段落
+// UndoPasteCommand — 粘贴撤销: 摘除插入段落 + 恢复原段落
 // ================================================================
 class UndoPasteCommand implements ICommand {
   readonly type = 'undo-paste'
@@ -238,34 +246,51 @@ class UndoPasteCommand implements ICommand {
   readonly author: string
   private path: string[]
   private paraIds: string[]
+  private createdLeafIds: string[]
   private snapshot: {
     currentParaChildren: string[]
     truncatedTextNodeId: string | null
     originalText: string
   }
 
-  constructor(id: string, ts: number, author: string, path: string[], paraIds: string[], snapshot: { currentParaChildren: string[]; truncatedTextNodeId: string | null; originalText: string }) {
+  constructor(
+    id: string, ts: number, author: string, path: string[],
+    paraIds: string[], createdLeafIds: string[],
+    snapshot: { currentParaChildren: string[]; truncatedTextNodeId: string | null; originalText: string },
+  ) {
     this.id = id; this.timestamp = ts; this.author = author
-    this.path = path; this.paraIds = paraIds; this.snapshot = snapshot
+    this.path = path; this.paraIds = paraIds; this.createdLeafIds = createdLeafIds
+    this.snapshot = snapshot
   }
 
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
     const { pool } = ctx
 
-    // 1. 从 body 中移除所有插入的段落 (从后往前避免索引漂移)
     const parentId = this.path.length >= 2 ? this.path[this.path.length - 2] : pool.rootIds.body
+
+    // 1. 从父节点摘除插入的段落 (detachChild 不删子树, 保留原始右半节点引用)
     const siblings = [...pool.getChildren(parentId)]
-    for (const id of [...this.paraIds].reverse()) {
+    for (const id of this.paraIds) {
       const idx = siblings.indexOf(id)
-      if (idx >= 0) { pool.removeChild(parentId, idx); siblings.splice(idx, 1) }
+      if (idx >= 0) { pool.detachChild(parentId, idx); siblings.splice(idx, 1) }
     }
 
-    // 2. 恢复原段落 children
+    // 2. 删除插入的段落包装节点
+    for (const id of this.paraIds) {
+      pool.nodes.delete(id)
+    }
+
+    // 3. 精确删除本次 forward 新建的叶节点 (已并入 currentPara 的首段子节点 / 右半文本节点)
+    for (const id of this.createdLeafIds) {
+      pool.nodes.delete(id)
+    }
+
+    // 4. 恢复原段落 children
     const currentPara = pool.nodes.get(this.path[this.path.length - 1]) as { children: string[] } | undefined
     if (currentPara) currentPara.children = [...this.snapshot.currentParaChildren]
 
-    // 3. 恢复被截断的文本节点
+    // 5. 恢复被截断的文本节点
     if (this.snapshot.truncatedTextNodeId) {
       pool.updateNode(this.snapshot.truncatedTextNodeId, { text: this.snapshot.originalText } as Partial<unknown>)
     }

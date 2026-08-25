@@ -1,4 +1,4 @@
-import type { DocumentTree, BaseNode, Paragraph } from './document/DocumentModel'
+import type { DocumentTree, BaseNode, Paragraph, TextNode } from './document/DocumentModel'
 import { createDocument, createParagraph, createTextNode, extractStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent, createSmartTextNode } from './document/ElementFormatter'
 import { NodePool, buildNodePool } from './document/NodePool'
 import type { FieldType } from './document/DocumentModel'
@@ -68,6 +68,8 @@ export class Editor {
   private _cellRange: CellRange | null = null
   private listeners: EditorListener[] = []
   private _clickToFocus: (e: MouseEvent) => void
+  private _onWindowFocus: () => void
+  private _onVisibilityChange: () => void
 
   constructor(container: HTMLElement, doc?: DocumentTree) {
     this.container = container
@@ -223,6 +225,15 @@ export class Editor {
       this.handleClick(e)
     }
     container.addEventListener('click', this._clickToFocus)
+
+    // 外部剪贴板同步: 用户切到外部应用复制后回到编辑器,
+    // 焦点/可见性变化时读取系统剪贴板, 覆盖内存里的旧数据。
+    this._onWindowFocus = () => { this.syncExternalClipboard() }
+    this._onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') this.syncExternalClipboard()
+    }
+    window.addEventListener('focus', this._onWindowFocus)
+    document.addEventListener('visibilitychange', this._onVisibilityChange)
 
     // 格式刷 mouseup: 拖拽选区预览后松手应用格式 (优于 click 因为 mouseup 先触发)
     container.addEventListener('mouseup', this._onMouseUp)
@@ -549,6 +560,16 @@ export class Editor {
     this.notifyListeners('contentChange', this.doc)
   }
 
+  /** 创建一个空段落 (空 text 节点 + 段落) 并注册进 pool, 返回段落 id。
+   *  用于非段落块 (表格/分隔线/分节符) 之后, 保证光标可定位到该块之后继续书写。 */
+  private createTrailingParagraph(): string {
+    const text = createTextNode('')
+    const para = createParagraph([text.id])
+    this.pool.nodes.set(text.id, text)
+    this.pool.nodes.set(para.id, para)
+    return para.id
+  }
+
   /** 在光标所在段落后插入分隔线 (TASK-462) */
   insertSeparator(): void {
     const cursor = this.store.state.runtime.cursor
@@ -562,15 +583,12 @@ export class Editor {
     this.pool.nodes.set(sep.id, sep)
     this.doc.body.children.splice(idx + 1, 0, sep.id)
 
-    // 光标移到分隔线后的下一段 (如果有)
-    const newBody = this.doc.body.children
-    const nextParaId = newBody[idx + 2] // 跳过刚插入的 separator
-    if (nextParaId) {
-      const nextPara = this.pool.nodes.get(nextParaId)
-      if (nextPara && (nextPara as { type?: string }).type === 'paragraph') {
-        setCursor(this.store, [this.doc.id, nextParaId], 0)
-      }
-    }
+    // 分隔线后创建空段落, 确保光标可定位到分隔线之后继续书写 (与 insertTable 一致)
+    const trailParaId = this.createTrailingParagraph()
+    this.doc.body.children.splice(
+      this.doc.body.children.indexOf(sep.id) + 1, 0, trailParaId,
+    )
+    setCursor(this.store, [this.doc.id, trailParaId], 0)
 
     this.draw.recomputeLayout(this.pool)
     this.draw.render(this.pool, this.store.state.runtime)
@@ -648,12 +666,33 @@ export class Editor {
     if (para?.children) {
       const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
       if (resolved) {
+        const target = this.pool.nodes.get(resolved.textNodeId)
         const idx = para.children.indexOf(resolved.textNodeId)
-        para.children.splice(idx + 1, 0, imgNode.id)
+        if (target && (target as { type?: string }).type === 'text') {
+          const text = (target as unknown as { text: string }).text
+          const lo = resolved.localOffset
+          if (lo > 0 && lo < text.length) {
+            // 光标在文本中间 → 拆分文本, 图片插入拆分点
+            const afterNode = createTextNode(text.slice(lo), extractStyle(target as unknown as TextNode))
+            this.pool.nodes.set(afterNode.id, afterNode)
+            this.pool.updateNode(target.id, { text: text.slice(0, lo) } as Partial<TextNode>)
+            para.children.splice(idx + 1, 0, imgNode.id, afterNode.id)
+          } else {
+            // 光标在文本首/尾 → 图片插到文本前/后
+            para.children.splice(idx + (lo === 0 ? 0 : 1), 0, imgNode.id)
+          }
+        } else {
+          // 内联非文本节点 (image/field/footnote_ref) → localOffset 0=前, 1=后
+          para.children.splice(idx + (resolved.localOffset >= 1 ? 1 : 0), 0, imgNode.id)
+        }
       } else {
         para.children.push(imgNode.id)
       }
     }
+
+    // 光标移到图片之后 (图片占 1 字符), 使后续输入落在图片之后而非之前
+    const afterOffset = this.pool.getCharOffset(paraId, imgNode.id, 1)
+    setCursor(this.store, [this.doc.id, paraId], afterOffset)
 
     this.draw.recomputeLayout(this.pool)
     this.draw.render(this.pool, this.store.state.runtime)
@@ -1359,6 +1398,25 @@ export class Editor {
         }
       }
     } catch { /* 权限拒绝或非 HTTPS, 忽略 */ }
+  }
+
+  /**
+   * 同步系统剪贴板 → 内存剪贴板 (焦点/可见性变化时调用)。
+   *
+   * 场景: 用户在编辑器内复制后, 又到外部应用复制了新内容, 回到编辑器粘贴。
+   * 此时系统剪贴板已被外部改写, 但内存剪贴板仍是旧数据。通过对比两者的
+   * 纯文本, 若不一致则用系统剪贴板内容覆盖内存, 使粘贴得到最新外部内容。
+   */
+  private syncExternalClipboard(): void {
+    try {
+      if (!navigator.clipboard?.readText) return
+      navigator.clipboard.readText().then((text) => {
+        if (text && text !== this.clipboard.getPlainText()) {
+          this.clipboard.setPlainText(text)
+          console.debug('[Clipboard] external clipboard synced from system')
+        }
+      }).catch(() => { /* 权限拒绝或非安全上下文, 忽略 */ })
+    } catch { /* 忽略 */ }
   }
 
   /** 切换文本样式 (bold/italic/underline) → FormatTextCommand, 支持选区 */
@@ -2109,6 +2167,7 @@ export class Editor {
     const breakId = generateCommandId()
     const breakNode: BaseNode = {
       type: 'section_break' as const, id: breakId,
+      breakType: 'next_page' as const,
       nextPageSetup: { ...this.doc.pageSetup },
     } as unknown as BaseNode
     this.pool.nodes.set(breakId, breakNode)
@@ -2120,6 +2179,13 @@ export class Editor {
     } else {
       this.doc.body.children.push(breakId)
     }
+
+    // 分节符后创建空段落, 光标落到新页/新节, 确保可继续书写 (与 insertTable 一致)
+    const trailParaId = this.createTrailingParagraph()
+    this.doc.body.children.splice(
+      this.doc.body.children.indexOf(breakId) + 1, 0, trailParaId,
+    )
+    setCursor(this.store, [this.doc.id, trailParaId], 0)
 
     this.draw.recomputeLayout(this.pool)
     this.draw.render(this.pool, this.store.state.runtime)
@@ -2133,6 +2199,8 @@ export class Editor {
     this.listeners = []
     this.container.removeEventListener('click', this._clickToFocus)
     this.container.removeEventListener('mouseup', this._onMouseUp)
+    window.removeEventListener('focus', this._onWindowFocus)
+    document.removeEventListener('visibilitychange', this._onVisibilityChange)
     this.keyboardHandler.destroy()
     this.mouseHandler.destroy()
     this.inputComposer.destroy()

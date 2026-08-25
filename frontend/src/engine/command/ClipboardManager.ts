@@ -14,6 +14,7 @@ import type { DocumentTree } from '../document/DocumentModel'
 import type { NodePool } from '../document/NodePool'
 import { generateCommandId } from './ICommand'
 import { generateId } from '../document/DocumentModel'
+import { resolveCellPosition } from '../state/CaretScope'
 
 // ---- 类型 ----
 
@@ -42,6 +43,11 @@ export class ClipboardManager {
 
   hasData(): boolean { return this.data !== null }
 
+  /** 内存剪贴板的纯文本表示 (null 表示无数据) — 供外部剪贴板同步对比 */
+  getPlainText(): string | null {
+    return this.data?.plainText ?? null
+  }
+
   /**
    * 复制: 遍历选区范围内的段落 → 按 offset 裁剪 → 深度克隆
    *
@@ -57,11 +63,30 @@ export class ClipboardManager {
   ): void {
     if (anchorPath.length === 0 || focusPath.length === 0) return
 
-    const bodyChildren = pool.getChildren(pool.rootIds.body)
     const aId = anchorPath[anchorPath.length - 1]
     const fId = focusPath[focusPath.length - 1]
-    const aIdx = bodyChildren.indexOf(aId)
-    const fIdx = bodyChildren.indexOf(fId)
+
+    // 检测 scope: body / cell (与 deleteSelectedRange 的选区域判定一致)
+    const aCell = resolveCellPosition(aId, pool)
+    const fCell = resolveCellPosition(fId, pool)
+
+    // 跨域选区禁止复制 (body↔cell, 或不同 cell)
+    if ((aCell && !fCell) || (!aCell && fCell)) return
+    if (aCell && fCell && (aCell.tableId !== fCell.tableId || aCell.row !== fCell.row || aCell.col !== fCell.col)) return
+
+    // 选区段落列表: cell 内用 cell.children, body 用 body.children
+    let siblings: readonly string[]
+    if (aCell) {
+      const tableNode = pool.nodes.get(aCell.tableId) as { children?: string[] } | undefined
+      const rowNode = tableNode ? pool.nodes.get(tableNode.children?.[aCell.row] || '') as { children?: string[] } | undefined : undefined
+      const cellNode = rowNode ? pool.nodes.get(rowNode.children?.[aCell.col] || '') as { children?: string[] } | undefined : undefined
+      siblings = cellNode?.children ?? []
+    } else {
+      siblings = pool.getChildren(pool.rootIds.body)
+    }
+
+    const aIdx = siblings.indexOf(aId)
+    const fIdx = siblings.indexOf(fId)
     if (aIdx < 0 || fIdx < 0) return
 
     const lo = Math.min(aIdx, fIdx)
@@ -74,7 +99,7 @@ export class ClipboardManager {
     const plainParts: string[] = []
 
     for (let pi = lo; pi <= hi; pi++) {
-      const paraId = bodyChildren[pi]
+      const paraId = siblings[pi]
       if (!paraId) continue
       const para = pool.nodes.get(paraId) as unknown as Record<string, unknown> | undefined
       if (!para || para.type !== 'paragraph') continue
@@ -145,11 +170,13 @@ export class ClipboardManager {
       const child = pool.nodes.get(childId) as unknown as Record<string, unknown> | undefined
       if (!child) continue
 
-      // 计算该 child 的偏移区间 [itemStart, itemEnd)
+      const isText = child.type === 'text'
+
+      // 计算该 child 的偏移区间 [itemStart, itemEnd):
+      // 仅 text 按字符长度计, 其余 (含 smarttext/image/field) 占 1 偏移单位,
+      // 与 resolveCharOffset / getParagraphLength 的权威语义保持一致。
       const itemStart = charOffset
-      const itemEnd = itemStart + (child.type === 'text' || child.type === 'smarttext'
-        ? ((child.text as string) || '').length
-        : 1) // 非文本节点占 1 偏移单位
+      const itemEnd = itemStart + (isText ? ((child.text as string) || '').length : 1)
 
       // 交集判断: [itemStart, itemEnd) 与 [lo, hi) 无重叠 → 跳过
       if (itemEnd <= lo || itemStart >= hi) {
@@ -159,14 +186,15 @@ export class ClipboardManager {
       }
       console.debug(`[Clipboard] HIT  child type=${child.type} [${itemStart},${itemEnd}) vs [${lo},${hi})`)
 
-      if (child.type === 'text' || child.type === 'smarttext') {
+      if (isText) {
+        // 文本节点: 按偏移裁剪
         const fullText = (child.text as string) || ''
         const len = fullText.length
         const localS = Math.max(0, lo - itemStart)   // 截取起点 (相对)
         const localE = Math.min(len, hi - itemStart)  // 截取终点 (相对)
         const clippedText = fullText.slice(localS, localE)
 
-        const cc: SerializedChild = { type: child.type as string, id: generateId(), text: clippedText }
+        const cc: SerializedChild = { type: 'text', id: generateId(), text: clippedText }
         for (const k of ['font', 'size', 'bold', 'italic', 'underline', 'underlineStyle',
           'strikeout', 'color', 'highlight', 'superscript', 'subscript', 'letterSpacing']) {
           if (k in child) cc[k] = child[k]
@@ -174,8 +202,16 @@ export class ClipboardManager {
         if (child.element) cc.element = child.element
         sp.children.push(cc)
         plainText += clippedText
+      } else if (child.type === 'smarttext') {
+        // smarttext: 原子节点, 整体克隆 (不裁剪 text), 显示值计入 plainText
+        const cc: SerializedChild = { type: 'smarttext', id: generateId() }
+        for (const k of Object.keys(child)) {
+          if (k !== 'id' && k !== 'metadata') cc[k] = child[k]
+        }
+        sp.children.push(cc)
+        plainText += (child.text as string) || ''
       } else {
-        // 非文本节点: 有交集 → 完整克隆
+        // 其他非文本节点 (image/field/footnote_ref/...): 有交集 → 完整克隆
         const cc: SerializedChild = { type: child.type as string, id: generateId() }
         for (const k of Object.keys(child)) {
           if (k !== 'id' && k !== 'metadata') cc[k] = child[k]
