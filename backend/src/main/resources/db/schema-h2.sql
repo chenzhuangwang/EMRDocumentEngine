@@ -10,17 +10,20 @@ CREATE TABLE IF NOT EXISTS t_user (
 );
 
 CREATE TABLE IF NOT EXISTS t_document (
-    id          VARCHAR(64)  PRIMARY KEY,
-    title       VARCHAR(255) NOT NULL,
-    template_id VARCHAR(64),
-    content     TEXT         NOT NULL,
-    status      VARCHAR(20)  DEFAULT 'draft',
-    version     INT          DEFAULT 1,
-    deleted     TINYINT      DEFAULT 0,
-    created_by  VARCHAR(64)  NOT NULL,
-    updated_by  VARCHAR(64),
-    created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-    updated_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+    id             VARCHAR(64)  PRIMARY KEY,
+    title          VARCHAR(255) NOT NULL,
+    template_id    VARCHAR(64),
+    content        TEXT         NOT NULL,
+    model_version  VARCHAR(10)  DEFAULT '4.0.0',
+    encryption_key VARCHAR(512),
+    kek_version    INT          DEFAULT 1,
+    status         VARCHAR(20)  DEFAULT 'draft',
+    version        INT          DEFAULT 1,
+    deleted        TINYINT      DEFAULT 0,
+    created_by     VARCHAR(64)  NOT NULL,
+    updated_by     VARCHAR(64),
+    created_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS t_template (

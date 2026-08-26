@@ -97,7 +97,8 @@ public class DocumentService {
             versionRepository.insert(version);
 
             doc.setContent(req.getContent());
-            doc.setVersion(doc.getVersion() + 1);
+            // 版本号由 OptimisticLockerInnerInterceptor 自动 +1, 此处勿手动递增,
+            // 否则 WHERE version 永远比库中当前值大 1, updateById 影响 0 行 (乐观锁失效)。
         }
         if (req.getStatus() != null) {
             doc.setStatus(req.getStatus());
