@@ -153,96 +153,85 @@ export class Draw {
   // 光标坐标计算 — 共享方法, render() 和 getCaretClientRect() 复用
   //
   // 支持正文 body items + 页眉 headerItems + 页脚 footerItems
-  // 关键保护: 找不到目标段落包围盒时, 回退到上次已知正确位置,
-  // 绝不跳转到文档左上角 (offsetX+90, 72)
+  //
+  // 关键设计 (修复滚动时光标偏移 / 跳位 — 见 cheerful-snacking-hamming 方案):
+  //   1. 遍历所有页面查找光标所属段落 (而非仅 visible 范围)。
+  //      这消除了 getVisiblePages 无 overscan + LayeredRenderer 画布有 OVERSCAN_PAGES=1
+  //      导致的不一致 — 旧版本下, 光标所在页落在画布 overscan 区但不在 visible 范围时,
+  //      会回退到陈旧的 canvas-Y, 引发滚动时偏移与跳位。
+  //   2. 直接使用 this.coordSystem.transform.scrollY 计算 canvas-Y:
+  //      canvas-Y = doc-Y - scrollY。scrollY 始终反映真实滚动位置, 无需维护缓存。
+  //   3. 找不到目标段落时返回 null — 由调用方决定是否绘制,
+  //      不再使用 lastCaretPos 缓存, 避免陈旧坐标污染。
   // ================================================================
-  private lastCaretPos: CaretPos = { x: 90, y: 72, h: 16 }
-
   private computeCaretPos(
     pool: NodePool,
     paragraphPath: string[],
     offset: number,
-    _offsetX: number,
-    visible: { start: number; end: number },
-    pageHeight: number,
-    scrollOffset: number,
     pageVerticalGap: number = 0,
-  ): CaretPos {
+  ): CaretPos | null {
     const paraId = paragraphPath[paragraphPath.length - 1]
     const para = pool.nodes.get(paraId) as unknown as { children: string[] } | undefined
-    const initialX = this.lastCaretPos.x
-    const initialY = this.lastCaretPos.y
+    if (!para) return null
 
-    let caretX = this.lastCaretPos.x
-    let caretY = this.lastCaretPos.y
-    let caretH = this.lastCaretPos.h
-    let found = false
+    // 文档空间滚动位置 — 直接读取, 每次都准确反映当前滚动
+    const scrollY = this.coordSystem.transform.scrollY
+
+    // 判断该段落属于 body / header / footer 哪个区域
+    const section = this.resolveParagraphSection(paraId)
     let charCount = 0
 
-    if (para) {
-      // 判断该段落属于 body / header / footer 哪个区域
-      const section = this.resolveParagraphSection(paraId)
+    // 遍历所有页面查找 (而非 visible.start..visible.end) — 避免与画布 overscan 不一致
+    for (let i = 0; i < this.pages.length; i++) {
+      const page = this.pages[i]
+      if (!page) continue
+      // 每页 canvas Y = 该页累加文档 Y (含 pageVerticalGap) - 当前 scrollY
+      const pageY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
 
-      // 可见首页的累加 Y, 含分页间隙 (pageVerticalGap)
-      const visibleStartDocY = accumulatedHeightTo(visible.start, this.pages, pageVerticalGap)
+      // 选择搜索的 item 列表
+      let searchItems: SLIFItem[]
+      let yOffset = 0
+      if (section === 'header') {
+        searchItems = page.headerItems || []
+        yOffset = 0 // 页眉区从 pageY+0 开始
+      } else if (section === 'footer') {
+        searchItems = page.footerItems || []
+        yOffset = page.height - (page.footerHeight || 42) // 页脚区从页面底部偏移
+      } else {
+        searchItems = getFlatPageItems(page)
+        yOffset = 0
+      }
 
-      for (let i = visible.start; i <= visible.end; i++) {
-        const page = this.pages[i]
-        if (!page) continue
-        // 每页 canvas Y = 自身累加顶部 (含间隙) - 当前 scrollY
-        const pageY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - (visibleStartDocY + scrollOffset)
-
-        // 选择搜索的 item 列表
-        let searchItems: SLIFItem[]
-        let yOffset = 0
-        if (section === 'header') {
-          searchItems = page.headerItems || []
-          yOffset = 0 // 页眉区从 pageY+0 开始
-        } else if (section === 'footer') {
-          searchItems = page.footerItems || []
-          yOffset = pageHeight - (page.footerHeight || 42) // 页脚区从页面底部偏移
-        } else {
-          searchItems = getFlatPageItems(page)
-          yOffset = 0
-        }
-
-        for (const item of searchItems) {
-          if (para.children.includes(item.nodeId) || item.nodeId === paraId) {
-            const textLen = item.text?.length || 0
-            // item.x 已偏移过标记宽度, cursor offset 是正文内偏移, 无需调整
-            if (offset <= charCount + textLen) {
-              const localOff = offset - charCount
-              // 逐字符累积宽度: 正确区分半角/全角字符, 避免中英文混排光标偏移
-              const cumWidth = cumulativeWidthUpTo(item.text || '', localOff, {
-                font: item.font || 'SimSun',
-                size: item.size || 16,
-                bold: item.bold,
-                italic: item.italic,
-              })
-              caretX = item.x + cumWidth
-              caretY = pageY + yOffset + item.y
-              caretH = item.ascent + item.descent
-              found = true
-              break
+      for (const item of searchItems) {
+        if (para.children.includes(item.nodeId) || item.nodeId === paraId) {
+          const textLen = item.text?.length || 0
+          // item.x 已偏移过标记宽度, cursor offset 是正文内偏移, 无需调整
+          if (offset <= charCount + textLen) {
+            const localOff = offset - charCount
+            // 逐字符累积宽度: 正确区分半角/全角字符, 避免中英文混排光标偏移
+            const cumWidth = cumulativeWidthUpTo(item.text || '', localOff, {
+              font: item.font || 'SimSun',
+              size: item.size || 16,
+              bold: item.bold,
+              italic: item.italic,
+            })
+            return {
+              x: item.x + cumWidth,
+              y: pageY + yOffset + item.y,
+              h: item.ascent + item.descent,
             }
-            charCount += textLen
           }
+          charCount += textLen
         }
-        if (found) break
       }
     }
 
-    if (found) {
-      this.lastCaretPos = { x: caretX, y: caretY, h: caretH }
-    } else {
-      // 布局未就绪 → 保持上次位置, 不跳转文档起点
-      console.debug(
-        `[computeCaretPos] para=${paraId} offset=${offset} NOT FOUND in SLIF pages, ` +
-        `keeping lastCaretPos=(${initialX}, ${initialY})`
-      )
-    }
-
-    return { x: caretX, y: caretY, h: caretH }
+    // 段落不在任何页 — 布局未就绪或 cursor.path 已失效
+    // 返回 null 让调用方决定跳过绘制, 不再用陈旧的 lastCaretPos
+    console.debug(
+      `[computeCaretPos] para=${paraId} offset=${offset} NOT FOUND in SLIF pages`,
+    )
+    return null
   }
 
   /**
@@ -536,33 +525,34 @@ export class Draw {
     // --- 选区高亮 (文字下方, 统一包围盒) ---
     const selection = runtimeState.selection
     if (selection.active) {
-      this.renderSelectionUnified(pool, selection, offsetX / scale, visible, pageHeight, scrollOffset, pageVerticalGap, ictx)
+      this.renderSelectionUnified(pool, selection, pageVerticalGap, ictx)
     }
 
     // --- 单元格框选高亮 (文字下方) ---
     if (this.cellSelection) {
-      this.renderCellSelection(pool, this.cellSelection, visible, pageHeight, scrollOffset, pageVerticalGap, ictx)
+      this.renderCellSelection(pool, this.cellSelection, pageVerticalGap, ictx)
     }
 
     // --- 光标 (文字上方, 仅在 visible 时绘制) ---
     if (cursor.visible) {
-      const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX / scale, visible, pageHeight, scrollOffset, pageVerticalGap)
-      ictx.fillStyle = '#000000'
-      ictx.fillRect(caret.x, caret.y, 2, caret.h)
+      const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, pageVerticalGap)
+      if (caret) {
+        ictx.fillStyle = '#000000'
+        ictx.fillRect(caret.x, caret.y, 2, caret.h)
+      }
     }
   }
 
   // ================================================================
   // 选区渲染 — 逐 SLIF item 独立底色, 每行宽度跟随内容 (阶梯样式)
   // 首段/末段按 offset 裁剪, 中间段全画
+  //
+  // 修复滚动选区偏移 (cheerful-snacking-hamming 方案):
+  //   遍历所有页面 (而非 visible 范围), 保证 anchor/focus 所在的所有页面都能正确绘制选区。
   // ================================================================
   private renderSelectionUnified(
     pool: NodePool,
     selection: EditorRuntimeState['selection'],
-    _offsetX: number,
-    visible: { start: number; end: number },
-    _pageHeight: number,
-    scrollOffset: number,
     pageVerticalGap: number = 0,
     ictx: CanvasRenderingContext2D,
   ): void {
@@ -589,14 +579,15 @@ export class Draw {
 
     ictx.fillStyle = 'rgba(59, 130, 246, 0.2)'
 
-    // 可见首页的累加 Y (含分页间隙)
-    const visibleStartDocY = accumulatedHeightTo(visible.start, this.pages, pageVerticalGap)
+    // 当前文档滚动位置 — 直接读取, 与 computeCaretPos 同源
+    const scrollY = this.coordSystem.transform.scrollY
 
-    for (let i = visible.start; i <= visible.end; i++) {
+    // 遍历所有页面 — 选区可能跨越 visible 之外的页面
+    for (let i = 0; i < this.pages.length; i++) {
       const sp = this.pages[i]
       if (!sp) continue
-      // 每页 canvas Y = 自身累加顶部 - 当前 scrollY
-      const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - (visibleStartDocY + scrollOffset)
+      // 每页 canvas Y = 该页累加文档 Y (含间隙) - 当前 scrollY
+      const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
       for (const item of sp.items) {
         const itemParaId = this.findItemParagraph(item.nodeId, pool)
         if (!itemParaId) continue
@@ -662,13 +653,12 @@ export class Draw {
     }
   }
 
-  /** 渲染单元格框选高亮 — 高亮范围内 (起始网格坐标落在矩形内) 的单元格 */
+  /** 渲染单元格框选高亮 — 高亮范围内 (起始网格坐标落在矩形内) 的单元格
+   *  遍历所有页面 — 选区可能跨越 visible 之外的页面 (cheerful-snacking-hamming 方案)
+   */
   private renderCellSelection(
     pool: NodePool,
     range: { tableId: string; startRow: number; startCol: number; endRow: number; endCol: number },
-    visible: { start: number; end: number },
-    _pageHeight: number,
-    scrollOffset: number,
     pageVerticalGap: number = 0,
     ictx: CanvasRenderingContext2D,
   ): void {
@@ -688,14 +678,14 @@ export class Draw {
     ictx.strokeStyle = 'rgba(37, 99, 235, 0.85)'
     ictx.lineWidth = 1.5
 
-    // 可见首页的累加 Y (含分页间隙)
-    const visibleStartDocY = accumulatedHeightTo(visible.start, this.pages, pageVerticalGap)
+    // 当前文档滚动位置 — 直接读取
+    const scrollY = this.coordSystem.transform.scrollY
 
-    for (let i = visible.start; i <= visible.end; i++) {
+    for (let i = 0; i < this.pages.length; i++) {
       const sp = this.pages[i]
       if (!sp) continue
-      // 每页 canvas Y = 自身累加顶部 - 当前 scrollY
-      const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - (visibleStartDocY + scrollOffset)
+      // 每页 canvas Y = 该页累加文档 Y (含间隙) - 当前 scrollY
+      const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
       for (const item of sp.items) {
         if (item.type !== 'table' || item.nodeId !== range.tableId) continue
         let rowY = item.y
@@ -779,21 +769,15 @@ export class Draw {
     if (this.pages.length === 0) return null
 
     const viewportW = this.container.clientWidth
-    const viewportH = this.container.clientHeight
     const scale = this.coordSystem.transform.scale
-    const scrollY = this.coordSystem.transform.scrollY  // 文档坐标 (含分页间隙)
-    const docViewportH = viewportH / scale
-    const visible = this.layoutEngine.getVisiblePages(scrollY, docViewportH)
     const pageWidth = this.pages[0]?.width || 794
-    const pageHeight = this.pages[0]?.height || 1123
     const visiblePageW = pageWidth * scale
     const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
     // 分页间隙 — 与 Draw.render() 同源, 保证光标 / 鼠标命中在同一坐标系
     const pageVerticalGap = this.renderer.getPageVerticalGap()
-    const visibleStartDocY = accumulatedHeightTo(visible.start, this.pages, pageVerticalGap)
-    const scrollOffset = scrollY - visibleStartDocY
 
-    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX / scale, visible, pageHeight, scrollOffset, pageVerticalGap)
+    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, pageVerticalGap)
+    if (!caret) return null
 
     const canvas = this.renderer.getInteractCanvas()
     const canvasRect = canvas?.getBoundingClientRect() ?? this.container.getBoundingClientRect()
