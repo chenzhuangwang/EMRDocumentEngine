@@ -1,0 +1,16 @@
+#!/bin/sh
+echo "执行成功时间：$(date)" > D:/post-push-ran.txt
+GOCD_SERVER="139.196.151.15:8153"
+REPO_URL="https://gitee.com/wangwang_1_1665527118/emrdocument-engine.git"
+
+# 后台等待推送完成 → 再通知 GoCD
+(
+    # 等待 push 结束
+    read
+    curl -X POST "http://$GOCD_SERVER/go/api/admin/materials/git/notify" \
+      -H "Accept: application/vnd.go.cd.v2+json" \
+      -H "Content-Type: application/json" \
+      -d "{\"repository_url\":\"$REPO_URL\"}"
+) &
+
+echo "✅ 已通知 GoCD 更新代码"
