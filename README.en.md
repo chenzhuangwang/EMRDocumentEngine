@@ -1,5 +1,7 @@
 # EMR Document Editor Engine
 
+> 🚀 Live Demo: <http://139.196.151.15/>
+
 ## 📋 Project Introduction
 
 The EMR Document Editor Engine is a professional Electronic Medical Record (EMR) document editing system, providing complete document creation, editing, template management, and collaboration features. The system adopts a separation of front-end and back-end architecture. The front-end is based on Canvas rendering technology for high-performance document editing, while the back-end is built with Spring Boot + MyBatis-Plus, providing RESTful APIs and WebSocket real-time collaboration support.
@@ -21,9 +23,12 @@ The EMR Document Editor Engine is a professional Electronic Medical Record (EMR)
 - **Framework**: React 18 + TypeScript
 - **Build Tool**: Vite
 - **Styling Solution**: Tailwind CSS
-- **State Management**: Redux Toolkit
+- **State Management**: Zustand
+- **UI Components**: Radix UI + Lucide icons
 - **HTTP Client**: Axios
 - **Rendering Engine**: Self-developed HTML5 Canvas renderer
+- **Real-time Collaboration**: Yjs + y-websocket
+- **Formula Rendering**: KaTeX
 - **Event System**: Custom event bus
 
 ### Backend Technologies
@@ -32,37 +37,25 @@ The EMR Document Editor Engine is a professional Electronic Medical Record (EMR)
 - **Data Access**: MyBatis-Plus
 - **Security Framework**: Spring Security + JWT
 - **Real-time Communication**: WebSocket (Spring Boot)
-- **Database**: MySQL 8.0+
+- **Cache**: Redis (spring-boot-starter-data-redis)
+- **API Docs**: Springdoc OpenAPI (Swagger)
+- **Database**: MySQL 8.0+ (H2 for tests)
+- **Utilities**: Lombok + Bean Validation
 
 ## 📁 Project Structure
 
 ```
-emr-document-engine/
+EMRDocumentEngine/
 ├── backend/                    # Backend Service
 │   ├── src/main/java/com/emr/
-│   │   ├── config/            # Configuration Classes
-│   │   │   ├── SecurityConfig.java     # Security Configuration
-│   │   │   ├── WebSocketConfig.java    # WebSocket Configuration
-│   │   │   └── MybatisPlusConfig.java  # MyBatis-Plus Configuration
+│   │   ├── config/            # Configuration Classes (Security, WebSocket, MyBatis-Plus, etc.)
 │   │   ├── controller/        # Controller Layer
-│   │   │   ├── AuthController.java     # Authentication Interfaces
-│   │   │   ├── DocumentController.java # Document Management Interfaces
-│   │   │   └── TemplateController.java # Template Management Interfaces
-│   │   ├── service/           # Business Logic Layer
-│   │   │   ├── AuthService.java
-│   │   │   ├── DocumentService.java
-│   │   │   └── TemplateService.java
+│   │   ├── service/           # Business Logic Layer (incl. impl/)
 │   │   ├── entity/            # Entity Classes
-│   │   │   ├── Document.java
-│   │   │   ├── Template.java
-│   │   │   ├── User.java
-│   │   │   ├── Annotation.java
-│   │   │   ├── AuditLog.java
-│   │   │   └── DocumentVersion.java
 │   │   ├── repository/        # Data Access Layer
 │   │   ├── dto/               # Data Transfer Objects
-│   │   └── util/              # Utility Classes
-│   │       └── JwtUtil.java
+│   │   ├── util/              # Utility Classes
+│   │   └── websocket/         # WebSocket Real-time Collaboration
 │   └── resources/
 │       └── application.yml    # Application Configuration
 │
@@ -70,40 +63,45 @@ emr-document-engine/
 │   ├── src/
 │   │   ├── components/        # React Components
 │   │   │   ├── editor/        # Editor Core Components
-│   │   │   │   └── EditorProvider.tsx
-│   │   │   └── layout/        # Layout Components
-│   │   │       ├── EditorLayout.tsx
-│   │   │       ├── HeaderBar.tsx
-│   │   │       ├── Sidebar.tsx
-│   │   │       ├── Toolbar.tsx
-│   │   │       ├── PropertiesPanel.tsx
-│   │   │       └── StatusBar.tsx
+│   │   │   ├── layout/        # Layout Components
+│   │   │   ├── panels/        # Property Panels
+│   │   │   ├── sidebar/       # Sidebar
+│   │   │   ├── toolbar/       # Toolbar
+│   │   │   ├── dialogs/       # Dialogs
+│   │   │   ├── views/         # View Components
+│   │   │   └── ui/            # Base UI Components
 │   │   ├── engine/            # Editor Engine Core
 │   │   │   ├── Editor.ts              # Main Editor Class
 │   │   │   ├── EventBus.ts            # Event Bus
+│   │   │   ├── AutoSaveManager.ts     # Auto Save
+│   │   │   ├── DocumentDiffer.ts      # Document Diff
+│   │   │   ├── FindReplaceEngine.ts   # Find & Replace
+│   │   │   ├── command/               # Command System (undo/redo)
 │   │   │   ├── document/              # Document Model
-│   │   │   │   ├── DocumentModel.ts
-│   │   │   │   └── ElementFormatter.ts
 │   │   │   ├── render/                # Rendering Module
-│   │   │   │   └── Draw.ts
 │   │   │   ├── layout/                # Layout Engine
-│   │   │   │   └── TextMeasurer.ts
-│   │   │   └── state/                 # State Management
-│   │   │       ├── HistoryManager.ts
-│   │   │       └── Position.ts
+│   │   │   ├── interaction/           # Interaction Handling
+│   │   │   ├── state/                 # State Management
+│   │   │   ├── plugins/               # Plugin System
+│   │   │   ├── qc/                    # Quality Control
+│   │   │   ├── security/              # Security Module
+│   │   │   ├── loaders/               # Loaders
+│   │   │   ├── i18n/                  # Internationalization
+│   │   │   └── __tests__/             # Engine Unit Tests
 │   │   ├── pages/             # Page Components
-│   │   │   ├── EditorPage.tsx
-│   │   │   └── HomePage.tsx
 │   │   ├── services/          # API Services
-│   │   │   └── api.ts
-│   │   ├── store/             # State Store
-│   │   │   └── index.ts
+│   │   ├── store/             # Global State (Zustand)
+│   │   ├── hooks/             # Custom Hooks
+│   │   ├── lib/               # Utility Functions
+│   │   ├── types/             # Type Definitions
 │   │   ├── App.tsx
 │   │   └── main.tsx
 │   ├── index.html
 │   ├── package.json
 │   ├── vite.config.ts
-│   └── tailwind.config.ts
+│   ├── tailwind.config.ts
+│   ├── Dockerfile            # Frontend Containerization
+│   └── nginx.conf            # Nginx Configuration
 │
 ├── output/                     # Document Output Directory
 │   ├── 1-research.md          # Research Report
@@ -112,9 +110,11 @@ emr-document-engine/
 │   ├── 4-uiux.md              # UI/UX Design Document
 │   └── 5-spec.md              # Technical Specification
 │
-└── .super-dev/                # Development Configuration
-    ├── SESSION_BRIEF.md
-    └── WORKFLOW.md
+├── knowledge/                  # Knowledge Base
+├── docker-compose.yml         # Docker Compose Configuration
+├── nginx.conf                 # Nginx Configuration
+├── LICENSE                    # MIT License
+└── README.md                  # Project Documentation
 ```
 
 ## 🚀 Quick Start
@@ -169,7 +169,7 @@ npm install
 npm run dev
 ```
 
-The frontend application will start at `http://localhost:5173`.
+The frontend application will start at `http://localhost:3000`.
 
 3. **Production Build**
 
@@ -252,13 +252,119 @@ The editor engine uses a modular design. Core components include:
 3. Data access is through the `repository/` interface.
 4. Entity classes are defined in the `entity/` directory.
 
+## 🤝 Contributing
+
+First of all, thank you from the bottom of our hearts for stopping by and contributing to this project ❤️. Whether you are an experienced developer or an open-source newcomer, every suggestion, line of code, and documentation edit is invaluable to the EMR Document Editor Engine.
+
+A truly usable Electronic Medical Record editing tool is never built by one person alone — it relies on the collective effort of every member of the community. There is no "newcomer" or "veteran" here, only a shared passion for the product and a curiosity about technology. So please don't hesitate to join in — even fixing a typo or asking a "silly" question is warmly welcomed and genuinely appreciated.
+
+### How You Can Contribute
+
+| Way to Contribute | Who It's For | Description |
+|---------|---------|------|
+| 🐛 Report a Bug | Everyone | Describe the problem, reproduction steps, and environment to help us find and fix issues |
+| 💡 Suggest an Idea | Everyone | Share any thoughts on features, experience, or documentation through an Issue |
+| 🛠️ Submit Code | Developers | Fix bugs, implement new features, optimize performance, or add unit tests |
+| 📖 Improve Documentation | Everyone | Polish the README, code comments, and design docs to make the project easier to understand |
+| 👀 Review Code | Developers | Help review PRs and join technical discussions — your feedback meaningfully improves quality |
+
+### Contribution Workflow
+
+If you're ready to write code, follow the steps below. Don't worry if it feels like a lot — take it one step at a time, and if you get stuck anywhere, feel free to ask in an Issue. We'll respond as soon as we can.
+
+1. **Talk first, then code**: Before you start, check the [Issues](https://gitee.com/wangwang_1_1665527118/emrdocument-engine/issues) page to see whether there's already a related discussion. For a brand-new feature or a large change, please open an Issue to describe your idea and reach consensus with the community first, to avoid wasted effort.
+
+2. **Fork the repository**: Click the Fork button in the top-right corner to copy the project to your account.
+
+3. **Clone it locally**:
+
+   ```bash
+   git clone https://gitee.com/your-username/emrdocument-engine.git
+   cd emrdocument-engine
+   ```
+
+4. **Create a feature branch**:
+
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+5. **Develop and commit**: Once you've made your changes, commit them following the commit message conventions below:
+
+   ```bash
+   git add .
+   git commit -m "feat: add some amazing feature"
+   ```
+
+6. **Run tests and type checks**: Make sure your changes don't break anything:
+
+   ```bash
+   cd frontend
+   npm run test    # unit tests (Vitest)
+   npm run build   # type check & build (tsc --noEmit)
+   ```
+
+7. **Push your branch**:
+
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+
+8. **Open a Pull Request**: Go back to Gitee and open a Pull Request, clearly describing the purpose and content of your changes. We'll review and give feedback as soon as we can, and we welcome your active participation in the discussion.
+
+### Commit Message Conventions
+
+To keep the project history clean and readable, please follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+
+```
+<type>: <short description>
+
+<optional detailed description>
+```
+
+Common types:
+
+| Type | Purpose |
+|------|------|
+| `feat` | A new feature |
+| `fix` | A bug fix |
+| `docs` | Documentation changes |
+| `refactor` | Code refactoring (no behavior change) |
+| `style` | Code formatting adjustments |
+| `test` | Adding tests |
+| `chore` | Build, config, and other housekeeping |
+
+For example:
+
+```
+feat: complete table editing — cell input, block-aware navigation
+fix: fix multi-line text caret positioning
+```
+
+### Code Standards
+
+- The frontend uses TypeScript strict mode; run `npm run test` and `npm run build` before committing.
+- The backend follows the Alibaba Java Development Manual.
+- When adding or fixing functionality, please include corresponding unit tests where possible.
+- Keep your code style consistent with the surrounding code to make it easy for others to read.
+
+### Community Guidelines
+
+We want this to be a friendly, inclusive, and mutually supportive community. When discussing and contributing, please:
+
+- **Respect others**: Disagreements are normal — discuss the issue on its merits and communicate rationally.
+- **Be patient**: Maintainers mostly contribute in their spare time, so replies may take a little while.
+- **Give constructive feedback**: When pointing out a problem, try to include a suggested improvement or a concrete scenario.
+
+Thank you for reading this far. Everyone who stops to contribute to an open-source project deserves to be taken seriously. We look forward to your PR! 🎉
+
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
 
 ## 📞 Contact Information
 
-If you have questions or suggestions, please provide feedback through the project Issues page.
+If you have questions or suggestions, feel free to reach out through the [Issues](https://gitee.com/wangwang_1_1665527118/emrdocument-engine/issues) page — we'd be happy to chat.
 
 ---
 
