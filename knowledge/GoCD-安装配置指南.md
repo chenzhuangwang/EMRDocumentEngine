@@ -104,10 +104,10 @@ docker run -d --name gocd-server \
   -p 8153:8153 -p 8154:8154 \
   -v gocd-server-data:/godata \
   -v /home/go:/home/go \
-  gocd/gocd-server:v24.2.0
+  gocd/gocd-server:v25.4.0
 ```
 
-> 镜像 tag 请以官方 [gocd.org](https://www.gocd.org) 或 Docker Hub 上的最新版本为准，`v24.2.0` 仅为示例。
+> 此处以 `v25.4.0` 为例，如需其他版本，可到官方 [gocd.org](https://www.gocd.org) 或 Docker Hub 查询。
 
 ---
 
@@ -150,7 +150,7 @@ sudo systemctl enable --now go-agent
 docker run -d --name gocd-agent \
   -e GO_SERVER_URL=https://<SERVER_IP>:8154/go \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gocd/gocd-agent-ubuntu-22.04:v24.2.0
+  gocd/gocd-agent-ubuntu-22.04:v25.4.0
 ```
 
 > 挂载 `/var/run/docker.sock` 让 Agent 容器内也能调用宿主机 Docker（用于打包/部署）。
