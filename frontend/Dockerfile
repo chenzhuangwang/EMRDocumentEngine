@@ -23,8 +23,12 @@ RUN rm -rf /usr/share/nginx/html/*
 # 复制构建产物
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# 复制 nginx 站点配置（SPA 回退 + /api、/ws 反向代理）
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# 复制 nginx 站点模板（启动时经 envsubst 替换 ${BACKEND_HOST}/${BACKEND_PORT}）
+COPY nginx.conf /etc/nginx/templates/default.conf.template
+
+# 上游后端地址默认值，运行时可用 -e BACKEND_HOST=... / -e BACKEND_PORT=... 覆盖
+ENV BACKEND_HOST=backend
+ENV BACKEND_PORT=8080
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
