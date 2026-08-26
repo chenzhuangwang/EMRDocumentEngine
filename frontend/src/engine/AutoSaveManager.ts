@@ -29,15 +29,15 @@ export class AutoSaveManager {
   private db: IDBDatabase | null = null
   private documentId: string
   private title: string
-  private getDocument: () => DocumentTree
+  private serialize: () => string
   private timer: ReturnType<typeof setTimeout> | null = null
   private listeners: SaveEventListener[] = []
   private _lastSavedAt = 0
 
-  constructor(documentId: string, title: string, getDocument: () => DocumentTree) {
+  constructor(documentId: string, title: string, serialize: () => string) {
     this.documentId = documentId
     this.title = title
-    this.getDocument = getDocument
+    this.serialize = serialize
   }
 
   // ---- 初始化 ----
@@ -78,12 +78,12 @@ export class AutoSaveManager {
 
     try {
       this.notify('saving')
-      const doc = this.getDocument()
       const snapshot: SaveSnapshot = {
         id: `${this.documentId}_${Date.now()}`,
         documentId: this.documentId,
         title: this.title,
-        tree: JSON.parse(JSON.stringify(doc)), // 深克隆去环
+        // 深克隆去环: serialize 已内嵌全部节点 payload (见 DocumentSerializer)
+        tree: JSON.parse(this.serialize()),
         savedAt: Date.now(),
         version: 0,
       }

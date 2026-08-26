@@ -1,6 +1,7 @@
 import type { DocumentTree, BaseNode, Paragraph, TextNode } from './document/DocumentModel'
 import { createDocument, createParagraph, createTextNode, extractStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent, createSmartTextNode } from './document/ElementFormatter'
 import { NodePool, buildNodePool } from './document/NodePool'
+import { buildDocumentPool, serializeDocument } from './document/DocumentSerializer'
 import type { FieldType } from './document/DocumentModel'
 import { Draw } from './render/Draw'
 import { AutoSaveManager } from './AutoSaveManager'
@@ -86,9 +87,7 @@ export class Editor {
       this.pool = buildNodePool(allNodes, { body: d.id })
     } else {
       this.doc = doc
-      const fn = new Map<string, BaseNode>()
-      fn.set(this.doc.id, this.doc)
-      this.pool = buildNodePool(fn, { body: this.doc.id })
+      this.pool = buildDocumentPool(doc)
     }
 
     this.eventBus = new EventBus()
@@ -99,7 +98,7 @@ export class Editor {
     this.mouseHandler = new MouseHandler(this, container)
     this.clipboard = new ClipboardManager()
     this.findReplace = new FindReplaceEngine()
-    this.autoSave = new AutoSaveManager(doc.id, doc.title || '未命名文档', () => this.doc)
+    this.autoSave = new AutoSaveManager(doc.id, doc.title || '未命名文档', () => this.getSerializedDocument())
     this.autoCorrect = new AutoCorrectEngine()
     this.perfMetrics = new PerformanceMetrics()
     this.pluginManager = new PluginManager()
@@ -480,14 +479,16 @@ export class Editor {
   }
 
   getDocument(): DocumentTree { return this.doc }
-  setDocument(doc: DocumentTree): void {
+  /** 序列化文档为 JSON 字符串 (含全部节点 payload, 供保存/自动保存使用) */
+  getSerializedDocument(): string {
+    return serializeDocument(this.doc, this.pool)
+  }
+  setDocument(doc: DocumentTree, nodes?: Map<string, BaseNode>): void {
     // 确保 header/footer 字段存在 (兼容旧版文档数据)
     if (!doc.header) doc.header = []
     if (!doc.footer) doc.footer = []
     this.doc = doc
-    const fn = new Map<string, BaseNode>()
-    fn.set(doc.id, doc)
-    this.pool = buildNodePool(fn, { body: doc.id })
+    this.pool = buildDocumentPool(doc, nodes)
     this.draw.setDocument(doc, this.pool)
     this.draw.recomputeLayout(this.pool)
 

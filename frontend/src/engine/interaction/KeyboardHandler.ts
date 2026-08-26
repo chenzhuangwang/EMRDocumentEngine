@@ -14,7 +14,7 @@ import { SplitParagraphCommand } from '../command/commands/SplitParagraphCommand
 import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand'
 import { generateCommandId } from '../command/ICommand'
 import type { SLIFPage } from '../layout/SLIF'
-import { resolveCellPosition, getCaretScope, getAdjacentCell } from '../state/CaretScope'
+import { resolveCellPosition, getCaretScope, getAdjacentCell, resolveParagraphRegion } from '../state/CaretScope'
 import { buildCellGrid } from '../document/TableOps'
 import type { TableGrid, GridCell } from '../document/TableOps'
 import type { NodePool } from '../document/NodePool'
@@ -142,30 +142,15 @@ export class KeyboardHandler {
           }
         }
         if (cursor.offset >= totalLen) {
-          // v21.0 Phase 3: 在 cell 内时, 定位 cell 内下一段落; body 时保持原有逻辑
+          // 段落末尾按 Delete → 合并该区域 (body/cell/header/footer) 内的下一段落
           const pool = ed.getPool()
-          const cellPos = resolveCellPosition(paraId, pool)
-          if (cellPos) {
-            // cell 内: 查找 cell 中 paraId 之后的下一段落
-            const cellNode = pool.nodes.get(
-              (pool.nodes.get(
-                (pool.nodes.get(cellPos.tableId) as { children?: string[] })?.children?.[cellPos.row] || ''
-              ) as { children?: string[] })?.children?.[cellPos.col] || ''
-            ) as { children?: string[] } | undefined
-            if (cellNode?.children) {
-              const paraIdx = cellNode.children.indexOf(paraId)
-              if (paraIdx >= 0 && paraIdx < cellNode.children.length - 1) {
-                const nextParaId = cellNode.children[paraIdx + 1]
-                ed.execCommand(new MergeParagraphCommand(id, ts, author, [...cursor.paragraphPath.slice(0, -1), nextParaId]))
-              }
-            }
-          } else {
-            // body: 合并下一段落
-            const doc = ed.getDocument()
-            const siblings = doc.body.children
-            const idx = siblings.indexOf(paraId)
-            if (idx >= 0 && idx < siblings.length - 1) {
-              ed.execCommand(new MergeParagraphCommand(id, ts, author, [...cursor.paragraphPath.slice(0, -1), siblings[idx + 1]]))
+          const doc = ed.getDocument()
+          const region = resolveParagraphRegion(paraId, doc, pool)
+          if (region && region.index >= 0 && region.index < region.siblings.length - 1) {
+            const nextParaId = region.siblings[region.index + 1]
+            const nextNode = pool.nodes.get(nextParaId)
+            if (nextNode?.type === 'paragraph') {
+              ed.execCommand(new MergeParagraphCommand(id, ts, author, [...cursor.paragraphPath.slice(0, -1), nextParaId]))
             }
           }
         } else {

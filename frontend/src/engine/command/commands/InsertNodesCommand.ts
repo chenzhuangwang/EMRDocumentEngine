@@ -26,6 +26,7 @@ import {
 } from '../ICommand'
 import type { SerializedPara } from '../ClipboardManager'
 import { normalizeParagraph } from './ParagraphUtils'
+import { resolveParagraphRegion } from '../../state/CaretScope'
 
 /** 文本样式字段 (过滤掉 id/type/children) */
 const TEXT_STYLE_KEYS = [
@@ -60,7 +61,7 @@ export class InsertNodesCommand extends PositionalCommand {
 
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
-    const { pool } = ctx
+    const { pool, doc } = ctx
     if (this.nodes.length === 0) return null
 
     const currentPara = pool.nodes.get(this.path[this.path.length - 1]) as Paragraph | undefined
@@ -127,14 +128,26 @@ export class InsertNodesCommand extends PositionalCommand {
 
     // ================================================================
     // Step 4: 其余段落作为新段落插入 (currentPara 之后)
+    // 使用 resolveParagraphRegion 确定区域, 页眉/页脚粘贴不泄漏到 body。
     // ================================================================
-    const siblings = [...pool.getChildren(parentId)]
-    const baseIdx = siblings.indexOf(currentPara.id)
-    let insertAt = baseIdx + 1
-    for (let i = 1; i < pastedParas.length; i++) {
-      pool.insertChild(parentId, pastedParas[i].id, insertAt)
-      this.insertedParaIds.push(pastedParas[i].id)
-      insertAt++
+    const region = resolveParagraphRegion(currentPara.id, doc, pool)
+    if (region) {
+      let insertAt = region.index + 1
+      for (let i = 1; i < pastedParas.length; i++) {
+        region.siblings.splice(insertAt, 0, pastedParas[i].id)
+        this.insertedParaIds.push(pastedParas[i].id)
+        insertAt++
+      }
+    } else {
+      // 兜底: 段落无法定位区域 (理论不可达) → 插入默认父节点
+      const siblings = [...pool.getChildren(parentId)]
+      const baseIdx = siblings.indexOf(currentPara.id)
+      let insertAt = baseIdx + 1
+      for (let i = 1; i < pastedParas.length; i++) {
+        pool.insertChild(parentId, pastedParas[i].id, insertAt)
+        this.insertedParaIds.push(pastedParas[i].id)
+        insertAt++
+      }
     }
 
     // ================================================================
@@ -265,15 +278,23 @@ class UndoPasteCommand implements ICommand {
 
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
-    const { pool } = ctx
+    const { pool, doc } = ctx
 
-    const parentId = this.path.length >= 2 ? this.path[this.path.length - 2] : pool.rootIds.body
-
-    // 1. 从父节点摘除插入的段落 (detachChild 不删子树, 保留原始右半节点引用)
-    const siblings = [...pool.getChildren(parentId)]
-    for (const id of this.paraIds) {
-      const idx = siblings.indexOf(id)
-      if (idx >= 0) { pool.detachChild(parentId, idx); siblings.splice(idx, 1) }
+    // 1. 从当前段落所在区域摘除插入的段落 (不删子树, 保留原始右半节点引用)
+    const regionPara = pool.nodes.get(this.path[this.path.length - 1])
+    const region = regionPara ? resolveParagraphRegion(regionPara.id, doc, pool) : null
+    if (region) {
+      for (const id of this.paraIds) {
+        const idx = region.siblings.indexOf(id)
+        if (idx >= 0) region.siblings.splice(idx, 1)
+      }
+    } else {
+      const parentId = this.path.length >= 2 ? this.path[this.path.length - 2] : pool.rootIds.body
+      const siblings = [...pool.getChildren(parentId)]
+      for (const id of this.paraIds) {
+        const idx = siblings.indexOf(id)
+        if (idx >= 0) { pool.detachChild(parentId, idx); siblings.splice(idx, 1) }
+      }
     }
 
     // 2. 删除插入的段落包装节点

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { EditorLayout } from '@/components/layout/EditorLayout'
 import { ReadingModeOverlay } from '@/components/views/ReadingMode'
-import { EditorProvider, useEditorRef } from '@/components/editor/EditorProvider'
+import { EditorProvider, useEditorRef, useEditorReady } from '@/components/editor/EditorProvider'
 import { ExportDialog } from '@/components/dialogs/ExportDialog'
 import { FindReplaceDialog } from '@/components/dialogs/FindReplaceDialog'
 import { PrintDialog } from '@/components/dialogs/PrintDialog'
@@ -18,7 +18,6 @@ import { documentApi, templateApi } from '@/services/api'
 import { generateCommandId } from '@/engine/command/ICommand'
 import { InsertTextCommand } from '@/engine/command/commands/InsertTextCommand'
 import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
-import { buildNodePool } from '@/engine/document/NodePool'
 import { TOCGenerator } from '@/engine/render/TOCGenerator'
 import { ListParticle } from '@/engine/render/particles/ListParticle'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
@@ -100,6 +99,7 @@ function EditorPageInner({
   docId?: string
 }) {
   const editorRef = useEditorRef()
+  const ready = useEditorReady()
   const navigate = useNavigate()
   const [exportOpen, setExportOpen] = useState(false)
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
@@ -134,7 +134,10 @@ function EditorPageInner({
   const setHfEdit = useEditorStore((s) => s.setHeaderFooterEdit)
 
   // 页眉页脚事件桥接: EventBus → Zustand store
+  // 依赖 ready: Editor 由父级 EditorProvider 的 useEffect 创建 (晚于本组件 effect),
+  // 首次 mount 时 editorRef.current 为 null, 需等 ready 翻转后再注册, 否则漏绑。
   useEffect(() => {
+    if (!ready) return
     const editor = editorRef.current
     if (!editor) return
     const bus = editor.getEventBus()
@@ -150,10 +153,11 @@ function EditorPageInner({
       bus.off('headerFooter:dblclick', handleDblClick)
       bus.off('body:click', handleBodyClick)
     }
-  }, [editorRef, setHfEdit])
+  }, [ready, editorRef, setHfEdit])
 
   // mode:changed 事件桥接: 引擎 → Zustand store (其他来源触发模式变更时同步 UI)
   useEffect(() => {
+    if (!ready) return
     const editor = editorRef.current
     if (!editor) return
     const bus = editor.getEventBus()
@@ -168,24 +172,29 @@ function EditorPageInner({
     }
     bus.on('mode:changed', handleModeChanged)
     return () => { bus.off('mode:changed', handleModeChanged) }
-  }, [editorRef, setEditorMode])
+  }, [ready, editorRef, setEditorMode])
 
   // 格式刷状态同步: Editor ↔ Zustand store
   useEffect(() => {
+    if (!ready) return
     const editor = editorRef.current
     if (!editor) return
     editor.setOnFormatPainterChange((active) => {
       setFormatPainter(active)
     })
-  }, [editorRef, setFormatPainter])
+  }, [ready, editorRef, setFormatPainter])
 
   // 滚动双向同步: DOM container.scrollTop ↔ CoordinateSystem.scrollY
+  // 注意: editorRef.current 在子组件 effect 执行时可能尚未就绪 (EditorProvider 用
+  // useEffect 创建 Editor, 父级 effect 晚于子级 effect 执行), 故监听器绑定到恒就绪的
+  // container, 回调内再惰性解析 editor, 避免因 editor 未就绪而漏绑滚动同步。
   useEffect(() => {
-    const editor = editorRef.current
     const container = containerRef.current
-    if (!editor || !container) return
+    if (!container) return
 
     const onScroll = () => {
+      const editor = editorRef.current
+      if (!editor) return
       editor.syncScrollPosition(container.scrollTop)
       // 当前页码 (基于滚动位置)
       const pages = editor.getDraw().getPages()
@@ -200,9 +209,10 @@ function EditorPageInner({
 
   // 缩放: Ctrl+滚轮 (绑在容器 div 上, 避免 Chrome 对 document 强制 passive)
   useEffect(() => {
-    const editor = editorRef.current
     const container = containerRef.current
-    if (!editor || !container) return
+    if (!container || !ready) return
+    const editor = editorRef.current
+    if (!editor) return
 
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return
@@ -219,7 +229,7 @@ function EditorPageInner({
     // Chrome 73+ 对 document/window/body 上的 wheel 强制 passive, 必须绑在普通 DOM 元素上
     container.addEventListener('wheel', onWheel, { passive: false, capture: true })
     return () => container.removeEventListener('wheel', onWheel, { capture: true })
-  }, [editorRef, containerRef, setZoom])
+  }, [ready, editorRef, containerRef, setZoom])
 
   // 缩放: Ctrl+plus/minus + Ctrl+0 重置
   useEffect(() => {
@@ -398,11 +408,8 @@ function EditorPageInner({
       if (result?.doc) {
         const ed = editorRef.current
         if (ed) {
-          const map = new Map<string, import('@/engine/document/DocumentModel').BaseNode>()
-          map.set(result.doc.id, result.doc)
-          const pool = buildNodePool(map, { body: result.doc.id })
-          ed.setDocument(result.doc)
-          ed.getDraw().render(pool, ed.getStore().state.runtime)
+          // 传入加载器展开的节点映射, setDocument 据此重建 NodePool
+          ed.setDocument(result.doc, result.nodes)
         }
       }
     }
@@ -489,14 +496,15 @@ function EditorPageInner({
     try {
       const editor = editorRef.current
       if (!editor) return
-      const content = JSON.stringify(editor.getDocument())
+      // 序列化含节点 payload 的完整 JSON 字符串 (后端 content 为 String 字段)
+      const content = editor.getSerializedDocument()
       if (isNew) {
-        const res = await documentApi.create({ title: documentTitle, content: JSON.parse(content) })
+        const res = await documentApi.create({ title: documentTitle, content })
         const newId = res.data.data?.id
         if (newId) navigate(`/editor/${newId}`, { replace: true })
         console.debug('[EditorPage] created:', newId)
       } else if (docId) {
-        await documentApi.update(docId, { title: documentTitle, content: JSON.parse(content) })
+        await documentApi.update(docId, { title: documentTitle, content })
         console.debug('[EditorPage] updated:', docId)
       }
       setSaveStatus('saved')
@@ -696,7 +704,10 @@ function EditorPageInner({
     if (format === 'json') {
       const tocGen = new TOCGenerator()
       const toc = tocGen.extractEntries(doc, pool)
-      const json = JSON.stringify({ ...doc, _toc: toc }, null, 2)
+      // 使用完整序列化 (含节点 payload), 再附加目录信息
+      const serialized = JSON.parse(ed.getSerializedDocument()) as Record<string, unknown>
+      serialized._toc = toc
+      const json = JSON.stringify(serialized, null, 2)
       const blob = new Blob([json], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = window.document.createElement('a')

@@ -198,3 +198,49 @@ export function getCaretScope(
 
   return { type: 'body' }
 }
+
+// ---- 段落区域解析 (body / cell / header / footer) ----
+
+/**
+ * 段落所在区域 + 可直接操作的兄弟数组。
+ *
+ * 与 getCaretScope 不同: 此处把 header/footer 视为独立区域 (而非 body),
+ * 供结构编辑命令 (拆段/并段/删除) 确定正确的兄弟容器, 避免误写入 body。
+ *
+ * @returns 区域 + 兄弟数组 (可变引用) + 段落在其中的下标; 未找到返回 null
+ */
+export type ParagraphRegion =
+  | { type: 'body'; siblings: string[]; index: number }
+  | { type: 'cell'; siblings: string[]; index: number }
+  | { type: 'header'; siblings: string[]; index: number }
+  | { type: 'footer'; siblings: string[]; index: number }
+
+export function resolveParagraphRegion(
+  paraId: string,
+  doc: { body: { children: string[] }; header?: string[]; footer?: string[] },
+  pool: NodePool,
+): ParagraphRegion | null {
+  // 1. 正文段落
+  const bi = doc.body.children.indexOf(paraId)
+  if (bi >= 0) return { type: 'body', siblings: doc.body.children, index: bi }
+
+  // 2. 单元格内段落
+  const cellPos = resolveCellPosition(paraId, pool)
+  if (cellPos) {
+    const table = pool.nodes.get(cellPos.tableId) as { children?: string[] } | undefined
+    const row = pool.nodes.get(table?.children?.[cellPos.row] || '') as { children?: string[] } | undefined
+    const cell = pool.nodes.get(row?.children?.[cellPos.col] || '') as { children?: string[] } | undefined
+    if (cell?.children) {
+      const ci = cell.children.indexOf(paraId)
+      if (ci >= 0) return { type: 'cell', siblings: cell.children, index: ci }
+    }
+  }
+
+  // 3. 页眉/页脚段落 (存储在 doc.header / doc.footer 独立数组中, 不在 pool.children 内)
+  const hi = doc.header?.indexOf(paraId)
+  if (hi !== undefined && hi >= 0) return { type: 'header', siblings: doc.header!, index: hi }
+  const fi = doc.footer?.indexOf(paraId)
+  if (fi !== undefined && fi >= 0) return { type: 'footer', siblings: doc.footer!, index: fi }
+
+  return null
+}

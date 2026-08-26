@@ -4,10 +4,11 @@
 // forward: 字符偏移定位 → 截断 TextNode → 分裂 children → 新段落插入 FlowBody
 // ================================================================
 
-import type { Paragraph, TextNode } from '../../document/DocumentModel'
+import type { Paragraph, TextNode, DocumentTree } from '../../document/DocumentModel'
 import { createParagraph, createTextNode, extractStyle } from '../../document/ElementFormatter'
 import { ICommand, CommandContext, StatePatch, SerializedCommand, PositionalCommand } from '../ICommand'
 import { MergeParagraphCommand } from './MergeParagraphCommand'
+import { resolveParagraphRegion } from '../../state/CaretScope'
 
 export class SplitParagraphCommand extends PositionalCommand {
   readonly type = 'split-paragraph'
@@ -21,7 +22,7 @@ export class SplitParagraphCommand extends PositionalCommand {
 
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
-    const { pool } = ctx
+    const { pool, doc } = ctx
     const para = pool.nodes.get(this.path[this.path.length - 1]) as Paragraph | undefined
     if (!para) return null
 
@@ -30,7 +31,7 @@ export class SplitParagraphCommand extends PositionalCommand {
 
     if (!resolved) {
       // 空段落 (children=[]) → 创建新空段落, 光标移到新段落
-      return this.splitEmptyParagraph(para, pool)
+      return this.splitEmptyParagraph(para, pool, doc)
     }
 
     const { textNodeId, localOffset } = resolved
@@ -72,11 +73,15 @@ export class SplitParagraphCommand extends PositionalCommand {
     }
 
     // 5. 在 FlowBody 中插入新段落
-    return this.insertAndReturn(para, newPara, pool)
+    return this.insertAndReturn(para, newPara, pool, doc)
   }
 
   /** 空段落拆分: 创建新空段落, 光标移至新段落 */
-  private splitEmptyParagraph(para: Paragraph, pool: import('../../document/NodePool').NodePool): StatePatch | null {
+  private splitEmptyParagraph(
+    para: Paragraph,
+    pool: import('../../document/NodePool').NodePool,
+    doc: DocumentTree,
+  ): StatePatch | null {
     const newPara = createParagraph()
     Object.assign(newPara, {
       alignment: para.alignment, indent: para.indent,
@@ -85,52 +90,33 @@ export class SplitParagraphCommand extends PositionalCommand {
     })
     pool.nodes.set(newPara.id, newPara)
     this.newParaId = newPara.id
-    return this.insertAndReturn(para, newPara, pool)
+    return this.insertAndReturn(para, newPara, pool, doc)
   }
 
-  /** 在 FlowBody 中插入新段落, 返回光标指向新段落的 patch
+  /** 在段落所属区域 (body / cell / header / footer) 中插入新段落, 返回光标指向新段落的 patch
    *
-   *  v21.0 Phase 3: 支持 cell 内段落拆分。
-   *  当 paragraphPath 为 [docId, paraId] 但 paraId 实际在 cell 内时,
-   *  自动沿 pool 反向查找 cell → 将新段落插入 cell.children。
+   *  v21.0 Phase 3: 支持 cell 内段落拆分; v21.1: 支持页眉/页脚段落拆分。
+   *  通过 resolveParagraphRegion 统一确定兄弟容器, 避免把新段落误插入 body。
    */
-  private insertAndReturn(para: Paragraph, newPara: Paragraph, pool: import('../../document/NodePool').NodePool): StatePatch {
-    // 尝试使用 path 倒数第二位作为 parentId (body 段落场景)
+  private insertAndReturn(
+    para: Paragraph,
+    newPara: Paragraph,
+    pool: import('../../document/NodePool').NodePool,
+    doc: DocumentTree,
+  ): StatePatch | null {
+    const region = resolveParagraphRegion(para.id, doc, pool)
+    if (region) {
+      // 直接在新段落所属区域的原段落之后插入 (body/header/footer/cell 数组)
+      region.siblings.splice(region.index + 1, 0, newPara.id)
+      return {
+        cursor: { paragraphPath: [...this.path.slice(0, -1), newPara.id], offset: 0 },
+        invalidation: region.type === 'cell' ? 'table' : 'flowbody',
+      }
+    }
+
+    // 兜底: 段落无法定位区域 (理论不可达) → 插入默认父节点
     const defaultParentId = this.path.length >= 2 ? this.path[this.path.length - 2] : pool.rootIds.body
     const siblings = [...pool.getChildren(defaultParentId)]
-    const paraIndex = siblings.indexOf(para.id)
-
-    if (paraIndex >= 0) {
-      // 标准路径: 段落直接在 flow body 中
-      pool.insertChild(defaultParentId, newPara.id, paraIndex + 1)
-      return {
-        cursor: { paragraphPath: [...this.path.slice(0, -1), newPara.id], offset: 0 },
-        invalidation: 'flowbody',
-      }
-    }
-
-    // v21.0: 段落不在 flow body → 可能在 cell 内
-    // 沿 pool 反向查找包含 para.id 的 cell
-    let cellParentId: string | null = null
-    for (const [, node] of pool.nodes) {
-      if (node.type !== 'cell') continue
-      const cell = node as unknown as { id: string; children?: string[] }
-      if (!cell.children?.includes(para.id)) continue
-      cellParentId = cell.id
-      break
-    }
-
-    if (cellParentId) {
-      const cellChildren = [...pool.getChildren(cellParentId)]
-      const cellIndex = cellChildren.indexOf(para.id)
-      pool.insertChild(cellParentId, newPara.id, cellIndex >= 0 ? cellIndex + 1 : cellChildren.length)
-      return {
-        cursor: { paragraphPath: [...this.path.slice(0, -1), newPara.id], offset: 0 },
-        invalidation: 'table',
-      }
-    }
-
-    // 兜底: 无论如何尝试插入到默认父节点
     pool.insertChild(defaultParentId, newPara.id, siblings.length)
     return {
       cursor: { paragraphPath: [...this.path.slice(0, -1), newPara.id], offset: 0 },

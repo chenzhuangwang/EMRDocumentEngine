@@ -8,6 +8,7 @@
 import type { Paragraph } from '../../document/DocumentModel'
 import { ICommand, CommandContext, StatePatch, SerializedCommand, PositionalCommand } from '../ICommand'
 import { normalizeParagraph } from './ParagraphUtils'
+import { resolveParagraphRegion } from '../../state/CaretScope'
 
 export class MergeParagraphCommand extends PositionalCommand {
   readonly type = 'merge-paragraph'
@@ -21,17 +22,14 @@ export class MergeParagraphCommand extends PositionalCommand {
 
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
-    const { pool } = ctx
+    const { pool, doc } = ctx
     const currentPara = pool.nodes.get(this.path[this.path.length - 1]) as Paragraph | undefined
     if (!currentPara) return null
 
-    // 1. 找上一段
-    const parentId = this.path.length >= 2 ? this.path[this.path.length - 2] : pool.rootIds.body
-    const siblings = [...pool.getChildren(parentId)]
-    if (siblings.length === 0) return null
-    const currentIdx = siblings.indexOf(currentPara.id)
-    if (currentIdx <= 0) return null
-    const prevNode = pool.nodes.get(siblings[currentIdx - 1])
+    // 1. 定位当前段所在区域 (body/cell/header/footer) 并找上一段
+    const region = resolveParagraphRegion(currentPara.id, doc, pool)
+    if (!region || region.index <= 0) return null
+    const prevNode = pool.nodes.get(region.siblings[region.index - 1])
     // 上一兄弟必须是段落, 才能合并; 否则 (表格/图片/分隔符等) 退格不并段,
     // 避免把 text 节点误插进表格的 children (rows) 破坏结构
     if (!prevNode || prevNode.type !== 'paragraph') return null
@@ -45,6 +43,8 @@ export class MergeParagraphCommand extends PositionalCommand {
     for (const childId of currentPara.children) {
       pool.insertChild(prevPara.id, childId, prevPara.children.length)
     }
+    // 清空当前段 children, 避免后续移除时 collectDescendants 误删已合并的文本节点
+    currentPara.children = []
 
     // 3.1 当前段有列表样式而上一段没有 → 传播列表样式
     if (currentPara.list && !prevPara.list) {
@@ -54,8 +54,9 @@ export class MergeParagraphCommand extends PositionalCommand {
     // 4. 合并上一段
     normalizeParagraph(prevPara, pool)
 
-    // 5. 删除当前段
-    pool.removeChild(parentId, currentIdx)
+    // 5. 从区域兄弟数组中移除当前段 (叶子节点, 仅删除段落包装)
+    region.siblings.splice(region.index, 1)
+    pool.nodes.delete(currentPara.id)
 
     // 6. 光标定位到合并点
     let charCount = 0
@@ -69,7 +70,7 @@ export class MergeParagraphCommand extends PositionalCommand {
 
     return {
       cursor: { paragraphPath: [...this.path.slice(0, -1), prevPara.id], offset: charCount },
-      invalidation: 'flowbody',
+      invalidation: region.type === 'cell' ? 'table' : 'flowbody',
     }
   }
 
