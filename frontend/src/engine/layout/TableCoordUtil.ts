@@ -192,25 +192,93 @@ export const cellToDoc = cellLocalToGlobal
  * 支持变高页面 (如跨页表格拆分可能产生不同高度的页面)。
  * 替代各调用方中重复的 page-finding loop。
  *
- * @param docY  文档绝对 y 坐标 (含 scrollY)
- * @param pages SLIF 页面数组 (每页需有 height 属性)
- * @returns 页面索引 (0-based) 和页面内局部 Y 坐标
+ * 间隙说明 (pageVerticalGap):
+ *   文档逻辑 Y 坐标 = 累加 (pageHeight[i] + pageVerticalGap) 形成的虚拟 Y。
+ *   返回的 localY 仍是页面内局部坐标 (0 ~ pageHeight[i])，不含间隙。
+ *   因此 hitTest / 命中检测无需改动 — 只需把 docY 正确反查到 pageIndex + localY。
+ *
+ * 边界处理:
+ *   - docY 恰好落在间隙区域 → localY 钳制到下一页的 0 (避免负值)
+ *   - docY >= 最后页的累计底部 → 返回最后一页 + localY 钳制到 [0, pageHeight)
+ *
+ * @param docY            文档绝对 y 坐标 (含 scrollY + 间隙)
+ * @param pages           SLIF 页面数组 (每页需有 height 属性)
+ * @param pageVerticalGap 相邻页面之间的渲染间隙 (文档逻辑 px)，默认 0
+ * @returns 页面索引 (0-based) 和页面内局部 Y 坐标 (钳制到 [0, pageHeight))
  */
 export function findPageByDocY(
   docY: number,
   pages: { height: number }[],
+  pageVerticalGap: number = 0,
 ): { pageIndex: number; localY: number } {
+  if (pages.length === 0) return { pageIndex: 0, localY: 0 }
   let localY = docY
   let pageIndex = 0
   for (let i = 0; i < pages.length; i++) {
     if (localY < pages[i].height) {
+      // 落在页面内 (或前 i 页累计的间隙区域 → 钳制到本页顶部 0)
       pageIndex = i
+      if (localY < 0) localY = 0
       break
     }
-    localY -= pages[i].height
+    // localY 落在第 i 页的间隙之后, 跳到下一页
+    localY -= pages[i].height + pageVerticalGap
     pageIndex = i
   }
-  return { pageIndex: Math.min(pageIndex, pages.length - 1), localY }
+  // 超出最后页 → 钳制到最后一页 + localY 钳制到 [0, pageHeight)
+  const clampedIndex = Math.min(pageIndex, pages.length - 1)
+  const clampedLocalY = Math.max(0, Math.min(localY, pages[clampedIndex].height))
+  return { pageIndex: clampedIndex, localY: clampedLocalY }
+}
+
+/**
+ * 计算页面在文档逻辑坐标中的累加 Y 偏移 (pageIndex 处页面的顶部 Y)。
+ *
+ * 用于渲染阶段计算每页在视口 (canvas) 中的 Y 坐标:
+ *   canvasPageY(i) = accumulatedHeightTo(i) - scrollY
+ *
+ * 这是 pageVerticalGap 间隙的唯一作用点 — 仅渲染视口计算，存储的
+ * SLIF item.y / page.height / 文档数据模型完全不变。
+ *
+ * @param pageIndex       目标页索引 (0-based)
+ * @param pages           SLIF 页面数组
+ * @param pageVerticalGap 相邻页面之间的渲染间隙 (文档逻辑 px)
+ */
+export function accumulatedHeightTo(
+  pageIndex: number,
+  pages: { height: number }[],
+  pageVerticalGap: number = 0,
+): number {
+  if (pageIndex <= 0) return 0
+  let total = 0
+  const upper = Math.min(pageIndex, pages.length)
+  for (let i = 0; i < upper; i++) {
+    total += pages[i].height + pageVerticalGap
+  }
+  return total
+}
+
+/**
+ * 计算含间隙的整篇文档总高度 (CSS 逻辑 px)。
+ *
+ * 用于 LayeredRenderer spacer 高度与 Editor.getTotalDocHeight()。
+ * 当 pageVerticalGap=0 时退化为 sum(pageHeight)，与历史行为一致。
+ *
+ * @param pages           SLIF 页面数组
+ * @param pageVerticalGap 相邻页面之间的渲染间隙
+ */
+export function getTotalDocHeight(
+  pages: { height: number }[],
+  pageVerticalGap: number = 0,
+): number {
+  if (pages.length === 0) return 0
+  if (pageVerticalGap === 0) {
+    let h = 0
+    for (const p of pages) h += p.height
+    return h
+  }
+  // 末页之后不再追加间隙
+  return accumulatedHeightTo(pages.length, pages, pageVerticalGap) - pageVerticalGap
 }
 
 /**
@@ -249,13 +317,14 @@ export function pageLocalY(docY: number, pageHeight: number): number {
  * 替代各调用方中手动串联的:
  *   screenToDoc → findPageByDocY → pageCenteringOffset → docX 扣除
  *
- * @param screenX    鼠标事件的 clientX
- * @param screenY    鼠标事件的 clientY
- * @param scale      当前缩放比例
- * @param scrollY    当前垂直滚动偏移
- * @param containerRect 容器元素矩形
- * @param pages      SLIF 页面数组 (含 width/height)
- * @param viewportW  视口宽度 (container.clientWidth)
+ * @param screenX         鼠标事件的 clientX
+ * @param screenY         鼠标事件的 clientY
+ * @param scale           当前缩放比例
+ * @param scrollY         当前垂直滚动偏移
+ * @param containerRect   容器元素矩形
+ * @param pages           SLIF 页面数组 (含 width/height)
+ * @param viewportW       视口宽度 (container.clientWidth)
+ * @param pageVerticalGap 相邻页面渲染间隙 (CSS px, 默认 0)
  */
 export function screenToPage(
   screenX: number,
@@ -265,11 +334,12 @@ export function screenToPage(
   containerRect: ScreenRect,
   pages: { width: number; height: number }[],
   viewportW: number,
+  pageVerticalGap: number = 0,
 ): PageDocCoords | null {
   if (pages.length === 0) return null
 
   const { x: rawX, y: rawY } = screenToLogical(screenX, screenY, scale, scrollY, containerRect)
-  const { pageIndex, localY } = findPageByDocY(rawY, pages)
+  const { pageIndex, localY } = findPageByDocY(rawY, pages, pageVerticalGap)
   const page = pages[pageIndex]
   if (!page) return null
 

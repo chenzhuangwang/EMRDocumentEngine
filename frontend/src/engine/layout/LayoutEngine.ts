@@ -942,17 +942,37 @@ export class LayoutEngine {
   }
 
   getVisiblePages(scrollY: number, viewportHeight: number): { start: number; end: number } {
+    // 分页间隙 — 与 Draw.renderer.getPageVerticalGap() 同源
+    // (LayoutEngine 不持有 renderer 引用, 调用方负责传参一致性)
+    const pageVerticalGap = this.pageVerticalGap
     let cumulativeY = 0
     let start = 0; let end = this.pages.length - 1
 
     for (let i = 0; i < this.pages.length; i++) {
       const pageHeight = this.pages[i].height // CSS pixels, 与 scrollY/viewportHeight 同单位
+      // 累加步长 = 单页高度 + 间隙 (末页之外不再追加间隙, 但循环以 height 判断可见性)
+      const slot = pageHeight + pageVerticalGap
       if (cumulativeY + pageHeight < scrollY) start = i + 1
       if (cumulativeY > scrollY + viewportHeight) { end = i - 1; break }
-      cumulativeY += pageHeight
+      cumulativeY += slot
     }
     return { start: Math.max(0, start), end: Math.min(this.pages.length - 1, end) }
   }
+
+  /**
+   * 当前布局使用的分页渲染间隙。
+   * 默认 0 — 与历史行为完全一致。
+   * 通过 setPageVerticalGap() 在外部调整 (调整后需 Draw.render 重绘)。
+   */
+  private pageVerticalGap = 0
+
+  /** 设置分页渲染间隙 — 影响 getVisiblePages 的可见页计算 */
+  setPageVerticalGap(gap: number): void {
+    this.pageVerticalGap = Math.max(0, gap)
+  }
+
+  /** 获取当前分页渲染间隙 */
+  getPageVerticalGap(): number { return this.pageVerticalGap }
 
   updateConfig(config: Partial<LayoutConfig>): void {
     Object.assign(this.config, config)

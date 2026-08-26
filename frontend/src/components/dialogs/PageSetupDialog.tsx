@@ -21,6 +21,12 @@ export interface PageSetupValues {
   pageWidth: number     // px (默认 794 = A4 @ 72dpi)
   pageHeight: number    // px (默认 1123 = A4 @ 72dpi)
   orientation: 'portrait' | 'landscape'
+  /**
+   * 相邻页面之间的渲染间隙 (CSS px, 默认 20)。
+   * 仅影响渲染视口 — 不修改 SLIF 存储坐标 / 文档数据模型。
+   * 设为 0 可让页面紧贴 (旧版行为)。
+   */
+  pageVerticalGap: number
   applyTo: 'section' | 'thisPointForward' | 'wholeDocument'
 }
 
@@ -49,6 +55,7 @@ const DEFAULTS: PageSetupValues = {
   pageWidth: A4.width,
   pageHeight: A4.height,
   orientation: 'portrait',
+  pageVerticalGap: 20,
   applyTo: 'wholeDocument',
 }
 
@@ -144,6 +151,14 @@ export function PageSetupDialog({
                     label="右边距"
                     value={values.marginRight}
                     onChange={(v) => update({ marginRight: v })}
+                  />
+                  {/* 分页间隙 — 仅作用于渲染视口, 不修改存储坐标 */}
+                  <MarginField
+                    label="分页间隙"
+                    value={values.pageVerticalGap}
+                    min={0}
+                    max={200}
+                    onChange={(v) => update({ pageVerticalGap: v })}
                   />
                 </div>
 
@@ -255,9 +270,10 @@ export function PageSetupDialog({
 // ---- 子组件 ----
 
 function MarginField({
-  label, value, onChange,
+  label, value, onChange, min = 0, max = 200,
 }: {
   label: string; value: number; onChange: (v: number) => void
+  min?: number; max?: number
 }) {
   // Convert px to mm for display (1px @ 72dpi ≈ 0.353mm)
   const mmValue = (value * 0.353).toFixed(1)
@@ -271,7 +287,7 @@ function MarginField({
           className="w-16 px-2 py-1.5 text-sm border border-gray-200 rounded-md
                      focus:outline-none focus:border-primary-400 focus:ring-1 focus:ring-primary-200"
           value={value}
-          min={0} max={200}
+          min={min} max={max}
           onChange={(e) => onChange(Number(e.target.value) || 0)}
         />
         <span className="text-xs text-gray-400">px ({mmValue}mm)</span>

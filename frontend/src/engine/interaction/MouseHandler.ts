@@ -400,7 +400,9 @@ export class MouseHandler {
     const pages = this.editor.getDraw().getPages()
     if (pages.length === 0) return null
 
-    const { pageIndex, localY } = findPageByDocY(docY0, pages)
+    // 分页间隙 — 与渲染同源, 命中检测才能在带间隙的文档 Y 里正确定位到 pageIndex
+    const gap = this.editor.getDraw().getPageVerticalGap()
+    const { pageIndex, localY } = findPageByDocY(docY0, pages, gap)
     const page = pages[pageIndex]
     if (!page) return null
 
@@ -522,7 +524,9 @@ export class MouseHandler {
     const pages = this.editor.getDraw().getPages()
     if (pages.length === 0) return null
 
-    const { pageIndex, localY } = findPageByDocY(docY0, pages)
+    // 分页间隙 — 同 hitTest, 把带间隙的 docY 反查到 pageIndex + 页面内 localY
+    const gap = this.editor.getDraw().getPageVerticalGap()
+    const { pageIndex, localY } = findPageByDocY(docY0, pages, gap)
     const page = pages[pageIndex]
     if (!page) return null
 
@@ -560,7 +564,9 @@ export class MouseHandler {
     const pages = this.editor.getDraw().getPages()
     if (pages.length === 0) return null
 
-    const { pageIndex, localY } = findPageByDocY(docY0, pages)
+    // 分页间隙 — 同 hitTest / detectHeaderFooterRegion
+    const gap = this.editor.getDraw().getPageVerticalGap()
+    const { pageIndex, localY } = findPageByDocY(docY0, pages, gap)
     const page = pages[pageIndex]
     if (!page) return null
 

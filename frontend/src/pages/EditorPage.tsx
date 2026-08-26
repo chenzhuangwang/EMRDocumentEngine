@@ -196,11 +196,21 @@ function EditorPageInner({
       const editor = editorRef.current
       if (!editor) return
       editor.syncScrollPosition(container.scrollTop)
-      // 当前页码 (基于滚动位置)
+      // 当前页码 — 基于累加高度 (含分页间隙) 反查 pageIndex
       const pages = editor.getDraw().getPages()
       if (pages.length > 0) {
-        const pageH = pages[0].height
-        setCurrentPageIndex(Math.min(pages.length - 1, Math.floor(container.scrollTop / pageH)))
+        const scale = editor.getDraw().getCoordinateSystem().transform.scale
+        const gap = editor.getDraw().getPageVerticalGap()
+        const docScrollY = container.scrollTop / scale
+        // 二分查找: 找到第一个 docSlotY > docScrollY 的页面
+        let acc = 0; let pageIdx = 0
+        for (let i = 0; i < pages.length; i++) {
+          const slot = pages[i].height + gap
+          if (docScrollY < acc + pages[i].height) { pageIdx = i; break }
+          acc += slot
+          pageIdx = i
+        }
+        setCurrentPageIndex(Math.min(pages.length - 1, pageIdx))
       }
     }
     container.addEventListener('scroll', onScroll, { passive: true })
@@ -370,11 +380,13 @@ function EditorPageInner({
     }
     setActiveOutlineId(item.id)
 
-    // 滚动到目标页面
+    // 滚动到目标页面 — 按累加高度 (含分页间隙) 计算 scrollTop
     const pages = editor.getDraw().getPages()
     if (pages.length > 0 && item.pageIndex >= 0 && item.pageIndex < pages.length) {
-      const pageHeight = pages[0].height
-      container.scrollTop = item.pageIndex * pageHeight
+      const gap = editor.getDraw().getPageVerticalGap()
+      let acc = 0
+      for (let i = 0; i < item.pageIndex; i++) acc += pages[i].height + gap
+      container.scrollTop = acc * editor.getDraw().getCoordinateSystem().transform.scale
     }
 
     editor.getDraw().render(editor.getPool(), editor.getStore().state.runtime)

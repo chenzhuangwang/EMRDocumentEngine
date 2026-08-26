@@ -18,6 +18,7 @@ import { LayeredRenderer, type WatermarkConfig } from './LayeredRenderer'
 import { HitTestIndex } from './HitTestIndex'
 import { MemoryManager } from '../layout/MemoryManager'
 import { cumulativeWidthUpTo } from '../layout/CharWidthHelper'
+import { accumulatedHeightTo } from '../layout/TableCoordUtil'
 import { createFootnoteParticle } from './particles/FootnoteParticle'
 import { createTableParticle } from './particles/TableParticle'
 import { createImageParticle } from './particles/ImageParticle'
@@ -29,6 +30,14 @@ import { textParticle, separatorParticle, listParticle, fieldParticle } from './
 import { buildCellGrid } from '../document/TableOps'
 
 interface CaretPos { x: number; y: number; h: number }
+
+/**
+ * 默认分页渲染间隙 (CSS 像素)。
+ *
+ * 仅作用在渲染视口偏移, 不修改 SLIFPage.height / SLIFItem.y / 文档数据模型。
+ * 设为 0 可恢复旧版"页面紧贴"行为; 通过 Draw.setPageVerticalGap() 可调整。
+ */
+const DEFAULT_PAGE_VERTICAL_GAP = 20
 
 export class Draw {
   private container: HTMLElement
@@ -74,6 +83,11 @@ export class Draw {
     this.layoutEngine = new LayoutEngine(eventBus)
     this.renderer = new LayeredRenderer(container, this.coordSystem)
     this.hitTestIndex = new HitTestIndex()
+
+    // 默认分页渲染间隙 (仅视口偏移, 不影响存储坐标)
+    // 20px ≈ 标准文档"分页符留白" — 视觉上明确分隔相邻页面
+    this.layoutEngine.setPageVerticalGap(DEFAULT_PAGE_VERTICAL_GAP)
+    this.renderer.setPageVerticalGap(DEFAULT_PAGE_VERTICAL_GAP)
 
     if (doc) this.setDocument(doc)
 
@@ -152,6 +166,7 @@ export class Draw {
     visible: { start: number; end: number },
     pageHeight: number,
     scrollOffset: number,
+    pageVerticalGap: number = 0,
   ): CaretPos {
     const paraId = paragraphPath[paragraphPath.length - 1]
     const para = pool.nodes.get(paraId) as unknown as { children: string[] } | undefined
@@ -168,10 +183,14 @@ export class Draw {
       // 判断该段落属于 body / header / footer 哪个区域
       const section = this.resolveParagraphSection(paraId)
 
+      // 可见首页的累加 Y, 含分页间隙 (pageVerticalGap)
+      const visibleStartDocY = accumulatedHeightTo(visible.start, this.pages, pageVerticalGap)
+
       for (let i = visible.start; i <= visible.end; i++) {
         const page = this.pages[i]
         if (!page) continue
-        const pageY = (i - visible.start) * pageHeight - scrollOffset
+        // 每页 canvas Y = 自身累加顶部 (含间隙) - 当前 scrollY
+        const pageY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - (visibleStartDocY + scrollOffset)
 
         // 选择搜索的 item 列表
         let searchItems: SLIFItem[]
@@ -319,21 +338,25 @@ export class Draw {
     const viewportH = this.container.clientHeight
     const dpr = this.coordSystem.transform.dpr
     const scale = this.coordSystem.transform.scale
-    const totalPages = this.pages.length
     const pageHeight = this.pages[0]?.height || 1123
     const pageWidth = this.pages[0]?.width || 794
     // 页面水平居中: 缩放后页面可视宽度 = pageWidth * scale
     const visiblePageW = pageWidth * scale
     const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
 
-    this.renderer.syncSizes(viewportW, viewportH, dpr, pageHeight, totalPages)
+    // 分页间隙 — 仅作用在渲染视口偏移, 不影响 SLIF 存储坐标
+    const pageVerticalGap = this.renderer.getPageVerticalGap()
 
-    // scrollY 存储为文档坐标, 直接用于文档空间计算
+    this.renderer.syncSizes(viewportW, viewportH, dpr, this.pages)
+
+    // scrollY 存储为文档坐标 (含间隙), 直接用于文档空间计算
     const scrollY = this.coordSystem.transform.scrollY
     const docViewportH = viewportH / scale
     const visible = this.layoutEngine.getVisiblePages(scrollY, docViewportH)
-    // 子页滚动偏移: scrollY 减去看不到的首个完整页, 得到当前页内偏移量 (0 ~ pageHeight)
-    const scrollOffset = scrollY - visible.start * pageHeight
+    // 子页滚动偏移: scrollY 减去可见首页的累加文档顶部 Y
+    // (累加 = sum(pageHeight) + visible.start * pageVerticalGap)
+    const visibleStartDocY = accumulatedHeightTo(visible.start, this.pages, pageVerticalGap)
+    const scrollOffset = scrollY - visibleStartDocY
     // canvas 物理像素偏移: offsetX 是 CSS 像素居中偏移, 需转换为物理像素
     const physOffsetX = offsetX * dpr
 
@@ -365,7 +388,8 @@ export class Draw {
       for (let i = visible.start; i <= visible.end; i++) {
         const page = this.pages[i]
         if (!page) continue
-        const pageY = (i - visible.start) * pageHeight - scrollOffset
+        // 每页 canvas Y = 该页累加顶部 (含间隙) - 当前 scrollY
+        const pageY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - (visibleStartDocY + scrollOffset)
         const headerH = page.headerHeight ?? 42
         const footerH = page.footerHeight ?? 42
         const hasHeader = page.headerItems && page.headerItems.length > 0
@@ -512,17 +536,17 @@ export class Draw {
     // --- 选区高亮 (文字下方, 统一包围盒) ---
     const selection = runtimeState.selection
     if (selection.active) {
-      this.renderSelectionUnified(pool, selection, offsetX / scale, visible, pageHeight, scrollOffset, ictx)
+      this.renderSelectionUnified(pool, selection, offsetX / scale, visible, pageHeight, scrollOffset, pageVerticalGap, ictx)
     }
 
     // --- 单元格框选高亮 (文字下方) ---
     if (this.cellSelection) {
-      this.renderCellSelection(pool, this.cellSelection, visible, pageHeight, scrollOffset, ictx)
+      this.renderCellSelection(pool, this.cellSelection, visible, pageHeight, scrollOffset, pageVerticalGap, ictx)
     }
 
     // --- 光标 (文字上方, 仅在 visible 时绘制) ---
     if (cursor.visible) {
-      const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX / scale, visible, pageHeight, scrollOffset)
+      const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX / scale, visible, pageHeight, scrollOffset, pageVerticalGap)
       ictx.fillStyle = '#000000'
       ictx.fillRect(caret.x, caret.y, 2, caret.h)
     }
@@ -537,8 +561,9 @@ export class Draw {
     selection: EditorRuntimeState['selection'],
     _offsetX: number,
     visible: { start: number; end: number },
-    pageHeight: number,
+    _pageHeight: number,
     scrollOffset: number,
+    pageVerticalGap: number = 0,
     ictx: CanvasRenderingContext2D,
   ): void {
     const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1] || ''
@@ -564,10 +589,14 @@ export class Draw {
 
     ictx.fillStyle = 'rgba(59, 130, 246, 0.2)'
 
+    // 可见首页的累加 Y (含分页间隙)
+    const visibleStartDocY = accumulatedHeightTo(visible.start, this.pages, pageVerticalGap)
+
     for (let i = visible.start; i <= visible.end; i++) {
       const sp = this.pages[i]
       if (!sp) continue
-      const spY = (i - visible.start) * pageHeight - scrollOffset
+      // 每页 canvas Y = 自身累加顶部 - 当前 scrollY
+      const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - (visibleStartDocY + scrollOffset)
       for (const item of sp.items) {
         const itemParaId = this.findItemParagraph(item.nodeId, pool)
         if (!itemParaId) continue
@@ -638,8 +667,9 @@ export class Draw {
     pool: NodePool,
     range: { tableId: string; startRow: number; startCol: number; endRow: number; endCol: number },
     visible: { start: number; end: number },
-    pageHeight: number,
+    _pageHeight: number,
     scrollOffset: number,
+    pageVerticalGap: number = 0,
     ictx: CanvasRenderingContext2D,
   ): void {
     const r0 = Math.min(range.startRow, range.endRow)
@@ -658,10 +688,14 @@ export class Draw {
     ictx.strokeStyle = 'rgba(37, 99, 235, 0.85)'
     ictx.lineWidth = 1.5
 
+    // 可见首页的累加 Y (含分页间隙)
+    const visibleStartDocY = accumulatedHeightTo(visible.start, this.pages, pageVerticalGap)
+
     for (let i = visible.start; i <= visible.end; i++) {
       const sp = this.pages[i]
       if (!sp) continue
-      const spY = (i - visible.start) * pageHeight - scrollOffset
+      // 每页 canvas Y = 自身累加顶部 - 当前 scrollY
+      const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - (visibleStartDocY + scrollOffset)
       for (const item of sp.items) {
         if (item.type !== 'table' || item.nodeId !== range.tableId) continue
         let rowY = item.y
@@ -747,16 +781,19 @@ export class Draw {
     const viewportW = this.container.clientWidth
     const viewportH = this.container.clientHeight
     const scale = this.coordSystem.transform.scale
-    const scrollY = this.coordSystem.transform.scrollY  // 文档坐标
+    const scrollY = this.coordSystem.transform.scrollY  // 文档坐标 (含分页间隙)
     const docViewportH = viewportH / scale
     const visible = this.layoutEngine.getVisiblePages(scrollY, docViewportH)
     const pageWidth = this.pages[0]?.width || 794
     const pageHeight = this.pages[0]?.height || 1123
     const visiblePageW = pageWidth * scale
     const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
-    const scrollOffset = scrollY - visible.start * pageHeight
+    // 分页间隙 — 与 Draw.render() 同源, 保证光标 / 鼠标命中在同一坐标系
+    const pageVerticalGap = this.renderer.getPageVerticalGap()
+    const visibleStartDocY = accumulatedHeightTo(visible.start, this.pages, pageVerticalGap)
+    const scrollOffset = scrollY - visibleStartDocY
 
-    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX / scale, visible, pageHeight, scrollOffset)
+    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, offsetX / scale, visible, pageHeight, scrollOffset, pageVerticalGap)
 
     const canvas = this.renderer.getInteractCanvas()
     const canvasRect = canvas?.getBoundingClientRect() ?? this.container.getBoundingClientRect()
@@ -775,6 +812,32 @@ export class Draw {
     const cssScrollTop = this.coordSystem.transform.scrollY * oldScale
     this.coordSystem.update({ scale, scrollY: cssScrollTop / scale })
     this.eventBus.emit('scale:changed', scale)
+  }
+
+  /**
+   * 设置分页渲染间隙 — 仅影响渲染视口偏移, 不修改 SLIF 存储坐标。
+   * 调用后自动触发 syncSizes + render 重绘。
+   *
+   * 默认 20 — 让页面之间的间距可见; 设置为 0 可恢复旧版"页面紧贴"行为。
+   */
+  setPageVerticalGap(gap: number): void {
+    const changed = this.renderer.setPageVerticalGap(gap)
+    this.layoutEngine.setPageVerticalGap(gap)
+    if (changed) {
+      // 触发 spacer 高度 + canvas 高度同步, 并重绘以应用新偏移
+      const viewportW = this.container.clientWidth
+      const viewportH = this.container.clientHeight
+      const dpr = this.coordSystem.transform.dpr
+      if (this.pages.length > 0) {
+        this.renderer.syncSizes(viewportW, viewportH, dpr, this.pages)
+        this.render(this.pool ?? undefined, this._state ?? undefined)
+      }
+    }
+  }
+
+  /** 获取当前分页渲染间隙 (供 hitTest 调用方使用) */
+  getPageVerticalGap(): number {
+    return this.renderer.getPageVerticalGap()
   }
 
   /** 设置脏区域裁剪 (TASK-483): 仅重绘该区域, 渲染后自动清除 */

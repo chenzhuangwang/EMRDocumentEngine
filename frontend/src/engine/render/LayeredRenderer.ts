@@ -13,6 +13,7 @@
 import type { CoordinateSystem } from '../state/CoordinateSystem'
 import type { SLIFPage } from '../layout/SLIF'
 import type { EditorRuntimeState } from '../state/EditorRuntimeState'
+import { accumulatedHeightTo, getTotalDocHeight } from '../layout/TableCoordUtil'
 
 export interface WatermarkConfig {
   type: 'text' | 'image' | 'tile'
@@ -46,6 +47,18 @@ export class LayeredRenderer {
   private watermarkConfig: WatermarkConfig | null = null
   private watermarkImage: HTMLImageElement | null = null
   private cursorVisible = true
+
+  /**
+   * 相邻分页之间的渲染垂直间隙 (文档逻辑 px)。
+   *
+   * 约束 (来自设计要求):
+   *   1. 仅影响渲染视口偏移 — 不修改 SLIFPage.height, 不修改 SLIFItem.y, 不影响 hitTest / 命中检测。
+   *   2. 文档数据模型 / 存储坐标完全不变, 仅 spacer 撑高 + 每页 canvas Y 偏移。
+   *   3. 默认 0 — 与历史行为完全一致。
+   *
+   * 通过 setPageVerticalGap() 调整, 调整后 Draw.render() 自动使用新值。
+   */
+  private pageVerticalGap = 0
 
   private readonly OVERSCAN_PAGES = 1
 
@@ -82,6 +95,26 @@ export class LayeredRenderer {
   getInteractCtx(): CanvasRenderingContext2D | null { return this.ctxs.interact }
   getInteractCanvas(): HTMLCanvasElement | null { return this.layers.interact }
 
+  /**
+   * 获取当前分页垂直间隙 (文档逻辑 px)。
+   * 供 Draw.findPageByDocY / MouseHandler / Editor 等调用方在
+   * 命中检测时把 docY 反查到正确的 pageIndex + localY。
+   */
+  getPageVerticalGap(): number { return this.pageVerticalGap }
+
+  /**
+   * 设置分页垂直间隙 — 仅作用于渲染阶段的视口偏移, 不改动存储数据。
+   * 调用方应在调整后触发 Draw.render() 重绘。
+   *
+   * @returns 是否发生变更 — 便于调用方按需触发 syncSizes + render。
+   */
+  setPageVerticalGap(gap: number): boolean {
+    const clamped = Math.max(0, gap)
+    if (clamped === this.pageVerticalGap) return false
+    this.pageVerticalGap = clamped
+    return true
+  }
+
   /** 滚动反偏移: 保持绝对定位画布固定于可视区顶部 */
   fixCanvasScrollOffset(scrollTop: number): void {
     const topPx = `${scrollTop}px`
@@ -95,13 +128,21 @@ export class LayeredRenderer {
 
   syncSizes(
     viewportW: number, viewportH: number, dpr: number,
-    pageHeight: number, totalPages: number,
+    pages: SLIFPage[],
   ): void {
     const scale = this.coordSystem.transform.scale
+    const totalPages = pages.length
+    // 文档总高度 = 所有页面高度之和 + (N-1) * pageVerticalGap
+    // (gap=0 时退化为 sum(pageHeight), 与历史行为一致)
+    const totalDocHeight = getTotalDocHeight(pages, this.pageVerticalGap)
+    const totalDocHeightScaled = totalDocHeight * scale
     // 视口在文档坐标中的可视范围
     const docViewportH = viewportH / scale
-    const pagesInView = Math.ceil(docViewportH / pageHeight) + this.OVERSCAN_PAGES * 2
-    const canvasHDoc = Math.min(pagesInView * pageHeight, totalPages * pageHeight)
+    // 视口内可见页数估算 — 用累计高度步长 (含间隙) 而非单一 pageHeight,
+    // 以保证 OVERSCAN 在多页 / 大间距场景下不漏页。
+    const avgSlot = totalPages > 0 ? totalDocHeight / totalPages : 1123
+    const pagesInView = Math.ceil(docViewportH / avgSlot) + this.OVERSCAN_PAGES * 2
+    const canvasHDoc = Math.min(pagesInView * avgSlot, totalDocHeight)
 
     for (const key of ['static', 'content', 'interact'] as const) {
       const canvas = this.layers[key]!
@@ -113,7 +154,7 @@ export class LayeredRenderer {
 
     // 更新滚动占位高度 = 全文档高度 × 缩放
     if (this.spacer) {
-      this.spacer.style.height = `${totalPages * pageHeight * scale}px`
+      this.spacer.style.height = `${totalDocHeightScaled}px`
     }
   }
 
@@ -136,10 +177,16 @@ export class LayeredRenderer {
     ctx.clearRect(0, 0, this.layers.static!.width / dpr, this.layers.static!.height / dpr)
     ctx.save()
 
+    // 可见首页在文档坐标中的累加顶部 (含 pageVerticalGap)
+    const baseY = accumulatedHeightTo(visibleRange.start, pages, this.pageVerticalGap)
     for (let i = visibleRange.start; i <= visibleRange.end; i++) {
       const page = pages[i]
       if (!page) continue
-      const pageY = (i - visibleRange.start) * page.height - scrollOffset
+      // 每页 canvas Y = 自身累加顶部 - 滚动偏移
+      // (scrollOffset = scrollY - baseY, 因此 pageY = accY(i) - baseY - scrollOffset + baseY
+      //  但更直观写法 = accY(i) - (scrollY) — 即该页在文档逻辑坐标里的 Y 减去当前滚动)
+      // 这里保留与 Draw.render 同公式: accY(i) - scrollY, scrollY = baseY + scrollOffset
+      const pageY = accumulatedHeightTo(i, pages, this.pageVerticalGap) - (baseY + scrollOffset)
 
       // 页面背景
       ctx.fillStyle = '#FFFFFF'

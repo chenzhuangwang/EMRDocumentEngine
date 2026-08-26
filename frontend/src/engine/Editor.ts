@@ -240,11 +240,16 @@ export class Editor {
     this.notifyListeners('ready')
   }
 
-  /** 获取文档总高度 (CSS pixels, 供滚动 spacer 使用) */
+  /** 获取文档总高度 (CSS pixels, 供滚动 spacer 使用) — 含分页间隙 */
   getTotalDocHeight(): number {
     const pages = this.draw.getPages()
     if (pages.length === 0) return 0
-    return pages.length * pages[0].height
+    const gap = this.draw.getPageVerticalGap()
+    if (gap === 0) return pages.length * pages[0].height
+    // 含间隙的总高度 = sum(pageHeight) + (N-1) * gap
+    let total = 0
+    for (const p of pages) total += p.height
+    return total + (pages.length - 1) * gap
   }
 
   /** 外部滚动同步 → 反偏移画布 + 更新 scrollY + 重渲染 */
@@ -306,7 +311,9 @@ export class Editor {
     const pages = this.draw.getPages()
     if (pages.length === 0) return
 
-    const { pageIndex, localY } = findPageByDocY(docY0, pages)
+    // 分页间隙 — 命中检测要把带间隙的文档 Y 反查到正确的 pageIndex + 页面内 localY
+    const gap = this.draw.getPageVerticalGap()
+    const { pageIndex, localY } = findPageByDocY(docY0, pages, gap)
     const page = pages[pageIndex]
     if (!page) return
 
@@ -1186,8 +1193,12 @@ export class Editor {
   redo(): void { this.commandManager.redo() }
   canUndo(): boolean { return this.commandManager.canUndo() }
 
-  /** 应用页面设置 — 更新 DocumentTree.pageSetup 并重新排版 */
-  applyPageSetup(values: { marginTop: number; marginBottom: number; marginLeft: number; marginRight: number; pageWidth: number; pageHeight: number; orientation: 'portrait' | 'landscape' }): void {
+  /** 应用页面设置 — 更新 DocumentTree.pageSetup + 分页渲染间隙, 然后重排重绘 */
+  applyPageSetup(values: {
+    marginTop: number; marginBottom: number; marginLeft: number; marginRight: number
+    pageWidth: number; pageHeight: number; orientation: 'portrait' | 'landscape'
+    pageVerticalGap?: number
+  }): void {
     this.doc.pageSetup.width = values.pageWidth
     this.doc.pageSetup.height = values.pageHeight
     this.doc.pageSetup.marginTop = values.marginTop
@@ -1195,6 +1206,10 @@ export class Editor {
     this.doc.pageSetup.marginLeft = values.marginLeft
     this.doc.pageSetup.marginRight = values.marginRight
     this.doc.pageSetup.orientation = values.orientation
+    // 分页渲染间隙 — 存储不修改, 仅影响渲染视口
+    if (typeof values.pageVerticalGap === 'number') {
+      this.draw.setPageVerticalGap(values.pageVerticalGap)
+    }
     this.draw.recomputeLayout(this.pool)
     this.draw.render(this.pool, this.store.state.runtime)
     this.notifyListeners('contentChange', this.doc)
@@ -1687,7 +1702,9 @@ export class Editor {
     const pages = this.draw.getPages()
     if (pages.length === 0) { this.setFormatPainterActive(false); return }
 
-    const { pageIndex, localY } = findPageByDocY(docY0, pages)
+    // 分页间隙 — 把带间隙的文档 Y 反查到正确的 pageIndex + 页面内 localY
+    const gap = this.draw.getPageVerticalGap()
+    const { pageIndex, localY } = findPageByDocY(docY0, pages, gap)
     const page = pages[pageIndex]
     if (!page) { this.setFormatPainterActive(false); return }
 
