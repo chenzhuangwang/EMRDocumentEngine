@@ -10,10 +10,10 @@
 
 import { describe, it, expect } from 'vitest'
 import { HitTestIndex } from '../render/HitTestIndex'
-import { buildMergeMatrix } from '../document/MergeMatrix'
-import { buildNodePool } from '../document/NodePool'
-import { createDocument, createParagraph, createTextNode } from '../document/ElementFormatter'
-import type { BaseNode } from '../document/DocumentModel'
+import { buildMergeMatrix } from '../document/table/MergeMatrix'
+import { buildNodePool } from '../document/core/NodePool'
+import { createDocument, createParagraph, createTextNode } from '../document/factory/ElementFormatter'
+import type { BaseNode } from '../document/core/DocumentModel'
 import type { SLIFItem, SLIFCell } from '../layout/core/SLIF'
 
 /** 构造一个 cell 内文本 item (cell 局部坐标) */

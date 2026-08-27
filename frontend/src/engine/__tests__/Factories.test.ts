@@ -5,13 +5,13 @@
 import { describe, it, expect } from 'vitest'
 import {
   NodeType, generateId, resetIdCounter, DEFAULT_PAGE_SETUP,
-} from '../document/DocumentModel'
+} from '../document/core/DocumentModel'
 import {
   createDocument, createTextNode, createSmartTextNode,
   createFieldNode, createSeparatorNode, createSectionBreak,
   createImageNode, createSimpleTable, createFootnoteRef, createFootnoteContent,
   extractStyle, sameStyle,
-} from '../document/ElementFormatter'
+} from '../document/factory/ElementFormatter'
 import { sanitizeText } from '../security/SecurityConfig'
 import { validateKaTeX } from '../render/KaTeXRenderer'
 

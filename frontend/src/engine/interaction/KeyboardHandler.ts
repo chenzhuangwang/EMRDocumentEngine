@@ -6,8 +6,8 @@
 // ================================================================
 
 import type { Editor } from '../Editor'
-import { createParagraph } from '../document/ElementFormatter'
-import { extractStyle } from '../document/ElementFormatter'
+import { createParagraph } from '../document/factory/ElementFormatter'
+import { extractStyle } from '../document/factory/ElementFormatter'
 import { InsertTextCommand } from '../command/commands/InsertTextCommand'
 import { DeleteRangeCommand } from '../command/commands/DeleteRangeCommand'
 import { SplitParagraphCommand } from '../command/commands/SplitParagraphCommand'
@@ -15,9 +15,9 @@ import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand
 import { generateCommandId } from '../command/ICommand'
 import type { SLIFPage } from '../layout/core/SLIF'
 import { resolveCellPosition, getCaretScope, getAdjacentCell, resolveParagraphRegion } from '../state/CaretScope'
-import { buildCellGrid } from '../document/TableOps'
-import type { TableGrid, GridCell } from '../document/TableOps'
-import type { NodePool } from '../document/NodePool'
+import { buildCellGrid } from '../document/table/TableOps'
+import type { TableGrid, GridCell } from '../document/table/TableOps'
+import type { NodePool } from '../document/core/NodePool'
 
 export class KeyboardHandler {
   private editor: Editor
@@ -188,14 +188,14 @@ export class KeyboardHandler {
       }
 
       // 获取光标处文本样式, 使新输入继承当前格式
-      let activeStyle: import('../document/DocumentModel').TextStyle | undefined
+      let activeStyle: import('../document/core/DocumentModel').TextStyle | undefined
       if (path.length > 0) {
         const pool = ed.getPool()
         const paraId = path[path.length - 1]
         const resolved = pool.resolveCharOffset(paraId, offset)
         if (resolved) {
           const tn = pool.nodes.get(resolved.textNodeId) as unknown as Record<string, unknown> | undefined
-          if (tn) activeStyle = extractStyle(tn as unknown as import('../document/DocumentModel').TextNode)
+          if (tn) activeStyle = extractStyle(tn as unknown as import('../document/core/DocumentModel').TextNode)
         } else {
           // 光标在段尾 → 取最后一个 text node 的样式
           const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
@@ -203,7 +203,7 @@ export class KeyboardHandler {
             for (let i = para.children.length - 1; i >= 0; i--) {
               const n = pool.nodes.get(para.children[i]) as { type?: string } | undefined
               if (n?.type === 'text') {
-                activeStyle = extractStyle(n as unknown as import('../document/DocumentModel').TextNode)
+                activeStyle = extractStyle(n as unknown as import('../document/core/DocumentModel').TextNode)
                 break
               }
             }

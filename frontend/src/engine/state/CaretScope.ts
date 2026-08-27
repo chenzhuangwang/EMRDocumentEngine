@@ -15,7 +15,7 @@
 //   - ArrowUp/Down 边界跳转到相邻域
 // ================================================================
 
-import type { NodePool } from '../document/NodePool'
+import type { NodePool } from '../document/core/NodePool'
 
 // ---- 域类型 ----
 

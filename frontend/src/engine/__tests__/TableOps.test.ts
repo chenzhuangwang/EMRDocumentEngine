@@ -9,14 +9,14 @@ import { describe, it, expect } from 'vitest'
 import {
   insertRow, deleteRow, insertColumn, deleteColumn,
   buildCellGrid, getCellGridPosition, normalizeRange, cellsInRange,
-} from '../document/TableOps'
-import { buildNodePool } from '../document/NodePool'
-import type { NodePool } from '../document/NodePool'
+} from '../document/table/TableOps'
+import { buildNodePool } from '../document/core/NodePool'
+import type { NodePool } from '../document/core/NodePool'
 import {
   createDocument, createParagraph, createTextNode,
   createTable, createTableRow, createTableCell,
-} from '../document/ElementFormatter'
-import type { BaseNode, TableCell, TableRow } from '../document/DocumentModel'
+} from '../document/factory/ElementFormatter'
+import type { BaseNode, TableCell, TableRow } from '../document/core/DocumentModel'
 
 /** 构建普通 N×M 表格, 每个 cell 含一个文本段落 (文本为 "r{c}") */
 function makeSimpleTable(rows: number, cols: number) {

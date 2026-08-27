@@ -8,7 +8,7 @@
 // ================================================================
 
 import type { SLIFPage, SLIFItem } from '../core/SLIF'
-import type { NodePool } from '../../document/NodePool'
+import type { NodePool } from '../../document/core/NodePool'
 
 // ---- 脚注条目 ----
 

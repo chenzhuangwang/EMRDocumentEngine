@@ -3,7 +3,7 @@
 // v20.35: 支持多段落批量操作 + MergeableCommand 自动合并撤销
 // ================================================================
 
-import type { Paragraph, ParagraphStyle } from '../../document/DocumentModel'
+import type { Paragraph, ParagraphStyle } from '../../document/core/DocumentModel'
 import { ICommand, CommandContext, StatePatch, SerializedCommand, generateCommandId, type MergeableCommand } from '../ICommand'
 
 export class ParagraphStyleCommand implements ICommand, MergeableCommand {

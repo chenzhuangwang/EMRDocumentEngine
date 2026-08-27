@@ -8,9 +8,9 @@ import {
   createSmartTextNode, createSimpleTable,
   findByDE, findByInternal,
   takeSnapshot, restoreSnapshot, extractStyle,
-} from '../document/ElementFormatter'
-import { NodeType } from '../document/DocumentModel'
-import { buildNodePool, traversePool } from '../document/NodePool'
+} from '../document/factory/ElementFormatter'
+import { NodeType } from '../document/core/DocumentModel'
+import { buildNodePool, traversePool } from '../document/core/NodePool'
 
 describe('ModelD factory', () => {
   it('should create a document with defaults', () => {

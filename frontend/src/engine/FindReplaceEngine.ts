@@ -10,7 +10,7 @@
 // MatchResult 包含段落路径 + 偏移, 可直接用于光标定位和选区高亮
 // ================================================================
 
-import type { DocumentTree } from './document/DocumentModel'
+import type { DocumentTree } from './document/core/DocumentModel'
 
 // ---- 类型 ----
 

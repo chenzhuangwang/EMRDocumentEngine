@@ -11,12 +11,12 @@ import { LayoutEngine } from '../layout/core/LayoutEngine'
 import { EventBus } from '../interaction/EventBus'
 import { KeyboardHandler } from '../interaction/KeyboardHandler'
 import type { Editor } from '../Editor'
-import { buildNodePool } from '../document/NodePool'
+import { buildNodePool } from '../document/core/NodePool'
 import {
   createDocument, createParagraph, createTextNode,
   createSeparatorNode, createSectionBreak,
-} from '../document/ElementFormatter'
-import type { BaseNode, Paragraph } from '../document/DocumentModel'
+} from '../document/factory/ElementFormatter'
+import type { BaseNode, Paragraph } from '../document/core/DocumentModel'
 
 /** 构造不依赖真实 DOM/Editor 的 KeyboardHandler (导航方法为纯函数) */
 function makeHandler(): KeyboardHandler {

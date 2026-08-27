@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { PageBreaker, type ILine } from '../layout/page/PageBreaker'
-import { DEFAULT_PAGE_SETUP, type PageSetup } from '../document/DocumentModel'
+import { DEFAULT_PAGE_SETUP, type PageSetup } from '../document/core/DocumentModel'
 
 // Helper: create a line with given characters and height
 function line(chars: string, height = 20): ILine {

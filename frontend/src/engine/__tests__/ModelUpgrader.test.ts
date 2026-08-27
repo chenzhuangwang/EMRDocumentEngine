@@ -5,12 +5,12 @@
 import { describe, it, expect } from 'vitest'
 import {
   modelUpgrader,
-} from '../document/ModelUpgrader'
+} from '../document/version/ModelUpgrader'
 import {
   parseVersion, compareVersions, versionToString,
-} from '../document/DocumentFormatVersion'
-import { MergeMatrix, buildMergeMatrix } from '../document/MergeMatrix'
-import { createDocument } from '../document/ElementFormatter'
+} from '../document/version/DocumentFormatVersion'
+import { MergeMatrix, buildMergeMatrix } from '../document/table/MergeMatrix'
+import { createDocument } from '../document/factory/ElementFormatter'
 
 // ---- ModelUpgrader ----
 

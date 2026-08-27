@@ -10,10 +10,10 @@ import type {
   SectionBreak, PageSetup, TextStyle, ParagraphStyle,
   ElementMeta, ColumnDefinition, FlowBody,
   FieldNode, FieldType, FootnoteRef, FootnoteContent,
-} from './DocumentModel'
-import { NodeType, generateId, DEFAULT_PAGE_SETUP } from './DocumentModel'
-import { NodePool } from './NodePool'
-import { CURRENT_DOCUMENT_VERSION, versionToString } from './DocumentFormatVersion'
+} from '../core/DocumentModel'
+import { NodeType, generateId, DEFAULT_PAGE_SETUP } from '../core/DocumentModel'
+import { NodePool } from '../core/NodePool'
+import { CURRENT_DOCUMENT_VERSION, versionToString } from '../version/DocumentFormatVersion'
 
 // ================================================================
 // 工厂函数

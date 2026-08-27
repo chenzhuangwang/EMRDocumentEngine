@@ -8,9 +8,9 @@
 import { useMemo } from 'react'
 import { Equal, Plus, Minus, Edit3, X, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { DocumentTree } from '@/engine/document/DocumentModel'
+import type { DocumentTree } from '@/engine/document/core/DocumentModel'
 import { DocumentDiffer, type DiffResult } from '@/engine/DocumentDiffer'
-import { NodePool } from '@/engine/document/NodePool'
+import { NodePool } from '@/engine/document/core/NodePool'
 
 // ---- 类型 ----
 

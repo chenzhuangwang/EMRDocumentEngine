@@ -4,8 +4,8 @@
 // forward 前快照旧样式 → serialize 内嵌 oldStyles → invert 恢复旧样式
 // ================================================================
 
-import type { TextNode, TextStyle } from '../../document/DocumentModel'
-import { extractStyle } from '../../document/ElementFormatter'
+import type { TextNode, TextStyle } from '../../document/core/DocumentModel'
+import { extractStyle } from '../../document/factory/ElementFormatter'
 import { ICommand, CommandContext, StatePatch, SerializedCommand, generateCommandId } from '../ICommand'
 
 export class FormatTextCommand implements ICommand {

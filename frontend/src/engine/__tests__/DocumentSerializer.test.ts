@@ -4,11 +4,11 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { buildNodePool } from '../document/NodePool'
-import { createDocument, createParagraph, createTextNode } from '../document/ElementFormatter'
-import { collectDocumentNodes, serializeDocument } from '../document/DocumentSerializer'
-import type { BaseNode, DocumentTree } from '../document/DocumentModel'
-import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/DocumentFormatVersion'
+import { buildNodePool } from '../document/core/NodePool'
+import { createDocument, createParagraph, createTextNode } from '../document/factory/ElementFormatter'
+import { collectDocumentNodes, serializeDocument } from '../document/io/DocumentSerializer'
+import type { BaseNode, DocumentTree } from '../document/core/DocumentModel'
+import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/version/DocumentFormatVersion'
 
 interface BuiltDoc {
   doc: DocumentTree

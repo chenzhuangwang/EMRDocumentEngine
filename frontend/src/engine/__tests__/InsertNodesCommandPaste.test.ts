@@ -10,12 +10,12 @@
 
 import { describe, it, expect } from 'vitest'
 import { InsertNodesCommand } from '../command/commands/InsertNodesCommand'
-import { buildNodePool } from '../document/NodePool'
+import { buildNodePool } from '../document/core/NodePool'
 import {
   createDocument, createParagraph, createTextNode, createSmartTextNode,
-} from '../document/ElementFormatter'
-import type { BaseNode, DocumentTree, ElementMeta } from '../document/DocumentModel'
-import type { NodePool } from '../document/NodePool'
+} from '../document/factory/ElementFormatter'
+import type { BaseNode, DocumentTree, ElementMeta } from '../document/core/DocumentModel'
+import type { NodePool } from '../document/core/NodePool'
 import type { CommandContext } from '../command/ICommand'
 import type { SerializedPara } from '../command/ClipboardManager'
 

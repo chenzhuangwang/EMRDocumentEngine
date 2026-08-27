@@ -5,8 +5,8 @@
 // 支持: bookmark → page number, heading → page number, footnote → number
 // ============================================================
 
-import type { DocumentTree } from '../document/DocumentModel'
-import type { NodePool } from '../document/NodePool'
+import type { DocumentTree } from '../document/core/DocumentModel'
+import type { NodePool } from '../document/core/NodePool'
 
 // ---- 类型 ----
 

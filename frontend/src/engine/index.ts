@@ -12,7 +12,7 @@ export { SeparatorParticle } from './render/particles/SeparatorParticle'
 export { ListParticle } from './render/particles/ListParticle'
 export { Position } from './state/Position'
 export { CoordinateSystem } from './state/CoordinateSystem'
-export { NodePool, buildNodePool, traversePool } from './document/NodePool'
+export { NodePool, buildNodePool, traversePool } from './document/core/NodePool'
 
 // EventBus
 export { EventBus } from './interaction/EventBus'
@@ -74,7 +74,7 @@ export {
   DEFAULT_PAGE_SETUP,
   generateId,
   resetIdCounter,
-} from './document/DocumentModel'
+} from './document/core/DocumentModel'
 export type {
   TextStyle, ParagraphStyle, ListStyle,
   ElementCode, ElementFormat, PrivacyConfig, ElementMeta,
@@ -87,7 +87,7 @@ export type {
   BlockNode, BodyChild, FlowBody,
   CommentEntry, CommentThread,
   PageSetup, DocumentTree,
-} from './document/DocumentModel'
+} from './document/core/DocumentModel'
 
 // ModelD — 工具
 export {
@@ -96,7 +96,7 @@ export {
   createSimpleTable, createSeparatorNode, createSectionBreak,
   insertAt, removeAt, findById, findByDE, findByInternal,
   takeSnapshot, restoreSnapshot, extractStyle, sameStyle,
-} from './document/ElementFormatter'
+} from './document/factory/ElementFormatter'
 
 // ---- R30+: Particles ----
 export type { IParticle, RenderOptions } from './render/particles/IParticle'
@@ -148,17 +148,17 @@ export { ScriptResolver, scriptResolver } from './layout/text/ScriptResolver'
 export type { MultiLangFontConfig } from './layout/text/ScriptResolver'
 
 // ---- R60+: Document management ----
-export { ModelUpgrader, modelUpgrader } from './document/ModelUpgrader'
-export type { VersionUpgrader, CompatibilityStatus, CompatibilityResult, VersionCompatibility } from './document/ModelUpgrader'
-export { VERSION_COMPATIBILITY } from './document/ModelUpgrader'
-export type { EditorVersion } from './document/EditorVersion'
-export { EDITOR_VERSION } from './document/EditorVersion'
-export type { DocumentFormatVersion, SLIFVersion } from './document/DocumentFormatVersion'
-export { CURRENT_DOCUMENT_VERSION, CURRENT_SLIF_VERSION, parseVersion, compareVersions, versionToString } from './document/DocumentFormatVersion'
-export { loadDocument, loadDocumentFromObject, LoadError } from './document/DocumentLoader'
-export type { DocumentLoadOptions, DocumentLoadResult } from './document/DocumentLoader'
-export { MergeMatrix, buildMergeMatrix } from './document/MergeMatrix'
-export type { CellSpan } from './document/MergeMatrix'
+export { ModelUpgrader, modelUpgrader } from './document/version/ModelUpgrader'
+export type { VersionUpgrader, CompatibilityStatus, CompatibilityResult, VersionCompatibility } from './document/version/ModelUpgrader'
+export { VERSION_COMPATIBILITY } from './document/version/ModelUpgrader'
+export type { EditorVersion } from './document/version/EditorVersion'
+export { EDITOR_VERSION } from './document/version/EditorVersion'
+export type { DocumentFormatVersion, SLIFVersion } from './document/version/DocumentFormatVersion'
+export { CURRENT_DOCUMENT_VERSION, CURRENT_SLIF_VERSION, parseVersion, compareVersions, versionToString } from './document/version/DocumentFormatVersion'
+export { loadDocument, loadDocumentFromObject, LoadError } from './document/io/DocumentLoader'
+export type { DocumentLoadOptions, DocumentLoadResult } from './document/io/DocumentLoader'
+export { MergeMatrix, buildMergeMatrix } from './document/table/MergeMatrix'
+export type { CellSpan } from './document/table/MergeMatrix'
 
 // ---- R60+: Security ----
 export { SecurityChecker, sanitizeHtml, sanitizeText, isSafeHtml } from './security/SecurityConfig'

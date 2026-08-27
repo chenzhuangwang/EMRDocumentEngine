@@ -17,12 +17,12 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { accumulatedHeightTo, getTotalDocHeight } from '../layout/table/TableCoordUtil'
-import { createDocument, createParagraph, createTextNode } from '../document/ElementFormatter'
-import { buildNodePool } from '../document/NodePool'
+import { createDocument, createParagraph, createTextNode } from '../document/factory/ElementFormatter'
+import { buildNodePool } from '../document/core/NodePool'
 import { EventBus } from '../interaction/EventBus'
 import { Draw } from '../render/Draw'
-import type { BaseNode, DocumentTree } from '../document/DocumentModel'
-import type { NodePool } from '../document/NodePool'
+import type { BaseNode, DocumentTree } from '../document/core/DocumentModel'
+import type { NodePool } from '../document/core/NodePool'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 import type { EditorRuntimeState } from '../state/EditorRuntimeState'
 

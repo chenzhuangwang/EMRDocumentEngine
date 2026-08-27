@@ -2,9 +2,9 @@
 // ParagraphUtils — normalizeParagraph 共享 (避免 InsertText/DeleteRange 循环依赖)
 // ================================================================
 
-import type { Paragraph, TextNode } from '../../document/DocumentModel'
-import type { NodePool } from '../../document/NodePool'
-import { sameStyle } from '../../document/ElementFormatter'
+import type { Paragraph, TextNode } from '../../document/core/DocumentModel'
+import type { NodePool } from '../../document/core/NodePool'
+import { sameStyle } from '../../document/factory/ElementFormatter'
 
 export function normalizeParagraph(para: Paragraph, pool: NodePool): void {
   const merged: string[] = []

@@ -10,12 +10,12 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { buildNodePool } from '../document/NodePool'
+import { buildNodePool } from '../document/core/NodePool'
 import {
   createDocument, createParagraph, createTextNode,
-} from '../document/ElementFormatter'
-import type { BaseNode, DocumentTree, Paragraph } from '../document/DocumentModel'
-import type { NodePool } from '../document/NodePool'
+} from '../document/factory/ElementFormatter'
+import type { BaseNode, DocumentTree, Paragraph } from '../document/core/DocumentModel'
+import type { NodePool } from '../document/core/NodePool'
 import type { CommandContext } from '../command/ICommand'
 import { SplitParagraphCommand } from '../command/commands/SplitParagraphCommand'
 import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand'

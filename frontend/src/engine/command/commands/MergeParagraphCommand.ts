@@ -5,7 +5,7 @@
 // invert: 子树快照式 — forward 前存储被删段落的完整快照
 // ================================================================
 
-import type { Paragraph } from '../../document/DocumentModel'
+import type { Paragraph } from '../../document/core/DocumentModel'
 import { ICommand, CommandContext, StatePatch, SerializedCommand, PositionalCommand } from '../ICommand'
 import { normalizeParagraph } from './ParagraphUtils'
 import { resolveParagraphRegion } from '../../state/CaretScope'

@@ -19,14 +19,14 @@ import { describe, it, expect } from 'vitest'
 import {
   loadDocument, loadDocumentFromObject, LoadError,
   type DocumentLoadOptions,
-} from '../document/DocumentLoader'
-import { serializeDocument } from '../document/DocumentSerializer'
-import { createDocument, createParagraph, createTextNode } from '../document/ElementFormatter'
-import { buildNodePool } from '../document/NodePool'
-import type { BaseNode, DocumentTree, Paragraph, TextNode } from '../document/DocumentModel'
+} from '../document/io/DocumentLoader'
+import { serializeDocument } from '../document/io/DocumentSerializer'
+import { createDocument, createParagraph, createTextNode } from '../document/factory/ElementFormatter'
+import { buildNodePool } from '../document/core/NodePool'
+import type { BaseNode, DocumentTree, Paragraph, TextNode } from '../document/core/DocumentModel'
 import {
   CURRENT_DOCUMENT_VERSION, versionToString,
-} from '../document/DocumentFormatVersion'
+} from '../document/version/DocumentFormatVersion'
 
 /** 构造一个可序列化往返的最小文档 (含 body + footer) */
 function buildRoundTripFixture(): { doc: DocumentTree; nodes: Map<string, BaseNode> } {

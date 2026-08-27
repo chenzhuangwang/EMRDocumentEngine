@@ -5,8 +5,8 @@
 // 返回 DiffResult[] 供 DocumentCompareView 消费
 // ============================================================
 
-import type { DocumentTree, Paragraph } from './document/DocumentModel'
-import { NodePool } from './document/NodePool'
+import type { DocumentTree, Paragraph } from './document/core/DocumentModel'
+import { NodePool } from './document/core/NodePool'
 
 // ---- 类型 ----
 

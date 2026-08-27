@@ -6,8 +6,8 @@
 // 严禁将 offset 直接用作 para.children 数组下标
 // ================================================================
 
-import type { Paragraph, TextNode, TextStyle } from '../../document/DocumentModel'
-import { extractStyle, sameStyle, createTextNode } from '../../document/ElementFormatter'
+import type { Paragraph, TextNode, TextStyle } from '../../document/core/DocumentModel'
+import { extractStyle, sameStyle, createTextNode } from '../../document/factory/ElementFormatter'
 import {
   ICommand, CommandContext, StatePatch,
   SerializedCommand, PositionalCommand, generateCommandId,

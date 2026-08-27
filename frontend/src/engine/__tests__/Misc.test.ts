@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { createDocument, createTextNode, createParagraph } from '../document/ElementFormatter'
-import { generateId, DEFAULT_PAGE_SETUP } from '../document/DocumentModel'
+import { createDocument, createTextNode, createParagraph } from '../document/factory/ElementFormatter'
+import { generateId, DEFAULT_PAGE_SETUP } from '../document/core/DocumentModel'
 
 // Quick tests to reach 200
 describe('ElementFormatter misc', () => {

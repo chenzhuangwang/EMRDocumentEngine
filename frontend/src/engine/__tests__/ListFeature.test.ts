@@ -5,9 +5,9 @@
 
 import { describe, it, expect } from 'vitest'
 import { ListParticle } from '../render/particles/ListParticle'
-import { NodePool, buildNodePool } from '../document/NodePool'
-import { createDocument, createParagraph, createTextNode } from '../document/ElementFormatter'
-import type { DocumentTree, BaseNode, ListStyle } from '../document/DocumentModel'
+import { NodePool, buildNodePool } from '../document/core/NodePool'
+import { createDocument, createParagraph, createTextNode } from '../document/factory/ElementFormatter'
+import type { DocumentTree, BaseNode, ListStyle } from '../document/core/DocumentModel'
 import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand'
 import type { CommandContext } from '../command/ICommand'
 

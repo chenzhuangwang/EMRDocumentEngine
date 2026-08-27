@@ -12,9 +12,9 @@ import { EventBus } from '../interaction/EventBus'
 import {
   createDocument, createParagraph, createTextNode,
   createTable, createTableRow, createTableCell,
-} from '../document/ElementFormatter'
-import { buildNodePool } from '../document/NodePool'
-import type { BaseNode } from '../document/DocumentModel'
+} from '../document/factory/ElementFormatter'
+import { buildNodePool } from '../document/core/NodePool'
+import type { BaseNode } from '../document/core/DocumentModel'
 
 /** 2×2 表格, cell(0,0) rowspan=2:
  *   row0: [A(rowspan=2), B]

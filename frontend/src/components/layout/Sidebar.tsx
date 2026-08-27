@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store'
 import { OutlineNav, type OutlineItem } from '@/components/sidebar/OutlineNav'
 import { CommentPanel } from '@/components/panels/CommentPanel'
-import type { CommentThread } from '@/engine/document/DocumentModel'
+import type { CommentThread } from '@/engine/document/core/DocumentModel'
 
 interface SidebarProps {
   templates?: TemplateCategory[]

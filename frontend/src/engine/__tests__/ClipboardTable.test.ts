@@ -8,12 +8,12 @@
 
 import { describe, it, expect } from 'vitest'
 import { ClipboardManager } from '../command/ClipboardManager'
-import { buildNodePool } from '../document/NodePool'
+import { buildNodePool } from '../document/core/NodePool'
 import {
   createDocument, createParagraph, createTextNode,
   createTable, createTableRow, createTableCell,
-} from '../document/ElementFormatter'
-import type { BaseNode, Paragraph } from '../document/DocumentModel'
+} from '../document/factory/ElementFormatter'
+import type { BaseNode, Paragraph } from '../document/core/DocumentModel'
 
 function mkPara(allNodes: Map<string, BaseNode>, text: string): Paragraph {
   const tn = createTextNode(text)

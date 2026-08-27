@@ -1,9 +1,9 @@
-import type { DocumentTree, BaseNode, Paragraph, TextNode } from './document/DocumentModel'
-import { createDocument, createParagraph, createTextNode, extractStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent, createSmartTextNode } from './document/ElementFormatter'
-import { NodePool, buildNodePool } from './document/NodePool'
-import { serializeDocument } from './document/DocumentSerializer'
-import { loadDocumentFromObject } from './document/DocumentLoader'
-import type { FieldType } from './document/DocumentModel'
+import type { DocumentTree, BaseNode, Paragraph, TextNode } from './document/core/DocumentModel'
+import { createDocument, createParagraph, createTextNode, extractStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent, createSmartTextNode } from './document/factory/ElementFormatter'
+import { NodePool, buildNodePool } from './document/core/NodePool'
+import { serializeDocument } from './document/io/DocumentSerializer'
+import { loadDocumentFromObject } from './document/io/DocumentLoader'
+import type { FieldType } from './document/core/DocumentModel'
 import { Draw } from './render/Draw'
 import { AutoSaveManager } from './AutoSaveManager'
 import { AutoCorrectEngine } from './AutoCorrectEngine'
@@ -32,9 +32,9 @@ import type { FindOptions, MatchResult } from './FindReplaceEngine'
 import { cumulativeCharWidths, findCharIndexAtX } from './layout/text/CharWidthHelper'
 import { resolveCellPosition } from './state/CaretScope'
 import { screenToDoc, findPageByDocY, pageCenteringOffset } from './layout/table/TableCoordUtil'
-import { insertRow, deleteRow, insertColumn, deleteColumn, getCellGridPosition, buildCellGrid, normalizeRange } from './document/TableOps'
-import type { CellRange } from './document/TableOps'
-import { createTableCell } from './document/ElementFormatter'
+import { insertRow, deleteRow, insertColumn, deleteColumn, getCellGridPosition, buildCellGrid, normalizeRange } from './document/table/TableOps'
+import type { CellRange } from './document/table/TableOps'
+import { createTableCell } from './document/factory/ElementFormatter'
 
 /** 辅助: 绕开 Readonly 直接写 store._state.runtime.cursor */
 type StoreInternal = { _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean } } } }
@@ -162,18 +162,18 @@ export class Editor {
         cursor = this.store.state.runtime.cursor
       }
       // 获取光标处文本样式 (段尾回退到末尾节点)
-      let activeStyle: import('./document/DocumentModel').TextStyle | undefined
+      let activeStyle: import('./document/core/DocumentModel').TextStyle | undefined
       const resolved = this.pool.resolveCharOffset(cursor.paragraphPath[cursor.paragraphPath.length - 1], cursor.offset)
       if (resolved) {
         const tn = this.pool.nodes.get(resolved.textNodeId) as unknown as Record<string, unknown> | undefined
-        if (tn) activeStyle = extractStyle(tn as unknown as import('./document/DocumentModel').TextNode)
+        if (tn) activeStyle = extractStyle(tn as unknown as import('./document/core/DocumentModel').TextNode)
       } else {
         const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
         const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
         if (para?.children) {
           for (let i = para.children.length - 1; i >= 0; i--) {
             const n = this.pool.nodes.get(para.children[i]) as { type?: string } | undefined
-            if (n?.type === 'text') { activeStyle = extractStyle(n as unknown as import('./document/DocumentModel').TextNode); break }
+            if (n?.type === 'text') { activeStyle = extractStyle(n as unknown as import('./document/core/DocumentModel').TextNode); break }
           }
         }
       }
@@ -1035,7 +1035,7 @@ export class Editor {
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return
 
-    const meta: import('./document/DocumentModel').ElementMeta = {
+    const meta: import('./document/core/DocumentModel').ElementMeta = {
       code: { internal: `CTL_${name.toUpperCase()}`, dataElement: `DE99.99.${name}` },
       name,
       format: format ? { dataType: format } : undefined,
@@ -1165,7 +1165,7 @@ export class Editor {
   }
 
   /** 获取批注列表 */
-  getComments(): import('./document/DocumentModel').CommentThread[] {
+  getComments(): import('./document/core/DocumentModel').CommentThread[] {
     return this.doc.comments || []
   }
 
@@ -1437,7 +1437,7 @@ export class Editor {
   }
 
   /** 切换文本样式 (bold/italic/underline) → FormatTextCommand, 支持选区 */
-  toggleFormat(style: Partial<import('./document/DocumentModel').TextStyle>): void {
+  toggleFormat(style: Partial<import('./document/core/DocumentModel').TextStyle>): void {
     const selection = this.store.state.runtime.selection
     const cursor = this.store.state.runtime.cursor
 
@@ -1510,7 +1510,7 @@ export class Editor {
     const cmd = new FormatTextCommand(
       generateCommandId(), Date.now(), 'user',
       nodeIds,
-      changes as Partial<import('./document/DocumentModel').TextStyle>,
+      changes as Partial<import('./document/core/DocumentModel').TextStyle>,
     )
     this.commandManager.execute(cmd)
   }
@@ -1662,7 +1662,7 @@ export class Editor {
     const cmd = new FormatPainterCommand(
       generateCommandId(), Date.now(), 'user',
       nodeIds,
-      style as Partial<import('./document/DocumentModel').TextStyle>,
+      style as Partial<import('./document/core/DocumentModel').TextStyle>,
     )
     this.commandManager.execute(cmd)
 
@@ -1768,13 +1768,13 @@ export class Editor {
     const cmd = new FormatPainterCommand(
       generateCommandId(), Date.now(), 'user',
       nodeIds,
-      style as Partial<import('./document/DocumentModel').TextStyle>,
+      style as Partial<import('./document/core/DocumentModel').TextStyle>,
     )
     this.commandManager.execute(cmd)
   }
 
   /** 设置光标/选区段落的格式 (对齐/缩进/列表) — v20.35 支持跨段落选区 */
-  setParagraphStyle(style: Partial<import('./document/DocumentModel').ParagraphStyle>): void {
+  setParagraphStyle(style: Partial<import('./document/core/DocumentModel').ParagraphStyle>): void {
     const paraIds = this.getSelectedParagraphIds()
     if (paraIds.length === 0) return
     const ts = Date.now()
@@ -1825,7 +1825,7 @@ export class Editor {
           const newLevel = (para.list.level || 1) + delta
           const cmd = new ParagraphStyleCommand(
             generateCommandId(), ts, 'user',
-            [paraId], { list: { ...para.list, level: newLevel } as import('./document/DocumentModel').ListStyle, indent: 0 },
+            [paraId], { list: { ...para.list, level: newLevel } as import('./document/core/DocumentModel').ListStyle, indent: 0 },
           )
           this.commandManager.execute(cmd)
         } else {
@@ -1842,7 +1842,7 @@ export class Editor {
           } else {
             const cmd = new ParagraphStyleCommand(
               generateCommandId(), ts, 'user',
-              [paraId], { list: { ...para.list, level: newLevel } as import('./document/DocumentModel').ListStyle, indent: 0 },
+              [paraId], { list: { ...para.list, level: newLevel } as import('./document/core/DocumentModel').ListStyle, indent: 0 },
             )
             this.commandManager.execute(cmd)
           }
@@ -2255,8 +2255,8 @@ export interface IEditor {
   undo(): void; redo(): void
   canUndo(): boolean; canRedo(): boolean
   copy(): void; paste(): void
-  toggleFormat(style: Partial<import('./document/DocumentModel').TextStyle>): void
-  setParagraphStyle(style: Partial<import('./document/DocumentModel').ParagraphStyle>): void
+  toggleFormat(style: Partial<import('./document/core/DocumentModel').TextStyle>): void
+  setParagraphStyle(style: Partial<import('./document/core/DocumentModel').ParagraphStyle>): void
   getWordCount(): { chars: number; words: number; paragraphs: number; selectedChars?: number; selectedWords?: number }
   on(event: EditorEventType, cb: (...args: unknown[]) => void): void
   off(event: EditorEventType, cb: (...args: unknown[]) => void): void

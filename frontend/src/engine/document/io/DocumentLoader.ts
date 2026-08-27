@@ -12,15 +12,15 @@
 // 设计文档: knowledge/document-version-system-design.md §2
 // ================================================================
 
-import type { BaseNode, DocumentTree } from './DocumentModel'
-import { buildNodePool, type NodePool } from './NodePool'
+import type { BaseNode, DocumentTree } from '../core/DocumentModel'
+import { buildNodePool, type NodePool } from '../core/NodePool'
 import {
   CURRENT_DOCUMENT_VERSION,
   parseVersion,
   versionToString,
   type DocumentFormatVersion,
-} from './DocumentFormatVersion'
-import { modelUpgrader, type ModelUpgrader } from './ModelUpgrader'
+} from '../version/DocumentFormatVersion'
+import { modelUpgrader, type ModelUpgrader } from '../version/ModelUpgrader'
 
 // ---- 错误类型 ----
 

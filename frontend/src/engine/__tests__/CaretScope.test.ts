@@ -9,12 +9,12 @@
 
 import { describe, it, expect } from 'vitest'
 import { listTableCells, getAdjacentCell, resolveCellPosition, getCaretScope } from '../state/CaretScope'
-import { buildNodePool } from '../document/NodePool'
+import { buildNodePool } from '../document/core/NodePool'
 import {
   createDocument, createParagraph, createTextNode,
   createTable, createTableRow, createTableCell,
-} from '../document/ElementFormatter'
-import type { BaseNode } from '../document/DocumentModel'
+} from '../document/factory/ElementFormatter'
+import type { BaseNode } from '../document/core/DocumentModel'
 
 /** 2×2 表格, cell(0,0) rowspan=2:
  *   row0: [A(rowspan=2), B]

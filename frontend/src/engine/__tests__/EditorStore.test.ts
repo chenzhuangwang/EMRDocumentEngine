@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { EditorStore } from '../state/EditorStore'
-import { createDocument } from '../document/ElementFormatter'
+import { createDocument } from '../document/factory/ElementFormatter'
 
 describe('EditorStore', () => {
   it('should initialize with default state', () => {

@@ -10,10 +10,10 @@
 // 粘贴: 返回结构化节点数据 → InsertNodesCommand 消费
 // ================================================================
 
-import type { DocumentTree } from '../document/DocumentModel'
-import type { NodePool } from '../document/NodePool'
+import type { DocumentTree } from '../document/core/DocumentModel'
+import type { NodePool } from '../document/core/NodePool'
 import { generateCommandId } from './ICommand'
-import { generateId } from '../document/DocumentModel'
+import { generateId } from '../document/core/DocumentModel'
 import { resolveCellPosition } from '../state/CaretScope'
 
 // ---- 类型 ----

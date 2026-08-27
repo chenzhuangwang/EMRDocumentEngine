@@ -16,9 +16,9 @@ import type { Editor } from '../Editor'
 import {
   createDocument, createParagraph, createTextNode,
   createTable, createTableRow, createTableCell,
-} from '../document/ElementFormatter'
-import { buildNodePool } from '../document/NodePool'
-import type { BaseNode, Paragraph } from '../document/DocumentModel'
+} from '../document/factory/ElementFormatter'
+import { buildNodePool } from '../document/core/NodePool'
+import type { BaseNode, Paragraph } from '../document/core/DocumentModel'
 
 /** 注册文本 + 段落 */
 function mkPara(allNodes: Map<string, BaseNode>, text: string): Paragraph {

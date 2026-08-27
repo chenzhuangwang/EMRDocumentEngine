@@ -13,9 +13,9 @@
 //   - colIndex 为网格列下标 (grid col, 非 row.children 下标)
 // ============================================================
 
-import type { NodePool } from './NodePool'
-import type { Table, TableRow, TableCell, BaseNode } from './DocumentModel'
-import { createTableCell, createTableRow, createParagraph, createTextNode } from './ElementFormatter'
+import type { NodePool } from '../core/NodePool'
+import type { Table, TableRow, TableCell, BaseNode } from '../core/DocumentModel'
+import { createTableCell, createTableRow, createParagraph, createTextNode } from '../factory/ElementFormatter'
 import { MergeMatrix, buildMergeMatrix } from './MergeMatrix'
 
 /** 单元格的网格坐标 + span */

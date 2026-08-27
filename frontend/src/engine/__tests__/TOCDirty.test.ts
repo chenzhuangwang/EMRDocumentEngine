@@ -5,8 +5,8 @@
 import { describe, it, expect } from 'vitest'
 import { TOCGenerator } from '../render/TOCGenerator'
 import { DirtyTracker } from '../layout/incremental/DirtyTracker'
-import { NodePool, buildNodePool } from '../document/NodePool'
-import type { DocumentTree, BaseNode, Paragraph } from '../document/DocumentModel'
+import { NodePool, buildNodePool } from '../document/core/NodePool'
+import type { DocumentTree, BaseNode, Paragraph } from '../document/core/DocumentModel'
 
 // ---- TOCGenerator ----
 
@@ -113,8 +113,8 @@ describe('DirtyTracker', () => {
 describe('TOCGenerator extended', () => {
   it('should return empty for doc without headings', () => {
     const doc = { type:'document',id:'d1',title:'T',body:{mode:'flow' as const,children:[]},header:[],footer:[],pageSetup:{width:794,height:1123,marginTop:72,marginBottom:72,marginLeft:90,marginRight:90,orientation:'portrait' as const}} as DocumentTree
-    const allNodes = new Map<string,import('../document/DocumentModel').BaseNode>()
-    allNodes.set('d1', doc as unknown as import('../document/DocumentModel').BaseNode)
+    const allNodes = new Map<string,import('../document/core/DocumentModel').BaseNode>()
+    allNodes.set('d1', doc as unknown as import('../document/core/DocumentModel').BaseNode)
     const pool = buildNodePool(allNodes, {body:'d1'})
     const gen = new TOCGenerator()
     expect(gen.extractEntries(doc, pool).length).toBe(0)

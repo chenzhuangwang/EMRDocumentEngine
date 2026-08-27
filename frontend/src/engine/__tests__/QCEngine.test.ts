@@ -4,11 +4,11 @@
 
 import { describe, it, expect } from 'vitest'
 import { QCEngine } from '../qc/QCEngine'
-import { NodePool, buildNodePool } from '../document/NodePool'
+import { NodePool, buildNodePool } from '../document/core/NodePool'
 import {
   createDocument, createParagraph, createTextNode,
-} from '../document/ElementFormatter'
-import type { DocumentTree, BaseNode } from '../document/DocumentModel'
+} from '../document/factory/ElementFormatter'
+import type { DocumentTree, BaseNode } from '../document/core/DocumentModel'
 
 function makeDoc(title: string, texts: string[]): { doc: DocumentTree; pool: NodePool } {
   const doc = createDocument(title)

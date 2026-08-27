@@ -22,7 +22,7 @@ import { TOCGenerator } from '@/engine/render/TOCGenerator'
 import { ListParticle } from '@/engine/render/particles/ListParticle'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
 import type { EditorMode } from '@/engine'
-import type { ListStyle } from '@/engine/document/DocumentModel'
+import type { ListStyle } from '@/engine/document/core/DocumentModel'
 
 const PLACEHOLDER_MAP: Record<string, string> = {
   'control-input': '[文本输入]',

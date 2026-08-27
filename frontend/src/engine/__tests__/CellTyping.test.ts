@@ -12,9 +12,9 @@ import { InsertTextCommand } from '../command/commands/InsertTextCommand'
 import {
   createDocument, createParagraph, createTextNode,
   createTable, createTableRow, createTableCell,
-} from '../document/ElementFormatter'
-import { buildNodePool } from '../document/NodePool'
-import type { BaseNode, Paragraph, TextNode } from '../document/DocumentModel'
+} from '../document/factory/ElementFormatter'
+import { buildNodePool } from '../document/core/NodePool'
+import type { BaseNode, Paragraph, TextNode } from '../document/core/DocumentModel'
 
 /** 拼接段落内所有 text 节点的文本 */
 function paraText(pool: ReturnType<typeof buildNodePool>, para: Paragraph): string {

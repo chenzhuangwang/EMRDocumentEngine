@@ -6,12 +6,12 @@
 // ================================================================
 
 import type { Editor } from '../Editor'
-import type { Paragraph } from '../document/DocumentModel'
+import type { Paragraph } from '../document/core/DocumentModel'
 import type { SLIFPage } from '../layout/core/SLIF'
 import { cumulativeCharWidths, findCharIndexAtX } from '../layout/text/CharWidthHelper'
 import { screenToDoc, findPageByDocY, pageCenteringOffset } from '../layout/table/TableCoordUtil'
 import { HitTestIndex } from '../render/HitTestIndex'
-import { getCellGridPosition } from '../document/TableOps'
+import { getCellGridPosition } from '../document/table/TableOps'
 
 /** 双击时间阈值 (ms) */
 const DOUBLE_CLICK_THRESHOLD = 400

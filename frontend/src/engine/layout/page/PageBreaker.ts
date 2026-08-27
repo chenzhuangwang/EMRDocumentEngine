@@ -2,8 +2,8 @@
 // 分页引擎 - 精确分页计算 (含孤行/寡行控制)
 // ============================================================
 
-import type { PageSetup } from '../../document/DocumentModel'
-import { DEFAULT_PAGE_SETUP } from '../../document/DocumentModel'
+import type { PageSetup } from '../../document/core/DocumentModel'
+import { DEFAULT_PAGE_SETUP } from '../../document/core/DocumentModel'
 import type { ILine, IPage } from './PageLayout'
 
 // 重新导出 — 保持向后兼容

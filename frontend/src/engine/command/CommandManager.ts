@@ -13,8 +13,8 @@
 import type { ICommand, InvalidationScope, CommandContext } from './ICommand'
 import { CommandUndoRedoStack } from './CommandUndoRedoStack'
 import type { EventBus } from '../interaction/EventBus'
-import type { DocumentTree } from '../document/DocumentModel'
-import type { NodePool } from '../document/NodePool'
+import type { DocumentTree } from '../document/core/DocumentModel'
+import type { NodePool } from '../document/core/NodePool'
 import { DirtyTracker } from '../layout/incremental/DirtyTracker'
 
 export class CommandManager {

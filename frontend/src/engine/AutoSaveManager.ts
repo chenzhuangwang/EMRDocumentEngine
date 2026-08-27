@@ -5,7 +5,7 @@
 // 页面加载时检测 IndexedDB 残留数据 → 提示恢复
 // ============================================================
 
-import type { DocumentTree } from './document/DocumentModel'
+import type { DocumentTree } from './document/core/DocumentModel'
 
 const DB_NAME = 'emr-editor-autosave'
 const STORE_NAME = 'snapshots'

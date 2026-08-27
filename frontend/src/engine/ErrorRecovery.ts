@@ -5,7 +5,7 @@
 // 架构 §17.10, TASK-754
 // ============================================================
 
-import type { DocumentTree } from './document/DocumentModel'
+import type { DocumentTree } from './document/core/DocumentModel'
 
 // ---- 错误码 ----
 

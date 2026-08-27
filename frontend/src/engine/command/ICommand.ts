@@ -5,8 +5,8 @@
 // CommandContext 联合类型保证 Phase 1 (local) → Phase 2 (collab) 平滑过渡
 // ================================================================
 
-import type { DocumentTree } from '../document/DocumentModel'
-import type { NodePool } from '../document/NodePool'
+import type { DocumentTree } from '../document/core/DocumentModel'
+import type { NodePool } from '../document/core/NodePool'
 import type { CursorState, SelectionState } from '../state/EditorRuntimeState'
 
 // ---- CommandContext ----

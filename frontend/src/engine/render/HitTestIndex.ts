@@ -12,11 +12,11 @@
 // ================================================================
 
 import type { SLIFItem, SLIFPage } from '../layout/core/SLIF'
-import type { Paragraph } from '../document/DocumentModel'
-import type { NodePool } from '../document/NodePool'
+import type { Paragraph } from '../document/core/DocumentModel'
+import type { NodePool } from '../document/core/NodePool'
 import { cumulativeCharWidths, findCharIndexAtX } from '../layout/text/CharWidthHelper'
 import { calcUniformColWidths } from '../layout/table/TableCoordUtil'
-import { buildMergeMatrix } from '../document/MergeMatrix'
+import { buildMergeMatrix } from '../document/table/MergeMatrix'
 
 interface HitEntry {
   nodeId: string

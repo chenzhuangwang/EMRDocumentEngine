@@ -8,9 +8,9 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { NodePool, buildNodePool } from '../document/NodePool'
-import { createDocument, createParagraph, createTextNode, createImageNode } from '../document/ElementFormatter'
-import type { DocumentTree, BaseNode } from '../document/DocumentModel'
+import { NodePool, buildNodePool } from '../document/core/NodePool'
+import { createDocument, createParagraph, createTextNode, createImageNode } from '../document/factory/ElementFormatter'
+import type { DocumentTree, BaseNode } from '../document/core/DocumentModel'
 import { InsertTextCommand } from '../command/commands/InsertTextCommand'
 import type { CommandContext } from '../command/ICommand'
 

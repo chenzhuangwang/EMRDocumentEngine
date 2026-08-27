@@ -20,9 +20,9 @@
 // 反序列化测试不再覆盖本模块 — 见 __tests__/DocumentLoader.test.ts。
 // ================================================================
 
-import type { BaseNode, DocumentTree } from './DocumentModel'
-import type { NodePool } from './NodePool'
-import { versionToString, CURRENT_DOCUMENT_VERSION } from './DocumentFormatVersion'
+import type { BaseNode, DocumentTree } from '../core/DocumentModel'
+import type { NodePool } from '../core/NodePool'
+import { versionToString, CURRENT_DOCUMENT_VERSION } from '../version/DocumentFormatVersion'
 
 /** 序列化时附在 DocumentTree 上的扁平节点表字段名 */
 const NODES_FIELD = 'nodes'

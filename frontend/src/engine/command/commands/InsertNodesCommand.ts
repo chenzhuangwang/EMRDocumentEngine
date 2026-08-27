@@ -15,11 +15,11 @@
 //   - 撤销: detachChild 摘除 + createdLeafIds 精确清理, 不误删原始右半节点
 // ================================================================
 
-import type { Paragraph, TextNode, TextStyle, ElementMeta } from '../../document/DocumentModel'
+import type { Paragraph, TextNode, TextStyle, ElementMeta } from '../../document/core/DocumentModel'
 import {
   createParagraph, createTextNode, createSmartTextNode, extractStyle,
-} from '../../document/ElementFormatter'
-import { generateId } from '../../document/DocumentModel'
+} from '../../document/factory/ElementFormatter'
+import { generateId } from '../../document/core/DocumentModel'
 import {
   ICommand, CommandContext, StatePatch,
   SerializedCommand, PositionalCommand, generateCommandId,
@@ -191,7 +191,7 @@ export class InsertNodesCommand extends PositionalCommand {
   //       禁止从序列化数据中恢复旧 ID, 防止池冲突
   // 副作用: 新建叶节点 id 记入 createdLeafIds, 供撤销清理
   // ================================================================
-  private deserializePara(sn: SerializedPara, pool: import('../../document/NodePool').NodePool): Paragraph {
+  private deserializePara(sn: SerializedPara, pool: import('../../document/core/NodePool').NodePool): Paragraph {
     const para = createParagraph()
     // 恢复段落样式 (不含 id/type/children)
     Object.assign(para, sn.style)
@@ -221,7 +221,7 @@ export class InsertNodesCommand extends PositionalCommand {
         const node = { ...childSn } as Record<string, unknown>
         delete node.id // 擦除旧 ID
         node.id = generateId() // 新节点 UUID
-        pool.nodes.set(node.id as string, node as unknown as import('../../document/DocumentModel').BaseNode)
+        pool.nodes.set(node.id as string, node as unknown as import('../../document/core/DocumentModel').BaseNode)
         this.createdLeafIds.push(node.id as string)
         para.children.push(node.id as string)
       }

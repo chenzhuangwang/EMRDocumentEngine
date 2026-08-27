@@ -12,7 +12,7 @@
 // 详见 knowledge/document-version-system-design.md §4 决策 4。
 // ================================================================
 
-import type { DocumentTree } from './DocumentModel'
+import type { DocumentTree } from '../core/DocumentModel'
 import {
   CURRENT_DOCUMENT_VERSION,
   compareVersions,

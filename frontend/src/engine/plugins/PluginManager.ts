@@ -5,8 +5,8 @@
 // 8 类扩展点, 架构 TASK-631-633
 // ============================================================
 
-import type { DocumentTree } from '../document/DocumentModel'
-import type { NodePool } from '../document/NodePool'
+import type { DocumentTree } from '../document/core/DocumentModel'
+import type { NodePool } from '../document/core/NodePool'
 import type { IParticle } from '../render/particles/IParticle'
 
 // ---- 插件生命周期 ----

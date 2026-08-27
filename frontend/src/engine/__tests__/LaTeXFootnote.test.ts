@@ -5,8 +5,8 @@
 import { describe, it, expect } from 'vitest'
 import { tokenize, type LaTeXToken } from '../render/particles/LaTeXParticle'
 import { FootnoteLayout } from '../layout/footnote/FootnoteLayout'
-import { NodePool, buildNodePool } from '../document/NodePool'
-import type { BaseNode } from '../document/DocumentModel'
+import { NodePool, buildNodePool } from '../document/core/NodePool'
+import type { BaseNode } from '../document/core/DocumentModel'
 import type { SLIFPage } from '../layout/core/SLIF'
 
 // ---- LaTeX Tokenizer ----

@@ -10,7 +10,7 @@ import { StatusBar } from './StatusBar'
 import { PropertiesPanel } from './PropertiesPanel'
 import { useEditorStore, useUIStore } from '@/store'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
-import type { CommentThread } from '@/engine/document/DocumentModel'
+import type { CommentThread } from '@/engine/document/core/DocumentModel'
 import type { EditorMode } from '@/engine'
 
 interface EditorLayoutProps {

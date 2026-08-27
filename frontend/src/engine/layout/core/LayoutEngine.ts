@@ -9,8 +9,8 @@
 // 导出链路可直接消费 SLIFPage[]
 // ================================================================
 
-import type { DocumentTree, Paragraph, TextNode } from '../../document/DocumentModel'
-import type { NodePool } from '../../document/NodePool'
+import type { DocumentTree, Paragraph, TextNode } from '../../document/core/DocumentModel'
+import type { NodePool } from '../../document/core/NodePool'
 import type { SLIFPage, SLIFItem, SLIFRow, SLIFCell } from './SLIF'
 import type { EventBus } from '../../interaction/EventBus'
 import type { LayoutConfig } from './LayoutContext'
@@ -20,8 +20,8 @@ import { LineBreaker } from '../line/LineBreaker'
 import type { LineElement } from '../line/LineLayout'
 import { PageBreaker } from '../page/PageBreaker'
 import type { ILine, IPage } from '../page/PageLayout'
-import { DEFAULT_PAGE_SETUP } from '../../document/DocumentModel'
-import { MergeMatrix } from '../../document/MergeMatrix'
+import { DEFAULT_PAGE_SETUP } from '../../document/core/DocumentModel'
+import { MergeMatrix } from '../../document/table/MergeMatrix'
 import { FootnoteLayout } from '../footnote/FootnoteLayout'
 import { ListParticle } from '../../render/particles/ListParticle'
 
@@ -807,7 +807,7 @@ export class LayoutEngine {
     }
   }
 
-  private computeListNumber(paraId: string, pool: import('../../document/NodePool').NodePool, doc: DocumentTree, level: number): number {
+  private computeListNumber(paraId: string, pool: import('../../document/core/NodePool').NodePool, doc: DocumentTree, level: number): number {
     let count = 0
     let lastOrderedCount = 0  // 记住上一个有序列表序列的计数，供 continueNumbering 使用
 

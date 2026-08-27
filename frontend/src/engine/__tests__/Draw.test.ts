@@ -5,9 +5,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   createDocument, createParagraph, createTextNode, createSmartTextNode,
-} from '../document/ElementFormatter'
-import { NodeType } from '../document/DocumentModel'
-import { buildNodePool } from '../document/NodePool'
+} from '../document/factory/ElementFormatter'
+import { NodeType } from '../document/core/DocumentModel'
+import { buildNodePool } from '../document/core/NodePool'
 
 describe('Draw rendering — data model', () => {
   it('should create a document with text nodes', () => {

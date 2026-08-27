@@ -4,8 +4,8 @@
 // forward: 字符偏移定位 → 截断 TextNode → 分裂 children → 新段落插入 FlowBody
 // ================================================================
 
-import type { Paragraph, TextNode, DocumentTree } from '../../document/DocumentModel'
-import { createParagraph, createTextNode, extractStyle } from '../../document/ElementFormatter'
+import type { Paragraph, TextNode, DocumentTree } from '../../document/core/DocumentModel'
+import { createParagraph, createTextNode, extractStyle } from '../../document/factory/ElementFormatter'
 import { ICommand, CommandContext, StatePatch, SerializedCommand, PositionalCommand } from '../ICommand'
 import { MergeParagraphCommand } from './MergeParagraphCommand'
 import { resolveParagraphRegion } from '../../state/CaretScope'
@@ -79,7 +79,7 @@ export class SplitParagraphCommand extends PositionalCommand {
   /** 空段落拆分: 创建新空段落, 光标移至新段落 */
   private splitEmptyParagraph(
     para: Paragraph,
-    pool: import('../../document/NodePool').NodePool,
+    pool: import('../../document/core/NodePool').NodePool,
     doc: DocumentTree,
   ): StatePatch | null {
     const newPara = createParagraph()
@@ -101,7 +101,7 @@ export class SplitParagraphCommand extends PositionalCommand {
   private insertAndReturn(
     para: Paragraph,
     newPara: Paragraph,
-    pool: import('../../document/NodePool').NodePool,
+    pool: import('../../document/core/NodePool').NodePool,
     doc: DocumentTree,
   ): StatePatch | null {
     const region = resolveParagraphRegion(para.id, doc, pool)

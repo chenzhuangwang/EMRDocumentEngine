@@ -7,8 +7,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { DocumentCompareView } from '@/components/views/DocumentCompareView'
 import { documentApi } from '@/services/api'
-import type { DocumentTree } from '@/engine/document/DocumentModel'
-import { NodePool, buildNodePool } from '@/engine/document/NodePool'
+import type { DocumentTree } from '@/engine/document/core/DocumentModel'
+import { NodePool, buildNodePool } from '@/engine/document/core/NodePool'
 import { ArrowLeft } from 'lucide-react'
 
 export default function ComparePage() {
@@ -36,10 +36,10 @@ export default function ComparePage() {
           const newTree = JSON.parse(newData.content) as DocumentTree
           setOldDoc(oldTree)
           setNewDoc(newTree)
-          const oldMap = new Map<string, import('@/engine/document/DocumentModel').BaseNode>()
+          const oldMap = new Map<string, import('@/engine/document/core/DocumentModel').BaseNode>()
           oldMap.set(oldTree.id, oldTree)
           setOldPool(buildNodePool(oldMap, { body: oldTree.id }))
-          const newMap = new Map<string, import('@/engine/document/DocumentModel').BaseNode>()
+          const newMap = new Map<string, import('@/engine/document/core/DocumentModel').BaseNode>()
           newMap.set(newTree.id, newTree)
           setNewPool(buildNodePool(newMap, { body: newTree.id }))
         } catch { setError('文档解析失败') }

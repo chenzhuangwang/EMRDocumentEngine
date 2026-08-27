@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import { MessageSquare, Check, Reply, ChevronDown, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { CommentThread } from '@/engine/document/DocumentModel'
+import type { CommentThread } from '@/engine/document/core/DocumentModel'
 
 // ---- 组件 Props ----
 

@@ -11,11 +11,11 @@
 import { describe, it, expect } from 'vitest'
 import { ClipboardManager } from '../command/ClipboardManager'
 import { InsertNodesCommand } from '../command/commands/InsertNodesCommand'
-import { buildNodePool } from '../document/NodePool'
+import { buildNodePool } from '../document/core/NodePool'
 import {
   createDocument, createParagraph, createTextNode, createSmartTextNode,
-} from '../document/ElementFormatter'
-import type { BaseNode, ElementMeta } from '../document/DocumentModel'
+} from '../document/factory/ElementFormatter'
+import type { BaseNode, ElementMeta } from '../document/core/DocumentModel'
 import type { CommandContext } from '../command/ICommand'
 
 const ELEMENT: ElementMeta = {

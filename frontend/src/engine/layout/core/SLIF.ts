@@ -7,7 +7,7 @@
 // 详见 knowledge/document-version-system-design.md §1.3。
 // ================================================================
 
-import { CURRENT_SLIF_VERSION, type SLIFVersion } from '../../document/DocumentFormatVersion'
+import { CURRENT_SLIF_VERSION, type SLIFVersion } from '../../document/version/DocumentFormatVersion'
 
 /** SLIF 格式版本 (派生自 DocumentFormatVersion) */
 export const SLIF_VERSION: SLIFVersion = CURRENT_SLIF_VERSION

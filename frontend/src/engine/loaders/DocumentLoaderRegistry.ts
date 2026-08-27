@@ -5,8 +5,8 @@
 // JSON/XML/HTML/Markdown 格式自动检测 + 路由
 // ============================================================
 
-import type { DocumentTree, BaseNode } from '../document/DocumentModel'
-import { NodeType, generateId } from '../document/DocumentModel'
+import type { DocumentTree, BaseNode } from '../document/core/DocumentModel'
+import { NodeType, generateId } from '../document/core/DocumentModel'
 
 // ---- 加载结果 ----
 

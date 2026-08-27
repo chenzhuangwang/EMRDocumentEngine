@@ -6,7 +6,7 @@
 // ================================================================
 
 import { createDefaultRuntimeState, type EditorRuntimeState } from './EditorRuntimeState'
-import type { DocumentTree } from '../document/DocumentModel'
+import type { DocumentTree } from '../document/core/DocumentModel'
 
 export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'conflict'
 

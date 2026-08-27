@@ -13,8 +13,8 @@
 //       Heading 3 .......... 3
 // ================================================================
 
-import type { DocumentTree, Paragraph } from '../document/DocumentModel'
-import type { NodePool } from '../document/NodePool'
+import type { DocumentTree, Paragraph } from '../document/core/DocumentModel'
+import type { NodePool } from '../document/core/NodePool'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 
 // ---- TOC 条目 ----

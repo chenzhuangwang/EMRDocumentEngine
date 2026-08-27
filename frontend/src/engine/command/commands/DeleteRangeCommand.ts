@@ -5,13 +5,13 @@
 // serialize 内嵌 deletedText 用于 invert 和协作重放
 // ================================================================
 
-import type { Paragraph, TextNode } from '../../document/DocumentModel'
+import type { Paragraph, TextNode } from '../../document/core/DocumentModel'
 import { generateCommandId } from '../ICommand'
 import type { ICommand } from '../ICommand'
 import { CommandContext, StatePatch, SerializedCommand, PositionalCommand } from '../ICommand'
 import { InsertTextCommand } from './InsertTextCommand'
 import { normalizeParagraph } from './ParagraphUtils'
-import { createTextNode } from '../../document/ElementFormatter'
+import { createTextNode } from '../../document/factory/ElementFormatter'
 
 export class DeleteRangeCommand extends PositionalCommand {
   readonly type = 'delete-range'
@@ -95,7 +95,7 @@ export class DeleteRangeCommand extends PositionalCommand {
     if (para.children.length === 0) {
       const emptyText = createTextNode('')
       ;(para as { children: string[] }).children = [emptyText.id]
-      pool.nodes.set(emptyText.id, emptyText as unknown as import('../../document/DocumentModel').BaseNode)
+      pool.nodes.set(emptyText.id, emptyText as unknown as import('../../document/core/DocumentModel').BaseNode)
     }
 
     return {

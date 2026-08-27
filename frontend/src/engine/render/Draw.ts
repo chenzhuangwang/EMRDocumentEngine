@@ -6,8 +6,8 @@
 //           撤销(→CommandUndoRedoStack), 编辑(→CommandManager)
 // ============================================================
 
-import type { DocumentTree } from '../document/DocumentModel'
-import type { NodePool } from '../document/NodePool'
+import type { DocumentTree } from '../document/core/DocumentModel'
+import type { NodePool } from '../document/core/NodePool'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 import { getFlatPageItems } from '../layout/core/SLIF'
 import type { EventBus } from '../interaction/EventBus'
@@ -27,7 +27,7 @@ import { createChartParticle } from './particles/ChartParticle'
 import { createBarcodeParticle } from './particles/BarcodeParticle'
 import { particleRegistry } from './particles/ParticleRegistry'
 import { textParticle, separatorParticle, listParticle, fieldParticle } from './particles/ParticleAdapters'
-import { buildCellGrid } from '../document/TableOps'
+import { buildCellGrid } from '../document/table/TableOps'
 
 interface CaretPos { x: number; y: number; h: number }
 
