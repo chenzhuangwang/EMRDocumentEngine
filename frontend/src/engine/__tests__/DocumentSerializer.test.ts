@@ -1,21 +1,14 @@
 // ============================================================
-// DocumentSerializer — 序列化/反序列化往返 (页脚无法输入根因修复)
-//
-// 复现并防止: DocumentTree 仅存 ID 引用, 真实节点在 NodePool 中。
-// 旧实现保存只 JSON.stringify(doc) 丢光节点 payload, 加载只注册 doc.id,
-// 导致 InsertTextCommand.forward 找不到段落 → 页脚/正文无法输入。
-//
-// 修复: serializeDocument 内嵌节点扁平表, buildDocumentPool 从序列化数据
-//       重建 NodePool, 使加载后的页脚/正文段落可寻址。
+// DocumentSerializer 单元测试 (Phase 3 后只测写出)
+// 反序列化测试已迁移至 __tests__/DocumentLoader.test.ts。
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
 import { buildNodePool } from '../document/NodePool'
 import { createDocument, createParagraph, createTextNode } from '../document/ElementFormatter'
-import {
-  collectDocumentNodes, serializeDocument, buildDocumentPool,
-} from '../document/DocumentSerializer'
+import { collectDocumentNodes, serializeDocument } from '../document/DocumentSerializer'
 import type { BaseNode, DocumentTree } from '../document/DocumentModel'
+import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/DocumentFormatVersion'
 
 interface BuiltDoc {
   doc: DocumentTree
@@ -53,7 +46,7 @@ function makeDoc(): BuiltDoc {
   }
 }
 
-describe('DocumentSerializer 序列化/反序列化', () => {
+describe('DocumentSerializer serializeDocument', () => {
   it('serializeDocument 内嵌 footer/body 段落与文本节点 payload', () => {
     const { doc, pool, footParaId, footTextId, bodyTextId } = makeDoc()
     const parsed = JSON.parse(serializeDocument(doc, pool))
@@ -64,6 +57,22 @@ describe('DocumentSerializer 序列化/反序列化', () => {
     expect(parsed.nodes[bodyTextId].text).toBe('正文内容')
   })
 
+  it('serializeDocument 显式声明 modelVersion = CURRENT_DOCUMENT_VERSION', () => {
+    const { doc, pool } = makeDoc()
+    const parsed = JSON.parse(serializeDocument(doc, pool))
+
+    expect(parsed.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
+  })
+
+  it('serializeDocument 保留 doc 顶层字段 (id, title, pageSetup)', () => {
+    const { doc, pool } = makeDoc()
+    const parsed = JSON.parse(serializeDocument(doc, pool))
+
+    expect(parsed.id).toBe(doc.id)
+    expect(parsed.title).toBe(doc.title)
+    expect(parsed.pageSetup).toEqual(doc.pageSetup)
+  })
+
   it('collectDocumentNodes 覆盖 body/header/footer, 且不含 doc 本身', () => {
     const { doc, pool, bodyParaId, footParaId } = makeDoc()
     const nodes = collectDocumentNodes(doc, pool)
@@ -71,28 +80,5 @@ describe('DocumentSerializer 序列化/反序列化', () => {
     expect(nodes.has(bodyParaId)).toBe(true)
     expect(nodes.has(footParaId)).toBe(true)
     expect(nodes.has(doc.id)).toBe(false)
-  })
-
-  it('buildDocumentPool 从序列化数据重建池 → 页脚段落可寻址 (输入不再丢失)', () => {
-    const { doc, pool, footParaId, footTextId } = makeDoc()
-    const parsed = JSON.parse(serializeDocument(doc, pool)) as
-      DocumentTree & { nodes?: Record<string, BaseNode> }
-    const rebuilt = buildDocumentPool(parsed)
-
-    // 页脚段落及其文本节点都在重建后的池中 (InsertTextCommand 不再返回 null)
-    expect(rebuilt.nodes.get(footParaId)).toBeDefined()
-    expect(rebuilt.nodes.get(footTextId)).toBeDefined()
-    expect((rebuilt.nodes.get(footTextId) as unknown as { text: string }).text).toBe('页脚内容')
-    // 页脚段落仍在 doc.footer 数组
-    expect(parsed.footer).toContain(footParaId)
-  })
-
-  it('buildDocumentPool 兼容无 nodes 字段的旧数据 (不抛异常)', () => {
-    const { doc } = makeDoc()
-    // 模拟旧格式: 移除 nodes 字段
-    const legacy = JSON.parse(JSON.stringify(doc)) as DocumentTree
-    const rebuilt = buildDocumentPool(legacy)
-    // 至少 doc 本身注册 (旧数据无节点 payload, 由调用方兜底)
-    expect(rebuilt.nodes.get(doc.id)).toBeDefined()
   })
 })

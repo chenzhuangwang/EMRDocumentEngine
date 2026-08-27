@@ -155,6 +155,8 @@ export type { EditorVersion } from './document/EditorVersion'
 export { EDITOR_VERSION } from './document/EditorVersion'
 export type { DocumentFormatVersion, SLIFVersion } from './document/DocumentFormatVersion'
 export { CURRENT_DOCUMENT_VERSION, CURRENT_SLIF_VERSION, parseVersion, compareVersions, versionToString } from './document/DocumentFormatVersion'
+export { loadDocument, loadDocumentFromObject, LoadError } from './document/DocumentLoader'
+export type { DocumentLoadOptions, DocumentLoadResult } from './document/DocumentLoader'
 export { MergeMatrix, buildMergeMatrix } from './document/MergeMatrix'
 export type { CellSpan } from './document/MergeMatrix'
 

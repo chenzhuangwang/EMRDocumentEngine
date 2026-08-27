@@ -1,0 +1,226 @@
+// ================================================================
+// DocumentLoader — 文档加载流水线 (架构 Phase 3, 2026-08-27)
+//
+// 6 步流水线:
+//   1. detect          读取 modelVersion (缺失则视为 '1.0.0')
+//   2. checkCompatibility 与 CURRENT_DOCUMENT_VERSION 比较
+//   3. upgrade         链式 v_N → v_{N+1} → ... → CURRENT
+//   4. validate        结构性验证 (必填字段, 引用不悬空)
+//   5. buildModel      补默认字段 (header/footer/orientation)
+//   6. buildPool       从 doc 重建 NodePool
+//
+// 设计文档: knowledge/document-version-system-design.md §2
+// ================================================================
+
+import type { BaseNode, DocumentTree } from './DocumentModel'
+import { buildNodePool, type NodePool } from './NodePool'
+import {
+  CURRENT_DOCUMENT_VERSION,
+  parseVersion,
+  versionToString,
+  type DocumentFormatVersion,
+} from './DocumentFormatVersion'
+import { modelUpgrader, type ModelUpgrader } from './ModelUpgrader'
+
+// ---- 错误类型 ----
+
+export class LoadError extends Error {
+  /** 错误阶段: detect / parse / compatibility / upgrade / validate / pool */
+  phase: 'detect' | 'parse' | 'compatibility' | 'upgrade' | 'validate' | 'pool'
+
+  constructor(phase: LoadError['phase'], message: string) {
+    super(`[DocumentLoader.${phase}] ${message}`)
+    this.name = 'LoadError'
+    this.phase = phase
+  }
+}
+
+// ---- 选项与结果 ----
+
+export interface DocumentLoadOptions {
+  /** 注入的升级器 (默认 module-singleton modelUpgrader) */
+  upgrader?: ModelUpgrader
+  /** 严格模式: 未知字段抛错 (默认 false, 容错) — 当前实现仅预留, 后续扩展 */
+  strict?: boolean
+  /** 加载器已从别处解析的额外节点 (HTML/Markdown 导入等) */
+  extraNodes?: Map<string, BaseNode>
+}
+
+export interface DocumentLoadResult {
+  /** 加载后的文档 (已升级到 CURRENT_DOCUMENT_VERSION) */
+  doc: DocumentTree
+  /** 重建的节点池 */
+  pool: NodePool
+  /** 加载时文档的实际版本 */
+  sourceVersion: DocumentFormatVersion
+  /** 是否经过了升级 (false 表示已是当前版本) */
+  wasUpgraded: boolean
+  /** 升级路径: ['1.0.0', '4.0.0'] — 当前实现仅记录首尾 */
+  upgradePath: string[]
+}
+
+// ---- 公共 API ----
+
+/** 从 JSON 字符串加载文档 */
+export function loadDocument(json: string, options?: DocumentLoadOptions): DocumentLoadResult {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(json)
+  } catch (err) {
+    throw new LoadError('parse', `JSON.parse 失败: ${(err as Error).message}`)
+  }
+  return loadDocumentFromObject(parsed, options)
+}
+
+/** 从已解析对象加载 (跳过 JSON.parse) */
+export function loadDocumentFromObject(obj: unknown, options?: DocumentLoadOptions): DocumentLoadResult {
+  const opts = options ?? {}
+  const upgrader = opts.upgrader ?? modelUpgrader
+
+  // ---- [1] detect ----
+  if (!obj || typeof obj !== 'object') {
+    throw new LoadError('detect', '文档必须是对象')
+  }
+  const raw = obj as Record<string, unknown>
+  const sourceVer = parseVersion((raw.modelVersion as string) ?? '1.0.0')
+
+  // ---- [2] checkCompatibility ----
+  const compat = upgrader.checkCompatibility(sourceVer)
+  if (compat.status === 'too-new') {
+    throw new LoadError('compatibility', compat.message)
+  }
+
+  // ---- [3] upgrade ----
+  const upgradePath: string[] = []
+  let doc: DocumentTree
+  try {
+    doc = upgrader.upgrade(raw as unknown as DocumentTree, CURRENT_DOCUMENT_VERSION)
+  } catch (err) {
+    throw new LoadError('upgrade', `升级失败: ${(err as Error).message}`)
+  }
+  recordUpgradePath(doc, sourceVer, upgradePath)
+
+  // ---- [4] validate ----
+  validateDocument(doc, opts.extraNodes)
+
+  // ---- [5] buildModel — 补默认字段 ----
+  if (!doc.header) doc.header = []
+  if (!doc.footer) doc.footer = []
+  if (!doc.pageSetup) doc.pageSetup = { ...DEFAULT_PAGE_SETUP_LITERAL }
+  if (!doc.pageSetup.orientation) doc.pageSetup.orientation = 'portrait'
+
+  // ---- [6] buildPool ----
+  let pool: NodePool
+  try {
+    pool = buildPoolFromDocument(doc, opts.extraNodes)
+  } catch (err) {
+    throw new LoadError('pool', (err as Error).message)
+  }
+
+  return {
+    doc,
+    pool,
+    sourceVersion: sourceVer,
+    wasUpgraded: upgradePath.length > 0,
+    upgradePath,
+  }
+}
+
+// ---- 内部辅助 ----
+
+/** 记录升级路径 — 比较 source 与 final, 写 [source, final] (链式中间步骤未展开) */
+function recordUpgradePath(
+  doc: DocumentTree,
+  sourceVer: DocumentFormatVersion,
+  out: string[],
+): void {
+  const finalVer = parseVersion(doc.modelVersion ?? versionToString(CURRENT_DOCUMENT_VERSION))
+  if (
+    finalVer.major === sourceVer.major &&
+    finalVer.minor === sourceVer.minor &&
+    finalVer.patch === sourceVer.patch
+  ) {
+    return
+  }
+  out.push(versionToString(sourceVer), versionToString(finalVer))
+}
+
+/** 结构性验证 — 仅检查必填字段 + 引用不悬空, 不涉及业务语义 */
+function validateDocument(
+  doc: DocumentTree,
+  extraNodes: Map<string, BaseNode> | undefined,
+): void {
+  if (!doc.id || typeof doc.id !== 'string') {
+    throw new LoadError('validate', 'doc.id 缺失或非字符串')
+  }
+  if (!doc.title || typeof doc.title !== 'string') {
+    throw new LoadError('validate', 'doc.title 缺失或非字符串')
+  }
+  if (!doc.body || !Array.isArray(doc.body.children)) {
+    throw new LoadError('validate', 'doc.body.children 缺失或非数组')
+  }
+  for (const id of [...doc.body.children, ...(doc.header ?? []), ...(doc.footer ?? [])]) {
+    if (typeof id !== 'string') {
+      throw new LoadError('validate', `children 包含非字符串引用: ${String(id)}`)
+    }
+  }
+  // 引用不悬空 (在 extraNodes 与 doc 自带 nodes 中都能找到)
+  const knownIds = new Set<string>()
+  const embedded = (doc as DocumentTree & { nodes?: Record<string, BaseNode> }).nodes
+  if (embedded && typeof embedded === 'object') {
+    for (const id of Object.keys(embedded)) knownIds.add(id)
+  }
+  if (extraNodes) {
+    for (const id of extraNodes.keys()) knownIds.add(id)
+  }
+  for (const id of [...doc.body.children, ...(doc.header ?? []), ...(doc.footer ?? [])]) {
+    if (!knownIds.has(id)) {
+      throw new LoadError('validate', `引用悬空 (节点未在 nodes/extraNodes 中): ${id}`)
+    }
+  }
+}
+
+/** 从 DocumentTree 重建 NodePool */
+function buildPoolFromDocument(
+  doc: DocumentTree,
+  extraNodes: Map<string, BaseNode> | undefined,
+): NodePool {
+  const flat = new Map<string, BaseNode>()
+
+  // 优先: extraNodes (加载器已单独解析的节点)
+  if (extraNodes) {
+    for (const [id, node] of extraNodes) flat.set(id, node)
+  }
+
+  // 其次: doc.nodes 内嵌字段 (本模块 serializeDocument 产物)
+  const embedded = (doc as DocumentTree & { nodes?: Record<string, BaseNode> }).nodes
+  if (embedded && typeof embedded === 'object') {
+    for (const [id, node] of Object.entries(embedded)) {
+      if (!flat.has(id)) flat.set(id, node)
+    }
+  }
+
+  // doc 本身必须注册 (buildNodePool Pass 3 校验 body 根存在)
+  flat.set(doc.id, doc)
+
+  const present = (ids: string[] | undefined): string[] => (ids ?? []).filter(id => flat.has(id))
+
+  return buildNodePool(flat, {
+    body: doc.id,
+    header: present(doc.header),
+    footer: present(doc.footer),
+    footnotes: present(doc.footnotes),
+    endnotes: present(doc.endnotes),
+  })
+}
+
+/** 内联默认 PageSetup (避免引入循环依赖到 DocumentModel.DEFAULT_PAGE_SETUP) */
+const DEFAULT_PAGE_SETUP_LITERAL = {
+  width: 794,
+  height: 1123,
+  marginTop: 72,
+  marginBottom: 72,
+  marginLeft: 90,
+  marginRight: 90,
+  orientation: 'portrait' as const,
+}

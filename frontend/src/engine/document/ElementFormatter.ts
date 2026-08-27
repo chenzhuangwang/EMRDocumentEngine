@@ -13,6 +13,7 @@ import type {
 } from './DocumentModel'
 import { NodeType, generateId, DEFAULT_PAGE_SETUP } from './DocumentModel'
 import { NodePool } from './NodePool'
+import { CURRENT_DOCUMENT_VERSION, versionToString } from './DocumentFormatVersion'
 
 // ================================================================
 // 工厂函数
@@ -25,6 +26,8 @@ export function createDocument(title: string, body?: FlowBody, pageSetup?: PageS
     body: body ?? { mode: 'flow', children: [] },
     header: [],
     footer: [],
+    // 显式声明当前格式版本 — DocumentLoader 加载时无需升级
+    modelVersion: versionToString(CURRENT_DOCUMENT_VERSION),
   }
 }
 

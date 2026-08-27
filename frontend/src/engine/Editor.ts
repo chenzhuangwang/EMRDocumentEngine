@@ -1,7 +1,8 @@
 import type { DocumentTree, BaseNode, Paragraph, TextNode } from './document/DocumentModel'
 import { createDocument, createParagraph, createTextNode, extractStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent, createSmartTextNode } from './document/ElementFormatter'
 import { NodePool, buildNodePool } from './document/NodePool'
-import { buildDocumentPool, serializeDocument } from './document/DocumentSerializer'
+import { serializeDocument } from './document/DocumentSerializer'
+import { loadDocumentFromObject } from './document/DocumentLoader'
 import type { FieldType } from './document/DocumentModel'
 import { Draw } from './render/Draw'
 import { AutoSaveManager } from './AutoSaveManager'
@@ -87,7 +88,7 @@ export class Editor {
       this.pool = buildNodePool(allNodes, { body: d.id })
     } else {
       this.doc = doc
-      this.pool = buildDocumentPool(doc)
+      this.pool = loadDocumentFromObject(doc).pool
     }
 
     this.eventBus = new EventBus()
@@ -495,7 +496,7 @@ export class Editor {
     if (!doc.header) doc.header = []
     if (!doc.footer) doc.footer = []
     this.doc = doc
-    this.pool = buildDocumentPool(doc, nodes)
+    this.pool = loadDocumentFromObject(doc, { extraNodes: nodes }).pool
     this.draw.setDocument(doc, this.pool)
     this.draw.recomputeLayout(this.pool)
 
