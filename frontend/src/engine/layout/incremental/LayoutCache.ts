@@ -5,7 +5,7 @@
 // inline → block → page 三级
 // ================================================================
 
-import type { SLIFItem } from './SLIF'
+import type { SLIFItem } from '../core/SLIF'
 
 interface InlineCacheEntry {
   width: number; height: number; ascent: number; descent: number

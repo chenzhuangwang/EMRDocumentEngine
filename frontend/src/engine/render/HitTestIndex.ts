@@ -11,11 +11,11 @@
 //   返回该行最后一个 item, 由上层 computeOffsetAtX 计算末尾偏移
 // ================================================================
 
-import type { SLIFItem, SLIFPage } from '../layout/SLIF'
+import type { SLIFItem, SLIFPage } from '../layout/core/SLIF'
 import type { Paragraph } from '../document/DocumentModel'
 import type { NodePool } from '../document/NodePool'
-import { cumulativeCharWidths, findCharIndexAtX } from '../layout/CharWidthHelper'
-import { calcUniformColWidths } from '../layout/TableCoordUtil'
+import { cumulativeCharWidths, findCharIndexAtX } from '../layout/text/CharWidthHelper'
+import { calcUniformColWidths } from '../layout/table/TableCoordUtil'
 import { buildMergeMatrix } from '../document/MergeMatrix'
 
 interface HitEntry {
@@ -194,7 +194,7 @@ export class HitTestIndex {
     if (!hit) return null
 
     // 反查命中的 SLIFCell 对象
-    let targetCell: import('../layout/SLIF').SLIFCell | null = null
+    let targetCell: import('../layout/core/SLIF').SLIFCell | null = null
     for (const row of rows) {
       for (const cell of row.cells) {
         if (cell.id === hit.cellId) { targetCell = cell; break }
@@ -297,7 +297,7 @@ export class HitTestIndex {
    */
   private static findFirstParagraphInCell(
     _tableItem: SLIFItem,
-    cell: import('../layout/SLIF').SLIFCell,
+    cell: import('../layout/core/SLIF').SLIFCell,
     pool: NodePool,
   ): string | null {
     // 尝试从 cell.items 中推断 paragraph

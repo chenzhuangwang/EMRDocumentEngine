@@ -5,7 +5,7 @@ import { NodePool, buildNodePool, traversePool } from '../document/NodePool'
 import { createDocument, createParagraph, createTextNode } from '../document/ElementFormatter'
 import type { DocumentTree, BaseNode } from '../document/DocumentModel'
 import { parseVersion, compareVersions } from '../document/ModelUpgrader'
-import { LRUMap } from '../layout/MemoryManager'
+import { LRUMap } from '../layout/viewport/MemoryManager'
 import { sanitizeHtml, isSafeHtml } from '../security/SecurityConfig'
 import { PrintHistoryService } from '../../services/PrintHistoryService'
 

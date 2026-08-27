@@ -7,7 +7,7 @@
 // ============================================================
 
 import type { IParticle, RenderOptions } from './IParticle'
-import type { SLIFItem } from '../../layout/SLIF'
+import type { SLIFItem } from '../../layout/core/SLIF'
 
 // ---- Code128B 编码表 (简化: 只含可打印 ASCII) ----
 

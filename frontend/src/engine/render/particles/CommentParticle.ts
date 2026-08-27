@@ -6,7 +6,7 @@
 // ============================================================
 
 import type { IParticle, RenderOptions } from './IParticle'
-import type { SLIFItem } from '../../layout/SLIF'
+import type { SLIFItem } from '../../layout/core/SLIF'
 
 /** 批注高亮颜色 */
 const COMMENT_HIGHLIGHT = 'rgba(255, 230, 100, 0.45)'

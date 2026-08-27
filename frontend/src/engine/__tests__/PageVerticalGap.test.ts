@@ -14,7 +14,7 @@ import {
   accumulatedHeightTo,
   getTotalDocHeight,
   screenToPage,
-} from '../layout/TableCoordUtil'
+} from '../layout/table/TableCoordUtil'
 
 describe('findPageByDocY — gap handling', () => {
   // 3 个等高页面 (1123px) + 20px 间隙

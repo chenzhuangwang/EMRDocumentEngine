@@ -4,9 +4,9 @@
 
 export { Editor } from './Editor'
 export { Draw } from './render/Draw'
-export { TextMeasurer, textMeasurer } from './layout/TextMeasurer'
-export { LineBreaker } from './layout/LineBreaker'
-export { PageBreaker } from './layout/PageBreaker'
+export { TextMeasurer, textMeasurer } from './layout/text/TextMeasurer'
+export { LineBreaker } from './layout/line/LineBreaker'
+export { PageBreaker } from './layout/page/PageBreaker'
 export { TextParticle } from './render/particles/TextParticle'
 export { SeparatorParticle } from './render/particles/SeparatorParticle'
 export { ListParticle } from './render/particles/ListParticle'
@@ -19,12 +19,13 @@ export { EventBus } from './interaction/EventBus'
 export type { EventPayloadMap, EngineEvent } from './interaction/EventBus'
 
 // Layout
-export { LayoutEngine } from './layout/LayoutEngine'
-export type { LayoutConfig } from './layout/LayoutEngine'
-export type { SLIFItem, SLIFPage, SLIF } from './layout/SLIF'
-export { resolveLineHeight, DEFAULT_FONT_METRICS } from './layout/FontMetrics'
-export type { FontMetrics } from './layout/FontMetrics'
-export { LayoutCache } from './layout/LayoutCache'
+export { LayoutEngine } from './layout/core/LayoutEngine'
+export type { LayoutConfig } from './layout/core/LayoutContext'
+export type { LayoutResult } from './layout/core/LayoutResult'
+export type { SLIFItem, SLIFPage, SLIF } from './layout/core/SLIF'
+export { resolveLineHeight, DEFAULT_FONT_METRICS } from './layout/text/FontMetrics'
+export type { FontMetrics } from './layout/text/FontMetrics'
+export { LayoutCache } from './layout/incremental/LayoutCache'
 
 // Render
 export { LayeredRenderer } from './render/LayeredRenderer'
@@ -52,7 +53,7 @@ export { DeleteRangeCommand } from './command/commands/DeleteRangeCommand'
 export { normalizeParagraph } from './command/commands/ParagraphUtils'
 export { CommandUndoRedoStack } from './command/CommandUndoRedoStack'
 export { CommandManager } from './command/CommandManager'
-export { DirtyTracker } from './layout/DirtyTracker'
+export { DirtyTracker } from './layout/incremental/DirtyTracker'
 
 // FindReplace
 export { FindReplaceEngine } from './FindReplaceEngine'
@@ -63,8 +64,8 @@ export { TOCGenerator } from './render/TOCGenerator'
 export type { TOCEntry, TOCConfig } from './render/TOCGenerator'
 
 // Footnote
-export { FootnoteLayout } from './layout/FootnoteLayout'
-export type { FootnoteEntry, FootnoteConfig } from './layout/FootnoteLayout'
+export { FootnoteLayout } from './layout/footnote/FootnoteLayout'
+export type { FootnoteEntry, FootnoteConfig } from './layout/footnote/FootnoteLayout'
 
 // ModelD — 树形文档模型
 export {
@@ -124,10 +125,10 @@ export { EditorTheme, editorTheme } from './state/EditorTheme'
 export type { ThemePreset, ThemeColors } from './state/EditorTheme'
 export { locale, t } from './i18n/index'
 export type { Locale, LocaleMessages } from './i18n/index'
-export { VirtualViewport } from './layout/VirtualViewport'
-export type { ViewportState, VisibleRange } from './layout/VirtualViewport'
-export { MemoryManager, LRUMap } from './layout/MemoryManager'
-export type { MemoryStats } from './layout/MemoryManager'
+export { VirtualViewport } from './layout/viewport/VirtualViewport'
+export type { ViewportState, VisibleRange } from './layout/viewport/VirtualViewport'
+export { MemoryManager, LRUMap } from './layout/viewport/MemoryManager'
+export type { MemoryStats } from './layout/viewport/MemoryManager'
 export { PerformanceMetrics, perfMetrics } from './PerformanceMetrics'
 export type { PerfEntry, PerfSummary } from './PerformanceMetrics'
 export {
@@ -138,12 +139,12 @@ export {
 export type { EditorError, ErrorReporter, EditorErrorCode as EditorErrorCodeType } from './ErrorRecovery'
 
 // ---- R30+: Font management ----
-export { FontManager, fontManager } from './layout/FontManager'
-export type { FontDescriptor, FontVariant } from './layout/FontManager'
-export { FontFallback } from './layout/FontFallback'
-export type { FontRun } from './layout/FontFallback'
-export { ScriptResolver, scriptResolver } from './layout/ScriptResolver'
-export type { MultiLangFontConfig } from './layout/ScriptResolver'
+export { FontManager, fontManager } from './layout/text/FontManager'
+export type { FontDescriptor, FontVariant } from './layout/text/FontManager'
+export { FontFallback } from './layout/text/FontFallback'
+export type { FontRun } from './layout/text/FontFallback'
+export { ScriptResolver, scriptResolver } from './layout/text/ScriptResolver'
+export type { MultiLangFontConfig } from './layout/text/ScriptResolver'
 
 // ---- R60+: Document management ----
 export { ModelUpgrader, modelUpgrader } from './document/ModelUpgrader'
@@ -178,10 +179,10 @@ export { renderKaTeXToCanvas, validateKaTeX, measureKaTeX } from './render/KaTeX
 export type { KaTeXRenderResult } from './render/KaTeXRenderer'
 
 // ---- P0: 增量布局 + 增量分页 (TASK-482/485) ----
-export { IncrementalLayout } from './layout/IncrementalLayout'
-export type { CachedParagraphLayout } from './layout/IncrementalLayout'
-export { PageStartTable } from './layout/PageStartTable'
-export type { PageEntry } from './layout/PageStartTable'
+export { IncrementalLayout } from './layout/incremental/IncrementalLayout'
+export type { CachedParagraphLayout } from './layout/incremental/IncrementalLayout'
+export { PageStartTable } from './layout/page/PageStartTable'
+export type { PageEntry } from './layout/page/PageStartTable'
 
 // ---- TASK-511: BookmarkRenderer ----
 export { BookmarkRenderer } from './render/BookmarkRenderer'

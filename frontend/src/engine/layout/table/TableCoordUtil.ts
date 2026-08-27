@@ -17,7 +17,7 @@
 // 所有坐标转换统一通过此模块, 禁止调用方手动内联计算。
 // ================================================================
 
-import type { SLIFItem } from './SLIF'
+import type { SLIFItem } from '../core/SLIF'
 
 /** 屏幕坐标矩形 (CSS 像素, 相对于浏览器视口) */
 export interface ScreenRect {

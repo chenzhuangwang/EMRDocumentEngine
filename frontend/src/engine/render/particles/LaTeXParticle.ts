@@ -6,7 +6,7 @@
 // ============================================================
 
 import type { IParticle, RenderOptions } from './IParticle'
-import type { SLIFItem } from '../../layout/SLIF'
+import type { SLIFItem } from '../../layout/core/SLIF'
 import { renderKaTeXToCanvas } from '../KaTeXRenderer'
 
 // ---- 希腊字母映射 ----

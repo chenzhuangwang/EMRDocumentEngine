@@ -15,7 +15,7 @@ import { CommandUndoRedoStack } from './CommandUndoRedoStack'
 import type { EventBus } from '../interaction/EventBus'
 import type { DocumentTree } from '../document/DocumentModel'
 import type { NodePool } from '../document/NodePool'
-import { DirtyTracker } from '../layout/DirtyTracker'
+import { DirtyTracker } from '../layout/incremental/DirtyTracker'
 
 export class CommandManager {
   readonly undoStack: CommandUndoRedoStack

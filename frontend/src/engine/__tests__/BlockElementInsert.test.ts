@@ -7,7 +7,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { LayoutEngine } from '../layout/LayoutEngine'
+import { LayoutEngine } from '../layout/core/LayoutEngine'
 import { EventBus } from '../interaction/EventBus'
 import { KeyboardHandler } from '../interaction/KeyboardHandler'
 import type { Editor } from '../Editor'

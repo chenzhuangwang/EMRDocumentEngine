@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { IncrementalLayout } from '../layout/IncrementalLayout'
-import { PageStartTable } from '../layout/PageStartTable'
-import { DirtyTracker } from '../layout/DirtyTracker'
+import { IncrementalLayout } from '../layout/incremental/IncrementalLayout'
+import { PageStartTable } from '../layout/page/PageStartTable'
+import { DirtyTracker } from '../layout/incremental/DirtyTracker'
 
 // ---- IncrementalLayout ----
 

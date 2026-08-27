@@ -16,14 +16,14 @@
 // ============================================================
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { accumulatedHeightTo, getTotalDocHeight } from '../layout/TableCoordUtil'
+import { accumulatedHeightTo, getTotalDocHeight } from '../layout/table/TableCoordUtil'
 import { createDocument, createParagraph, createTextNode } from '../document/ElementFormatter'
 import { buildNodePool } from '../document/NodePool'
 import { EventBus } from '../interaction/EventBus'
 import { Draw } from '../render/Draw'
 import type { BaseNode, DocumentTree } from '../document/DocumentModel'
 import type { NodePool } from '../document/NodePool'
-import type { SLIFPage, SLIFItem } from '../layout/SLIF'
+import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 import type { EditorRuntimeState } from '../state/EditorRuntimeState'
 
 // ============================================================

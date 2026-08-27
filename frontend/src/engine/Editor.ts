@@ -28,9 +28,9 @@ import { EditorStore } from './state/EditorStore'
 import type { EditorRuntimeState } from './state/EditorRuntimeState'
 import { FindReplaceEngine } from './FindReplaceEngine'
 import type { FindOptions, MatchResult } from './FindReplaceEngine'
-import { cumulativeCharWidths, findCharIndexAtX } from './layout/CharWidthHelper'
+import { cumulativeCharWidths, findCharIndexAtX } from './layout/text/CharWidthHelper'
 import { resolveCellPosition } from './state/CaretScope'
-import { screenToDoc, findPageByDocY, pageCenteringOffset } from './layout/TableCoordUtil'
+import { screenToDoc, findPageByDocY, pageCenteringOffset } from './layout/table/TableCoordUtil'
 import { insertRow, deleteRow, insertColumn, deleteColumn, getCellGridPosition, buildCellGrid, normalizeRange } from './document/TableOps'
 import type { CellRange } from './document/TableOps'
 import { createTableCell } from './document/ElementFormatter'
@@ -394,7 +394,7 @@ export class Editor {
   }
 
   /** 根据文档坐标 X/Y 计算段落内的字符偏移 — Phase 5 使用 page.items 直接过滤 */
-  private computeOffsetAtX(para: Paragraph, docX: number, docY: number, page: import('./layout/SLIF').SLIFPage): number {
+  private computeOffsetAtX(para: Paragraph, docX: number, docY: number, page: import('./layout/core/SLIF').SLIFPage): number {
     // Phase 5: 使用 page.items 直接过滤 (不再需要 getFlatPageItems 展平)
     const related = page.items
       .filter(it => para.children.includes(it.nodeId) || it.nodeId === para.id)
@@ -447,7 +447,7 @@ export class Editor {
   }
 
   /** 获取页面中最后一个 SLIF item 的底部 Y 坐标, 无内容返回 -1 */
-  private getPageContentBottom(page: import('./layout/SLIF').SLIFPage): number {
+  private getPageContentBottom(page: import('./layout/core/SLIF').SLIFPage): number {
     if (page.items.length === 0) return -1
     let maxBottom = 0
     for (const item of page.items) {
@@ -458,7 +458,7 @@ export class Editor {
   }
 
   /** 获取页面中第一个 SLIF item 的顶部 Y 坐标, 无内容返回 -1 */
-  private getPageContentTop(page: import('./layout/SLIF').SLIFPage): number {
+  private getPageContentTop(page: import('./layout/core/SLIF').SLIFPage): number {
     if (page.items.length === 0) return -1
     return page.items[0].y
   }

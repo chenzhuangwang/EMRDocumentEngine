@@ -6,7 +6,7 @@
 // ============================================================
 
 import type { IParticle, RenderOptions } from './IParticle'
-import type { SLIFItem } from '../../layout/SLIF'
+import type { SLIFItem } from '../../layout/core/SLIF'
 
 const BORDER_COLOR = '#9CA3AF'
 const HEADER_BG = '#F3F4F6'

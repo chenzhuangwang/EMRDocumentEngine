@@ -9,35 +9,28 @@
 // 导出链路可直接消费 SLIFPage[]
 // ================================================================
 
-import type { DocumentTree, Paragraph, TextNode } from '../document/DocumentModel'
-import type { NodePool } from '../document/NodePool'
+import type { DocumentTree, Paragraph, TextNode } from '../../document/DocumentModel'
+import type { NodePool } from '../../document/NodePool'
 import type { SLIFPage, SLIFItem, SLIFRow, SLIFCell } from './SLIF'
-import type { EventBus } from '../interaction/EventBus'
-import { textMeasurer, type TextMeasurer } from './TextMeasurer'
-import { LineBreaker, type LineElement } from './LineBreaker'
-import { PageBreaker, type ILine, type IPage } from './PageBreaker'
-import { DEFAULT_PAGE_SETUP } from '../document/DocumentModel'
-import { MergeMatrix } from '../document/MergeMatrix'
-import { FootnoteLayout } from './FootnoteLayout'
-import { ListParticle } from '../render/particles/ListParticle'
+import type { EventBus } from '../../interaction/EventBus'
+import type { LayoutConfig } from './LayoutContext'
+import type { LayoutResult } from './LayoutResult'
+import { textMeasurer, type TextMeasurer } from '../text/TextMeasurer'
+import { LineBreaker } from '../line/LineBreaker'
+import type { LineElement } from '../line/LineLayout'
+import { PageBreaker } from '../page/PageBreaker'
+import type { ILine, IPage } from '../page/PageLayout'
+import { DEFAULT_PAGE_SETUP } from '../../document/DocumentModel'
+import { MergeMatrix } from '../../document/MergeMatrix'
+import { FootnoteLayout } from '../footnote/FootnoteLayout'
+import { ListParticle } from '../../render/particles/ListParticle'
+
+export type { LayoutConfig } from './LayoutContext'
+export type { LayoutResult } from './LayoutResult'
 
 /** 标题级别 → 字体缩放倍率 (基于正文默认 16px: H1=32, H2=24, H3=20, H4=18, H5=16, H6=14) */
 const HEADING_SCALE: Record<number, number> = { 1: 2.0, 2: 1.5, 3: 1.25, 4: 1.125, 5: 1.0, 6: 0.875 }
 const BASE_FONT_SIZE = 16
-
-/** 布局配置 */
-export interface LayoutConfig {
-  pageWidth: number
-  pageHeight: number
-  marginTop: number
-  marginBottom: number
-  marginLeft: number
-  marginRight: number
-  /** 页眉区域高度 (px), 默认 42 (约 3 行 14px) */
-  headerHeight?: number
-  /** 页脚区域高度 (px), 默认 42 */
-  footerHeight?: number
-}
 
 export class LayoutEngine {
   private eventBus: EventBus
@@ -54,7 +47,7 @@ export class LayoutEngine {
   }
 
   /** 全量重布局 — LineBreaker + PageBreaker 集成 (TASK-445) */
-  fullLayout(doc: DocumentTree, pool: NodePool): SLIFPage[] {
+  fullLayout(doc: DocumentTree, pool: NodePool): LayoutResult {
     const measurer = textMeasurer
     const lineBreaker = new LineBreaker(measurer)
     const pageBreaker = new PageBreaker()
@@ -426,7 +419,7 @@ export class LayoutEngine {
    */
   incrementalLayout(
     doc: DocumentTree, pool: NodePool, dirtyParagraphIds: Set<string>,
-  ): SLIFPage[] {
+  ): LayoutResult {
     if (dirtyParagraphIds.size === 0) return this.pages
 
     // 小范围脏: 局部重排
@@ -814,7 +807,7 @@ export class LayoutEngine {
     }
   }
 
-  private computeListNumber(paraId: string, pool: import('../document/NodePool').NodePool, doc: DocumentTree, level: number): number {
+  private computeListNumber(paraId: string, pool: import('../../document/NodePool').NodePool, doc: DocumentTree, level: number): number {
     let count = 0
     let lastOrderedCount = 0  // 记住上一个有序列表序列的计数，供 continueNumbering 使用
 

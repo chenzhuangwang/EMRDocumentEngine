@@ -6,7 +6,7 @@
 // ============================================================
 
 import type { IParticle, RenderOptions } from './IParticle'
-import type { SLIFItem } from '../../layout/SLIF'
+import type { SLIFItem } from '../../layout/core/SLIF'
 import { TextParticle } from './TextParticle'
 import { SeparatorParticle } from './SeparatorParticle'
 import { ListParticle } from './ListParticle'

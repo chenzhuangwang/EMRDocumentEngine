@@ -6,10 +6,10 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { LayoutEngine } from '../layout/LayoutEngine'
+import { LayoutEngine } from '../layout/core/LayoutEngine'
 import { EventBus } from '../interaction/EventBus'
 import { HitTestIndex } from '../render/HitTestIndex'
-import { getFlatPageItems } from '../layout/SLIF'
+import { getFlatPageItems } from '../layout/core/SLIF'
 import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand'
 import { KeyboardHandler } from '../interaction/KeyboardHandler'
 import type { Editor } from '../Editor'

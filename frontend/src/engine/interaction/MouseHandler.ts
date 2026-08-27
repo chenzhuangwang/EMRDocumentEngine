@@ -7,9 +7,9 @@
 
 import type { Editor } from '../Editor'
 import type { Paragraph } from '../document/DocumentModel'
-import type { SLIFPage } from '../layout/SLIF'
-import { cumulativeCharWidths, findCharIndexAtX } from '../layout/CharWidthHelper'
-import { screenToDoc, findPageByDocY, pageCenteringOffset } from '../layout/TableCoordUtil'
+import type { SLIFPage } from '../layout/core/SLIF'
+import { cumulativeCharWidths, findCharIndexAtX } from '../layout/text/CharWidthHelper'
+import { screenToDoc, findPageByDocY, pageCenteringOffset } from '../layout/table/TableCoordUtil'
 import { HitTestIndex } from '../render/HitTestIndex'
 import { getCellGridPosition } from '../document/TableOps'
 

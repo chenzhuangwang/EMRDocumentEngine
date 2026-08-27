@@ -5,7 +5,7 @@
 // 实现此接口, 通过 ParticleRegistry 注册后由 Draw.ts 统一调度
 // ============================================================
 
-import type { SLIFItem } from '../../layout/SLIF'
+import type { SLIFItem } from '../../layout/core/SLIF'
 
 /** 渲染上下文选项 */
 export interface RenderOptions {

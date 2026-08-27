@@ -6,7 +6,7 @@
 // ============================================================
 
 import type { IParticle, RenderOptions } from './IParticle'
-import type { SLIFItem } from '../../layout/SLIF'
+import type { SLIFItem } from '../../layout/core/SLIF'
 
 export const CONTROL_COLORS: Record<string, { bg: string; border: string }> = {
   S1: { bg: '#F0F9FF', border: '#7DD3FC' },   // 单行文本 — 浅蓝

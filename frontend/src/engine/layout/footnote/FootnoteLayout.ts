@@ -7,8 +7,8 @@
 //   - 生成脚注区 SLIF items (分隔线 + 编号文本 + 脚注内容)
 // ================================================================
 
-import type { SLIFPage, SLIFItem } from '../layout/SLIF'
-import type { NodePool } from '../document/NodePool'
+import type { SLIFPage, SLIFItem } from '../core/SLIF'
+import type { NodePool } from '../../document/NodePool'
 
 // ---- 脚注条目 ----
 

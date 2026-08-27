@@ -3,7 +3,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { VirtualViewport } from '../layout/VirtualViewport'
+import { VirtualViewport } from '../layout/viewport/VirtualViewport'
 
 // ---- VirtualViewport ----
 

@@ -4,7 +4,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { cumulativeCharWidths, findCharIndexAtX, cumulativeWidthUpTo } from '../layout/CharWidthHelper'
+import { cumulativeCharWidths, findCharIndexAtX, cumulativeWidthUpTo } from '../layout/text/CharWidthHelper'
 
 const FONT_CFG = { font: 'SimSun', size: 16 }
 

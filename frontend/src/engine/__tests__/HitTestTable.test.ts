@@ -14,7 +14,7 @@ import { buildMergeMatrix } from '../document/MergeMatrix'
 import { buildNodePool } from '../document/NodePool'
 import { createDocument, createParagraph, createTextNode } from '../document/ElementFormatter'
 import type { BaseNode } from '../document/DocumentModel'
-import type { SLIFItem, SLIFCell } from '../layout/SLIF'
+import type { SLIFItem, SLIFCell } from '../layout/core/SLIF'
 
 /** 构造一个 cell 内文本 item (cell 局部坐标) */
 function cellText(nodeId: string, text: string, width: number): SLIFItem {

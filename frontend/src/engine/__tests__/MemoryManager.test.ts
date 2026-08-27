@@ -3,7 +3,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { MemoryManager, LRUMap } from '../layout/MemoryManager'
+import { MemoryManager, LRUMap } from '../layout/viewport/MemoryManager'
 
 describe('LRUMap', () => {
   it('should store and retrieve values', () => {

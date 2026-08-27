@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { TOCGenerator } from '../render/TOCGenerator'
-import { DirtyTracker } from '../layout/DirtyTracker'
+import { DirtyTracker } from '../layout/incremental/DirtyTracker'
 import { NodePool, buildNodePool } from '../document/NodePool'
 import type { DocumentTree, BaseNode, Paragraph } from '../document/DocumentModel'
 

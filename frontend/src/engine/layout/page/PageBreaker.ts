@@ -2,30 +2,12 @@
 // 分页引擎 - 精确分页计算 (含孤行/寡行控制)
 // ============================================================
 
-import type { PageSetup } from '../document/DocumentModel'
-import { DEFAULT_PAGE_SETUP } from '../document/DocumentModel'
+import type { PageSetup } from '../../document/DocumentModel'
+import { DEFAULT_PAGE_SETUP } from '../../document/DocumentModel'
+import type { ILine, IPage } from './PageLayout'
 
-/** 布局内部类型 — 换行后的单行 */
-export interface ILine {
-  elements: { id: string; type: string; value?: string; size?: number; font?: string; bold?: boolean; italic?: boolean; color?: string; underline?: boolean; strikeout?: boolean; superscript?: boolean; subscript?: boolean }[]
-  width: number
-  height: number
-  maxAscent: number
-  maxDescent: number
-  alignment?: string
-  indent?: number
-  /** 列表标记文本 (首行), 由 Draw.ts 通过 ListParticle 渲染 */
-  listMarker?: string
-}
-
-/** 布局内部类型 — 分页后的页面 */
-export interface IPage {
-  pageIndex: number
-  lines: ILine[]
-  headerLines: ILine[]
-  footerLines: ILine[]
-  totalHeight: number
-}
+// 重新导出 — 保持向后兼容
+export type { ILine, IPage }
 
 /** Minimum lines of a paragraph that must stay together (avoid orphans/widows). */
 const MIN_PARAGRAPH_LINES = 2

@@ -8,7 +8,7 @@
 import type { StatePatch } from '../command/ICommand'
 import type { CursorState, SelectionState, EditorMode } from '../state/EditorRuntimeState'
 import type { InvalidationScope } from '../command/ICommand'
-import type { SLIFPage } from '../layout/SLIF'
+import type { SLIFPage } from '../layout/core/SLIF'
 
 // ---- EventPayloadMap — 每种事件的类型化载荷 ----
 

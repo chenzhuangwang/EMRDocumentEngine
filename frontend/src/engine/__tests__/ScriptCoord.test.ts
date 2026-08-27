@@ -3,7 +3,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { ScriptResolver, scriptResolver, DEFAULT_MULTILANG_CONFIG } from '../layout/ScriptResolver'
+import { ScriptResolver, scriptResolver, DEFAULT_MULTILANG_CONFIG } from '../layout/text/ScriptResolver'
 import { CoordinateSystem } from '../state/CoordinateSystem'
 
 // ---- ScriptResolver ----

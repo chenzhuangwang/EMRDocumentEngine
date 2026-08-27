@@ -7,7 +7,11 @@
 //   - 实现: 当断行点触发禁止规则时, 向前/后调整 1-2 字符
 // ============================================================
 
-import { TextMeasurer } from './TextMeasurer'
+import { TextMeasurer } from '../text/TextMeasurer'
+import type { LineElement, FontConfig, LineBreakOptions, ILine } from './LineLayout'
+
+// 重新导出类型 — 保持向后兼容 (外部 import { LineElement } from '../layout/line/LineBreaker' 仍然可用)
+export type { LineElement, FontConfig, LineBreakOptions, ILine }
 
 // ---- 中文避头尾字符集 ----
 
@@ -63,52 +67,8 @@ const LINE_END_FORBIDDEN = new Set([
   '（', // （
 ])
 
-// ---- 类型定义 ----
-export interface LineElement {
-  id: string
-  type: string
-  value: string
-  font?: string
-  size?: number
-  bold?: boolean
-  italic?: boolean
-  color?: string
-  underline?: boolean; underlineStyle?: string; strikeout?: boolean
-  highlight?: string
-  superscript?: boolean
-  subscript?: boolean
-  imageData?: { width?: number; height?: number; wrapType?: string }
-  control?: { width?: number }
-  tableBlock?: unknown
-  fieldType?: string
-}
-
-export interface FontConfig {
-  font: string
-  size: number
-  bold?: boolean
-  italic?: boolean
-  letterSpacing?: number
-}
-
-export interface LineBreakOptions {
-  maxWidth: number
-  wordBreak: 'break-all' | 'break-word' | 'keep-all'
-  defaultFont: string
-  defaultSize: number
-}
-
-export interface ILine {
-  elements: LineElement[]
-  width: number
-  height: number
-  maxAscent: number
-  maxDescent: number
-  alignment?: 'left' | 'center' | 'right' | 'justify'
-  indent?: number
-  /** 列表标记文本 (首行), 由 Draw.ts 通过 ListParticle 渲染 */
-  listMarker?: string
-}
+// 类型定义 (LineElement / FontConfig / LineBreakOptions / ILine) 已抽取至 ./LineLayout
+// LineBreaker.ts 仅保留算法实现, 类型从 LineLayout.ts 导入
 
 export class LineBreaker {
   private measurer: TextMeasurer

@@ -11,9 +11,9 @@
 // ================================================================
 
 import type { CoordinateSystem } from '../state/CoordinateSystem'
-import type { SLIFPage } from '../layout/SLIF'
+import type { SLIFPage } from '../layout/core/SLIF'
 import type { EditorRuntimeState } from '../state/EditorRuntimeState'
-import { accumulatedHeightTo, getTotalDocHeight } from '../layout/TableCoordUtil'
+import { accumulatedHeightTo, getTotalDocHeight } from '../layout/table/TableCoordUtil'
 
 export interface WatermarkConfig {
   type: 'text' | 'image' | 'tile'

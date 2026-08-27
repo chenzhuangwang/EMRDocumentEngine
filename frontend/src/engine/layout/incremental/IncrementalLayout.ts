@@ -6,7 +6,7 @@
 // ============================================================
 
 import type { DirtyTracker } from './DirtyTracker'
-import type { LineElement } from './LineBreaker'
+import type { LineElement } from '../line/LineLayout'
 
 export interface CachedParagraphLayout {
   paragraphId: string
