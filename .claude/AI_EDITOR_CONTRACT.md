@@ -656,33 +656,92 @@ Do not silently reinterpret old document structures
 inside unrelated document/layout code.
 
 ============================================================
-15. EVENTS
+15. EVENT BUS ARCHITECTURE
 ============================================================
 
-Events communicate changes between subsystems.
+EventBus MUST represent a clearly defined event domain.
 
-Events MUST NOT become a replacement for clear ownership.
+Multiple EventBus implementations are allowed only when
+their responsibilities are explicitly different.
 
-Avoid using EventBus to hide direct architectural dependencies.
+The existence of multiple EventBus instances MUST NOT be
+used as a substitute for clear module APIs.
 
-Bad:
+Current intended event domains:
 
-    everything
-       ↓
+1. Engine-level events
+   Examples:
+   - documentChanged
+   - commandExecuted
+   - selectionChanged
+   - layoutInvalidated
+   - layoutCompleted
+   - documentLoaded
+   - documentSaved
+
+2. Interaction-level events
+   Examples:
+   - keyDown
+   - keyUp
+   - mouseDown
+   - mouseMove
+   - mouseUp
+   - compositionStart
+   - compositionUpdate
+   - compositionEnd
+
+Interaction events MUST remain separate from engine lifecycle
+and document events.
+
+Preferred flow:
+
+    User Input
+        ↓
+    Interaction Event
+        ↓
+    Interaction Handler
+        ↓
+    Command
+        ↓
+    DocumentModel
+        ↓
+    Engine Event
+        ↓
+    Layout / UI / other subscribers
+
+Do NOT use EventBus when a direct method call or explicit
+interface is clearer.
+
+Avoid:
+
+    A
+     ↓
     EventBus
-       ↓
-    everything
+     ↓
+    B
 
-Prefer explicit relationships where appropriate.
+when the relationship is simply:
 
-Use events when:
+    A → B
 
-- multiple independent consumers need notification
-- lifecycle events are appropriate
-- UI synchronization is required
-- layout invalidation needs notification
+Avoid event chains where one EventBus forwards events into
+another EventBus without a clearly defined boundary.
 
-Do not use events merely to avoid defining a proper API.
+An event MUST have exactly one canonical domain.
+
+Do not define the same semantic event independently in
+multiple EventBus implementations.
+
+Before creating a new EventBus, AI MUST verify:
+
+1. Does an existing EventBus already own this event domain?
+2. Is a new event domain genuinely required?
+3. Can a direct interface or method call express the relationship?
+4. Will the new EventBus introduce cross-bus forwarding?
+5. Will developers know which EventBus owns each event?
+
+If the answers are unclear, STOP and inspect the existing
+event architecture before adding another EventBus.
 
 ============================================================
 16. LAYOUT MUST BE INCREMENTAL
