@@ -149,8 +149,12 @@ export type { MultiLangFontConfig } from './layout/text/ScriptResolver'
 
 // ---- R60+: Document management ----
 export { ModelUpgrader, modelUpgrader } from './document/ModelUpgrader'
-export type { ModelVersion, VersionUpgrader, VersionCompatibility } from './document/ModelUpgrader'
-export { parseVersion, compareVersions, versionToString, VERSION_COMPATIBILITY } from './document/ModelUpgrader'
+export type { VersionUpgrader, CompatibilityStatus, CompatibilityResult, VersionCompatibility } from './document/ModelUpgrader'
+export { VERSION_COMPATIBILITY } from './document/ModelUpgrader'
+export type { EditorVersion } from './document/EditorVersion'
+export { EDITOR_VERSION } from './document/EditorVersion'
+export type { DocumentFormatVersion, SLIFVersion } from './document/DocumentFormatVersion'
+export { CURRENT_DOCUMENT_VERSION, CURRENT_SLIF_VERSION, parseVersion, compareVersions, versionToString } from './document/DocumentFormatVersion'
 export { MergeMatrix, buildMergeMatrix } from './document/MergeMatrix'
 export type { CellSpan } from './document/MergeMatrix'
 

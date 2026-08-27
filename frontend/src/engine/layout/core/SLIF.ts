@@ -3,11 +3,14 @@
 //
 // LayoutEngine 产出 → Draw/LayeredRenderer 消费 → 导出链路消费
 //
-// 版本: SLIF_VERSION = '4.0' — 与 DocumentTree modelVersion 对齐
+// 版本: 与 DocumentTree modelVersion 同步演化 (类型别名复用)。
+// 详见 knowledge/document-version-system-design.md §1.3。
 // ================================================================
 
-/** SLIF 格式版本 (与 DocumentTree modelVersion 对齐) */
-export const SLIF_VERSION = '4.0'
+import { CURRENT_SLIF_VERSION, type SLIFVersion } from '../../document/DocumentFormatVersion'
+
+/** SLIF 格式版本 (派生自 DocumentFormatVersion) */
+export const SLIF_VERSION: SLIFVersion = CURRENT_SLIF_VERSION
 
 export interface SLIFItem {
   nodeId: string

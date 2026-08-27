@@ -324,6 +324,12 @@ export interface DocumentTree {
   endnotes?: string[]
   comments?: CommentThread[]
   metadata?: Record<string, unknown>
+  /**
+   * 文档格式版本 (semver 字符串, 例 '4.0.0')
+   * 由 DocumentSerializer 写入, DocumentLoader 读取并触发升级链。
+   * 历史文档缺失该字段时, 视为 '1.0.0'。
+   */
+  modelVersion?: string
 }
 
 // ================================================================

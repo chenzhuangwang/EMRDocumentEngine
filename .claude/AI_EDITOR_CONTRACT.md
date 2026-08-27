@@ -1007,3 +1007,40 @@ And:
     DocumentModel ≠ RenderState
 
 These distinctions MUST remain explicit throughout development.
+
+============================================================
+26. DOCUMENT VERSIONING INVARIANTS
+============================================================
+
+1. EditorVersion MUST NOT be used as DocumentFormatVersion.
+
+2. DocumentFormatVersion MUST NOT be inferred from
+   EditorVersion.
+
+3. SLIFVersion MUST be treated as a separate version domain.
+
+4. DocumentFormatVersion MUST be explicitly stored
+   in serialized documents.
+
+5. Document loading MUST detect document version
+   before constructing the current runtime model.
+
+6. Old document formats MUST be migrated through ModelUpgrader.
+
+7. ModelUpgrader MUST NOT be bypassed for supported old versions.
+
+8. New migrations MUST be incremental:
+      vN → vN+1
+
+9. DocumentSerializer MUST write CURRENT_DOCUMENT_VERSION.
+
+10. There MUST be exactly one canonical current
+    DocumentFormatVersion.
+
+11. NodePool construction MUST NOT own document migration logic.
+
+12. DocumentModel MUST explicitly declare its document
+    format/version metadata where applicable.
+
+13. SLIF_VERSION MUST NOT be treated as the document
+    format version merely because their values currently match.

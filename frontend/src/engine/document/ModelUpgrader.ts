@@ -1,122 +1,110 @@
-// ============================================================
-// ModelUpgrader — 语义化版本链升级器 (R67, v6.0)
+// ================================================================
+// ModelUpgrader — 文档格式版本升级器 (架构 Phase 2, 2026-08-27)
 //
-// 支持 MAJOR/MINOR/PATCH 语义化版本迁移
-// 链式升级: v1→v2→v3→v4, 向前兼容, breaking flag
-// ============================================================
+// 责任: 维护 v_N → v_{N+1} 链式升级规则, 由 DocumentLoader 调用。
+//
+// 演化链 (已注册):
+//   v1.0.0 → v2.0.0  新增 modelVersion 字段
+//   v2.0.0 → v3.0.0  body.children 迁移为 ID 引用 (breaking)
+//   v3.0.0 → v4.0.0  新增 pageSetup.orientation 默认值
+//
+// 不实现 downgrade(): EMR 场景下不需要"用旧引擎开新文档"。
+// 详见 knowledge/document-version-system-design.md §4 决策 4。
+// ================================================================
 
-import type { DocumentTree } from '../document/DocumentModel'
+import type { DocumentTree } from './DocumentModel'
+import {
+  CURRENT_DOCUMENT_VERSION,
+  compareVersions,
+  parseVersion,
+  versionToString,
+  type DocumentFormatVersion,
+} from './DocumentFormatVersion'
 
-// ---- 版本类型 ----
-
-export interface ModelVersion {
-  major: number
-  minor: number
-  patch: number
-}
+// ---- 升级器接口 ----
 
 export interface VersionUpgrader {
-  /** 源版本范围 */
-  from: string
+  /** 源版本 */
+  from: DocumentFormatVersion
   /** 目标版本 */
-  to: string
-  /** 是否为 breaking change */
+  to: DocumentFormatVersion
+  /** 是否为 breaking change (仅语义标记, 不影响逻辑) */
   breaking: boolean
   /** 升级函数 */
   upgrade(doc: DocumentTree): DocumentTree
-  /** 降级函数 (可选) */
-  downgrade?(doc: DocumentTree): DocumentTree
 }
 
-export interface VersionCompatibility {
-  /** 最低支持版本 */
-  minVersion: string
-  /** 当前引擎版本 */
-  currentVersion: string
-  /** 向前兼容: 可打开高版本文档 (降级展示) */
-  forwardCompatible: boolean
-  /** 向后兼容: 低版本文档自动升级 */
-  backwardCompatible: boolean
+export type CompatibilityStatus = 'current' | 'outdated' | 'too-new'
+
+export interface CompatibilityResult {
+  status: CompatibilityStatus
+  /** status === 'current' 时不需要升级/降级 */
+  needsUpgrade: boolean
+  message: string
 }
 
-// ---- 升级器 ----
+// ---- 升级器类 ----
 
 export class ModelUpgrader {
   private upgraders: VersionUpgrader[] = []
-  private downgraders = new Map<string, (doc: DocumentTree) => DocumentTree>()
 
   /** 注册升级器 */
   register(upgrader: VersionUpgrader): void {
     this.upgraders.push(upgrader)
-    if (upgrader.downgrade) {
-      this.downgraders.set(upgrader.to, upgrader.downgrade)
-    }
   }
 
   /**
-   * 升级文档到最新版本
-   * 链式执行: 从 doc.modelVersion 逐级升级到 currentVersion
+   * 升级文档到目标版本 (默认 CURRENT_DOCUMENT_VERSION)
+   * 链式执行: 从 doc.modelVersion 逐级升级到 target
    */
-  upgrade(doc: DocumentTree, targetVersion = '4.0.0'): DocumentTree {
+  upgrade(doc: DocumentTree, target: DocumentFormatVersion = CURRENT_DOCUMENT_VERSION): DocumentTree {
     let current = doc
-    const docVer = (doc as unknown as Record<string, string>).modelVersion || '1.0.0'
+    const docVer = parseVersion(doc.modelVersion ?? '1.0.0')
 
     // 拓扑排序: 按 from 版本升序
-    const sorted = [...this.upgraders].sort((a, b) =>
-      compareVersions(a.from, b.from),
-    )
+    const sorted = [...this.upgraders].sort((a, b) => compareVersions(a.from, b.from))
 
     for (const upgrader of sorted) {
       if (compareVersions(docVer, upgrader.to) < 0 &&
           compareVersions(upgrader.from, docVer) >= 0) {
         try {
           current = upgrader.upgrade(current)
-          ;(current as unknown as Record<string, string>).modelVersion = upgrader.to
+          current.modelVersion = versionToString(upgrader.to)
         } catch (err) {
-          console.error(`[ModelUpgrader] 升级 ${upgrader.from}→${upgrader.to} 失败:`, err)
+          console.error(`[ModelUpgrader] 升级 ${versionToString(upgrader.from)}→${versionToString(upgrader.to)} 失败:`, err)
         }
       }
     }
 
     // 确保目标版本
-    const finalVer = (current as unknown as Record<string, string>).modelVersion
-    if (finalVer && compareVersions(finalVer, targetVersion) < 0) {
-      (current as unknown as Record<string, string>).modelVersion = targetVersion
-    }
-
-    return current
-  }
-
-  /**
-   * 降级文档到指定版本 (用于兼容旧版客户端)
-   */
-  downgrade(doc: DocumentTree, targetVersion: string): DocumentTree {
-    let current = doc
-    const docVer = (current as unknown as Record<string, string>).modelVersion || '4.0.0'
-
-    while (compareVersions(docVer, targetVersion) > 0) {
-      const downgrader = this.downgraders.get(docVer)
-      if (!downgrader) break
-      current = downgrader(current)
-      ;(current as unknown as Record<string, string>).modelVersion = targetVersion
+    const finalVer = parseVersion(current.modelVersion ?? '1.0.0')
+    if (compareVersions(finalVer, target) < 0) {
+      current.modelVersion = versionToString(target)
     }
 
     return current
   }
 
   /** 检查版本兼容性 */
-  checkCompatibility(docVersion: string): {
-    compatible: boolean
-    needsUpgrade: boolean
-    needsDowngrade: boolean
-    message: string
-  } {
-    const currentVer = '4.0.0'
-    const cmp = compareVersions(docVersion, currentVer)
+  checkCompatibility(docVersion: string | DocumentFormatVersion): CompatibilityResult {
+    const ver = typeof docVersion === 'string' ? parseVersion(docVersion) : docVersion
+    const cmp = compareVersions(ver, CURRENT_DOCUMENT_VERSION)
 
-    if (cmp === 0) return { compatible: true, needsUpgrade: false, needsDowngrade: false, message: '版本一致' }
-    if (cmp < 0) return { compatible: true, needsUpgrade: true, needsDowngrade: false, message: `需升级: ${docVersion} → ${currentVer}` }
-    return { compatible: true, needsUpgrade: false, needsDowngrade: true, message: `高版本文档, 降级展示: ${docVersion}` }
+    if (cmp === 0) {
+      return { status: 'current', needsUpgrade: false, message: '版本一致' }
+    }
+    if (cmp < 0) {
+      return {
+        status: 'outdated',
+        needsUpgrade: true,
+        message: `需升级: ${versionToString(ver)} → ${versionToString(CURRENT_DOCUMENT_VERSION)}`,
+      }
+    }
+    return {
+      status: 'too-new',
+      needsUpgrade: false,
+      message: `文档版本 ${versionToString(ver)} 高于引擎支持版本 ${versionToString(CURRENT_DOCUMENT_VERSION)}`,
+    }
   }
 }
 
@@ -126,24 +114,22 @@ export const modelUpgrader = new ModelUpgrader()
 
 // v1→v2: 新增 modelVersion 字段
 modelUpgrader.register({
-  from: '1.0.0', to: '2.0.0', breaking: false,
+  from: { major: 1, minor: 0, patch: 0 },
+  to: { major: 2, minor: 0, patch: 0 },
+  breaking: false,
   upgrade(doc: DocumentTree): DocumentTree {
-    const d = doc as unknown as Record<string, unknown>
-    if (!d.modelVersion) d.modelVersion = '2.0.0'
-    if (!d.header) d.header = []
-    if (!d.footer) d.footer = []
-    return doc
-  },
-  downgrade(doc: DocumentTree): DocumentTree {
-    const d = doc as unknown as Record<string, unknown>
-    delete d.modelVersion
+    if (!doc.modelVersion) doc.modelVersion = '2.0.0'
+    if (!doc.header) doc.header = []
+    if (!doc.footer) doc.footer = []
     return doc
   },
 })
 
 // v2→v3: body children 迁移为 ID 引用
 modelUpgrader.register({
-  from: '2.0.0', to: '3.0.0', breaking: true,
+  from: { major: 2, minor: 0, patch: 0 },
+  to: { major: 3, minor: 0, patch: 0 },
+  breaking: true,
   upgrade(doc: DocumentTree): DocumentTree {
     // 确保 body.children 是 string[] (某些旧版本可能是嵌套对象)
     const body = doc.body as unknown as Record<string, unknown>
@@ -158,7 +144,9 @@ modelUpgrader.register({
 
 // v3→v4: 新增 pageSetup.orientation 默认值
 modelUpgrader.register({
-  from: '3.0.0', to: '4.0.0', breaking: false,
+  from: { major: 3, minor: 0, patch: 0 },
+  to: { major: 4, minor: 0, patch: 0 },
+  breaking: false,
   upgrade(doc: DocumentTree): DocumentTree {
     if (doc.pageSetup && !doc.pageSetup.orientation) {
       doc.pageSetup.orientation = 'portrait'
@@ -167,30 +155,22 @@ modelUpgrader.register({
   },
 })
 
-// ---- 版本比较工具 ----
-
-export function parseVersion(v: string): ModelVersion {
-  const [major, minor, patch] = v.split('.').map(Number)
-  return { major: major || 0, minor: minor || 0, patch: patch || 0 }
-}
-
-export function compareVersions(a: string, b: string): number {
-  const va = parseVersion(a)
-  const vb = parseVersion(b)
-  if (va.major !== vb.major) return va.major - vb.major
-  if (va.minor !== vb.minor) return va.minor - vb.minor
-  return va.patch - vb.patch
-}
-
-export function versionToString(v: ModelVersion): string {
-  return `${v.major}.${v.minor}.${v.patch}`
-}
-
 // ---- 兼容矩阵 ----
 
+export interface VersionCompatibility {
+  /** 最低支持版本 */
+  minVersion: DocumentFormatVersion
+  /** 当前引擎版本 */
+  currentVersion: DocumentFormatVersion
+  /** 向前兼容: 可打开高版本文档 (降级展示) — 当前不实现降级, 字段保留供未来 */
+  forwardCompatible: boolean
+  /** 向后兼容: 低版本文档自动升级 */
+  backwardCompatible: boolean
+}
+
 export const VERSION_COMPATIBILITY: VersionCompatibility = {
-  minVersion: '1.0.0',
-  currentVersion: '4.0.0',
-  forwardCompatible: true,
+  minVersion: { major: 1, minor: 0, patch: 0 },
+  currentVersion: CURRENT_DOCUMENT_VERSION,
+  forwardCompatible: false,  // 决策 4: 不实现降级
   backwardCompatible: true,
 }

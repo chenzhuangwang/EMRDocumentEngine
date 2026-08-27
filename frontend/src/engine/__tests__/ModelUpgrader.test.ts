@@ -5,8 +5,10 @@
 import { describe, it, expect } from 'vitest'
 import {
   modelUpgrader,
-  parseVersion, compareVersions, versionToString,
 } from '../document/ModelUpgrader'
+import {
+  parseVersion, compareVersions, versionToString,
+} from '../document/DocumentFormatVersion'
 import { MergeMatrix, buildMergeMatrix } from '../document/MergeMatrix'
 import { createDocument } from '../document/ElementFormatter'
 
@@ -53,13 +55,13 @@ describe('ModelUpgrader', () => {
 
   it('should check compatibility for older version', () => {
     const result = modelUpgrader.checkCompatibility('2.0.0')
-    expect(result.compatible).toBe(true)
+    expect(result.status).toBe('outdated')
     expect(result.needsUpgrade).toBe(true)
   })
 
   it('should check compatibility for same version', () => {
     const result = modelUpgrader.checkCompatibility('4.0.0')
-    expect(result.compatible).toBe(true)
+    expect(result.status).toBe('current')
     expect(result.needsUpgrade).toBe(false)
   })
 })
