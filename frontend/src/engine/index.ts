@@ -38,9 +38,10 @@ export {
 } from './state/EditorRuntimeState'
 export type {
   CursorState, SelectionState, SelectionGranularity,
-  ViewState, EditorMode, PageMode, IMEState, HistoryState,
+  ViewState, EditorMode, PageMode, IMEState,
   EditorRuntimeState,
 } from './state/EditorRuntimeState'
+export type { HistoryState } from './state/HistoryState'
 
 // Command
 export type {

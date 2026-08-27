@@ -5,6 +5,8 @@
 // 与 DocumentTree 并列为 Editor 的两大数据源
 // ================================================================
 
+import type { HistoryState } from './HistoryState'
+
 // ---- CursorState ----
 
 export interface CursorState {
@@ -63,15 +65,6 @@ export interface IMEState {
   composing: boolean
   compositionText: string
   compositionAnchor: CursorState | null
-}
-
-// ---- HistoryState ----
-
-export interface HistoryState {
-  canUndo: boolean
-  canRedo: boolean
-  undoDepth: number
-  redoDepth: number
 }
 
 // ---- EditorRuntimeState ----
