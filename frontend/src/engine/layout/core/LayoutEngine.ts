@@ -221,7 +221,7 @@ export class LayoutEngine {
         // 表格: 展开为含行数据的 SLIFItem (R37+R65+TASK-702 跨页断表)
         if (firstEl?.type === 'table') {
           const tbl = (firstEl as LineElement).tableBlock as {
-            id: string; columns?: { width: number }[]; children: string[]
+            id: string; columns?: { width: number }[]; children: readonly string[]
             pageBreak?: { repeatHeader?: boolean; minRowsBeforeBreak?: number; continuationLabel?: string }
           } | undefined
           if (tbl) {
@@ -493,7 +493,7 @@ export class LayoutEngine {
     table: {
       id: string
       columns?: { width: number; minWidth?: number; mode?: 'fixed' | 'percentage' | 'auto' }[]
-      children: string[]
+      children: readonly string[]
       pageBreak?: { repeatHeader?: boolean; minRowsBeforeBreak?: number; continuationLabel?: string }
     },
     pool: NodePool,
@@ -515,8 +515,8 @@ export class LayoutEngine {
 
     // 预收集行节点 + 声明行高 (rowspan 合并高度基准)
     const rowNodes = table.children
-      .map(id => pool.nodes.get(id) as { type?: string; height?: number; children: string[] } | undefined)
-      .filter((n): n is { type?: string; height?: number; children: string[] } => !!n && n.type === 'row')
+      .map(id => pool.nodes.get(id) as { type?: string; height?: number; children: readonly string[] } | undefined)
+      .filter((n): n is { type?: string; height?: number; children: readonly string[] } => !!n && n.type === 'row')
     const numRows = rowNodes.length
     const rowHeights = rowNodes.map(r => Math.max(r.height || MIN_ROW_HEIGHT, MIN_ROW_HEIGHT))
 
@@ -551,7 +551,7 @@ export class LayoutEngine {
         const cell = pool.nodes.get(cellId) as {
           type?: string; colspan?: number; rowspan?: number
           isHeader?: boolean; backgroundColor?: string
-          verticalAlign?: 'top' | 'middle' | 'bottom'; children: string[]
+          verticalAlign?: 'top' | 'middle' | 'bottom'; children: readonly string[]
         } | undefined
         if (!cell) continue
 
@@ -649,7 +649,7 @@ export class LayoutEngine {
    * @returns 已布局的文本 items (y 为 cell 局部坐标, 顶部对齐从 0 开始) + 内容总高度
    */
   private layoutCellItems(
-    paraIds: string[],
+    paraIds: readonly string[],
     cellWidth: number,
     pool: NodePool,
     lineBreaker: LineBreaker,
@@ -661,7 +661,7 @@ export class LayoutEngine {
     let lineY = 0
 
     for (const paraId of paraIds) {
-      const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+      const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
       const elements: LineElement[] = []
 
       if (para?.children) {

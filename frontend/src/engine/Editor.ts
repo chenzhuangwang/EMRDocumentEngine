@@ -179,7 +179,7 @@ export class Editor {
         if (tn) activeStyle = extractStyle(tn as unknown as import('./document/core/DocumentModel').TextNode)
       } else {
         const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-        const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+        const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
         if (para?.children) {
           for (let i = para.children.length - 1; i >= 0; i--) {
             const n = this.pool.nodes.get(para.children[i]) as { type?: string } | undefined
@@ -513,7 +513,7 @@ export class Editor {
    */
   private collectTextNodeIds(paraId: string, startOffset: number, endOffset: number): string[] {
     const ids: string[] = []
-    const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+    const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
     if (!para?.children) return ids
     let offset = 0
     for (const cid of para.children) {
@@ -746,18 +746,18 @@ export class Editor {
     this.commandManager.execute(new TableStructureCommand(
       generateCommandId(), Date.now(), 'user', tableId,
       (pool) => {
-        const table = pool.nodes.get(tableId) as { children?: string[] } | undefined
+        const table = pool.nodes.get(tableId) as { children?: readonly string[] } | undefined
         if (!table?.children) return false
         const rowId = table.children[rowIdx]
         if (!rowId) return false
-        const row = pool.nodes.get(rowId) as { children?: string[] } | undefined
+        const row = pool.nodes.get(rowId) as { children?: readonly string[] } | undefined
         if (!row?.children) return false
         const cellId = row.children[colIdx]
         const nextCellId = row.children[colIdx + 1]
         if (!cellId || !nextCellId) return false
 
-        const cell = pool.nodes.get(cellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
-        const nextCell = pool.nodes.get(nextCellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
+        const cell = pool.nodes.get(cellId) as { colspan?: number; rowspan?: number; children?: readonly string[] } | undefined
+        const nextCell = pool.nodes.get(nextCellId) as { colspan?: number; rowspan?: number; children?: readonly string[] } | undefined
         if (!cell || !nextCell) return false
 
         // 仅支持同一行内相邻、且两侧均未跨行的合并 (跨行合并方向复杂, 暂不支持)
@@ -791,19 +791,19 @@ export class Editor {
         // 左上角 cell 作为合并目标
         const target = boxCells.find(gc => gc.row === r0 && gc.col === c0)
         if (!target) return false
-        const targetCell = pool.nodes.get(target.cellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
+        const targetCell = pool.nodes.get(target.cellId) as { colspan?: number; rowspan?: number; children?: readonly string[] } | undefined
         if (!targetCell) return false
 
         // 其余 cell 内容并入目标 cell, 并从各自行移除
         for (const gc of boxCells) {
           if (gc.cellId === target.cellId) continue
-          const cell = pool.nodes.get(gc.cellId) as { children?: string[] } | undefined
+          const cell = pool.nodes.get(gc.cellId) as { children?: readonly string[] } | undefined
           if (cell?.children?.length) {
             targetCell.children = [...(targetCell.children || []), ...cell.children]
             // 关键: 清空引用, 防止 removeChild 级联删除已并入目标 cell 的段落
             cell.children = []
           }
-          const row = pool.nodes.get(grid.rowIds[gc.row]) as { id: string; children?: string[] } | undefined
+          const row = pool.nodes.get(grid.rowIds[gc.row]) as { id: string; children?: readonly string[] } | undefined
           const idx = row?.children?.indexOf(gc.cellId)
           if (row && idx !== undefined && idx >= 0) pool.removeChild(row.id, idx)
         }
@@ -829,15 +829,15 @@ export class Editor {
     this.commandManager.execute(new TableStructureCommand(
       generateCommandId(), Date.now(), 'user', tableId,
       (pool) => {
-        const table = pool.nodes.get(tableId) as { children?: string[] } | undefined
+        const table = pool.nodes.get(tableId) as { children?: readonly string[] } | undefined
         if (!table?.children) return false
         const rowId = table.children[rowIdx]
         if (!rowId) return false
-        const row = pool.nodes.get(rowId) as { children?: string[] } | undefined
+        const row = pool.nodes.get(rowId) as { children?: readonly string[] } | undefined
         if (!row?.children) return false
         const cellId = row.children[colIdx]
         if (!cellId) return false
-        const cell = pool.nodes.get(cellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
+        const cell = pool.nodes.get(cellId) as { colspan?: number; rowspan?: number; children?: readonly string[] } | undefined
         if (!cell) return false
 
         const colspan = cell.colspan || 1
@@ -862,7 +862,7 @@ export class Editor {
           // 垂直拆分: 原 cell 缩为 rowspan=1, 下一行对应列新增 cell (保留剩余 rowspan)
           const rowBelowId = table.children[rowIdx + 1]
           const rowBelow = rowBelowId
-            ? (pool.nodes.get(rowBelowId) as { children?: string[] } | undefined)
+            ? (pool.nodes.get(rowBelowId) as { children?: readonly string[] } | undefined)
             : undefined
           if (!rowBelow?.children) { pool.removeNode(newCell.id); return false }
 
@@ -1030,7 +1030,7 @@ export class Editor {
         const bm = node as unknown as { id: string; name: string }
         targets.push({ id: bm.id, label: bm.name || bm.id, type: 'bookmark' })
       } else if (node.type === 'paragraph') {
-        const p = node as unknown as { id: string; outlineLevel?: number; children?: string[] }
+        const p = node as unknown as { id: string; outlineLevel?: number; children?: readonly string[] }
         if (p.outlineLevel && p.outlineLevel > 0) {
           const text = p.children?.map(cid => {
             const cn = this.pool.nodes.get(cid) as { text?: string } | undefined
@@ -1194,11 +1194,11 @@ export class Editor {
 
     if (aCell) {
       // 同 cell 内选区: 使用 cell.children
-      const tableNode = this.pool.nodes.get(aCell.tableId) as { children?: string[] } | undefined
+      const tableNode = this.pool.nodes.get(aCell.tableId) as { children?: readonly string[] } | undefined
       if (!tableNode?.children) return false
-      const rowNode = this.pool.nodes.get(tableNode.children[aCell.row]) as { children?: string[] } | undefined
+      const rowNode = this.pool.nodes.get(tableNode.children[aCell.row]) as { children?: readonly string[] } | undefined
       if (!rowNode?.children) return false
-      const cellNode = this.pool.nodes.get(rowNode.children[aCell.col]) as { children?: string[] } | undefined
+      const cellNode = this.pool.nodes.get(rowNode.children[aCell.col]) as { children?: readonly string[] } | undefined
       if (!cellNode?.children) return false
       siblings = cellNode.children
     } else {
@@ -1234,7 +1234,7 @@ export class Editor {
           this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, hiOff))
         }
       } else if (pi === lo) {
-        const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+        const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
         let totalLen = 0
         if (para?.children) {
           for (const cid of para.children) {
@@ -1246,7 +1246,7 @@ export class Editor {
           this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, loOff, totalLen))
         }
       } else {
-        const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+        const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
         let totalLen = 0
         if (para?.children) {
           for (const cid of para.children) {
@@ -1265,9 +1265,9 @@ export class Editor {
       for (let mergeCount = hi - lo; mergeCount > 0; mergeCount--) {
         const currentSiblings = aCell
           ? ((() => {
-              const tn = this.pool.nodes.get(aCell.tableId) as { children?: string[] } | undefined
-              const rn = this.pool.nodes.get(tn?.children?.[aCell.row] || '') as { children?: string[] } | undefined
-              return (this.pool.nodes.get(rn?.children?.[aCell.col] || '') as { children?: string[] } | undefined)?.children || siblings
+              const tn = this.pool.nodes.get(aCell.tableId) as { children?: readonly string[] } | undefined
+              const rn = this.pool.nodes.get(tn?.children?.[aCell.row] || '') as { children?: readonly string[] } | undefined
+              return (this.pool.nodes.get(rn?.children?.[aCell.col] || '') as { children?: readonly string[] } | undefined)?.children || siblings
             })())
           : this.doc.body.children
         const nextParaId = currentSiblings[lo + 1]
@@ -1651,7 +1651,7 @@ export class Editor {
 
   /** 格式刷: 将样式应用到目标段落的所有文本节点 (TASK-472) */
   applyFormatPainter(paraId: string, style: Record<string, unknown>): void {
-    const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+    const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
     if (!para?.children) return
     const nodeIds: string[] = []
     for (const cid of para.children) {
@@ -1767,7 +1767,7 @@ export class Editor {
     const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
 
     // 读取段落 outlineLevel: LayoutEngine 对标题强制加粗+缩放字号 (见 HEADING_SCALE)
-    const para = this.pool.nodes.get(paraId) as { children?: string[]; outlineLevel?: number } | undefined
+    const para = this.pool.nodes.get(paraId) as { children?: readonly string[]; outlineLevel?: number } | undefined
     const outlineLevel = para?.outlineLevel ?? 0
     const isHeading = outlineLevel > 0
     const HEADING_SCALE: Record<number, number> = { 1: 2.0, 2: 1.5, 3: 1.25, 4: 1.125, 5: 1.0, 6: 0.875 }
@@ -1779,7 +1779,7 @@ export class Editor {
       tn = this.pool.nodes.get(resolved.textNodeId) as typeof tn
     } else {
       // 光标在段尾 → 取最后一个 text node 的样式
-      const paraChildren = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+      const paraChildren = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
       if (paraChildren?.children) {
         for (let i = paraChildren.children.length - 1; i >= 0; i--) {
           const n = this.pool.nodes.get(paraChildren.children[i]) as { type?: string } & typeof tn
@@ -1857,7 +1857,7 @@ export class Editor {
     if (bodyChildren.length === 0) return
     const firstParaId = bodyChildren[0]
     const lastParaId = bodyChildren[bodyChildren.length - 1]
-    const lastPara = this.pool.nodes.get(lastParaId) as unknown as { children?: string[] } | undefined
+    const lastPara = this.pool.nodes.get(lastParaId) as unknown as { children?: readonly string[] } | undefined
     const totalLen = lastPara ? this.getParagraphTextLength(lastPara as unknown as Paragraph) : 0
     this.store.setSelection({
       anchor: { paragraphPath: [this.doc.id, firstParaId], offset: 0, visible: false },
@@ -1907,7 +1907,7 @@ export class Editor {
     for (const childId of bodyChildren) {
       const node = this.pool.nodes.get(childId)
       if (!node) continue
-      const n = node as { type?: string; children?: string[] }
+      const n = node as { type?: string; children?: readonly string[] }
 
       if (n.type === 'paragraph' && n.children) {
         for (const cid of n.children) {
@@ -1962,7 +1962,7 @@ export class Editor {
     if (!paraId) return
 
     // 获取段落完整文本
-    const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
+    const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
     if (!para?.children) return
     let fullText = ''
     for (const cid of para.children) {

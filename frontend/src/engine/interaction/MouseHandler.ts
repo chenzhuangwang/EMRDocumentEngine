@@ -202,7 +202,7 @@ export class MouseHandler {
 
     if (this.clickCount === 2) {
       // 双击 → 选中当前词
-      const para = this.editor.getPool().nodes.get(result.paraPath[result.paraPath.length - 1]) as { children?: string[] } | undefined
+      const para = this.editor.getPool().nodes.get(result.paraPath[result.paraPath.length - 1]) as { children?: readonly string[] } | undefined
       if (para?.children) {
         const fullText = this.getParagraphFullText(para)
         const { start, end } = this.findWordBoundaries(fullText, result.offset)
@@ -225,7 +225,7 @@ export class MouseHandler {
       }
     } else if (this.clickCount >= 3) {
       // 三击 → 选中整段
-      const para = this.editor.getPool().nodes.get(result.paraPath[result.paraPath.length - 1]) as { children?: string[] } | undefined
+      const para = this.editor.getPool().nodes.get(result.paraPath[result.paraPath.length - 1]) as { children?: readonly string[] } | undefined
       if (para?.children) {
         const totalLen = this.getParagraphFullText(para).length
         this._wasMultiClick = true
@@ -288,19 +288,19 @@ export class MouseHandler {
 
     for (const [, node] of pool.nodes) {
       if (node.type !== 'cell') continue
-      const cell = node as unknown as { id: string; children?: string[] }
+      const cell = node as unknown as { id: string; children?: readonly string[] }
       if (!cell.children?.includes(paraId)) continue
 
       // 找到 cell → 向上找到 row 和 table
       for (const [, n2] of pool.nodes) {
         if (n2.type !== 'row') continue
-        const r = n2 as unknown as { id: string; children?: string[] }
+        const r = n2 as unknown as { id: string; children?: readonly string[] }
         const colIdx = r.children?.indexOf(cell.id)
         if (colIdx === undefined || colIdx < 0) continue
 
         for (const [, n3] of pool.nodes) {
           if (n3.type !== 'table') continue
-          const t = n3 as unknown as { id: string; children?: string[] }
+          const t = n3 as unknown as { id: string; children?: readonly string[] }
           const rowIdx = t.children?.indexOf(r.id)
           if (rowIdx !== undefined && rowIdx >= 0) {
             return { tableId: t.id, row: rowIdx, col: colIdx }
@@ -598,7 +598,7 @@ export class MouseHandler {
   }
 
   /** 获取段落全部文本 (拼接所有 TextNode) */
-  private getParagraphFullText(para: { children?: string[] }): string {
+  private getParagraphFullText(para: { children?: readonly string[] }): string {
     const pool = this.editor.getPool()
     let text = ''
     if (para.children) {

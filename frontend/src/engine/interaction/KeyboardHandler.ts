@@ -134,7 +134,7 @@ export class KeyboardHandler {
         this.deleteSelection(ed, sel)
       } else if (cursor.paragraphPath.length > 0) {
         const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-        const para = ed.getPool().nodes.get(paraId) as { children?: string[] } | undefined
+        const para = ed.getPool().nodes.get(paraId) as { children?: readonly string[] } | undefined
         let totalLen = 0
         if (para?.children) {
           for (const cid of para.children) {
@@ -193,7 +193,7 @@ export class KeyboardHandler {
           if (tn) activeStyle = extractStyle(tn as unknown as import('../document/core/DocumentModel').TextNode)
         } else {
           // 光标在段尾 → 取最后一个 text node 的样式
-          const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+          const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
           if (para?.children) {
             for (let i = para.children.length - 1; i >= 0; i--) {
               const n = pool.nodes.get(para.children[i]) as { type?: string } | undefined
@@ -242,11 +242,11 @@ export class KeyboardHandler {
 
     let siblings: readonly string[]
     if (aCell) {
-      const tableNode = pool.nodes.get(aCell.tableId) as { children?: string[] } | undefined
+      const tableNode = pool.nodes.get(aCell.tableId) as { children?: readonly string[] } | undefined
       if (!tableNode?.children) return
-      const rowNode = pool.nodes.get(tableNode.children[aCell.row]) as { children?: string[] } | undefined
+      const rowNode = pool.nodes.get(tableNode.children[aCell.row]) as { children?: readonly string[] } | undefined
       if (!rowNode?.children) return
-      const cellNode = pool.nodes.get(rowNode.children[aCell.col]) as { children?: string[] } | undefined
+      const cellNode = pool.nodes.get(rowNode.children[aCell.col]) as { children?: readonly string[] } | undefined
       if (!cellNode?.children) return
       siblings = cellNode.children
     } else {
@@ -275,7 +275,7 @@ export class KeyboardHandler {
       } else if (pi === hi) {
         if (hiOff > 0) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, hiOff))
       } else if (pi === lo) {
-        const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+        const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
         let totalLen = 0
         if (para?.children) {
           for (const cid of para.children) {
@@ -285,7 +285,7 @@ export class KeyboardHandler {
         }
         if (loOff < totalLen) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, loOff, totalLen))
       } else {
-        const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+        const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
         let totalLen = 0
         if (para?.children) {
           for (const cid of para.children) {
@@ -302,9 +302,9 @@ export class KeyboardHandler {
       for (let mergeCount = (hi - lo); mergeCount > 0; mergeCount--) {
         const currentSiblings = aCell
           ? ((() => {
-              const tn = pool.nodes.get(aCell.tableId) as { children?: string[] } | undefined
-              const rn = pool.nodes.get(tn?.children?.[aCell.row] || '') as { children?: string[] } | undefined
-              return (pool.nodes.get(rn?.children?.[aCell.col] || '') as { children?: string[] } | undefined)?.children || siblings
+              const tn = pool.nodes.get(aCell.tableId) as { children?: readonly string[] } | undefined
+              const rn = pool.nodes.get(tn?.children?.[aCell.row] || '') as { children?: readonly string[] } | undefined
+              return (pool.nodes.get(rn?.children?.[aCell.col] || '') as { children?: readonly string[] } | undefined)?.children || siblings
             })())
           : doc.body.children
         const nextParaId = currentSiblings[lo + 1]
@@ -347,7 +347,7 @@ export class KeyboardHandler {
 
   /** 查找 cell 内第一个段落 ID */
   private firstParagraphInCell(
-    pool: { nodes: ReadonlyMap<string, { type?: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type?: string; children?: readonly string[] }> },
     cellId: string,
   ): string | null {
     const cell = pool.nodes.get(cellId)
@@ -545,7 +545,7 @@ export class KeyboardHandler {
    */
   private findFirstParagraphOnPage(
     page: SLIFPage,
-    pool: { nodes: ReadonlyMap<string, { type: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type: string; children?: readonly string[] }> },
     siblings: string[],
   ): string | null {
     // 1. 搜索正文顶级块
@@ -573,7 +573,7 @@ export class KeyboardHandler {
   }
 
   /** 从 nodeId 查找所属段落 ID */
-  private resolveItemParagraph(nodeId: string, pool: { nodes: ReadonlyMap<string, { type: string; children?: string[] }> }): string | null {
+  private resolveItemParagraph(nodeId: string, pool: { nodes: ReadonlyMap<string, { type: string; children?: readonly string[] }> }): string | null {
     for (const [, node] of pool.nodes) {
       if (node.type === 'paragraph' && node.children?.includes(nodeId)) {
         return (node as unknown as { id: string }).id || null
@@ -589,7 +589,7 @@ export class KeyboardHandler {
    *  v20.35: 单元格内段落返回扩展 siblings, 包含表格前后段落,
    *  使 ArrowUp/ArrowDown 可以跳出/跳入表格。
    */
-  private getParagraphSiblings(paraId: string, doc: DocumentTree, pool?: { nodes: ReadonlyMap<string, { type: string; children?: string[] }> }): string[] {
+  private getParagraphSiblings(paraId: string, doc: DocumentTree, pool?: { nodes: ReadonlyMap<string, { type: string; children?: readonly string[] }> }): string[] {
     const filterParas = (ids: readonly string[]) => {
       if (!pool) return ids.filter(id => id === paraId || true)  // 无 pool 时不过滤
       return ids.filter(id => {
@@ -604,7 +604,7 @@ export class KeyboardHandler {
     if (pool) {
       for (const [, n] of pool.nodes) {
         if (n.type !== 'cell') continue
-        const cell = n as unknown as { id: string; children?: string[] }
+        const cell = n as unknown as { id: string; children?: readonly string[] }
         if (!cell.children?.includes(paraId)) continue
 
         // 找到该 cell 内的所有段落
@@ -617,12 +617,12 @@ export class KeyboardHandler {
         let tableId: string | null = null
         for (const [, rn] of pool.nodes) {
           if (rn.type !== 'row') continue
-          const row = rn as unknown as { id: string; children?: string[] }
+          const row = rn as unknown as { id: string; children?: readonly string[] }
           if (!row.children?.includes(cell.id)) continue
           // 找到 table
           for (const [, tn] of pool.nodes) {
             if (tn.type !== 'table') continue
-            const table = tn as unknown as { id: string; children?: string[] }
+            const table = tn as unknown as { id: string; children?: readonly string[] }
             if (table.children?.includes(row.id)) { tableId = table.id; break }
           }
           break
@@ -662,8 +662,8 @@ export class KeyboardHandler {
   }
 
   /** 计算段落文本总长度 (字符数) */
-  private getParagraphLength(paraId: string, pool: { nodes: ReadonlyMap<string, { type: string; children?: string[]; text?: string }> }): number {
-    const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+  private getParagraphLength(paraId: string, pool: { nodes: ReadonlyMap<string, { type: string; children?: readonly string[]; text?: string }> }): number {
+    const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
     if (!para?.children) return 0
     let len = 0
     for (const cid of para.children) {
@@ -737,7 +737,7 @@ export class KeyboardHandler {
 
     // cell 段落: 先在 cell 内部段落/块序列上移动, 边界再跨 cell
     const cellId = this.cellIdAt(pool, loc.tableId, loc.row, loc.col)
-    const cell = cellId ? (pool.nodes.get(cellId) as { children?: string[] } | undefined) : undefined
+    const cell = cellId ? (pool.nodes.get(cellId) as { children?: readonly string[] } | undefined) : undefined
     if (cell?.children) {
       const cellIdx = cell.children.indexOf(paraId)
       if (cellIdx >= 0) {
@@ -827,7 +827,7 @@ export class KeyboardHandler {
   /** 落点偏移: 垂直保列, 水平按方向到段首(→)/段尾(←) */
   private landingOffset(
     paraId: string,
-    pool: { nodes: ReadonlyMap<string, { type: string; children?: string[]; text?: string }> },
+    pool: { nodes: ReadonlyMap<string, { type: string; children?: readonly string[]; text?: string }> },
     dir: 1 | -1,
     mode: 'horizontal' | 'vertical',
     cursorOffset: number,
@@ -839,7 +839,7 @@ export class KeyboardHandler {
 
   /** 进入表格某角 cell 的第一个段落 */
   private enterTable(
-    pool: { nodes: ReadonlyMap<string, { type?: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type?: string; children?: readonly string[] }> },
     tableId: string,
     edge: 'top-left' | 'bottom-left' | 'bottom-right',
   ): string | null {
@@ -869,7 +869,7 @@ export class KeyboardHandler {
 
   /** 查找 cell 内最后一个段落 ID */
   private lastParagraphInCell(
-    pool: { nodes: ReadonlyMap<string, { type?: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type?: string; children?: readonly string[] }> },
     cellId: string,
   ): string | null {
     const cell = pool.nodes.get(cellId)
@@ -882,7 +882,7 @@ export class KeyboardHandler {
 
   /** 取 (行下标, 列下标) 处的 cellId (阅读坐标) */
   private cellIdAt(
-    pool: { nodes: ReadonlyMap<string, { type?: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type?: string; children?: readonly string[] }> },
     tableId: string,
     row: number,
     col: number,

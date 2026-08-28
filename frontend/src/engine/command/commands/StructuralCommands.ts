@@ -36,7 +36,7 @@ export function removeSubtree(pool: NodePool, rootId: string): void {
     const id = stack.pop()!
     const node = pool.nodes.get(id)
     if (!node) continue
-    const children = (node as unknown as { children?: string[] }).children
+    const children = (node as unknown as { children?: readonly string[] }).children
     if (children) for (const c of children) stack.push(c)
     pool.removeNode(id)
   }
@@ -50,7 +50,7 @@ function cloneSubtree(pool: NodePool, rootId: string): Map<string, BaseNode> {
     const id = stack.pop()!
     ids.push(id)
     const node = pool.nodes.get(id)
-    const children = (node as unknown as { children?: string[] } | undefined)?.children
+    const children = (node as unknown as { children?: readonly string[] } | undefined)?.children
     if (children) for (const c of children) stack.push(c)
   }
   const cloned = JSON.parse(JSON.stringify(ids.map(id => pool.nodes.get(id)))) as BaseNode[]
@@ -737,7 +737,7 @@ export class EnsureCellParagraphCommand implements ICommand {
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
     const { pool } = ctx
-    const cell = pool.nodes.get(this.cellId) as { children?: string[] } | undefined
+    const cell = pool.nodes.get(this.cellId) as { children?: readonly string[] } | undefined
     if (!cell) return null
     const children = cell.children ?? []
     for (const id of children) {

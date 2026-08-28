@@ -2,7 +2,7 @@
 // ModelD — 树形文档数据模型 (架构 §2.1-§2.2 权威定义, v20.34)
 //
 // 存储去分页化: DocumentTree → body: FlowBody → BlockNode[]
-// children 全 ID 化: children: string[] (NodePool ID 引用)
+// children 全 ID 化: children: readonly string[] (NodePool ID 引用)
 // 路径体系统一: string[] (ID 链路), 废弃 TreePath
 // ============================================================
 

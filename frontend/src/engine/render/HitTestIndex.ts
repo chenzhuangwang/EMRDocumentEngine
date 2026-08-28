@@ -227,7 +227,7 @@ export class HitTestIndex {
       // 反向查找 cell 的第一个 paragraph
       const paraId = HitTestIndex.findFirstParagraphInCell(tableItem, targetCell, pool)
       if (paraId) {
-        const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+        const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
         const totalLen = para?.children
           ? para.children.reduce((sum, cid) => {
               const tn = pool.nodes.get(cid) as { text?: string } | undefined

@@ -83,9 +83,9 @@ export class ClipboardManager {
     // 选区段落列表: cell 内用 cell.children, body 用 body.children
     let siblings: readonly string[]
     if (aCell) {
-      const tableNode = pool.nodes.get(aCell.tableId) as { children?: string[] } | undefined
-      const rowNode = tableNode ? pool.nodes.get(tableNode.children?.[aCell.row] || '') as { children?: string[] } | undefined : undefined
-      const cellNode = rowNode ? pool.nodes.get(rowNode.children?.[aCell.col] || '') as { children?: string[] } | undefined : undefined
+      const tableNode = pool.nodes.get(aCell.tableId) as { children?: readonly string[] } | undefined
+      const rowNode = tableNode ? pool.nodes.get(tableNode.children?.[aCell.row] || '') as { children?: readonly string[] } | undefined : undefined
+      const cellNode = rowNode ? pool.nodes.get(rowNode.children?.[aCell.col] || '') as { children?: readonly string[] } | undefined : undefined
       siblings = cellNode?.children ?? []
     } else {
       siblings = pool.getChildren(pool.rootIds.body)
@@ -171,7 +171,7 @@ export class ClipboardManager {
 
     let plainText = ''
     let charOffset = 0
-    const children = (para as { children?: string[] }).children ?? []
+    const children = (para as { children?: readonly string[] }).children ?? []
 
     for (const childId of children) {
       const child = pool.nodes.get(childId) as unknown as Record<string, unknown> | undefined

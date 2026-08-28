@@ -46,7 +46,7 @@ export function collectDocumentNodes(doc: DocumentTree, pool: NodePool): Map<str
     const node = pool.nodes.get(id)
     if (!node) return
     result.set(id, node)
-    const children = (node as { children?: string[] }).children
+    const children = (node as { children?: readonly string[] }).children
     if (Array.isArray(children)) {
       for (const cid of children) visit(cid)
     }

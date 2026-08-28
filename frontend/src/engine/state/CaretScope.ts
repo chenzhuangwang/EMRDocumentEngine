@@ -74,11 +74,11 @@ export interface TableCellRef {
  * @returns 单元格引用列表 (row/col 为 row.children 中的下标, 非网格列)
  */
 export function listTableCells(pool: NodePool, tableId: string): TableCellRef[] {
-  const table = pool.nodes.get(tableId) as { children?: string[] } | undefined
+  const table = pool.nodes.get(tableId) as { children?: readonly string[] } | undefined
   if (!table?.children) return []
   const result: TableCellRef[] = []
   for (let ri = 0; ri < table.children.length; ri++) {
-    const row = pool.nodes.get(table.children[ri]) as { children?: string[] } | undefined
+    const row = pool.nodes.get(table.children[ri]) as { children?: readonly string[] } | undefined
     if (!row?.children) continue
     for (let ci = 0; ci < row.children.length; ci++) {
       result.push({ cellId: row.children[ci], row: ri, col: ci })
@@ -100,8 +100,8 @@ export function getAdjacentCell(
   col: number,
   direction: 1 | -1,
 ): TableCellRef | null {
-  const table = pool.nodes.get(tableId) as { children?: string[] } | undefined
-  const rowNode = pool.nodes.get(table?.children?.[row] || '') as { children?: string[] } | undefined
+  const table = pool.nodes.get(tableId) as { children?: readonly string[] } | undefined
+  const rowNode = pool.nodes.get(table?.children?.[row] || '') as { children?: readonly string[] } | undefined
   const currentCellId = rowNode?.children?.[col]
   if (!currentCellId) return null
 
@@ -135,7 +135,7 @@ export function resolveCellPosition(
   let cellId: string | null = null
   for (const [, node] of pool.nodes) {
     if (node.type !== 'cell') continue
-    const cell = node as unknown as { id: string; children?: string[] }
+    const cell = node as unknown as { id: string; children?: readonly string[] }
     if (!cell.children?.includes(paraId)) continue
     cellId = cell.id
     break
@@ -147,7 +147,7 @@ export function resolveCellPosition(
   let colIdx = -1
   for (const [, node] of pool.nodes) {
     if (node.type !== 'row') continue
-    const row = node as unknown as { id: string; children?: string[] }
+    const row = node as unknown as { id: string; children?: readonly string[] }
     const idx = row.children?.indexOf(cellId)
     if (idx === undefined || idx < 0) continue
     rowId = row.id
@@ -159,7 +159,7 @@ export function resolveCellPosition(
   // Step 3: 查找包含 rowId 的 table 节点 + 行索引
   for (const [, node] of pool.nodes) {
     if (node.type !== 'table') continue
-    const table = node as unknown as { id: string; children?: string[] }
+    const table = node as unknown as { id: string; children?: readonly string[] }
     const rowIdx = table.children?.indexOf(rowId)
     if (rowIdx !== undefined && rowIdx >= 0) {
       return { tableId: table.id, row: rowIdx, col: colIdx }

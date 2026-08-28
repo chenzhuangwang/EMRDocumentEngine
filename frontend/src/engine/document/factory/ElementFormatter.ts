@@ -32,7 +32,7 @@ export function createDocument(title: string, body?: FlowBody, pageSetup?: PageS
   }
 }
 
-export function createParagraph(children?: string[], style?: ParagraphStyle): Paragraph {
+export function createParagraph(children?: readonly string[], style?: ParagraphStyle): Paragraph {
   return { type: NodeType.PARAGRAPH, id: generateId(), children: children ?? [], ...style }
 }
 
@@ -115,7 +115,7 @@ export function createFootnoteRef(footnoteId: string): FootnoteRef {
   return { type: NodeType.FOOTNOTE_REF, id: generateId(), footnoteId }
 }
 
-export function createFootnoteContent(refId: string, children?: string[]): FootnoteContent {
+export function createFootnoteContent(refId: string, children?: readonly string[]): FootnoteContent {
   return { type: NodeType.FOOTNOTE_CONTENT, id: generateId(), refId, children: children ?? [] }
 }
 

@@ -45,7 +45,7 @@ function resolveEditLocation(
   endOffset: number,
 ): { nodeId: string; localStart: number; localEnd: number } | null {
   const paraId = paragraphPath[paragraphPath.length - 1]
-  const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+  const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
   if (!para?.children) return null
 
   let offset = 0

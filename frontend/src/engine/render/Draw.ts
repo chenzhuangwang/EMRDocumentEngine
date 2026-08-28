@@ -177,7 +177,7 @@ export class Draw {
     pageVerticalGap: number = 0,
   ): CaretPos | null {
     const paraId = paragraphPath[paragraphPath.length - 1]
-    const para = pool.nodes.get(paraId) as unknown as { children: string[] } | undefined
+    const para = pool.nodes.get(paraId) as unknown as { children: readonly string[] } | undefined
     if (!para) return null
 
     // 文档空间滚动位置 — 直接读取, 每次都准确反映当前滚动
@@ -718,7 +718,7 @@ export class Draw {
   private findItemParagraph(nodeId: string, pool: NodePool): string | null {
     for (const [, node] of pool.nodes) {
       if (node.type === 'paragraph') {
-        const para = node as unknown as { children: string[] }
+        const para = node as unknown as { children: readonly string[] }
         if (para.children.includes(nodeId) || nodeId === node.id) return node.id
       }
     }

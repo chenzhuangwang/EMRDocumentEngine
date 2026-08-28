@@ -176,7 +176,7 @@ export class QCEngine {
       case 'no_consecutive_empty_paragraphs': {
         let lastEmpty = false
         for (const childId of doc.body.children) {
-          const para = pool.nodes.get(childId) as { children?: string[] } | undefined
+          const para = pool.nodes.get(childId) as { children?: readonly string[] } | undefined
           const isEmpty = !para?.children || para.children.length === 0 ||
             para.children.every(cid => {
               const n = pool.nodes.get(cid) as { text?: string } | undefined
@@ -200,7 +200,7 @@ export class QCEngine {
         const min = parseInt(args[0], 10) || 0
         let count = 0
         for (const childId of doc.body.children) {
-          const para = pool.nodes.get(childId) as { children?: string[] } | undefined
+          const para = pool.nodes.get(childId) as { children?: readonly string[] } | undefined
           if (para?.children) {
             for (const cid of para.children) {
               const n = pool.nodes.get(cid) as { text?: string } | undefined

@@ -189,14 +189,14 @@ export class FootnoteLayout {
   // ---- 内部 ----
 
   /** 获取脚注内容的纯文本 */
-  private getFootnoteText(content: { children?: string[]; type?: string }, pool: NodePool): string {
+  private getFootnoteText(content: { children?: readonly string[]; type?: string }, pool: NodePool): string {
     if (!content.children) return ''
 
     const parts: string[] = []
     for (const childId of content.children) {
       const child = pool.nodes.get(childId)
       if (!child) continue
-      const c = child as { type?: string; children?: string[] }
+      const c = child as { type?: string; children?: readonly string[] }
 
       if (c.type === 'paragraph' && c.children) {
         for (const paraChildId of c.children) {

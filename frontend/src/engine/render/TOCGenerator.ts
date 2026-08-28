@@ -226,7 +226,7 @@ export class TOCGenerator {
 
   /** 获取段落纯文本 */
   private getParagraphPlainText(paraId: string, pool: NodePool): string {
-    const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+    const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
     if (!para?.children) return ''
 
     const parts: string[] = []

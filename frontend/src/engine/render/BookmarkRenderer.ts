@@ -28,7 +28,7 @@ function findBookmarkTarget(doc: DocumentTree, pool: NodePool, bookmarkName: str
   for (const blockId of doc.body.children) {
     const block = pool.nodes.get(blockId)
     if (!block) continue
-    const para = block as unknown as { children?: string[] }
+    const para = block as unknown as { children?: readonly string[] }
     if (para.children) {
       for (const childId of para.children) {
         const child = pool.nodes.get(childId) as { type?: string; name?: string } | undefined
@@ -80,7 +80,7 @@ export class BookmarkRenderer {
     const results: ResolvedReference[] = []
 
     for (const blockId of doc.body.children) {
-      const block = pool.nodes.get(blockId) as { children?: string[]; type?: string } | undefined
+      const block = pool.nodes.get(blockId) as { children?: readonly string[]; type?: string } | undefined
       if (!block || block.type !== 'paragraph') continue
 
       if (block.children) {
@@ -157,7 +157,7 @@ export class BookmarkRenderer {
   ): string | null {
     for (const blockId of doc.body.children) {
       const block = pool.nodes.get(blockId) as {
-        type?: string; outlineLevel?: number; children?: string[]
+        type?: string; outlineLevel?: number; children?: readonly string[]
       } | undefined
       if (!block || block.type !== 'paragraph') continue
       if (!block.outlineLevel || block.outlineLevel < 1) continue
@@ -171,7 +171,7 @@ export class BookmarkRenderer {
 
   /** 获取段落纯文本 */
   private getParagraphText(
-    block: { children?: string[] },
+    block: { children?: readonly string[] },
     pool: NodePool,
   ): string {
     if (!block.children) return ''

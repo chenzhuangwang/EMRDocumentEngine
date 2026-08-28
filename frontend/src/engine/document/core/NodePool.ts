@@ -2,7 +2,7 @@
 // NodePool — 节点池 (架构 §2.1 权威定义, v20.34)
 //
 // 5 条铁律:
-// 1. 单向引用: children: string[], 节点不存储 parentId
+// 1. 单向引用: children: readonly string[], 节点不存储 parentId
 // 2. 顺序保证: children 数组顺序 = 文档逻辑顺序
 // 3. 统一入口: insertChild/removeChild/moveChild 为唯一合法入口
 // 4. ID 不可变: id 分配后永不修改, updateNode 拒绝 id/type 变更
@@ -182,7 +182,7 @@ export class NodePool {
   ): { textNodeId: string; localOffset: number } | null {
     const para = this.nodes.get(paragraphId) as Record<string, unknown> | undefined
     if (!para) return null
-    const children = (para as { children?: string[] }).children ?? []
+    const children = (para as { children?: readonly string[] }).children ?? []
     let remaining = charOffset
     for (const childId of children) {
       const node = this.nodes.get(childId)
@@ -201,7 +201,7 @@ export class NodePool {
   getCharOffset(paragraphId: string, textNodeId: string, localOffset: number): number {
     const para = this.nodes.get(paragraphId) as Record<string, unknown> | undefined
     if (!para) return 0
-    const children = (para as { children?: string[] }).children ?? []
+    const children = (para as { children?: readonly string[] }).children ?? []
     let offset = 0
     for (const childId of children) {
       if (childId === textNodeId) return offset + localOffset
