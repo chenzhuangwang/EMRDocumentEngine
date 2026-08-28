@@ -238,6 +238,15 @@ The editor engine uses a modular design. Core components include:
 
 ## 📝 Development Instructions
 
+### AI-Assisted Development (Claude)
+
+This project uses Claude for AI-assisted development. To constrain the AI's code behavior and ensure architectural boundaries are not broken, the repository maintains an "AI Editing Contract":
+
+- `.claude/CLAUDE.md`: The AI entry prompt, instructing the AI to read the contract before modifying `frontend/src/engine`.
+- `.claude/AI_EDITOR_CONTRACT.md`: The architectural invariant contract, defining the engine's mandatory boundaries — for example: the engine must not depend on React or browser globals, all document mutations must go through the Command system, every mutable fact must have a single owner, and the document model must not depend on layout/rendering.
+
+When implementing, refactoring, or reviewing code, the AI must treat the contract as a hard constraint; if an invariant must be broken, the AI must first explain the reason, assess the impact, and obtain explicit authorization — never violating it silently.
+
 ### Frontend Development
 
 1. Editor engine core code is located in the `src/engine/` directory.
