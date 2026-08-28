@@ -181,13 +181,13 @@ export type InlineNode =
 
 export interface Paragraph extends BaseNode, ParagraphStyle {
   type: typeof NodeType.PARAGRAPH
-  children: string[]
+  children: readonly string[]
 }
 
 export interface Table extends BaseNode {
   type: typeof NodeType.TABLE
   columns: ColumnDefinition[]
-  children: string[]
+  children: readonly string[]
   pageBreak?: TablePageBreakRule
 }
 
@@ -206,14 +206,14 @@ export interface TablePageBreakRule {
 export interface TableRow extends BaseNode {
   type: typeof NodeType.ROW
   height?: number
-  children: string[]
+  children: readonly string[]
 }
 
 export interface TableCell extends BaseNode {
   type: typeof NodeType.CELL
   colspan?: number
   rowspan?: number
-  children: string[]
+  children: readonly string[]
   backgroundColor?: string
   verticalAlign?: 'top' | 'middle' | 'bottom'
   isHeader?: boolean
@@ -242,7 +242,7 @@ export interface SectionBreak extends BaseNode {
 export interface FootnoteContent extends BaseNode {
   type: typeof NodeType.FOOTNOTE_CONTENT
   refId: string
-  children: string[]
+  children: readonly string[]
 }
 
 export interface CommentMarker extends BaseNode {
@@ -284,7 +284,7 @@ export interface CommentThread {
 
 export interface FlowBody {
   mode: 'flow'
-  children: string[]
+  children: readonly string[]
 }
 
 // ================================================================

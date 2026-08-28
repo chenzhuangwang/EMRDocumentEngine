@@ -18,7 +18,7 @@ function makeDoc(text: string): { doc: DocumentTree; pool: NodePool; paraId: str
   const para = createParagraph([textNode.id])
   allNodes.set(textNode.id, textNode as unknown as BaseNode)
   allNodes.set(para.id, para as unknown as BaseNode)
-  doc.body.children.push(para.id)
+  doc.body.children = [para.id]
   return { doc, pool: buildNodePool(allNodes, { body: doc.id }), paraId: para.id }
 }
 
@@ -134,7 +134,7 @@ describe('SplitParagraphCommand', () => {
     allNodes.set(t1.id, t1 as unknown as BaseNode)
     allNodes.set(t2.id, t2 as unknown as BaseNode)
     allNodes.set(para.id, para as unknown as BaseNode)
-    doc.body.children.push(para.id)
+    doc.body.children = [para.id]
     const pool = buildNodePool(allNodes, { body: doc.id })
 
     const cmd = new SplitParagraphCommand('sp6', Date.now(), 'test', [doc.id, para.id], 2)
@@ -156,7 +156,7 @@ describe('SplitParagraphCommand', () => {
     allNodes.set(t1.id, t1 as unknown as BaseNode)
     allNodes.set(t2.id, t2 as unknown as BaseNode)
     allNodes.set(para.id, para as unknown as BaseNode)
-    doc.body.children.push(para.id)
+    doc.body.children = [para.id]
     const pool = buildNodePool(allNodes, { body: doc.id })
 
     const cmd = new SplitParagraphCommand('sp7', Date.now(), 'test', [doc.id, para.id], 0)
@@ -181,7 +181,7 @@ describe('SplitParagraphCommand', () => {
     para.indent = 2
     allNodes.set(textNode.id, textNode as unknown as BaseNode)
     allNodes.set(para.id, para as unknown as BaseNode)
-    doc.body.children.push(para.id)
+    doc.body.children = [para.id]
     const pool = buildNodePool(allNodes, { body: doc.id })
 
     const cmd = new SplitParagraphCommand('sp8', Date.now(), 'test', [doc.id, para.id], 2)

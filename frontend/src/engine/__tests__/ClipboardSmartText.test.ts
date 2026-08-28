@@ -37,7 +37,7 @@ function makeSmartTextPara() {
   allNodes.set(st.id, st as unknown as BaseNode)
   allNodes.set(t2.id, t2 as unknown as BaseNode)
   allNodes.set(para.id, para as unknown as BaseNode)
-  doc.body.children.push(para.id)
+  doc.body.children = [para.id]
   const pool = buildNodePool(allNodes, { body: doc.id })
   return { doc, pool, paraId: para.id, t1, st, t2 }
 }

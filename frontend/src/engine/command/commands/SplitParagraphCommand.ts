@@ -48,8 +48,7 @@ export class SplitParagraphCommand extends PositionalCommand {
     pool.updateNode(textNode.id, { text: beforeText } as Partial<TextNode>)
     // 截断原始段落 children: 只保留到 splitIdx (含被截断的 TextNode)
     if (rightChildren.length > 0) {
-      const paraChildren = (para as unknown as { children: string[] }).children
-      paraChildren.splice(splitIdx + 1, rightChildren.length)
+      pool.truncateChildren(para.id, splitIdx + 1)
     }
 
     // 3. 构造新段落 (继承样式)
@@ -107,7 +106,11 @@ export class SplitParagraphCommand extends PositionalCommand {
     const region = resolveParagraphRegion(para.id, doc, pool)
     if (region) {
       // 直接在新段落所属区域的原段落之后插入 (body/header/footer/cell 数组)
-      region.siblings.splice(region.index + 1, 0, newPara.id)
+      if (region.type === 'body' || region.type === 'cell') {
+        pool.insertChild(region.containerId, newPara.id, region.index + 1)
+      } else {
+        region.siblings.splice(region.index + 1, 0, newPara.id)
+      }
       return {
         cursor: { paragraphPath: [...this.path.slice(0, -1), newPara.id], offset: 0 },
         invalidation: region.type === 'cell' ? 'table' : 'flowbody',

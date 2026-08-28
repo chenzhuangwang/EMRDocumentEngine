@@ -16,6 +16,7 @@
 // ================================================================
 
 import type { NodePool } from '../document/core/NodePool'
+import type { DocumentTree } from '../document/core/DocumentModel'
 
 // ---- 域类型 ----
 
@@ -210,33 +211,33 @@ export function getCaretScope(
  * @returns 区域 + 兄弟数组 (可变引用) + 段落在其中的下标; 未找到返回 null
  */
 export type ParagraphRegion =
-  | { type: 'body'; siblings: string[]; index: number }
-  | { type: 'cell'; siblings: string[]; index: number }
+  | { type: 'body'; siblings: readonly string[]; containerId: string; index: number }
+  | { type: 'cell'; siblings: readonly string[]; containerId: string; index: number }
   | { type: 'header'; siblings: string[]; index: number }
   | { type: 'footer'; siblings: string[]; index: number }
 
 export function resolveParagraphRegion(
   paraId: string,
-  doc: { body: { children: string[] }; header?: string[]; footer?: string[] },
+  doc: DocumentTree,
   pool: NodePool,
 ): ParagraphRegion | null {
-  // 1. 正文段落
+  // 1. 正文段落 (doc.body.children — children 数组, 经 containerId=doc.id 走 NodePool)
   const bi = doc.body.children.indexOf(paraId)
-  if (bi >= 0) return { type: 'body', siblings: doc.body.children, index: bi }
+  if (bi >= 0) return { type: 'body', siblings: doc.body.children, containerId: doc.id, index: bi }
 
-  // 2. 单元格内段落
+  // 2. 单元格内段落 (cell.children — children 数组, 经 containerId=cell.id 走 NodePool)
   const cellPos = resolveCellPosition(paraId, pool)
   if (cellPos) {
-    const table = pool.nodes.get(cellPos.tableId) as { children?: string[] } | undefined
-    const row = pool.nodes.get(table?.children?.[cellPos.row] || '') as { children?: string[] } | undefined
-    const cell = pool.nodes.get(row?.children?.[cellPos.col] || '') as { children?: string[] } | undefined
+    const table = pool.nodes.get(cellPos.tableId) as { children?: readonly string[] } | undefined
+    const row = pool.nodes.get(table?.children?.[cellPos.row] || '') as { children?: readonly string[] } | undefined
+    const cell = pool.nodes.get(row?.children?.[cellPos.col] || '') as { id: string; children?: readonly string[] } | undefined
     if (cell?.children) {
       const ci = cell.children.indexOf(paraId)
-      if (ci >= 0) return { type: 'cell', siblings: cell.children, index: ci }
+      if (ci >= 0) return { type: 'cell', siblings: cell.children, containerId: cell.id, index: ci }
     }
   }
 
-  // 3. 页眉/页脚段落 (存储在 doc.header / doc.footer 独立数组中, 不在 pool.children 内)
+  // 3. 页眉/页脚段落 (doc.header / doc.footer — 非 children 数组, 不在 PROBLEM B choke point 范围)
   const hi = doc.header?.indexOf(paraId)
   if (hi !== undefined && hi >= 0) return { type: 'header', siblings: doc.header!, index: hi }
   const fi = doc.footer?.indexOf(paraId)

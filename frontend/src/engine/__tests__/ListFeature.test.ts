@@ -22,6 +22,7 @@ function makeDocWithList(specs: ParaSpec[]): { doc: DocumentTree; pool: NodePool
   const doc = createDocument('test')
   const allNodes = new Map<string, BaseNode>()
   allNodes.set(doc.id, doc as unknown as BaseNode)
+  const bodyIds: string[] = []
   for (const spec of specs) {
     const textNode = createTextNode(spec.text)
     const para = createParagraph([textNode.id]) as unknown as unknown as Record<string, unknown>
@@ -30,8 +31,9 @@ function makeDocWithList(specs: ParaSpec[]): { doc: DocumentTree; pool: NodePool
     }
     allNodes.set(textNode.id, textNode as unknown as BaseNode)
     allNodes.set(para.id as string, para as unknown as BaseNode)
-    doc.body.children.push(para.id as string)
+    bodyIds.push(para.id as string)
   }
+  doc.body.children = bodyIds
   return { doc, pool: buildNodePool(allNodes, { body: doc.id }) }
 }
 

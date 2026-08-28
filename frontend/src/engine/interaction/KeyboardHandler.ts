@@ -19,6 +19,7 @@ import { resolveCellPosition, getCaretScope, getAdjacentCell, resolveParagraphRe
 import { buildCellGrid } from '../document/table/TableOps'
 import type { TableGrid, GridCell } from '../document/table/TableOps'
 import type { NodePool } from '../document/core/NodePool'
+import type { DocumentTree } from '../document/core/DocumentModel'
 
 export class KeyboardHandler {
   private editor: Editor
@@ -239,7 +240,7 @@ export class KeyboardHandler {
     if ((aCell && !fCell) || (!aCell && fCell)) return
     if (aCell && fCell && (aCell.tableId !== fCell.tableId || aCell.row !== fCell.row || aCell.col !== fCell.col)) return
 
-    let siblings: string[]
+    let siblings: readonly string[]
     if (aCell) {
       const tableNode = pool.nodes.get(aCell.tableId) as { children?: string[] } | undefined
       if (!tableNode?.children) return
@@ -588,8 +589,8 @@ export class KeyboardHandler {
    *  v20.35: 单元格内段落返回扩展 siblings, 包含表格前后段落,
    *  使 ArrowUp/ArrowDown 可以跳出/跳入表格。
    */
-  private getParagraphSiblings(paraId: string, doc: { body: { children: string[] }; header?: string[]; footer?: string[] }, pool?: { nodes: ReadonlyMap<string, { type: string; children?: string[] }> }): string[] {
-    const filterParas = (ids: string[]) => {
+  private getParagraphSiblings(paraId: string, doc: DocumentTree, pool?: { nodes: ReadonlyMap<string, { type: string; children?: string[] }> }): string[] {
+    const filterParas = (ids: readonly string[]) => {
       if (!pool) return ids.filter(id => id === paraId || true)  // 无 pool 时不过滤
       return ids.filter(id => {
         if (id === paraId) return true
@@ -685,7 +686,7 @@ export class KeyboardHandler {
   /** 段落定位: 正文块下标 / 单元格(阅读坐标) / 页眉页脚下标 */
   private locateParagraph(
     paraId: string,
-    doc: { body: { children: string[] }; header?: string[]; footer?: string[] },
+    doc: DocumentTree,
     pool: NodePool,
   ):
     | { kind: 'body'; index: number }
@@ -710,7 +711,7 @@ export class KeyboardHandler {
   /** 方向键块导航统一入口 */
   private navigateBlock(
     paraId: string,
-    doc: { body: { children: string[] }; header?: string[]; footer?: string[] },
+    doc: DocumentTree,
     pool: NodePool,
     dir: 1 | -1,
     mode: 'horizontal' | 'vertical',
@@ -752,7 +753,7 @@ export class KeyboardHandler {
 
   /** 块序列导航: 从 startIndex 沿 dir 找下一个可落点块 (段落落点, 表格进入, 其他跳过) */
   private navigateSequence(
-    blocks: string[],
+    blocks: readonly string[],
     pool: NodePool,
     startIndex: number,
     dir: 1 | -1,
@@ -779,7 +780,7 @@ export class KeyboardHandler {
 
   /** cell 内水平移动 (阅读顺序), 越界跳出表格 */
   private navigateCellHorizontal(
-    doc: { body: { children: string[] } },
+    doc: DocumentTree,
     pool: NodePool,
     loc: { kind: 'cell'; tableId: string; tableIndex: number; row: number; col: number },
     dir: 1 | -1,
@@ -796,7 +797,7 @@ export class KeyboardHandler {
 
   /** cell 内垂直移动 (网格坐标), 越界跳出表格 */
   private navigateCellVertical(
-    doc: { body: { children: string[] } },
+    doc: DocumentTree,
     pool: NodePool,
     loc: { kind: 'cell'; tableId: string; tableIndex: number; row: number; col: number },
     dir: 1 | -1,

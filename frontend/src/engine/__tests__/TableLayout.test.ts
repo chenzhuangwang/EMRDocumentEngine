@@ -51,7 +51,7 @@ function makeTableDoc() {
   for (const n of [table, row0, row1, cell00, cell01, cell11]) {
     allNodes.set(n.id, n as unknown as BaseNode)
   }
-  doc.body.children.push(table.id)
+  doc.body.children = [table.id]
 
   const pool = buildNodePool(allNodes, { body: doc.id })
   return { doc, pool }
@@ -106,7 +106,7 @@ function buildSingleCellTable(paraTexts: (string | null)[]) {
   const row = createTableRow([cell])
   const table = createTable([{ width: 100, mode: 'fixed' }], [row])
   for (const n of [table, row, cell]) allNodes.set(n.id, n as unknown as BaseNode)
-  doc.body.children.push(table.id)
+  doc.body.children = [table.id]
 
   const pool = buildNodePool(allNodes, { body: doc.id })
   const engine = new LayoutEngine(new EventBus(), testMeasurer)

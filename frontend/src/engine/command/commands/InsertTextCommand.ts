@@ -63,7 +63,7 @@ export class InsertTextCommand extends PositionalCommand {
       } else if (textNodeId) {
         // 悬空引用: 清理孤儿 id 后头部插入, 避免静默吞掉输入
         const danglingIdx = para.children.indexOf(textNodeId)
-        if (danglingIdx >= 0) para.children.splice(danglingIdx, 1)
+        if (danglingIdx >= 0) pool.detachChild(para.id, danglingIdx)
         pool.insertChild(para.id, newNode.id, 0)
       } else {
         // offset=0 或空段落 → 在 para.children 头部插入

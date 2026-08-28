@@ -44,7 +44,7 @@ function makeRowspanFixture() {
     [row0, row1],
   )
   for (const n of [table, row0, row1, c00, c01, c11]) allNodes.set(n.id, n as unknown as BaseNode)
-  doc.body.children.push(table.id)
+  doc.body.children = [table.id]
 
   const pool = buildNodePool(allNodes, { body: doc.id })
   return { doc, pool, A, B, D, c00, c01, c11, table }
@@ -78,7 +78,7 @@ function makeColspanFixture() {
     [row0, row1],
   )
   for (const n of [table, row0, row1, cM, cL, cR]) allNodes.set(n.id, n as unknown as BaseNode)
-  doc.body.children.push(table.id)
+  doc.body.children = [table.id]
 
   const pool = buildNodePool(allNodes, { body: doc.id })
   return { doc, pool, M, L, R, cM, cL, cR, table }
@@ -132,7 +132,7 @@ describe('CaretScope 单元格导航', () => {
     const para = createParagraph([tn.id])
     pool.addNode(tn as unknown as BaseNode)
     pool.addNode(para as unknown as BaseNode)
-    doc.body.children.push(para.id)
+    doc.body.children = [...doc.body.children, para.id]
 
     expect(getCaretScope([doc.id, para.id], pool)).toEqual({ type: 'body' })
   })

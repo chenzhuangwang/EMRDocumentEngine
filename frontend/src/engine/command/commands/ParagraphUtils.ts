@@ -22,7 +22,7 @@ export function normalizeParagraph(para: Paragraph, pool: NodePool): void {
     }
   }
 
-  ;(para as { children: string[] }).children = merged
+  para.children = merged
 
   for (const id of orphans) {
     pool.removeOrphanLeaf(id)

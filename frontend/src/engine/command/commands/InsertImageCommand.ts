@@ -63,7 +63,7 @@ export class InsertImageCommand implements ICommand {
     pool.addNode(imgNode)
     this.insertedImageId = imgNode.id
 
-    const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+    const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
     if (para?.children) {
       const resolved = pool.resolveCharOffset(paraId, this.offset)
       if (resolved) {
@@ -77,20 +77,20 @@ export class InsertImageCommand implements ICommand {
             const afterNode = createTextNode(text.slice(lo), extractStyle(target as unknown as TextNode))
             pool.addNode(afterNode)
             pool.updateNode(target.id, { text: text.slice(0, lo) } as Partial<TextNode>)
-            para.children.splice(idx + 1, 0, imgNode.id, afterNode.id)
+            pool.insertChildren(paraId, [imgNode.id, afterNode.id], idx + 1)
             this.splitAfterNodeId = afterNode.id
             this.truncatedTextNodeId = target.id
             this.originalText = text
           } else {
             // 光标在文本首/尾 → 图片插到文本前/后
-            para.children.splice(idx + (lo === 0 ? 0 : 1), 0, imgNode.id)
+            pool.insertChild(paraId, imgNode.id, idx + (lo === 0 ? 0 : 1))
           }
         } else {
           // 内联非文本节点 (image/field/footnote_ref) → localOffset 0=前, 1=后
-          para.children.splice(idx + (resolved.localOffset >= 1 ? 1 : 0), 0, imgNode.id)
+          pool.insertChild(paraId, imgNode.id, idx + (resolved.localOffset >= 1 ? 1 : 0))
         }
       } else {
-        para.children.push(imgNode.id)
+        pool.insertChild(paraId, imgNode.id, para.children.length)
       }
     }
 
@@ -146,13 +146,13 @@ class RemoveImageCommand implements ICommand {
     if (ctx.mode !== 'local') return null
     const { pool } = ctx
     const paraId = this.path[this.path.length - 1]
-    const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+    const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
     if (para?.children) {
       const imageIdx = para.children.indexOf(this.imageId)
-      if (imageIdx >= 0) para.children.splice(imageIdx, 1)
+      if (imageIdx >= 0) pool.detachChild(paraId, imageIdx)
       if (this.afterNodeId) {
         const afterIdx = para.children.indexOf(this.afterNodeId)
-        if (afterIdx >= 0) para.children.splice(afterIdx, 1)
+        if (afterIdx >= 0) pool.detachChild(paraId, afterIdx)
       }
     }
     pool.removeNode(this.imageId)

@@ -29,7 +29,7 @@ export interface GridCell {
 
 /** 表格网格快照 */
 export interface TableGrid {
-  rowIds: string[]
+  rowIds: readonly string[]
   numRows: number
   numCols: number
   cells: GridCell[]

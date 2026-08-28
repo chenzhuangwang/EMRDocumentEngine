@@ -104,8 +104,7 @@ export class InsertNodesCommand extends PositionalCommand {
         // 拆分点之后的子节点移走
         const splitIdx = currentPara.children.indexOf(resolved.textNodeId)
         if (splitIdx >= 0) {
-          rightChildren.push(...currentPara.children.slice(splitIdx + 1))
-          currentPara.children.splice(splitIdx + 1)
+          rightChildren.push(...pool.truncateChildren(currentPara.id, splitIdx + 1))
         }
       }
     }
@@ -120,9 +119,7 @@ export class InsertNodesCommand extends PositionalCommand {
     // ================================================================
     // Step 3: 首段并入左半 (currentPara) — 单段落粘贴 = 就地追加, 不产生新段
     // ================================================================
-    for (const childId of first.children) {
-      currentPara.children.push(childId)
-    }
+    pool.insertChildren(currentPara.id, first.children, currentPara.children.length)
     pool.removeNode(first.id)  // 首段包装节点已并入 currentPara, 丢弃
     normalizeParagraph(currentPara, pool)
 
@@ -134,7 +131,11 @@ export class InsertNodesCommand extends PositionalCommand {
     if (region) {
       let insertAt = region.index + 1
       for (let i = 1; i < pastedParas.length; i++) {
-        region.siblings.splice(insertAt, 0, pastedParas[i].id)
+        if (region.type === 'body' || region.type === 'cell') {
+          pool.insertChild(region.containerId, pastedParas[i].id, insertAt)
+        } else {
+          region.siblings.splice(insertAt, 0, pastedParas[i].id)
+        }
         this.insertedParaIds.push(pastedParas[i].id)
         insertAt++
       }
@@ -167,11 +168,9 @@ export class InsertNodesCommand extends PositionalCommand {
       const tn = createTextNode(rightText, rightStyle)
       pool.addNode(tn)
       this.createdLeafIds.push(tn.id)
-      cursorPara.children.push(tn.id)
+      pool.insertChild(cursorPara.id, tn.id, cursorPara.children.length)
     }
-    for (const childId of rightChildren) {
-      cursorPara.children.push(childId)
-    }
+    pool.insertChildren(cursorPara.id, rightChildren, cursorPara.children.length)
     normalizeParagraph(cursorPara, pool)
 
     return {
@@ -195,7 +194,8 @@ export class InsertNodesCommand extends PositionalCommand {
     const para = createParagraph()
     // 恢复段落样式 (不含 id/type/children)
     Object.assign(para, sn.style)
-    para.children = []
+    // 构建期局部数组, 完成后整体赋值 (children 为 readonly, 禁止逐个 push)
+    const children: string[] = []
 
     for (const childSn of sn.children) {
       if (childSn.type === 'smarttext') {
@@ -207,7 +207,7 @@ export class InsertNodesCommand extends PositionalCommand {
         const st = createSmartTextNode((childSn.text as string) || '', element, style as unknown as TextStyle)
         pool.addNode(st)
         this.createdLeafIds.push(st.id)
-        para.children.push(st.id)
+        children.push(st.id)
       } else if (childSn.type === 'text') {
         const style: Record<string, unknown> = {}
         for (const k of TEXT_STYLE_KEYS) { if (k in childSn) style[k] = childSn[k] }
@@ -215,7 +215,7 @@ export class InsertNodesCommand extends PositionalCommand {
         if (childSn.element) (tn as unknown as Record<string, unknown>).element = childSn.element
         pool.addNode(tn)
         this.createdLeafIds.push(tn.id)
-        para.children.push(tn.id)
+        children.push(tn.id)
       } else {
         // 非文本: 全字段复制, 但重新生成 ID
         const node = { ...childSn } as Record<string, unknown>
@@ -223,10 +223,11 @@ export class InsertNodesCommand extends PositionalCommand {
         node.id = generateId() // 新节点 UUID
         pool.addNode(node as unknown as import('../../document/core/DocumentModel').BaseNode)
         this.createdLeafIds.push(node.id as string)
-        para.children.push(node.id as string)
+        children.push(node.id as string)
       }
     }
 
+    para.children = children
     pool.addNode(para)
     return para
   }
@@ -286,7 +287,13 @@ class UndoPasteCommand implements ICommand {
     if (region) {
       for (const id of this.paraIds) {
         const idx = region.siblings.indexOf(id)
-        if (idx >= 0) region.siblings.splice(idx, 1)
+        if (idx >= 0) {
+          if (region.type === 'body' || region.type === 'cell') {
+            pool.detachChild(region.containerId, idx)
+          } else {
+            region.siblings.splice(idx, 1)
+          }
+        }
       }
     } else {
       const parentId = this.path.length >= 2 ? this.path[this.path.length - 2] : pool.rootIds.body
@@ -308,7 +315,7 @@ class UndoPasteCommand implements ICommand {
     }
 
     // 4. 恢复原段落 children
-    const currentPara = pool.nodes.get(this.path[this.path.length - 1]) as { children: string[] } | undefined
+    const currentPara = pool.nodes.get(this.path[this.path.length - 1]) as { children: readonly string[] } | undefined
     if (currentPara) currentPara.children = [...this.snapshot.currentParaChildren]
 
     // 5. 恢复被截断的文本节点

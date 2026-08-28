@@ -15,7 +15,7 @@ describe('Draw rendering — data model', () => {
     const t1 = createTextNode('Hello')
     const t2 = createTextNode(' ')
     const t3 = createTextNode('World')
-    para.children.push(t1.id, t2.id, t3.id)
+    para.children = [t1.id, t2.id, t3.id]
 
     expect(para.children.length).toBe(3)
     const allNodes = new Map()
@@ -47,11 +47,11 @@ describe('Draw rendering — data model', () => {
   it('should create document with body children', () => {
     const para1 = createParagraph()
     const t1 = createTextNode('主诉：咳嗽3天')
-    para1.children.push(t1.id)
+    para1.children = [t1.id]
 
     const para2 = createParagraph()
     const t2 = createTextNode('现病史：患者于3天前...')
-    para2.children.push(t2.id)
+    para2.children = [t2.id]
 
     const doc = createDocument('入院记录')
     doc.body.children = [para1.id, para2.id]
@@ -68,7 +68,7 @@ describe('Draw rendering — data model', () => {
     })
     const suffix = createTextNode('，')
     const para = createParagraph()
-    para.children.push(label.id, value.id, suffix.id)
+    para.children = [label.id, value.id, suffix.id]
 
     expect(para.children.length).toBe(3)
     expect(label.type).toBe(NodeType.TEXT)

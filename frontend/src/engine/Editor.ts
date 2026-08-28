@@ -768,7 +768,7 @@ export class Editor {
         // 右侧单元格内容并入当前单元格
         cell.children = [...(cell.children || []), ...(nextCell.children || [])]
         pool.removeNode(nextCellId)
-        row.children.splice(colIdx + 1, 1)
+        pool.detachChild(rowId, colIdx + 1)
         return true
       },
     ))
@@ -857,7 +857,7 @@ export class Editor {
           cell.colspan = 1
           if (colspan > 2) newCell.colspan = colspan - 1
           if (rowspan > 1) newCell.rowspan = rowspan
-          row.children.splice(colIdx + 1, 0, newCell.id)
+          pool.insertChild(rowId, newCell.id, colIdx + 1)
         } else {
           // 垂直拆分: 原 cell 缩为 rowspan=1, 下一行对应列新增 cell (保留剩余 rowspan)
           const rowBelowId = table.children[rowIdx + 1]
@@ -879,7 +879,7 @@ export class Editor {
             const gc = grid.byId.get(rowBelow.children[i])
             if (gc && gc.col > targetCol) { insertIdx = i; break }
           }
-          rowBelow.children.splice(insertIdx, 0, newCell.id)
+          pool.insertChild(rowBelowId, newCell.id, insertIdx)
         }
         return true
       },
@@ -1190,7 +1190,7 @@ export class Editor {
     // 不同 cell 的选区暂不支持
     if (aCell && fCell && (aCell.tableId !== fCell.tableId || aCell.row !== fCell.row || aCell.col !== fCell.col)) return false
 
-    let siblings: string[]
+    let siblings: readonly string[]
 
     if (aCell) {
       // 同 cell 内选区: 使用 cell.children

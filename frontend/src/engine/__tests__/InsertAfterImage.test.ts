@@ -44,7 +44,7 @@ function makeImagePara() {
   allNodes.set(t1.id, t1 as unknown as BaseNode)
   allNodes.set(img.id, img as unknown as BaseNode)
   allNodes.set(para.id, para as unknown as BaseNode)
-  doc.body.children.push(para.id)
+  doc.body.children = [para.id]
   const pool = buildNodePool(allNodes, { body: doc.id })
   return { doc, pool, paraId: para.id, textId: t1.id, imgId: img.id }
 }
@@ -76,7 +76,7 @@ describe('InsertTextCommand 在图片边界插入', () => {
     allNodes.set(img.id, img as unknown as BaseNode)
     allNodes.set(t1.id, t1 as unknown as BaseNode)
     allNodes.set(para.id, para as unknown as BaseNode)
-    doc.body.children.push(para.id)
+    doc.body.children = [para.id]
     const pool = buildNodePool(allNodes, { body: doc.id })
 
     const cmd = new InsertTextCommand('c2', Date.now(), 'u', [doc.id, para.id], 0, 'X')

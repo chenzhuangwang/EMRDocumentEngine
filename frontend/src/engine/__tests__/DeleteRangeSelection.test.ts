@@ -18,7 +18,7 @@ function makeDoc(text: string): { doc: DocumentTree; pool: NodePool } {
   const para = createParagraph([textNode.id])
   allNodes.set(textNode.id, textNode as unknown as BaseNode)
   allNodes.set(para.id, para as unknown as BaseNode)
-  doc.body.children.push(para.id)
+  doc.body.children = [para.id]
   return { doc, pool: buildNodePool(allNodes, { body: doc.id }) }
 }
 
@@ -75,7 +75,7 @@ describe('DeleteRangeCommand — 选区删除', () => {
     allNodes.set(t1.id, t1 as unknown as BaseNode)
     allNodes.set(t2.id, t2 as unknown as BaseNode)
     allNodes.set(para.id, para as unknown as BaseNode)
-    doc.body.children.push(para.id)
+    doc.body.children = [para.id]
     const pool = buildNodePool(allNodes, { body: doc.id })
 
     const cmd = new DeleteRangeCommand('del3', Date.now(), 'test', [doc.id, para.id], 0, 11)
@@ -84,7 +84,7 @@ describe('DeleteRangeCommand — 选区删除', () => {
     expect(patch!.cursor?.offset).toBe(0)
     expect(patch!.selection?.active).toBe(false)
     expect(getParaText(pool, para.id)).toBe('')
-    expect((para as { children: string[] }).children.length).toBeGreaterThan(0)
+    expect(para.children.length).toBeGreaterThan(0)
   })
 
   it('select all (0-totalLen) → cursor at 0, selection inactive, para not zombie', () => {

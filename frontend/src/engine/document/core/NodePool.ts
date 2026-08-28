@@ -77,11 +77,18 @@ export class NodePool {
   }
 
   insertChild(parentId: string, childId: string, index: number): void {
+    this.insertChildren(parentId, [childId], index)
+  }
+
+  /** 批量插入多个子节点 (铁律 3)。替代裸 children.push / splice(idx,0,...)。 */
+  insertChildren(parentId: string, childIds: readonly string[], index: number): void {
     const children = this.resolveChildren(parentId)
-    if (children.includes(childId)) {
-      throw new Error(`Duplicate ID in parent ${parentId}: ${childId}`)
+    for (const childId of childIds) {
+      if (children.includes(childId)) {
+        throw new Error(`Duplicate ID in parent ${parentId}: ${childId}`)
+      }
     }
-    children.splice(index, 0, childId)
+    children.splice(index, 0, ...childIds)
     this._structureVersion++
   }
 
@@ -112,6 +119,18 @@ export class NodePool {
     const [moved] = children.splice(fromIndex, 1)
     children.splice(toIndex, 0, moved)
     this._structureVersion++
+  }
+
+  /**
+   * 截断 children 尾部 (fromIndex 起全部摘除), detach 但不删除子树。
+   * 返回被摘除的 child id 列表, 供调用方挪到别的父节点。
+   * 替代裸 children.splice(fromIndex)。
+   */
+  truncateChildren(parentId: string, fromIndex: number): string[] {
+    const children = this.resolveChildren(parentId)
+    const removed = children.splice(fromIndex)
+    this._structureVersion++
+    return removed
   }
 
   removeOrphanLeaf(nodeId: string): void {

@@ -48,7 +48,7 @@ function makeSimpleTable(rows: number, cols: number) {
   )
   for (const r of rowsNodes) allNodes.set(r.id, r as unknown as BaseNode)
   allNodes.set(table.id, table as unknown as BaseNode)
-  doc.body.children.push(table.id)
+  doc.body.children = [table.id]
 
   const pool = buildNodePool(allNodes, { body: doc.id })
   return { doc, pool, table }
@@ -64,7 +64,7 @@ function makeRowspanTable() {
   const B = pool.nodes.get(row0.children[1]) as unknown as TableCell
   A.rowspan = 2
   const dCellId = row1.children[0]
-  row1.children.splice(0, 1) // 删除列0的 cell (rowspan 下半部分不重复)
+  row1.children = row1.children.slice(1) // 删除列0的 cell (rowspan 下半部分不重复)
   pool.removeNode(dCellId)
   const D = pool.nodes.get(row1.children[0]) as unknown as TableCell
   return { doc, pool, table, A, B, D }
@@ -80,7 +80,7 @@ function makeColspanTable() {
   M.colspan = 2
   // 合并 M 与右上 cell 的内容, 删除右上 cell
   M.children = [...M.children, ...topRight.children]
-  row0.children.splice(1, 1)
+  row0.children = row0.children.slice(0, 1)
   pool.removeNode(topRight.id)
   const L = pool.nodes.get(row1.children[0]) as unknown as TableCell
   const R = pool.nodes.get(row1.children[1]) as unknown as TableCell

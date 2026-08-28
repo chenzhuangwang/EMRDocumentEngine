@@ -94,7 +94,7 @@ export class DeleteRangeCommand extends PositionalCommand {
     // Step 4: 防止空段落僵尸 — 删除全部内容后至少保留一个空文本节点
     if (para.children.length === 0) {
       const emptyText = createTextNode('')
-      ;(para as { children: string[] }).children = [emptyText.id]
+      para.children = [emptyText.id]
       pool.addNode(emptyText as unknown as import('../../document/core/DocumentModel').BaseNode)
     }
 

@@ -55,7 +55,11 @@ export class MergeParagraphCommand extends PositionalCommand {
     normalizeParagraph(prevPara, pool)
 
     // 5. 从区域兄弟数组中移除当前段 (叶子节点, 仅删除段落包装)
-    region.siblings.splice(region.index, 1)
+    if (region.type === 'body' || region.type === 'cell') {
+      pool.detachChild(region.containerId, region.index)
+    } else {
+      region.siblings.splice(region.index, 1)
+    }
     pool.removeNode(currentPara.id)
 
     // 6. 光标定位到合并点

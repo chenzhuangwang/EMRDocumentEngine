@@ -37,7 +37,7 @@ describe('cell 内输入 (InsertTextCommand)', () => {
     const row = createTableRow([cell])
     const table = createTable([{ width: 200, mode: 'fixed' }], [row])
     for (const n of [tn, para, cell, row, table]) allNodes.set(n.id, n as unknown as BaseNode)
-    doc.body.children.push(table.id)
+    doc.body.children = [table.id]
     const pool = buildNodePool(allNodes, { body: doc.id })
 
     const ctx = { mode: 'local' as const, doc, pool }
@@ -64,7 +64,7 @@ describe('cell 内输入 (InsertTextCommand)', () => {
     const table = createTable([{ width: 200, mode: 'fixed' }], [row])
     for (const n of [para, cell, row, table]) allNodes.set(n.id, n as unknown as BaseNode)
     // 注意: danglingTextId 未注册进 pool
-    doc.body.children.push(table.id)
+    doc.body.children = [table.id]
     const pool = buildNodePool(allNodes, { body: doc.id })
 
     const ctx = { mode: 'local' as const, doc, pool }

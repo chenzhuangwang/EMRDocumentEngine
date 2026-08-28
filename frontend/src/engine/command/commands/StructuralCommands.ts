@@ -118,7 +118,13 @@ export class RemoveNodesCommand implements ICommand {
           const idx = children.indexOf(nodeId)
           if (idx >= 0) pool.removeChild(parentId, idx)
           else removeSubtree(pool, nodeId)
+        } else if (container.kind === 'body') {
+          // doc.body.children 是 children 数组 (PROBLEM B choke point), 经 NodePool
+          const idx = doc.body.children.indexOf(nodeId)
+          if (idx >= 0) { pool.detachChild(doc.id, idx); removeSubtree(pool, nodeId) }
+          else removeSubtree(pool, nodeId)
         } else {
+          // header/footer/footnotes 是文档级 string[] (非 children 数组), 直接 splice
           const arr = this.docArray(doc, container)
           const idx = arr.indexOf(nodeId)
           if (idx >= 0) { arr.splice(idx, 1); removeSubtree(pool, nodeId) }
@@ -137,7 +143,6 @@ export class RemoveNodesCommand implements ICommand {
 
   private docArray(doc: DocumentTree, container: Container): string[] {
     switch (container.kind) {
-      case 'body': return doc.body.children
       case 'header':
         if (!doc.header) doc.header = []
         return doc.header
@@ -147,7 +152,7 @@ export class RemoveNodesCommand implements ICommand {
       case 'footnotes':
         if (!doc.footnotes) doc.footnotes = []
         return doc.footnotes
-      case 'paragraph': case 'cell': throw new Error('pool-based container not handled here')
+      case 'body': case 'paragraph': case 'cell': throw new Error('pool-based container not handled here')
     }
   }
 
@@ -183,7 +188,7 @@ export class InsertInlineNodeCommand implements ICommand {
     if (ctx.mode !== 'local') return null
     const { pool } = ctx
     const paraId = this.path[this.path.length - 1]
-    const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+    const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
     if (!para?.children) return null
 
     const node = this.makeNode()
@@ -193,10 +198,10 @@ export class InsertInlineNodeCommand implements ICommand {
     const resolved = pool.resolveCharOffset(paraId, this.offset)
     if (resolved) {
       const idx = para.children.indexOf(resolved.textNodeId)
-      if (idx >= 0) para.children.splice(idx + 1, 0, node.id)
-      else para.children.push(node.id)
+      if (idx >= 0) pool.insertChild(paraId, node.id, idx + 1)
+      else pool.insertChild(paraId, node.id, para.children.length)
     } else {
-      para.children.push(node.id)
+      pool.insertChild(paraId, node.id, para.children.length)
     }
     return { invalidation: 'paragraph' }
   }
@@ -254,13 +259,13 @@ export class InsertBlockCommand implements ICommand {
     if (idx < 0) return null
 
     const block = this.makeBlock(pool)
-    doc.body.children.splice(idx + 1, 0, block.id)
+    pool.insertChild(doc.id, block.id, idx + 1)
     this.insertedRootIds = [block.id]
 
     let cursor: Partial<CursorState> | undefined
     if (this.withTrailingParagraph) {
       const trail = createTrailingParagraph(pool)
-      doc.body.children.splice(doc.body.children.indexOf(block.id) + 1, 0, trail.id)
+      pool.insertChild(doc.id, trail.id, doc.body.children.indexOf(block.id) + 1)
       this.insertedRootIds.push(trail.id)
       if (this.moveCursorToTrailing) {
         cursor = { paragraphPath: [doc.id, trail.id], offset: 0, visible: true }
@@ -318,7 +323,7 @@ export class InsertFootnoteCommand implements ICommand {
     if (ctx.mode !== 'local') return null
     const { pool, doc } = ctx
     const paraId = this.path[this.path.length - 1]
-    const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+    const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
     if (!para?.children) return null
 
     // 脚注内容 (含空段落) + 注册到 doc.footnotes
@@ -336,10 +341,10 @@ export class InsertFootnoteCommand implements ICommand {
     const resolved = pool.resolveCharOffset(paraId, this.offset)
     if (resolved) {
       const idx = para.children.indexOf(resolved.textNodeId)
-      if (idx >= 0) para.children.splice(idx + 1, 0, fnRef.id)
-      else para.children.push(fnRef.id)
+      if (idx >= 0) pool.insertChild(paraId, fnRef.id, idx + 1)
+      else pool.insertChild(paraId, fnRef.id, para.children.length)
     } else {
-      para.children.push(fnRef.id)
+      pool.insertChild(paraId, fnRef.id, para.children.length)
     }
 
     return { invalidation: 'paragraph' }
@@ -398,7 +403,7 @@ export class CreateCommentCommand implements ICommand {
     if (ctx.mode !== 'local') return null
     const { pool, doc } = ctx
     const paraId = this.path[this.path.length - 1]
-    const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+    const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
     if (!para?.children) return null
 
     const marker = this.makeMarker()
@@ -408,10 +413,10 @@ export class CreateCommentCommand implements ICommand {
     const resolved = pool.resolveCharOffset(paraId, this.offset)
     if (resolved) {
       const idx = para.children.indexOf(resolved.textNodeId)
-      if (idx >= 0) para.children.splice(idx + 1, 0, marker.id)
-      else para.children.push(marker.id)
+      if (idx >= 0) pool.insertChild(paraId, marker.id, idx + 1)
+      else pool.insertChild(paraId, marker.id, para.children.length)
     } else {
-      para.children.push(marker.id)
+      pool.insertChild(paraId, marker.id, para.children.length)
     }
 
     const thread = this.makeThread()
@@ -839,14 +844,14 @@ class RestoreTableCommand implements ICommand {
 
     // 1. 摘除当前 table 子树
     const idx = doc.body.children.indexOf(this.tableId)
-    if (idx >= 0) { doc.body.children.splice(idx, 1); removeSubtree(pool, this.tableId) }
+    if (idx >= 0) { pool.detachChild(doc.id, idx); removeSubtree(pool, this.tableId) }
 
     // 2. 重新注册快照节点
     for (const [, node] of this.snapshot) pool.addNode(node)
 
     // 3. 回到原位置
     const at = Math.min(this.parentIndex, doc.body.children.length)
-    doc.body.children.splice(at, 0, this.tableId)
+    pool.insertChild(doc.id, this.tableId, at)
 
     return { invalidation: 'table' }
   }

@@ -13,13 +13,15 @@ function makeDoc(texts: string[]): { doc: DocumentTree; pool: NodePool } {
   const doc = createDocument('test')
   const allNodes = new Map<string, BaseNode>()
   allNodes.set(doc.id, doc as unknown as BaseNode)
+  const bodyIds: string[] = []
   for (const t of texts) {
     const tn = createTextNode(t)
     const p = createParagraph([tn.id])
-    doc.body.children.push(p.id)
+    bodyIds.push(p.id)
     allNodes.set(p.id, p as unknown as BaseNode)
     allNodes.set(tn.id, tn as unknown as BaseNode)
   }
+  doc.body.children = bodyIds
   return { doc, pool: buildNodePool(allNodes, { body: doc.id }) }
 }
 
