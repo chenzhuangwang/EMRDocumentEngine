@@ -2,7 +2,7 @@
 // TextMeasurer — 文本测量器 (架构 §3, v5.0 / TASK-403)
 //
 // 三级精度:
-//   L1 (MVP): Canvas measureText + FontManager 精确度量 + LRU 缓存
+//   L1 (MVP): TextHost.measure (Canvas 由平台注入) + FontManager 精确度量 + LRU 缓存
 //   L2 (预留): HarfBuzz WASM 精确塑形 (CJK kerning/GPOS)
 //   L3 (预留): 离线预计算 (字体子集化 + 预测量表)
 //
@@ -12,10 +12,11 @@
 //   - 缓存扩容 2000 → 10000
 // ============================================================
 
-import { fontManager } from './FontManager'
+import type { FontManager } from './FontManager'
 import { FontFallback } from './FontFallback'
 import { resolveLineHeight, DEFAULT_FONT_METRICS } from './FontMetrics'
 import type { FontMetrics } from './FontMetrics'
+import type { EditorHost, TextMeasurement } from '../../host/EditorHost'
 
 // ---- FontConfig — 字体配置 (供测量器使用) ----
 
@@ -36,18 +37,18 @@ export interface CharMetrics {
 }
 
 export class TextMeasurer {
-  private canvas: HTMLCanvasElement
-  private ctx: CanvasRenderingContext2D
-  private cache: Map<string, TextMetrics>
+  private host: EditorHost
+  private fontManager: FontManager
+  private cache: Map<string, TextMeasurement>
   private cacheKeys: string[] = []
   private static readonly MAX_CACHE_SIZE = 10000
   private fallback: FontFallback
 
-  constructor() {
-    this.canvas = document.createElement('canvas')
-    this.ctx = this.canvas.getContext('2d')!
+  constructor(host: EditorHost, fontManager: FontManager) {
+    this.host = host
+    this.fontManager = fontManager
     this.cache = new Map()
-    this.fallback = new FontFallback()
+    this.fallback = new FontFallback(host)
   }
 
   // ---- 内部 ----
@@ -67,7 +68,7 @@ export class TextMeasurer {
 
   // ---- 基础测量 API ----
 
-  measure(text: string, config: FontConfig): TextMetrics {
+  measure(text: string, config: FontConfig): TextMeasurement {
     const key = this.getCacheKey(text, config)
     if (this.cache.has(key)) {
       // Move to end (MRU)
@@ -76,8 +77,7 @@ export class TextMeasurer {
       return this.cache.get(key)!
     }
 
-    this.ctx.font = this.buildFontString(config)
-    const metrics = this.ctx.measureText(text)
+    const metrics = this.host.text.measure(text, this.buildFontString(config))
 
     // LRU eviction
     if (this.cacheKeys.length >= TextMeasurer.MAX_CACHE_SIZE) {
@@ -170,13 +170,13 @@ export class TextMeasurer {
 
   /** 从 FontManager 获取度量, 降级到 DEFAULT_FONT_METRICS */
   private getFontMetrics(config: FontConfig): FontMetrics {
-    const fm = fontManager.getMetrics(config.font)
+    const fm = this.fontManager.getMetrics(config.font)
     if (fm) return fm
 
     // 尝试从已注册字体中查找近似 match
-    const families = fontManager.getRegisteredFamilies()
+    const families = this.fontManager.getRegisteredFamilies()
     if (families.includes(config.font)) {
-      const variant = fontManager.getVariant(config.font)
+      const variant = this.fontManager.getVariant(config.font)
       if (variant?.metrics) return variant.metrics
     }
 
@@ -280,6 +280,3 @@ export class TextMeasurer {
     this.clearCache()
   }
 }
-
-// 全局单例
-export const textMeasurer = new TextMeasurer()

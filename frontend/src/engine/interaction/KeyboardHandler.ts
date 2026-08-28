@@ -6,6 +6,7 @@
 // ================================================================
 
 import type { Editor } from '../Editor'
+import type { EditorHost } from '../host/EditorHost'
 import { extractStyle } from '../document/factory/ElementFormatter'
 import { InsertTextCommand } from '../command/commands/InsertTextCommand'
 import { DeleteRangeCommand } from '../command/commands/DeleteRangeCommand'
@@ -21,12 +22,11 @@ import type { NodePool } from '../document/core/NodePool'
 
 export class KeyboardHandler {
   private editor: Editor
-  private container: HTMLElement
+  private detachContainer: () => void
 
-  constructor(editor: Editor, container: HTMLElement) {
+  constructor(editor: Editor, host: EditorHost) {
     this.editor = editor
-    this.container = container
-    container.addEventListener('keydown', this.onKeyDown)
+    this.detachContainer = host.input.attachContainer({ keydown: this.onKeyDown })
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -903,6 +903,6 @@ export class KeyboardHandler {
   }
 
   destroy(): void {
-    this.container.removeEventListener('keydown', this.onKeyDown)
+    this.detachContainer()
   }
 }

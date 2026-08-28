@@ -6,6 +6,7 @@
 // ============================================================
 
 import katex from 'katex'
+import type { EditorHost } from '../host/EditorHost'
 
 /** KaTeX 渲染结果 */
 export interface KaTeXRenderResult {
@@ -17,20 +18,6 @@ export interface KaTeXRenderResult {
   html: string
 }
 
-// ---- 离屏测量容器 ----
-
-let measureContainer: HTMLDivElement | null = null
-
-function getMeasureContainer(): HTMLDivElement {
-  if (!measureContainer) {
-    measureContainer = document.createElement('div')
-    measureContainer.style.cssText =
-      'position:absolute;visibility:hidden;width:auto;height:auto;white-space:nowrap;pointer-events:none;'
-    document.body.appendChild(measureContainer)
-  }
-  return measureContainer
-}
-
 // ---- 渲染 ----
 
 /**
@@ -39,6 +26,7 @@ function getMeasureContainer(): HTMLDivElement {
  * 矩阵/大型运算符/多级上下标/帽子/箭头/字体等
  */
 export function renderKaTeXToCanvas(
+  host: EditorHost,
   ctx: CanvasRenderingContext2D,
   latex: string,
   x: number,
@@ -53,27 +41,19 @@ export function renderKaTeXToCanvas(
       trust: false,
     })
 
-    // 离屏测量
-    const container = getMeasureContainer()
-    container.innerHTML = html
-    // 设置 KaTeX 字体大小
-    const span = container.querySelector('.katex') as HTMLSpanElement
-    if (span) span.style.fontSize = `${fontSize}px`
-
-    const rect = container.getBoundingClientRect()
-    const width = rect.width
-    const height = rect.height
+    // 离屏测量 (经 PlatformHost, 契约 §28)
+    const m = host.platform.measureHtml(html, fontSize)
 
     // Canvas 绘制: 先清空旧内容, 测量后使用 fillText 逐字符绘制
     // 简化方案: 使用 KaTeX 输出的文本内容
-    const textContent = container.textContent || latex
+    const textContent = m.text || latex
     ctx.save()
     ctx.font = `${fontSize}px "KaTeX_Main", "Times New Roman", serif`
     ctx.fillStyle = color
     ctx.fillText(textContent, x, y + fontSize * 0.8)
     ctx.restore()
 
-    return { width, height, html }
+    return { width: m.width, height: m.height, html }
   } catch {
     // KaTeX 渲染失败 → 回退到纯 Canvas 渲染
     return null
@@ -95,20 +75,15 @@ export function validateKaTeX(latex: string): boolean {
 /**
  * 获取 KaTeX 渲染后的尺寸 (不绘制)
  */
-export function measureKaTeX(latex: string, fontSize = 16): { width: number; height: number } | null {
+export function measureKaTeX(host: EditorHost, latex: string, fontSize = 16): { width: number; height: number } | null {
   try {
     const html = katex.renderToString(latex, {
       throwOnError: true,
       output: 'html',
     })
 
-    const container = getMeasureContainer()
-    container.innerHTML = html
-    const span = container.querySelector('.katex') as HTMLSpanElement
-    if (span) span.style.fontSize = `${fontSize}px`
-
-    const rect = container.getBoundingClientRect()
-    return { width: rect.width, height: rect.height }
+    const m = host.platform.measureHtml(html, fontSize)
+    return { width: m.width, height: m.height }
   } catch {
     return null
   }

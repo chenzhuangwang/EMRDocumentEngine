@@ -21,6 +21,7 @@ import { createDocument, createParagraph, createTextNode } from '../document/fac
 import { buildNodePool } from '../document/core/NodePool'
 import { EventBus } from '../interaction/EventBus'
 import { Draw } from '../render/Draw'
+import { testHost, testMeasurer } from './helpers'
 import type { BaseNode, DocumentTree } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
@@ -156,6 +157,9 @@ describe('Draw.getCaretClientRect — scrollY 变化时位置严格跟随', () =
     container.style.height = '600px'
     document.body.appendChild(container)
 
+    // 挂载渲染表面宿主 (Draw 构造经 host.surface 建 canvas)
+    testHost.surface.mount(container)
+
     // 构造文档 + 节点池 — p1 在 page 0, p2 在 page 1
     doc = createDocument('test')
     const allNodes = new Map<string, BaseNode>()
@@ -175,7 +179,7 @@ describe('Draw.getCaretClientRect — scrollY 变化时位置严格跟随', () =
 
     // 构造 Draw 实例
     const eventBus = new EventBus()
-    draw = new Draw(container, eventBus, doc)
+    draw = new Draw(testHost, eventBus, testMeasurer, doc)
     draw.setDocument(doc, pool)
 
     // 手动注入 2 页 SLIF (避免触发 LayoutEngine 全量布局)

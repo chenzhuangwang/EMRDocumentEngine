@@ -8,12 +8,16 @@
 // Canvas 尺寸 = 视口 + overscan 1页 (非全文档)
 // 水印离屏 pattern 预渲染
 // 光标闪烁统一 setInterval (非 rAF)
+//
+// Canvas 生命周期经 SurfaceHost 委托 (契约 §27.2): 本模块不创建 canvas,
+// 只通过 host.surface 拿注入的 ctx / 离屏表面 / 占位元素。
 // ================================================================
 
 import type { CoordinateSystem } from '../state/CoordinateSystem'
 import type { SLIFPage } from '../layout/core/SLIF'
 import type { EditorRuntimeState } from '../state/EditorRuntimeState'
 import { accumulatedHeightTo, getTotalDocHeight } from '../layout/table/TableCoordUtil'
+import type { CanvasSurface, EditorHost } from '../host/EditorHost'
 
 export interface WatermarkConfig {
   type: 'text' | 'image' | 'tile'
@@ -31,21 +35,22 @@ export interface WatermarkConfig {
 
 export class LayeredRenderer {
   private layers = {
-    static: null as HTMLCanvasElement | null,
-    content: null as HTMLCanvasElement | null,
-    interact: null as HTMLCanvasElement | null,
+    static: null as CanvasSurface | null,
+    content: null as CanvasSurface | null,
+    interact: null as CanvasSurface | null,
   }
   private ctxs = {
     static: null as CanvasRenderingContext2D | null,
     content: null as CanvasRenderingContext2D | null,
     interact: null as CanvasRenderingContext2D | null,
   }
-  private spacer: HTMLDivElement | null = null
+  private spacer: { setHeight(cssHeightPx: number): void; remove(): void } | null = null
   private blinkTimer: number | null = null
+  private host: EditorHost
   private coordSystem: CoordinateSystem
   private watermarkPattern: CanvasPattern | null = null
   private watermarkConfig: WatermarkConfig | null = null
-  private watermarkImage: HTMLImageElement | null = null
+  private watermarkImage: { width: number; height: number; source: CanvasImageSource } | null = null
   private cursorVisible = true
 
   /**
@@ -62,38 +67,25 @@ export class LayeredRenderer {
 
   private readonly OVERSCAN_PAGES = 1
 
-  constructor(container: HTMLElement, coordSystem: CoordinateSystem) {
+  constructor(host: EditorHost, coordSystem: CoordinateSystem) {
+    this.host = host
     this.coordSystem = coordSystem
 
+    const surface = this.host.surface
     for (const key of ['static', 'content', 'interact'] as const) {
-      const canvas = document.createElement('canvas')
-      canvas.style.position = 'absolute'
-      canvas.style.top = '0'
-      canvas.style.left = '0'
-      canvas.style.pointerEvents = key === 'interact' ? 'none' : 'auto'
-      container.appendChild(canvas)
-      this.layers[key] = canvas
-      this.ctxs[key] = canvas.getContext('2d')
+      const layer = surface.createLayer(key)
+      this.layers[key] = layer
+      this.ctxs[key] = layer.ctx
     }
-    // interact 层在最上接受 DOM 事件, 但 Canvas 绘制不响应 pointer
-    if (this.layers.interact) {
-      this.layers.interact.style.pointerEvents = 'auto'
-      this.layers.interact.style.zIndex = '3'
-    }
-    if (this.layers.content) this.layers.content.style.zIndex = '2'
-    if (this.layers.static) this.layers.static.style.zIndex = '1'
 
     // 滚动占位 spacer: 撑开容器产生原生滚动条
-    this.spacer = document.createElement('div')
-    this.spacer.style.pointerEvents = 'none'
-    this.spacer.style.width = '1px'
-    container.appendChild(this.spacer)
+    this.spacer = surface.createSpacer()
   }
 
   getStaticCtx(): CanvasRenderingContext2D | null { return this.ctxs.static }
   getContentCtx(): CanvasRenderingContext2D | null { return this.ctxs.content }
   getInteractCtx(): CanvasRenderingContext2D | null { return this.ctxs.interact }
-  getInteractCanvas(): HTMLCanvasElement | null { return this.layers.interact }
+  getInteractSurface(): CanvasSurface | null { return this.layers.interact }
 
   /**
    * 获取当前分页垂直间隙 (文档逻辑 px)。
@@ -117,10 +109,8 @@ export class LayeredRenderer {
 
   /** 滚动反偏移: 保持绝对定位画布固定于可视区顶部 */
   fixCanvasScrollOffset(scrollTop: number): void {
-    const topPx = `${scrollTop}px`
     for (const key of ['static', 'content', 'interact'] as const) {
-      const c = this.layers[key]
-      if (c) c.style.top = topPx
+      this.layers[key]?.setTop(scrollTop)
     }
   }
 
@@ -144,18 +134,15 @@ export class LayeredRenderer {
     const pagesInView = Math.ceil(docViewportH / avgSlot) + this.OVERSCAN_PAGES * 2
     const canvasHDoc = Math.min(pagesInView * avgSlot, totalDocHeight)
 
+    const physicalW = Math.ceil(viewportW * dpr)
+    const physicalH = Math.ceil(canvasHDoc * scale * dpr)
+
     for (const key of ['static', 'content', 'interact'] as const) {
-      const canvas = this.layers[key]!
-      canvas.width = Math.ceil(viewportW * dpr)
-      canvas.height = Math.ceil(canvasHDoc * scale * dpr)
-      canvas.style.width = `${viewportW}px`
-      canvas.style.height = `${canvasHDoc * scale}px`
+      this.layers[key]!.resize(physicalW, physicalH, viewportW, canvasHDoc * scale)
     }
 
     // 更新滚动占位高度 = 全文档高度 × 缩放
-    if (this.spacer) {
-      this.spacer.style.height = `${totalDocHeightScaled}px`
-    }
+    this.spacer?.setHeight(totalDocHeightScaled)
   }
 
   // ---- 滚动平移 ----
@@ -227,9 +214,8 @@ export class LayeredRenderer {
 
   private prepareTileWatermark(wm: WatermarkConfig): void {
     const size = wm.spacing || 200
-    const offscreen = document.createElement('canvas')
-    offscreen.width = size; offscreen.height = size
-    const octx = offscreen.getContext('2d')!
+    const offscreen = this.host.surface.createOffscreen(size, size)
+    const octx = offscreen.ctx
     octx.globalAlpha = wm.opacity ?? 0.08
     octx.font = `${wm.fontSize || 48}px "SimSun"`
     octx.fillStyle = wm.color || '#000000'
@@ -237,13 +223,13 @@ export class LayeredRenderer {
     octx.translate(size / 2, size / 2)
     octx.rotate(((wm.rotation ?? 45) * Math.PI) / 180)
     octx.fillText(wm.text || '', 0, 0)
-    this.watermarkPattern = this.ctxs.static!.createPattern(offscreen, 'repeat')
+    this.watermarkPattern = this.ctxs.static!.createPattern(offscreen.imageSource, 'repeat')
   }
 
   private prepareImageWatermark(wm: WatermarkConfig): void {
-    const img = new Image()
-    img.src = wm.imageUrl!
-    img.onload = () => { this.watermarkImage = img }
+    this.host.surface.loadImage(wm.imageUrl!).then((img) => {
+      this.watermarkImage = img
+    })
   }
 
   /** 绘制单条居中文本水印 */
@@ -277,7 +263,7 @@ export class LayeredRenderer {
     const ih = this.watermarkImage.height * scale
     const ix = (pageW - iw) / 2
     const iy = pageY + (pageH - ih) / 2
-    ctx.drawImage(this.watermarkImage, ix, iy, iw, ih)
+    ctx.drawImage(this.watermarkImage.source, ix, iy, iw, ih)
     ctx.restore()
   }
 
@@ -293,7 +279,7 @@ export class LayeredRenderer {
   startCursorBlink(state: EditorRuntimeState): void {
     this.stopCursorBlink()
     this.cursorVisible = true
-    this.blinkTimer = window.setInterval(() => {
+    this.blinkTimer = setInterval(() => {
       this.cursorVisible = !this.cursorVisible
       // 同步可见性到运行时状态, 触发 Draw 重绘
       state.cursor.visible = this.cursorVisible
@@ -311,7 +297,7 @@ export class LayeredRenderer {
   requestRender(): void {
     if (this.renderPending) return
     this.renderPending = true
-    requestAnimationFrame(() => {
+    this.host.surface.requestFrame(() => {
       this.renderPending = false
       // content 和 interact 层的具体渲染由外部 Draw/LayoutEngine 驱动
     })

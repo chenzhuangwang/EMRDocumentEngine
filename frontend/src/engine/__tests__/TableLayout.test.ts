@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest'
 import { LayoutEngine } from '../layout/core/LayoutEngine'
 import { EventBus } from '../interaction/EventBus'
+import { testMeasurer } from './helpers'
 import {
   createDocument, createParagraph, createTextNode,
   createTable, createTableRow, createTableCell,
@@ -59,7 +60,7 @@ function makeTableDoc() {
 describe('TableLayout rowspan', () => {
   it('rowspan 单元格高度合并 + 后续行跳过占用列', () => {
     const { doc, pool } = makeTableDoc()
-    const engine = new LayoutEngine(new EventBus())
+    const engine = new LayoutEngine(new EventBus(), testMeasurer)
     const pages = engine.fullLayout(doc, pool)
 
     const tableItem = pages.flatMap(p => p.items).find(i => i.type === 'table')
@@ -108,7 +109,7 @@ function buildSingleCellTable(paraTexts: (string | null)[]) {
   doc.body.children.push(table.id)
 
   const pool = buildNodePool(allNodes, { body: doc.id })
-  const engine = new LayoutEngine(new EventBus())
+  const engine = new LayoutEngine(new EventBus(), testMeasurer)
   const pages = engine.fullLayout(doc, pool)
   const tableItem = pages.flatMap(p => p.items).find(i => i.type === 'table')!
   return { doc, pool, tableItem }

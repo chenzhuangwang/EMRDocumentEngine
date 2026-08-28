@@ -42,7 +42,7 @@ describe('VirtualViewport', () => {
   it('should generate page offsets', () => {
     const vp = new VirtualViewport()
     vp.setPageHeight(1123)
-    const offsets = vp.getVisiblePageOffsets(5, 0, 1)
+    const offsets = vp.getVisiblePageOffsets(5, 0, 1, 800)
     expect(offsets.length).toBeGreaterThan(0)
     expect(offsets[0].pageIndex).toBe(0)
   })

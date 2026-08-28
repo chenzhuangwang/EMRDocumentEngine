@@ -8,6 +8,7 @@
 import type { IParticle, RenderOptions } from './IParticle'
 import type { SLIFItem } from '../../layout/core/SLIF'
 import { renderKaTeXToCanvas } from '../KaTeXRenderer'
+import type { EditorHost } from '../../host/EditorHost'
 
 // ---- 希腊字母映射 ----
 
@@ -116,7 +117,7 @@ function findMatchingBrace(s: string, start: number): number {
 
 // ---- 粒子 ----
 
-export function createLaTeXParticle(): IParticle {
+export function createLaTeXParticle(host: EditorHost): IParticle {
   return {
     type: 'latex',
 
@@ -136,7 +137,7 @@ export function createLaTeXParticle(): IParticle {
         renderFormula(ctx, tokens, x, y, fontSize, fontFamily, color)
       } catch {
         // 纯 Canvas 解析失败 → 尝试 KaTeX 回退
-        const katexResult = renderKaTeXToCanvas(ctx, latex, x, y, fontSize, color)
+        const katexResult = renderKaTeXToCanvas(host, ctx, latex, x, y, fontSize, color)
         if (!katexResult) {
           // KaTeX 也失败: 原样渲染 LaTeX 源码
           ctx.font = `${fontSize}px "${fontFamily}"`

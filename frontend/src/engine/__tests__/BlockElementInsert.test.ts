@@ -11,6 +11,7 @@ import { LayoutEngine } from '../layout/core/LayoutEngine'
 import { EventBus } from '../interaction/EventBus'
 import { KeyboardHandler } from '../interaction/KeyboardHandler'
 import type { Editor } from '../Editor'
+import { testHost, testMeasurer } from './helpers'
 import { buildNodePool } from '../document/core/NodePool'
 import {
   createDocument, createParagraph, createTextNode,
@@ -23,7 +24,8 @@ function makeHandler(): KeyboardHandler {
   const container = {
     addEventListener: () => {}, removeEventListener: () => {},
   } as unknown as HTMLElement
-  return new KeyboardHandler({} as unknown as Editor, container)
+  testHost.input.mount(container)
+  return new KeyboardHandler({} as unknown as Editor, testHost)
 }
 
 /** 注册文本 + 段落 */
@@ -51,7 +53,7 @@ describe('分隔线后空段落: 布局 + 导航', () => {
     const trail = mkPara(allNodes, '') // 同 insertSeparator 产出
     doc.body.children = [before.id, sep.id, trail.id]
     const pool = buildNodePool(allNodes, { body: doc.id })
-    const engine = new LayoutEngine(new EventBus())
+    const engine = new LayoutEngine(new EventBus(), testMeasurer)
     const pages = engine.fullLayout(doc, pool)
     return { doc, pool, pages, before, sep, trail }
   }
@@ -93,7 +95,7 @@ describe('分节符后空段落: 分页 + 导航', () => {
     const trail = mkPara(allNodes, '') // 同 insertSectionBreak 产出
     doc.body.children = [before.id, sb.id, trail.id]
     const pool = buildNodePool(allNodes, { body: doc.id })
-    const engine = new LayoutEngine(new EventBus())
+    const engine = new LayoutEngine(new EventBus(), testMeasurer)
     const pages = engine.fullLayout(doc, pool)
     return { doc, pool, pages, before, sb, trail }
   }

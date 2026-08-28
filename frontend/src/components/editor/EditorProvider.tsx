@@ -4,6 +4,11 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Editor, createDefaultRuntimeState, type DocumentTree, type EditorStore, type EditorStoreState } from '@/engine'
+import { createDomEditorHost } from '@/platform/dom'
+
+// 创建浏览器宿主 — 平台能力注入点 (契约 §27 / §29)。
+// 构造无 DOM 副作用, 模块加载时安全创建; surface 在 Editor 创建前 mount 到容器。
+const domHost = createDomEditorHost()
 
 interface EditorContextValue {
   editorRef: React.MutableRefObject<Editor | null>
@@ -43,7 +48,10 @@ export function EditorProvider({ children, containerRef, document }: EditorProvi
   // 创建 Editor (仅一次)
   useEffect(() => {
     if (!containerRef.current) return
-    const editor = new Editor(containerRef.current, document)
+    // 绑定渲染表面 + 交互宿主到容器 (Editor 构造前)
+    domHost.surface.mount(containerRef.current)
+    domHost.input.mount(containerRef.current)
+    const editor = new Editor(domHost, document)
     editorRef.current = editor
     setStore(editor.getStore())
     setReady(true)

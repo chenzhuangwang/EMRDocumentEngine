@@ -13,6 +13,7 @@ import { getFlatPageItems } from '../layout/core/SLIF'
 import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand'
 import { KeyboardHandler } from '../interaction/KeyboardHandler'
 import type { Editor } from '../Editor'
+import { testHost, testMeasurer } from './helpers'
 import {
   createDocument, createParagraph, createTextNode,
   createTable, createTableRow, createTableCell,
@@ -58,7 +59,7 @@ function makeDocWithTrailingEmpty() {
   doc.body.children = [paraBefore.id, table.id, trailPara.id]
 
   const pool = buildNodePool(allNodes, { body: doc.id })
-  const engine = new LayoutEngine(new EventBus())
+  const engine = new LayoutEngine(new EventBus(), testMeasurer)
   const pages = engine.fullLayout(doc, pool)
   return { doc, pool, pages, table, paraBefore, trailPara }
 }
@@ -85,7 +86,7 @@ describe('表格后空段落: 布局 + 命中检测', () => {
     const tableItem = page.items.find(i => i.type === 'table')!
     const trailTextId = (pool.nodes.get(trailPara.id) as unknown as { children?: string[] })?.children?.[0]!
 
-    const hitIndex = new HitTestIndex()
+    const hitIndex = new HitTestIndex(testMeasurer)
     hitIndex.rebuild(pages)
 
     // 点击表格底部边界下方 5px, 文档内容区 x=200
@@ -123,7 +124,8 @@ describe('表格后空段落: 布局 + 命中检测', () => {
     const container = {
       addEventListener: () => {}, removeEventListener: () => {},
     } as unknown as HTMLElement
-    const h = new KeyboardHandler({} as unknown as Editor, container)
+    testHost.input.mount(container)
+    const h = new KeyboardHandler({} as unknown as Editor, testHost)
     const nav = (h as unknown as { navigateBlock: (...a: unknown[]) => unknown }).navigateBlock
     const r = nav.call(h, lastCellPara, doc, pool, 1, 'vertical', 0)
     expect(r).toEqual({ paraId: trailPara.id, offset: 0 })
@@ -144,7 +146,7 @@ describe('表格是最后一个块 (无尾随段落)', () => {
     for (const n of [table, row]) allNodes.set(n.id, n as unknown as BaseNode)
     doc.body.children = [paraBefore.id, table.id]
     const pool = buildNodePool(allNodes, { body: doc.id })
-    const engine = new LayoutEngine(new EventBus())
+    const engine = new LayoutEngine(new EventBus(), testMeasurer)
     const pages = engine.fullLayout(doc, pool)
     return { doc, pool, pages, table, paraBefore }
   }
@@ -153,7 +155,7 @@ describe('表格是最后一个块 (无尾随段落)', () => {
     const { pages } = makeDocTableLast()
     const page = pages[0]
     const tableItem = page.items.find(i => i.type === 'table')!
-    const hitIndex = new HitTestIndex()
+    const hitIndex = new HitTestIndex(testMeasurer)
     hitIndex.rebuild(pages)
 
     const nodeId = hitIndex.hitTest(200, tableItem.y + tableItem.height + 5, 0)

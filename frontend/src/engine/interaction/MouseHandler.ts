@@ -6,11 +6,12 @@
 // ================================================================
 
 import type { Editor } from '../Editor'
+import type { EditorHost } from '../host/EditorHost'
 import type { Paragraph } from '../document/core/DocumentModel'
 import type { SLIFPage } from '../layout/core/SLIF'
 import { cumulativeCharWidths, findCharIndexAtX } from '../layout/text/CharWidthHelper'
+import type { TextMeasurer } from '../layout/text/TextMeasurer'
 import { screenToDoc, findPageByDocY, pageCenteringOffset } from '../layout/table/TableCoordUtil'
-import { HitTestIndex } from '../render/HitTestIndex'
 import { getCellGridPosition } from '../document/table/TableOps'
 
 /** 双击时间阈值 (ms) */
@@ -20,7 +21,10 @@ const DOUBLE_CLICK_DISTANCE = 8
 
 export class MouseHandler {
   private editor: Editor
-  private container: HTMLElement
+  private host: EditorHost
+  private measurer: TextMeasurer
+  private detachContainer: () => void
+  private detachGlobal: () => void
   private dragging = false
   private dragMoved = false
 
@@ -48,12 +52,12 @@ export class MouseHandler {
   private cellBoxActive = false
   private cellBoxTableId = ''
 
-  constructor(editor: Editor, container: HTMLElement) {
+  constructor(editor: Editor, host: EditorHost, measurer: TextMeasurer) {
     this.editor = editor
-    this.container = container
-    container.addEventListener('mousedown', this.onMouseDown)
-    window.addEventListener('mousemove', this.onMouseMove)
-    window.addEventListener('mouseup', this.onMouseUp)
+    this.host = host
+    this.measurer = measurer
+    this.detachContainer = host.input.attachContainer({ mousedown: this.onMouseDown })
+    this.detachGlobal = host.input.attachGlobal({ mousemove: this.onMouseMove, mouseup: this.onMouseUp })
   }
 
   /** click 事件到来时检查: 拖拽过就不要重复处理光标 */
@@ -374,7 +378,7 @@ export class MouseHandler {
    *  Level 2: 命中 table 外框 → hitTestTable() cell 内精确定位
    */
   private hitTest(clientX: number, clientY: number): { paraPath: string[]; offset: number } | null {
-    const rect = this.container.getBoundingClientRect()
+    const rect = this.host.viewport.bounds()
     const coord = this.editor.getDraw().getCoordinateSystem()
     const { scale, scrollY } = coord.transform
 
@@ -390,7 +394,7 @@ export class MouseHandler {
     const page = pages[pageIndex]
     if (!page) return null
 
-    const viewportW = this.container.clientWidth
+    const viewportW = this.host.viewport.size().width
     const offsetX = pageCenteringOffset(page.width, viewportW, scale)
     const docX = docX0 - offsetX / scale
 
@@ -406,7 +410,7 @@ export class MouseHandler {
     if (entryType === 'table') {
       const tableItem = hitIndex.getTableItem(pageIndex, nodeId)
       if (tableItem) {
-        const tableResult = HitTestIndex.hitTestTable(tableItem, docX, localY, this.editor.getPool(), doc.id)
+        const tableResult = hitIndex.hitTestTable(tableItem, docX, localY, this.editor.getPool(), doc.id)
         if (tableResult) return tableResult
       }
       // 表格命中但 Level 2 失败 → 不 fallback 到 getFlatPageItems
@@ -484,7 +488,7 @@ export class MouseHandler {
           const cumWidths = cumulativeCharWidths(itemText, {
             font: item.font || 'SimSun', size: item.size || 16,
             bold: item.bold, italic: item.italic,
-          })
+          }, this.measurer)
           const charIdx = findCharIndexAtX(relativeX, cumWidths, itemText.length || 0)
           return Math.max(0, accumulated + charIdx)
         }
@@ -499,7 +503,7 @@ export class MouseHandler {
 
   /** 检测点击位置是否在页眉/页脚区域 */
   private detectHeaderFooterRegion(clientX: number, clientY: number): 'header' | 'footer' | null {
-    const rect = this.container.getBoundingClientRect()
+    const rect = this.host.viewport.bounds()
     const coord = this.editor.getDraw().getCoordinateSystem()
     const { scale, scrollY } = coord.transform
 
@@ -515,7 +519,7 @@ export class MouseHandler {
     if (!page) return null
 
     // 检查是否在页面宽度内
-    const offsetX = pageCenteringOffset(page.width, this.container.clientWidth, scale)
+    const offsetX = pageCenteringOffset(page.width, this.host.viewport.size().width, scale)
     const docX = docX0 - offsetX / scale
     if (docX < 0 || docX > page.width) return null // 超出页面宽度
 
@@ -539,7 +543,7 @@ export class MouseHandler {
     clientY: number,
     section: 'header' | 'footer',
   ): { paraPath: string[]; offset: number } | null {
-    const rect = this.container.getBoundingClientRect()
+    const rect = this.host.viewport.bounds()
     const coord = this.editor.getDraw().getCoordinateSystem()
     const { scale, scrollY } = coord.transform
 
@@ -554,7 +558,7 @@ export class MouseHandler {
     const page = pages[pageIndex]
     if (!page) return null
 
-    const offsetX = pageCenteringOffset(page.width, this.container.clientWidth, scale)
+    const offsetX = pageCenteringOffset(page.width, this.host.viewport.size().width, scale)
     const docX = docX0 - offsetX / scale
 
     // 使用 Draw 的页眉页脚命中检测
@@ -588,9 +592,8 @@ export class MouseHandler {
   }
 
   destroy(): void {
-    this.container.removeEventListener('mousedown', this.onMouseDown)
-    window.removeEventListener('mousemove', this.onMouseMove)
-    window.removeEventListener('mouseup', this.onMouseUp)
+    this.detachContainer()
+    this.detachGlobal()
     if (this.clickCountTimer) clearTimeout(this.clickCountTimer)
   }
 

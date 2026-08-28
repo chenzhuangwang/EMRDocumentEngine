@@ -18,6 +18,7 @@ EMR 文档编辑器引擎是一个专业的电子病历文档编辑系统，提�
 - **版本管理**：完整的历史版本记录，支持版本回溯
 - **数据校验**：支持表单元素的数据校验和必填项检查
 - **审计追踪**：详细记录文档操作日志，满足合规要求
+- **框架/平台无关运行时**：编辑器引擎经 `EditorHost` 能力接口（文本/字体/渲染表面/视口/输入/平台）解耦宿主环境，可嵌入 React、Vue、Electron、Web Worker 等任意宿主，引擎源码零浏览器全局
 
 ## 技术栈
 
@@ -80,6 +81,7 @@ EMRDocumentEngine/
 │   │   │   ├── FindReplaceEngine.ts   # 查找替换
 │   │   │   ├── command/               # 命令系统（撤销/重做）
 │   │   │   ├── document/              # 文档模型
+│   │   │   ├── host/                  # Host 能力接口（EditorHost 六元组）
 │   │   │   ├── render/                # 渲染模块
 │   │   │   ├── layout/                # 布局引擎
 │   │   │   ├── interaction/           # 交互处理
@@ -90,12 +92,12 @@ EMRDocumentEngine/
 │   │   │   ├── loaders/               # 加载器
 │   │   │   ├── i18n/                  # 国际化
 │   │   │   └── __tests__/             # 引擎单元测试
+│   │   ├── platform/          # 宿主平台实现（浏览器能力注入到 engine）
+│   │   │   └── dom/           #   DOM 宿主（Canvas/剪贴板/IndexedDB 等）
 │   │   ├── pages/             # 页面组件
 │   │   ├── services/          # API 服务
 │   │   ├── store/             # 全局状态（Zustand）
-│   │   ├── hooks/             # 自定义 Hooks
 │   │   ├── lib/               # 工具函数
-│   │   ├── types/             # 类型定义
 │   │   ├── App.tsx
 │   │   └── main.tsx
 │   ├── index.html
@@ -228,6 +230,7 @@ docker-compose up -d
 - **EventBus**：事件总线，处理组件间通信
 - **KeyboardHandler**：键盘事件处理器
 - **RangeManager**：选区管理器
+- **EditorHost**：平台能力边界（六元组 `text/font/surface/viewport/input/platform`），浏览器能力经此注入引擎，实现框架/平台无关
 
 ### 后端服务层
 

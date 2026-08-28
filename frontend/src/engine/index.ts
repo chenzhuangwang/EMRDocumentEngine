@@ -2,9 +2,12 @@
 // 引擎统一导出 (ModelD v20.34)
 // ============================================================
 
+// ---- Host 边界 (契约 §27) ----
+export type { EditorHost, TextHost, FontHost, TextMeasurement, SurfaceHost, ViewportHost, CanvasSurface, LayerKind, InputHost, ImeSurface, CaretRect, ContainerListeners, GlobalListeners, PlatformHost, ClipboardHost, HtmlMeasureResult, StorageHost } from './host/EditorHost'
+
 export { Editor } from './Editor'
 export { Draw } from './render/Draw'
-export { TextMeasurer, textMeasurer } from './layout/text/TextMeasurer'
+export { TextMeasurer } from './layout/text/TextMeasurer'
 export { LineBreaker } from './layout/line/LineBreaker'
 export { PageBreaker } from './layout/page/PageBreaker'
 export { TextParticle } from './render/particles/TextParticle'
@@ -130,7 +133,7 @@ export { createLaTeXParticle } from './render/particles/LaTeXParticle'
 
 // ---- R30+: Engine modules ----
 export { AutoSaveManager } from './AutoSaveManager'
-export type { SaveEventType, SaveEventListener } from './AutoSaveManager'
+export type { SaveEventType, SaveEventListener, SaveSnapshot } from './AutoSaveManager'
 export { AutoCorrectEngine } from './AutoCorrectEngine'
 export type { AutoCorrectRule } from './AutoCorrectEngine'
 export { DocumentDiffer } from './DocumentDiffer'
@@ -141,7 +144,7 @@ export { QCEngine } from './qc/QCEngine'
 export type { QCRule, QCIssue, QCResult, QCSeverity, QCGrade } from './qc/QCEngine'
 
 // ---- R30+: System ----
-export { EditorTheme, editorTheme } from './state/EditorTheme'
+export { EditorTheme } from './state/EditorTheme'
 export type { ThemePreset, ThemeColors } from './state/EditorTheme'
 export { locale, t } from './i18n/index'
 export type { Locale, LocaleMessages } from './i18n/index'
@@ -149,7 +152,7 @@ export { VirtualViewport } from './layout/viewport/VirtualViewport'
 export type { ViewportState, VisibleRange } from './layout/viewport/VirtualViewport'
 export { MemoryManager, LRUMap } from './layout/viewport/MemoryManager'
 export type { MemoryStats } from './layout/viewport/MemoryManager'
-export { PerformanceMetrics, perfMetrics } from './PerformanceMetrics'
+export { PerformanceMetrics } from './PerformanceMetrics'
 export type { PerfEntry, PerfSummary } from './PerformanceMetrics'
 export {
   EditorErrorCode,
@@ -159,7 +162,7 @@ export {
 export type { EditorError, ErrorReporter, EditorErrorCode as EditorErrorCodeType } from './ErrorRecovery'
 
 // ---- R30+: Font management ----
-export { FontManager, fontManager } from './layout/text/FontManager'
+export { FontManager } from './layout/text/FontManager'
 export type { FontDescriptor, FontVariant } from './layout/text/FontManager'
 export { FontFallback } from './layout/text/FontFallback'
 export type { FontRun } from './layout/text/FontFallback'
@@ -213,7 +216,3 @@ export type { PageEntry } from './layout/page/PageStartTable'
 // ---- TASK-511: BookmarkRenderer ----
 export { BookmarkRenderer } from './render/BookmarkRenderer'
 export type { ResolvedReference } from './render/BookmarkRenderer'
-
-// ---- TASK-469: PrintHistoryService ----
-export { PrintHistoryService, printHistory } from '../services/PrintHistoryService'
-export type { PrintRecord } from '../services/PrintHistoryService'

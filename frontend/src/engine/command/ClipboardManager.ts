@@ -15,6 +15,7 @@ import type { NodePool } from '../document/core/NodePool'
 import { generateCommandId } from './ICommand'
 import { generateId } from '../document/core/DocumentModel'
 import { resolveCellPosition } from '../state/CaretScope'
+import type { ClipboardHost } from '../host/EditorHost'
 
 // ---- 类型 ----
 
@@ -40,6 +41,11 @@ export interface SerializedChild {
 
 export class ClipboardManager {
   private data: ClipboardData | null = null
+  private clipboard: ClipboardHost
+
+  constructor(clipboard: ClipboardHost) {
+    this.clipboard = clipboard
+  }
 
   hasData(): boolean { return this.data !== null }
 
@@ -129,7 +135,8 @@ export class ClipboardManager {
     }
 
     // 系统剪贴板: 使用局部 plainText 而非 this.data.plainText, 防止 null 引用
-    try { navigator.clipboard?.writeText(plainText) } catch { /* 忽略 */ }
+    // (writeText 最佳努力, 永不 reject — 无剪贴板/非安全上下文静默降级)
+    this.clipboard.writeText(plainText)
   }
 
   /**

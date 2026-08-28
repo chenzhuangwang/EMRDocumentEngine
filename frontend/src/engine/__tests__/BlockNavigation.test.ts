@@ -13,6 +13,7 @@
 import { describe, it, expect } from 'vitest'
 import { KeyboardHandler } from '../interaction/KeyboardHandler'
 import type { Editor } from '../Editor'
+import { testHost } from './helpers'
 import { buildNodePool } from '../document/core/NodePool'
 import {
   createDocument, createParagraph, createTextNode,
@@ -26,7 +27,8 @@ function makeHandler(): KeyboardHandler {
     addEventListener: () => {},
     removeEventListener: () => {},
   } as unknown as HTMLElement
-  return new KeyboardHandler({} as unknown as Editor, container)
+  testHost.input.mount(container)
+  return new KeyboardHandler({} as unknown as Editor, testHost)
 }
 
 /** 注册文本 + 段落, 返回段落 */

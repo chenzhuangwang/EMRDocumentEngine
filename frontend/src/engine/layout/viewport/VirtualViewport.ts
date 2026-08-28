@@ -65,10 +65,13 @@ export class VirtualViewport {
   /**
    * 计算视口内页面在画布上的 Y 偏移
    * 只生成可见页的 Canvas 绘制指令
+   *
+   * @param viewportHeight 视口高度 (CSS px) — 由调用方注入 (滚动容器高度),
+   *   不读取 window.innerHeight (契约 §28)
    */
-  getVisiblePageOffsets(totalPages: number, scrollTop: number, scale: number): { pageIndex: number; canvasY: number }[] {
+  getVisiblePageOffsets(totalPages: number, scrollTop: number, scale: number, viewportHeight: number): { pageIndex: number; canvasY: number }[] {
     const range = this.computeVisible(
-      { scrollTop, viewportHeight: window.innerHeight, scale },
+      { scrollTop, viewportHeight, scale },
       totalPages,
     )
 

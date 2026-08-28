@@ -10,11 +10,14 @@
 
 import { describe, it, expect } from 'vitest'
 import { HitTestIndex } from '../render/HitTestIndex'
+import { testMeasurer } from './helpers'
 import { buildMergeMatrix } from '../document/table/MergeMatrix'
 import { buildNodePool } from '../document/core/NodePool'
 import { createDocument, createParagraph, createTextNode } from '../document/factory/ElementFormatter'
 import type { BaseNode } from '../document/core/DocumentModel'
 import type { SLIFItem, SLIFCell } from '../layout/core/SLIF'
+
+const hitIndex = new HitTestIndex(testMeasurer)
 
 /** 构造一个 cell 内文本 item (cell 局部坐标) */
 function cellText(nodeId: string, text: string, width: number): SLIFItem {
@@ -82,11 +85,11 @@ describe('HitTestTable', () => {
   it('普通 cell 点击命中正确段落', () => {
     const { doc, pool, tableItem, L, R } = makeFixture()
 
-    const hitL = HitTestIndex.hitTestTable(tableItem, 50, 30, pool, doc.id)
+    const hitL = hitIndex.hitTestTable(tableItem, 50, 30, pool, doc.id)
     expect(hitL).not.toBeNull()
     expect(hitL!.paraPath[1]).toBe(L.paraId)
 
-    const hitR = HitTestIndex.hitTestTable(tableItem, 150, 30, pool, doc.id)
+    const hitR = hitIndex.hitTestTable(tableItem, 150, 30, pool, doc.id)
     expect(hitR).not.toBeNull()
     expect(hitR!.paraPath[1]).toBe(R.paraId)
   })
@@ -95,12 +98,12 @@ describe('HitTestTable', () => {
     const { doc, pool, tableItem, M } = makeFixture()
 
     // 第 0 行第 0 列 (x=50)
-    const hitLeft = HitTestIndex.hitTestTable(tableItem, 50, 10, pool, doc.id)
+    const hitLeft = hitIndex.hitTestTable(tableItem, 50, 10, pool, doc.id)
     expect(hitLeft).not.toBeNull()
     expect(hitLeft!.paraPath[1]).toBe(M.paraId)
 
     // 第 0 行第 1 列 (x=150) — 旧实现 colWidths[0]=100 只覆盖 x<100, 会返回 null
-    const hitRight = HitTestIndex.hitTestTable(tableItem, 150, 10, pool, doc.id)
+    const hitRight = hitIndex.hitTestTable(tableItem, 150, 10, pool, doc.id)
     expect(hitRight).not.toBeNull()
     expect(hitRight!.paraPath[1]).toBe(M.paraId)
   })
@@ -109,11 +112,11 @@ describe('HitTestTable', () => {
     const { doc, pool, tableItem } = makeFixture()
 
     // X 超出表格宽度 (200)
-    expect(HitTestIndex.hitTestTable(tableItem, 250, 10, pool, doc.id)).toBeNull()
+    expect(hitIndex.hitTestTable(tableItem, 250, 10, pool, doc.id)).toBeNull()
     // Y 超出表格总高度 (49)
-    expect(HitTestIndex.hitTestTable(tableItem, 50, 100, pool, doc.id)).toBeNull()
+    expect(hitIndex.hitTestTable(tableItem, 50, 100, pool, doc.id)).toBeNull()
     // 负坐标
-    expect(HitTestIndex.hitTestTable(tableItem, -5, 10, pool, doc.id)).toBeNull()
+    expect(hitIndex.hitTestTable(tableItem, -5, 10, pool, doc.id)).toBeNull()
   })
 })
 
@@ -194,10 +197,10 @@ describe('HitTestTable rowspan', () => {
     const { doc, pool, tableItem, A, D } = makeRowspanFixture()
 
     // row0 列 0 (rowspan cell 顶部)
-    expect(HitTestIndex.hitTestTable(tableItem, 50, 10, pool, doc.id)!.paraPath[1]).toBe(A.paraId)
+    expect(hitIndex.hitTestTable(tableItem, 50, 10, pool, doc.id)!.paraPath[1]).toBe(A.paraId)
     // row1 列 0 (rowspan 占用的下半部分) — 应命中 A 而非 D
-    expect(HitTestIndex.hitTestTable(tableItem, 50, 30, pool, doc.id)!.paraPath[1]).toBe(A.paraId)
+    expect(hitIndex.hitTestTable(tableItem, 50, 30, pool, doc.id)!.paraPath[1]).toBe(A.paraId)
     // row1 列 1 — 命中 D
-    expect(HitTestIndex.hitTestTable(tableItem, 150, 30, pool, doc.id)!.paraPath[1]).toBe(D.paraId)
+    expect(hitIndex.hitTestTable(tableItem, 150, 30, pool, doc.id)!.paraPath[1]).toBe(D.paraId)
   })
 })

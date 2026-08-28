@@ -2,8 +2,10 @@
 // EditorTheme — 编辑器主题系统 (R49, v6.0)
 //
 // 4 预设: standard / eyeCare / print / dark
-// CSS 变量注入到 :root, 全局生效
+// 主题颜色注入到平台 chrome (DOM 下映射为 :root CSS 变量), 经 PlatformHost
 // ============================================================
+
+import type { EditorHost } from '../host/EditorHost'
 
 export type ThemePreset = 'standard' | 'eyeCare' | 'print' | 'dark'
 
@@ -70,7 +72,12 @@ const THEMES: Record<ThemePreset, ThemeColors> = {
 }
 
 export class EditorTheme {
+  private host: EditorHost
   private current: ThemePreset = 'standard'
+
+  constructor(host: EditorHost) {
+    this.host = host
+  }
 
   /** 获取当前主题 */
   get preset(): ThemePreset { return this.current }
@@ -84,23 +91,11 @@ export class EditorTheme {
     this.apply()
   }
 
-  /** 应用主题到 DOM (:root CSS 变量) */
+  /** 应用主题到平台 chrome (契约 §28: 经 PlatformHost, 不直接触碰 DOM) */
   apply(): void {
-    const c = this.colors
-    const root = document.documentElement
-    root.style.setProperty('--emr-page-bg', c.pageBg)
-    root.style.setProperty('--emr-canvas-bg', c.canvasBg)
-    root.style.setProperty('--emr-text-color', c.textColor)
-    root.style.setProperty('--emr-chrome-bg', c.chromeBg)
-    root.style.setProperty('--emr-chrome-text', c.chromeText)
-    root.style.setProperty('--emr-selection-bg', c.selectionBg)
-    root.style.setProperty('--emr-cursor-color', c.cursorColor)
-    root.style.setProperty('--emr-hf-bg', c.hfBg)
+    this.host.platform.applyTheme(this.colors)
   }
 
   /** 重置为默认主题 */
   reset(): void { this.setTheme('standard') }
 }
-
-/** 全局单例 */
-export const editorTheme = new EditorTheme()

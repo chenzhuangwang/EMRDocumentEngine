@@ -1,19 +1,21 @@
 // ============================================================
 // AutoSaveManager — 自动保存引擎 (R34, v6.0)
 //
-// IndexedDB 环形保留 3 版 + 防抖 3000ms
-// 页面加载时检测 IndexedDB 残留数据 → 提示恢复
+// 环形保留 3 版 + 防抖 3000ms
+// 页面加载时检测残留数据 → 提示恢复
+//
+// 持久化经 StorageHost (PlatformHost.storage) 注入, 引擎不再触碰
+// indexedDB / IDB* 类型 (契约 §28)。引擎只做域逻辑: 快照构造、防抖、
+// 保留策略、恢复决策; 传输 (open/put/list/delete/close) 交平台。
 // ============================================================
 
 import type { DocumentTree } from './document/core/DocumentModel'
+import type { StorageHost } from './host/EditorHost'
 
-const DB_NAME = 'emr-editor-autosave'
-const STORE_NAME = 'snapshots'
-const DB_VERSION = 1
 const MAX_VERSIONS = 3
 const DEBOUNCE_MS = 3000
 
-interface SaveSnapshot {
+export interface SaveSnapshot {
   id: string
   documentId: string
   title: string
@@ -26,7 +28,8 @@ export type SaveEventType = 'saving' | 'saved' | 'error'
 export type SaveEventListener = (type: SaveEventType, error?: Error) => void
 
 export class AutoSaveManager {
-  private db: IDBDatabase | null = null
+  private storage: StorageHost
+  private ready = false
   private documentId: string
   private title: string
   private serialize: () => string
@@ -34,28 +37,18 @@ export class AutoSaveManager {
   private listeners: SaveEventListener[] = []
   private _lastSavedAt = 0
 
-  constructor(documentId: string, title: string, serialize: () => string) {
+  constructor(documentId: string, title: string, serialize: () => string, storage: StorageHost) {
     this.documentId = documentId
     this.title = title
     this.serialize = serialize
+    this.storage = storage
   }
 
   // ---- 初始化 ----
 
   async init(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION)
-      req.onupgradeneeded = () => {
-        const db = req.result
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' })
-          store.createIndex('documentId', 'documentId', { unique: false })
-          store.createIndex('savedAt', 'savedAt', { unique: false })
-        }
-      }
-      req.onsuccess = () => { this.db = req.result; resolve() }
-      req.onerror = () => reject(req.error)
-    })
+    await this.storage.init()
+    this.ready = true
   }
 
   // ---- 防抖保存 ----
@@ -73,7 +66,7 @@ export class AutoSaveManager {
   }
 
   private async save(): Promise<void> {
-    if (!this.db) return
+    if (!this.ready) return
     this.timer = null
 
     try {
@@ -88,7 +81,7 @@ export class AutoSaveManager {
         version: 0,
       }
 
-      await this.putSnapshot(snapshot)
+      await this.storage.put(snapshot)
       await this.pruneOldVersions()
       this._lastSavedAt = snapshot.savedAt
       this.notify('saved')
@@ -102,8 +95,8 @@ export class AutoSaveManager {
 
   /** 检查是否有未恢复的草稿 */
   async checkRecovery(): Promise<SaveSnapshot | null> {
-    if (!this.db) return null
-    const snapshots = await this.getSnapshots(this.documentId)
+    if (!this.ready) return null
+    const snapshots = await this.storage.list(this.documentId)
     if (snapshots.length === 0) return null
 
     // 最近一次保存
@@ -111,16 +104,12 @@ export class AutoSaveManager {
     return latest
   }
 
-  /** 恢复草稿后清除 IndexedDB 记录 */
+  /** 恢复草稿后清除记录 */
   async clearRecovery(): Promise<void> {
-    if (!this.db) return
-    const snapshots = await this.getSnapshots(this.documentId)
-    const tx = this.db.transaction(STORE_NAME, 'readwrite')
-    for (const s of snapshots) tx.objectStore(STORE_NAME).delete(s.id)
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve()
-      tx.onerror = () => reject(tx.error)
-    })
+    if (!this.ready) return
+    const snapshots = await this.storage.list(this.documentId)
+    if (snapshots.length === 0) return
+    await this.storage.remove(snapshots.map(s => s.id))
   }
 
   /** 上次成功保存的时间戳 */
@@ -135,42 +124,21 @@ export class AutoSaveManager {
     for (const cb of this.listeners) cb(type, error)
   }
 
-  /** 销毁: 清理定时器, 关闭 DB */
+  /** 销毁: 清理定时器, 关闭底层存储 */
   destroy(): void {
     if (this.timer) clearTimeout(this.timer)
-    this.db?.close()
-    this.db = null
+    this.storage.close()
+    this.ready = false
   }
 
-  // ---- IndexedDB 操作 ----
-
-  private putSnapshot(snapshot: SaveSnapshot): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db!.transaction(STORE_NAME, 'readwrite')
-      tx.objectStore(STORE_NAME).put(snapshot)
-      tx.oncomplete = () => resolve()
-      tx.onerror = () => reject(tx.error)
-    })
-  }
-
-  private getSnapshots(documentId: string): Promise<SaveSnapshot[]> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db!.transaction(STORE_NAME, 'readonly')
-      const idx = tx.objectStore(STORE_NAME).index('documentId')
-      const req = idx.getAll(documentId)
-      req.onsuccess = () => resolve(req.result || [])
-      req.onerror = () => reject(req.error)
-    })
-  }
+  // ---- 保留策略 ----
 
   private async pruneOldVersions(): Promise<void> {
-    const snapshots = await this.getSnapshots(this.documentId)
+    const snapshots = await this.storage.list(this.documentId)
     if (snapshots.length <= MAX_VERSIONS) return
     // 按时间排序, 删最旧的
     snapshots.sort((a, b) => a.savedAt - b.savedAt)
     const toDelete = snapshots.slice(0, snapshots.length - MAX_VERSIONS)
-    const tx = this.db!.transaction(STORE_NAME, 'readwrite')
-    for (const s of toDelete) tx.objectStore(STORE_NAME).delete(s.id)
-    await new Promise<void>((resolve) => { tx.oncomplete = () => resolve() })
+    await this.storage.remove(toDelete.map(s => s.id))
   }
 }

@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { ClipboardManager } from '../command/ClipboardManager'
+import { noopClipboard } from './helpers'
 import { buildNodePool } from '../document/core/NodePool'
 import {
   createDocument, createParagraph, createTextNode,
@@ -55,7 +56,7 @@ function makeTableDoc() {
 describe('ClipboardManager 表格内复制', () => {
   it('cell 内单段落全选复制 → 得到完整文本', () => {
     const { doc, pool, p1 } = makeTableDoc()
-    const cm = new ClipboardManager()
+    const cm = new ClipboardManager(noopClipboard)
     cm.copy([doc.id, p1.id], 0, [doc.id, p1.id], 5, doc, pool)
 
     const data = cm.paste()
@@ -65,7 +66,7 @@ describe('ClipboardManager 表格内复制', () => {
 
   it('cell 内跨段落复制 (hello → world) → 两个段落 + 换行', () => {
     const { doc, pool, p1, p2 } = makeTableDoc()
-    const cm = new ClipboardManager()
+    const cm = new ClipboardManager(noopClipboard)
     cm.copy([doc.id, p1.id], 0, [doc.id, p2.id], 5, doc, pool)
 
     const data = cm.paste()
@@ -76,7 +77,7 @@ describe('ClipboardManager 表格内复制', () => {
 
   it('跨 cell 复制 (cell00 → cell01) → 不复制', () => {
     const { doc, pool, p1, p3 } = makeTableDoc()
-    const cm = new ClipboardManager()
+    const cm = new ClipboardManager(noopClipboard)
     cm.copy([doc.id, p1.id], 0, [doc.id, p3.id], 2, doc, pool)
 
     expect(cm.paste()).toBeNull()
@@ -84,7 +85,7 @@ describe('ClipboardManager 表格内复制', () => {
 
   it('跨域复制 (body → cell) → 不复制', () => {
     const { doc, pool, bodyPara, p1 } = makeTableDoc()
-    const cm = new ClipboardManager()
+    const cm = new ClipboardManager(noopClipboard)
     cm.copy([doc.id, bodyPara.id], 0, [doc.id, p1.id], 5, doc, pool)
 
     expect(cm.paste()).toBeNull()
@@ -93,7 +94,7 @@ describe('ClipboardManager 表格内复制', () => {
 
 describe('ClipboardManager 外部覆盖语义 (焦点同步依赖)', () => {
   it('setPlainText 覆盖旧数据, getPlainText 返回最新纯文本', () => {
-    const cm = new ClipboardManager()
+    const cm = new ClipboardManager(noopClipboard)
     cm.setPlainText('old')
     expect(cm.getPlainText()).toBe('old')
     // 模拟外部复制了新内容 → 覆盖内存旧数据
@@ -102,6 +103,6 @@ describe('ClipboardManager 外部覆盖语义 (焦点同步依赖)', () => {
   })
 
   it('无数据时 getPlainText 返回 null', () => {
-    expect(new ClipboardManager().getPlainText()).toBeNull()
+    expect(new ClipboardManager(noopClipboard).getPlainText()).toBeNull()
   })
 })

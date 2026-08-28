@@ -7,12 +7,14 @@
 
 import type { IParticle, RenderOptions } from './IParticle'
 import type { SLIFItem } from '../../layout/core/SLIF'
+import type { EditorHost } from '../../host/EditorHost'
 
 export function createImageParticle(
   resolveUrl: (nodeId: string) => string | null,
-  onImageLoaded?: () => void,
+  onImageLoaded: (() => void) | undefined,
+  host: EditorHost,
 ): IParticle {
-  const imageCache = new Map<string, HTMLImageElement>()
+  const imageCache = new Map<string, CanvasImageSource>()
 
   return {
     type: 'image',
@@ -25,19 +27,17 @@ export function createImageParticle(
         return
       }
 
-      let img = imageCache.get(url)
-      if (img) {
-        ctx.drawImage(img, x, y, item.width, item.height)
+      const cached = imageCache.get(url)
+      if (cached) {
+        ctx.drawImage(cached, x, y, item.width, item.height)
         return
       }
 
       // 异步加载, 首帧占位
-      img = new Image()
-      img.src = url
-      img.onload = () => {
-        imageCache.set(url, img!)
+      host.surface.loadImage(url).then((img) => {
+        imageCache.set(url, img.source)
         onImageLoaded?.()
-      }
+      })
 
       drawPlaceholder(ctx, x, y, item.width, item.height)
     },

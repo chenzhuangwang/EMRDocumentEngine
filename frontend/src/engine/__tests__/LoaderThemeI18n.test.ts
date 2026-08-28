@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest'
 import { documentLoaderRegistry } from '../loaders/DocumentLoaderRegistry'
 import { EditorTheme } from '../state/EditorTheme'
 import { locale, t } from '../i18n/index'
+import { testHost } from './helpers'
 
 // ---- DocumentLoaderRegistry ----
 
@@ -41,26 +42,26 @@ describe('DocumentLoaderRegistry', () => {
 
 describe('EditorTheme', () => {
   it('should default to standard theme', () => {
-    const theme = new EditorTheme()
+    const theme = new EditorTheme(testHost)
     expect(theme.preset).toBe('standard')
   })
 
   it('should switch to eyeCare theme', () => {
-    const theme = new EditorTheme()
+    const theme = new EditorTheme(testHost)
     theme.setTheme('eyeCare')
     expect(theme.preset).toBe('eyeCare')
     expect(theme.colors.pageBg).toBe('#F5F0E8')
   })
 
   it('should switch to dark theme', () => {
-    const theme = new EditorTheme()
+    const theme = new EditorTheme(testHost)
     theme.setTheme('dark')
     expect(theme.preset).toBe('dark')
     expect(theme.colors.textColor).toBe('#E5E5E5')
   })
 
   it('should reset to standard', () => {
-    const theme = new EditorTheme()
+    const theme = new EditorTheme(testHost)
     theme.setTheme('dark')
     theme.reset()
     expect(theme.preset).toBe('standard')

@@ -15,7 +15,7 @@ import type { SLIFPage, SLIFItem, SLIFRow, SLIFCell } from './SLIF'
 import type { EventBus } from '../../interaction/EventBus'
 import type { LayoutConfig } from './LayoutContext'
 import type { LayoutResult } from './LayoutResult'
-import { textMeasurer, type TextMeasurer } from '../text/TextMeasurer'
+import type { TextMeasurer } from '../text/TextMeasurer'
 import { LineBreaker } from '../line/LineBreaker'
 import type { LineElement } from '../line/LineLayout'
 import { PageBreaker } from '../page/PageBreaker'
@@ -34,11 +34,13 @@ const BASE_FONT_SIZE = 16
 
 export class LayoutEngine {
   private eventBus: EventBus
+  private measurer: TextMeasurer
   private pages: SLIFPage[] = []
   private config: LayoutConfig
 
-  constructor(eventBus: EventBus) {
+  constructor(eventBus: EventBus, measurer: TextMeasurer) {
     this.eventBus = eventBus
+    this.measurer = measurer
     this.config = {
       pageWidth: 794, pageHeight: 1123,
       marginTop: 72, marginBottom: 72,
@@ -48,7 +50,7 @@ export class LayoutEngine {
 
   /** 全量重布局 — LineBreaker + PageBreaker 集成 (TASK-445) */
   fullLayout(doc: DocumentTree, pool: NodePool): LayoutResult {
-    const measurer = textMeasurer
+    const measurer = this.measurer
     const lineBreaker = new LineBreaker(measurer)
     const pageBreaker = new PageBreaker()
     const contentWidth = this.config.pageWidth - this.config.marginLeft - this.config.marginRight
@@ -704,7 +706,7 @@ export class LayoutEngine {
         let elX = 0
         for (const el of line.elements) {
           if (el.type !== 'text') continue
-          const elWidth = textMeasurer.measureWidth(el.value || '', {
+          const elWidth = this.measurer.measureWidth(el.value || '', {
             font: el.font || 'SimSun', size: el.size || DEFAULT_SIZE,
             bold: el.bold, italic: el.italic,
           })

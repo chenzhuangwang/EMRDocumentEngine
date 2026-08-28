@@ -2,8 +2,10 @@
 // PerformanceMetrics — 性能埋点采集 (R57, v6.0)
 //
 // 采集: renderFrameTime / layoutTime / keystrokeLatency / cacheHitRate
-// 上报: sendBeacon 批量发送 (页面卸载时)
+// 上报: sendBeacon 批量发送 (页面卸载时), 经 PlatformHost
 // ============================================================
+
+import type { EditorHost } from './host/EditorHost'
 
 export interface PerfEntry {
   /** 事件名 */
@@ -32,24 +34,30 @@ export interface PerfSummary {
 }
 
 export class PerformanceMetrics {
+  private host: EditorHost
   private entries: PerfEntry[] = []
   private maxEntries = 500
   private reportUrl: string | null = null
   private flushTimer: ReturnType<typeof setInterval> | null = null
+  private beforeUnloadDetach: (() => void) | null = null
+
+  constructor(host: EditorHost) {
+    this.host = host
+  }
 
   /** 开始定时上报 (每 30s) */
   startAutoFlush(url: string, intervalMs = 30000): void {
     this.reportUrl = url
     this.flushTimer = setInterval(() => this.flush(), intervalMs)
-    // 页面卸载时强制上报
-    if (typeof window !== 'undefined') {
-      window.addEventListener('beforeunload', () => this.flush())
-    }
+    // 页面卸载时强制上报 (经 PlatformHost, 契约 §28)
+    this.beforeUnloadDetach = this.host.platform.onBeforeUnload(() => this.flush())
   }
 
   /** 停止定时上报 */
   stopAutoFlush(): void {
     if (this.flushTimer) { clearInterval(this.flushTimer); this.flushTimer = null }
+    this.beforeUnloadDetach?.()
+    this.beforeUnloadDetach = null
     this.reportUrl = null
   }
 
@@ -124,15 +132,10 @@ export class PerformanceMetrics {
     }
 
     try {
-      if (navigator.sendBeacon) {
-        const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
-        navigator.sendBeacon(this.reportUrl, blob)
-      }
+      // 经 PlatformHost: 引擎只负责序列化, 平台负责 Blob + sendBeacon (契约 §28)
+      this.host.platform.sendBeacon(this.reportUrl, JSON.stringify(payload))
     } catch { /* 静默 */ }
 
     this.clear()
   }
 }
-
-/** 全局单例 */
-export const perfMetrics = new PerformanceMetrics()

@@ -10,6 +10,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { ClipboardManager } from '../command/ClipboardManager'
+import { noopClipboard } from './helpers'
 import { InsertNodesCommand } from '../command/commands/InsertNodesCommand'
 import { buildNodePool } from '../document/core/NodePool'
 import {
@@ -44,7 +45,7 @@ function makeSmartTextPara() {
 describe('ClipboardManager 含 smarttext 段落复制', () => {
   it('全选复制 → plainText 完整 (smarttext 占 1 偏移)', () => {
     const { doc, pool, paraId } = makeSmartTextPara()
-    const cm = new ClipboardManager()
+    const cm = new ClipboardManager(noopClipboard)
     // 权威语义: AB=2 + smarttext=1 + CD=2 = 总长 5
     cm.copy([doc.id, paraId], 0, [doc.id, paraId], 5, doc, pool)
 
@@ -55,7 +56,7 @@ describe('ClipboardManager 含 smarttext 段落复制', () => {
 
   it('复制 CD (offset 3-5) → 只得到 CD, 不误吞 smarttext', () => {
     const { doc, pool, paraId } = makeSmartTextPara()
-    const cm = new ClipboardManager()
+    const cm = new ClipboardManager(noopClipboard)
     cm.copy([doc.id, paraId], 3, [doc.id, paraId], 5, doc, pool)
 
     const data = cm.paste()
@@ -68,7 +69,7 @@ describe('ClipboardManager 含 smarttext 段落复制', () => {
 
   it('复制 smarttext 本身 (offset 2-3) → 原子复制完整 text + type', () => {
     const { doc, pool, paraId } = makeSmartTextPara()
-    const cm = new ClipboardManager()
+    const cm = new ClipboardManager(noopClipboard)
     cm.copy([doc.id, paraId], 2, [doc.id, paraId], 3, doc, pool)
 
     const data = cm.paste()
@@ -88,7 +89,7 @@ describe('InsertNodesCommand 反序列化 smarttext', () => {
 
   it('粘贴含 smarttext 的数据 → 新节点保持 type=smarttext (不降级为 text)', () => {
     const { doc, pool, paraId } = makeSmartTextPara()
-    const cm = new ClipboardManager()
+    const cm = new ClipboardManager(noopClipboard)
     cm.copy([doc.id, paraId], 0, [doc.id, paraId], 5, doc, pool)
     const data = cm.paste()!
 

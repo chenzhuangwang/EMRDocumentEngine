@@ -45,7 +45,7 @@ Do not introduce shortcuts that create hidden coupling.
 1. ENGINE / UI BOUNDARY
 ============================================================
 
-The engine is UI-framework independent.
+The engine is UI-framework independent AND platform independent.
 
 engine/ MUST NOT depend on:
 
@@ -55,12 +55,17 @@ engine/ MUST NOT depend on:
 - components/
 - application-level Zustand stores
 - UI-specific implementation details
+- browser globals (full list in §28)
 
 Allowed dependency direction:
 
     pages/
         ↓
     components/
+        ↓
+    engine/
+
+    platform/dom
         ↓
     engine/
 
@@ -967,7 +972,10 @@ The following five rules are NON-NEGOTIABLE:
 
 RULE 1:
 
-    Engine MUST NOT depend on React/UI.
+    Engine MUST NOT depend on React/UI,
+    and MUST NOT depend on browser globals.
+    Browser capability access MUST flow through Host interfaces
+    (see §27, §28, §29).
 
 RULE 2:
 
@@ -984,6 +992,17 @@ RULE 4:
 RULE 5:
 
     Document mutation MUST have a controlled mutation choke point.
+
+RULE 6:
+
+    Engine MUST NOT access browser globals directly,
+    nor through utility functions or module-level helpers.
+    Platform access enters the engine ONLY through Host interfaces.
+
+RULE 7:
+
+    Engine modules MUST be safe to import in non-DOM runtimes.
+    Importing an engine module MUST NOT trigger browser side effects.
 
 In short:
 
@@ -1044,3 +1063,303 @@ These distinctions MUST remain explicit throughout development.
 
 13. SLIF_VERSION MUST NOT be treated as the document
     format version merely because their values currently match.
+
+============================================================
+27. HOST ABSTRACTION BOUNDARY
+============================================================
+
+The engine is a pure document-editing runtime.
+
+It is portable across hosts:
+
+    React / Vue / Electron renderer
+                ↓
+    platform/dom (browser adapter)
+                ↓
+    EditorHost (capability boundary)
+                ↓
+    engine/ (pure runtime)
+
+Future hosts: platform/worker, platform/electron.
+
+Platform capability access MUST originate from platform/
+implementations and enter the engine ONLY through Host interfaces.
+
+Dependency direction:
+
+    platform/
+        ↓
+    engine/
+
+NOT allowed:
+
+    engine/
+        ↓
+    platform/
+
+------------------------------------------------------------
+27.1 EditorHost capability interfaces
+------------------------------------------------------------
+
+    interface EditorHost {
+      text:     TextHost
+      font:     FontHost
+      surface:  SurfaceHost
+      viewport: ViewportHost
+      input:    InputHost
+      platform: PlatformHost
+    }
+
+    TextHost      — measure(), getFontMetrics()
+    FontHost      — isGlyphAvailable(), onReady(), loadFont()
+    SurfaceHost   — createLayer(), createOffscreen(), devicePixelRatio(), requestFrame()
+    ViewportHost  — size(), bounds()
+    InputHost     — attach/detach global listeners, IME surface
+    PlatformHost  — applyTheme(), clipboard, sendBeacon(), measureHtml(), onBeforeUnload(), storage
+
+Concrete shapes (surface / viewport — now stable):
+
+    type LayerKind = 'static' | 'content' | 'interact'
+
+    interface CanvasSurface {
+      ctx: CanvasRenderingContext2D            // injected 2D context
+      readonly imageSource: CanvasImageSource  // for createPattern/drawImage
+      readonly width: number                   // physical px
+      readonly height: number                  // physical px
+      resize(physicalW, physicalH, cssW, cssH): void
+      setTop(cssTopPx): void                   // scroll counter-offset
+      getBoundingClientRect(): { left; top }
+      toDataURL(type?): string
+      remove(): void
+    }
+
+    interface SurfaceHost {
+      createLayer(kind: LayerKind): CanvasSurface
+      createOffscreen(width, height): CanvasSurface
+      createSpacer(): { setHeight(cssH); remove() }
+      loadImage(url): Promise<{ width; height; source: CanvasImageSource }>
+      devicePixelRatio(): number
+      requestFrame(cb): number
+      cancelFrame(id): void
+    }
+
+    interface ViewportHost {
+      size(): { width; height }                // container.clientWidth/Height
+      bounds(): { left; top }                  // container.getBoundingClientRect
+    }
+
+    interface ClipboardHost {
+      writeText(text: string): Promise<void>   // best-effort, never rejects
+      readText(): Promise<string>              // rejects when unavailable
+      canRead(): boolean                       // navigator.clipboard?.readText presence
+    }
+
+    interface HtmlMeasureResult {
+      width: number
+      height: number
+      text: string                             // element textContent
+    }
+
+    interface PlatformHost {
+      applyTheme(colors): void                 // :root CSS vars / native chrome
+      clipboard: ClipboardHost
+      sendBeacon(url, data): void              // data = engine-serialized JSON string
+      measureHtml(html, fontSize): HtmlMeasureResult   // off-screen KaTeX measurement
+      onBeforeUnload(cb): () => void           // detach closure
+      storage: StorageHost                     // autosave snapshot persistence (see below)
+    }
+
+    interface StorageHost {
+      init(): Promise<void>                    // open/create backing store, resolve when ready
+      put(snapshot: SaveSnapshot): Promise<void>   // upsert one snapshot by id
+      list(documentId: string): Promise<SaveSnapshot[]>   // all snapshots for a doc (order unspecified)
+      remove(ids: string[]): Promise<void>     // batch-delete snapshots by id
+      close(): void                            // close backing store
+    }
+
+    SurfaceHost owns: canvas creation, getContext, DPR, frame scheduling.
+    ViewportHost owns: viewport dimensions.
+    PlatformHost owns: DOM chrome (theme), clipboard, telemetry, off-screen HTML measurement, autosave persistence (StorageHost).
+    The engine draws ONLY on the injected ctx (see §27.2).
+
+TextHost vs FontHost:
+
+    Text measurement and font lifecycle / availability are
+    different abstraction responsibilities. They MAY be merged
+    in an early phase and split once the call boundary is stable.
+
+    Do NOT let TextHost grow into a "font service" God interface.
+
+------------------------------------------------------------
+27.2 Rendering surface exception
+------------------------------------------------------------
+
+The render layer MAY draw on a 2D drawing context INJECTED by
+SurfaceHost.
+
+The engine MUST NOT create, acquire, or query a Canvas itself.
+
+The abstraction needed is:
+
+    WHO creates the surface
+    WHO provides the context
+    WHO owns DPR
+    WHO owns frame scheduling
+
+NOT a re-invention of the Canvas 2D API.
+
+------------------------------------------------------------
+27.3 Host injection mechanism (P5)
+------------------------------------------------------------
+
+EditorHost MUST enter the engine through constructor
+injection, NOT through a global registry:
+
+    const editor = new Editor(host, doc)
+
+The Editor is the composition root: it receives host,
+constructs the host-dependent services (FontManager,
+TextMeasurer), and threads host + measurer down to every
+subsystem — Draw → LayeredRenderer / LayoutEngine → LineBreaker,
+particles, interaction handlers, clipboard, performance, theme.
+
+There MUST NOT be a global mutable host slot. The former
+setEditorHost() / getEditorHost() / hasEditorHost() registry
+is retired.
+
+Host-dependent services (TextMeasurer, FontManager,
+FontFallback) are per-Editor instances owned by the Editor —
+no module-level `export const textMeasurer = ...` or
+`fontManager = ...` singletons.
+
+Module-level singletons that REMAIN are limited to
+host-independent pure config / registries:
+
+    scriptResolver         (Unicode script resolution)
+    particleRegistry       (particle factory table)
+    documentLoaderRegistry (format loader table)
+    modelUpgrader          (version migration chain)
+    locale                 (i18n message pack)
+
+These are side-effect-free at import (§29) and naturally
+app-wide shared; they do not block multi-Editor coexistence.
+
+============================================================
+28. BROWSER GLOBAL PROHIBITION
+============================================================
+
+Engine code MUST NOT directly reference:
+
+    document
+    window
+    navigator
+    location
+    localStorage
+    sessionStorage
+    indexedDB
+    ResizeObserver
+    MutationObserver
+    IntersectionObserver
+    requestAnimationFrame
+    requestIdleCallback
+    HTMLElement
+    HTMLCanvasElement
+    document.fonts / FontFaceSet
+
+IndexedDB types (IDBDatabase / IDBRequest / IDBTransaction /
+IDBObjectStore / IDBIndex) are likewise prohibited in engine code;
+persistence enters through StorageHost (PlatformHost.storage).
+
+Explicit exception:
+
+    CanvasRenderingContext2D (and OffscreenCanvasRenderingContext2D),
+    CanvasImageSource, and CanvasPattern may appear in engine code
+    ONLY as injected drawing-related types.
+
+    CanvasRenderingContext2D is the type of a drawing context
+    injected by SurfaceHost. CanvasImageSource / CanvasPattern are
+    produced by the injected context (createPattern) or the platform
+    (loadImage) and consumed by drawImage / fillStyle.
+
+    The engine MUST NOT create the canvas, call getContext(), or
+    construct these objects itself.
+
+    setTimeout / setInterval are platform-neutral timers
+    available in workers and are NOT prohibited here.
+
+============================================================
+29. SAFE IMPORT INVARIANT
+============================================================
+
+ENGINE MODULES MUST BE SAFE TO IMPORT IN NON-DOM RUNTIMES.
+
+Importing any engine/ module MUST NOT:
+
+    - access document / window / navigator
+    - create canvas or DOM elements
+    - attach event listeners
+    - start browser-only timers
+    - trigger any browser-side effect
+
+This includes module-level singletons and their constructors.
+
+Counter-example (FORBIDDEN):
+
+    export const textMeasurer = new TextMeasurer()
+    // TextMeasurer constructor creates a canvas at import time
+
+    // NOTE (P5): this singleton was removed — TextMeasurer is now
+    // a per-Editor instance constructed with an injected host/fontManager
+    // (see §27.3). The counter-example remains as a general illustration.
+
+A module-level side effect of this kind makes the engine
+impossible to import in a Web Worker / Node test runtime.
+
+Do NOT smuggle platform access through utility functions or
+module-level helpers:
+
+    // FORBIDDEN — looks compliant, actually a violation
+    class Foo {
+      private host?: EditorHost
+      doSomething() {
+        const width = window.innerWidth   // ← hidden platform access
+      }
+    }
+
+============================================================
+30. WORK PRIORITY (non-normative guidance)
+============================================================
+
+This section is guidance, not architectural invariant.
+
+P0 — architecture boundaries (do BEFORE directory refactors):
+    - Engine browser-global audit → Host abstraction
+    - Engine / UI dependency rule
+    - State ownership rule
+    - Command mutation rule
+    - Host abstraction contract
+
+P1 — correctness & boundaries:
+    - Host P0/P1 implementation (TextHost first)
+    - EventBus audit (engine/EventBus vs interaction/EventBus)
+    - Editor.ts God Object audit
+    - Collaboration / Yjs boundary
+    - Document version loading / migration (ModelUpgrader)
+
+P2 — internal organization (after boundaries are stable):
+    - Feature isolation
+    - Layout internal organization
+    - document/ internal organization
+    - state/geometry organization
+
+P3 — cosmetic cleanup:
+    - directory cosmetics
+    - i18n
+    - security
+    - test directory normalization
+
+Principle:
+
+    "Host boundary" ranks above "directory cosmetics".
+
+    "Feature actually works" ranks above "directory looks clean".

@@ -12,8 +12,10 @@ import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 import { getFlatPageItems } from '../layout/core/SLIF'
 import type { EventBus } from '../interaction/EventBus'
 import type { EditorRuntimeState } from '../state/EditorRuntimeState'
+import type { EditorHost } from '../host/EditorHost'
 import { CoordinateSystem } from '../state/CoordinateSystem'
 import { LayoutEngine } from '../layout/core/LayoutEngine'
+import type { TextMeasurer } from '../layout/text/TextMeasurer'
 import { LayeredRenderer, type WatermarkConfig } from './LayeredRenderer'
 import { HitTestIndex } from './HitTestIndex'
 import { MemoryManager } from '../layout/viewport/MemoryManager'
@@ -40,7 +42,8 @@ interface CaretPos { x: number; y: number; h: number }
 const DEFAULT_PAGE_VERTICAL_GAP = 20
 
 export class Draw {
-  private container: HTMLElement
+  private host: EditorHost
+  private measurer: TextMeasurer
   private coordSystem: CoordinateSystem
   private layoutEngine: LayoutEngine
   renderer: LayeredRenderer
@@ -58,7 +61,7 @@ export class Draw {
   // 不可见字符显示 (TASK-475)
   private _showInvisible = false
 
-  // 图片缓存: URL → HTMLImageElement (容量 50, LRU 淘汰)
+  // 图片缓存: URL → CanvasImageSource (容量 50, LRU 淘汰)
   private imageCache = new MemoryManager<string>(50)
 
   // rAF 合并渲染 (TASK-484): 同一帧多次 render() 调用仅执行最后一次
@@ -71,18 +74,20 @@ export class Draw {
   cellSelection: { tableId: string; startRow: number; startCol: number; endRow: number; endCol: number } | null = null
 
   constructor(
-    container: HTMLElement,
+    host: EditorHost,
     eventBus: EventBus,
+    measurer: TextMeasurer,
     doc?: DocumentTree,
   ) {
-    this.container = container
+    this.host = host
+    this.measurer = measurer
     this.eventBus = eventBus
 
-    const dpr = window.devicePixelRatio || 1
+    const dpr = this.host.surface.devicePixelRatio() || 1
     this.coordSystem = new CoordinateSystem(dpr)
-    this.layoutEngine = new LayoutEngine(eventBus)
-    this.renderer = new LayeredRenderer(container, this.coordSystem)
-    this.hitTestIndex = new HitTestIndex()
+    this.layoutEngine = new LayoutEngine(eventBus, measurer)
+    this.renderer = new LayeredRenderer(this.host, this.coordSystem)
+    this.hitTestIndex = new HitTestIndex(this.measurer)
 
     // 默认分页渲染间隙 (仅视口偏移, 不影响存储坐标)
     // 20px ≈ 标准文档"分页符留白" — 视觉上明确分隔相邻页面
@@ -102,6 +107,7 @@ export class Draw {
       particleRegistry.register(createImageParticle(
         (nodeId) => this.resolveImageUrl({ nodeId }),
         () => { if (this.pool && this._state) this.scheduleRender(this.pool, this._state) },
+        this.host,
       ))
     }
     // 注册控件/SmartText 粒子渲染器
@@ -214,7 +220,7 @@ export class Draw {
               size: item.size || 16,
               bold: item.bold,
               italic: item.italic,
-            })
+            }, this.measurer)
             return {
               x: item.x + cumWidth,
               y: pageY + yOffset + item.y,
@@ -314,7 +320,7 @@ export class Draw {
    */
   scheduleRender(pool?: NodePool, runtimeState?: EditorRuntimeState): void {
     if (this._rafId !== null) return  // 已有待执行的渲染帧
-    this._rafId = requestAnimationFrame(() => {
+    this._rafId = this.host.surface.requestFrame(() => {
       this._rafId = null
       this.render(pool, runtimeState)
     })
@@ -323,8 +329,9 @@ export class Draw {
   render(pool?: NodePool, runtimeState?: EditorRuntimeState): void {
     if (this.pages.length === 0) return
 
-    const viewportW = this.container.clientWidth
-    const viewportH = this.container.clientHeight
+    const viewport = this.host.viewport.size()
+    const viewportW = viewport.width
+    const viewportH = viewport.height
     const dpr = this.coordSystem.transform.dpr
     const scale = this.coordSystem.transform.scale
     const pageHeight = this.pages[0]?.height || 1123
@@ -641,9 +648,9 @@ export class Draw {
         }
 
         // 逐字符累积宽度: 正确区分半角/全角字符像素宽度
-        const dx = cumulativeWidthUpTo(item.text || '', localStart, fontCfg)
+        const dx = cumulativeWidthUpTo(item.text || '', localStart, fontCfg, this.measurer)
         const dw = tLen > 0
-          ? cumulativeWidthUpTo(item.text || '', localEnd, fontCfg) - dx
+          ? cumulativeWidthUpTo(item.text || '', localEnd, fontCfg, this.measurer) - dx
           : item.ascent + item.descent  // 空段落用高度作为最小宽度
 
         ictx.fillRect(item.x + dx, spY + item.y, dw, item.ascent + item.descent)
@@ -768,7 +775,7 @@ export class Draw {
     if (cursor.paragraphPath.length === 0) return null
     if (this.pages.length === 0) return null
 
-    const viewportW = this.container.clientWidth
+    const viewportW = this.host.viewport.size().width
     const scale = this.coordSystem.transform.scale
     const pageWidth = this.pages[0]?.width || 794
     const visiblePageW = pageWidth * scale
@@ -779,8 +786,8 @@ export class Draw {
     const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, pageVerticalGap)
     if (!caret) return null
 
-    const canvas = this.renderer.getInteractCanvas()
-    const canvasRect = canvas?.getBoundingClientRect() ?? this.container.getBoundingClientRect()
+    const surface = this.renderer.getInteractSurface()
+    const canvasRect = surface?.getBoundingClientRect() ?? { left: 0, top: 0 }
 
     return {
       left: canvasRect.left + caret.x * scale + offsetX,
@@ -809,8 +816,9 @@ export class Draw {
     this.layoutEngine.setPageVerticalGap(gap)
     if (changed) {
       // 触发 spacer 高度 + canvas 高度同步, 并重绘以应用新偏移
-      const viewportW = this.container.clientWidth
-      const viewportH = this.container.clientHeight
+      const viewport = this.host.viewport.size()
+      const viewportW = viewport.width
+      const viewportH = viewport.height
       const dpr = this.coordSystem.transform.dpr
       if (this.pages.length > 0) {
         this.renderer.syncSizes(viewportW, viewportH, dpr, this.pages)
@@ -872,21 +880,19 @@ export class Draw {
     x: number, y: number,
     width: number, height: number,
   ): void {
-    let img = this.imageCache.get<HTMLImageElement>(url)
-    if (img) {
-      ctx.drawImage(img, x, y, width, height)
+    const cached = this.imageCache.get<CanvasImageSource>(url)
+    if (cached) {
+      ctx.drawImage(cached, x, y, width, height)
       return
     }
     // 异步加载首帧, 后续帧从缓存读取
-    img = new Image()
-    img.src = url
-    img.onload = () => {
-      this.imageCache.set(url, img)
+    this.host.surface.loadImage(url).then((img) => {
+      this.imageCache.set(url, img.source)
       // 触发重绘以显示图片
       if (this.pool && this._state) {
         this.scheduleRender(this.pool, this._state)
       }
-    }
+    })
     // 加载中绘制占位矩形
     ctx.save()
     ctx.fillStyle = '#E5E7EB'

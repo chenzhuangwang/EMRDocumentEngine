@@ -5,6 +5,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { PerformanceMetrics } from '../PerformanceMetrics'
+import { testHost } from './helpers'
 import {
   safeRenderParticle, safeLoadDocument, safeAsync,
   EditorErrorCode, setErrorReporter,
@@ -17,7 +18,7 @@ describe('PerformanceMetrics', () => {
   let pm: PerformanceMetrics
 
   beforeEach(() => {
-    pm = new PerformanceMetrics()
+    pm = new PerformanceMetrics(testHost)
     pm.clear()
   })
 

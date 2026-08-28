@@ -2,17 +2,17 @@
 // FontManager — 字体管理器单例 (架构 §3.1, v5.0 / TASK-401)
 //
 // 职责:
-//   - 嵌入式字体注册 (FontFace API)
-//   - 系统字体查询 (queryLocalFonts)
+//   - 嵌入式字体注册 / 系统字体查询 / 字体就绪 (经 FontHost 委托, 契约 §27)
 //   - 字体变体索引 (family+weight+style → FontVariant)
-//   - 字体度量提取 (Canvas 启发式 + 预留 opentype.js 精确解析)
+//   - 字体度量提取 (经 TextHost.getFontMetrics 委托)
 //   - ensureReady: 等待字体就绪 (防止布局抖动)
 //
-// 依赖: FontMetrics 接口定义在 ./FontMetrics.ts
+// 依赖: FontMetrics 接口定义在 ./FontMetrics.ts; DOM 经 Host 注入
 // ================================================================
 
 import type { FontMetrics } from './FontMetrics'
 import { scriptResolver } from './ScriptResolver'
+import type { EditorHost } from '../../host/EditorHost'
 
 // ---- FontDescriptor ----
 
@@ -33,7 +33,7 @@ export interface FontDescriptor {
 
 export interface FontVariant {
   descriptor: FontDescriptor
-  /** 是否已加载完成 (FontFace.loaded) */
+  /** 是否已加载完成 */
   loaded: boolean
   /** 字体度量数据 (加载后填充, upem=1000) */
   metrics: FontMetrics | null
@@ -56,20 +56,12 @@ function candidateWeights(target: number): number[] {
 // ---- FontManager ----
 
 export class FontManager {
+  private host: EditorHost
   private variants = new Map<string, FontVariant>()
-  private loadingPromises = new Map<string, Promise<FontFace[]>>()
   private systemFonts: string[] | null = null
 
-  /** 度量提取用的离屏 Canvas (复用) */
-  private measureCanvas: HTMLCanvasElement | null = null
-  private measureCtx: CanvasRenderingContext2D | null = null
-
-  private getMeasureContext(): CanvasRenderingContext2D {
-    if (!this.measureCanvas) {
-      this.measureCanvas = document.createElement('canvas')
-      this.measureCtx = this.measureCanvas.getContext('2d')!
-    }
-    return this.measureCtx!
+  constructor(host: EditorHost) {
+    this.host = host
   }
 
   // ================================================================
@@ -77,30 +69,22 @@ export class FontManager {
   // ================================================================
 
   /**
-   * 注册嵌入式字体 (CSS @font-face 等价)
-   * 使用 FontFace API 加载字体文件 → 添加到 document.fonts
+   * 注册字体 (经 FontHost.loadFont / TextHost.getFontMetrics 委托, 契约 §27)
    */
   async registerFont(descriptor: FontDescriptor): Promise<void> {
     const key = fontKey(descriptor)
     if (this.variants.has(key)) return
 
     try {
-      if (descriptor.source === 'url' && descriptor.url) {
-        // 嵌入式字体: FontFace API 加载
-        const fontFace = new FontFace(descriptor.family, `url(${descriptor.url})`, {
-          weight: String(descriptor.weight),
-          style: descriptor.style,
-        })
-        await fontFace.load()
-        document.fonts.add(fontFace)
-      }
-      // system 字体: 无需加载, 直接从 document.fonts.check 验证
+      const host = this.host
+      // 嵌入式字体通过 FontHost 加载; system 字体无需处理
+      await host.font.loadFont(descriptor)
 
       const loaded = descriptor.source === 'system'
-        ? document.fonts.check(`${descriptor.style} ${descriptor.weight} 16px "${descriptor.family}"`)
+        ? host.font.isFontAvailable(descriptor.family, descriptor.weight, descriptor.style)
         : true
 
-      const metrics = this.extractMetricsCanvas(descriptor.family, descriptor.weight, descriptor.style)
+      const metrics = host.text.getFontMetrics(descriptor.family, descriptor.weight, descriptor.style)
 
       this.variants.set(key, {
         descriptor,
@@ -173,28 +157,7 @@ export class FontManager {
   /** 查询系统可用字体列表 */
   async querySystemFonts(): Promise<string[]> {
     if (this.systemFonts) return this.systemFonts
-
-    // Chrome 103+ 支持 queryLocalFonts API
-    if ('queryLocalFonts' in window) {
-      try {
-        const fonts = await (window as unknown as Record<string, unknown>).queryLocalFonts as
-          (() => Promise<Array<{ family: string }>>) | undefined
-        if (fonts) {
-          const result = await fonts()
-          this.systemFonts = [...new Set(result.map(f => f.family))]
-          return this.systemFonts
-        }
-      } catch {
-        // 权限拒绝, 使用降级列表
-      }
-    }
-
-    // 降级: 常见中文字体列表
-    this.systemFonts = [
-      'SimSun', 'SimHei', 'Microsoft YaHei', 'FangSong', 'KaiTi',
-      'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC',
-      'Arial', 'Times New Roman', 'Courier New',
-    ]
+    this.systemFonts = await this.host.font.querySystemFonts()
     return this.systemFonts
   }
 
@@ -228,11 +191,11 @@ export class FontManager {
 
   /**
    * 确保指定字体已加载并可用
-   * 未加载时等待 document.fonts.ready
+   * 未加载时等待字体就绪 (经 FontHost.onReady 委托)
    */
   async ensureReady(families: string[]): Promise<FontVariant[]> {
-    // 等待所有 document.fonts 就绪
-    await document.fonts.ready
+    // 等待所有字体就绪
+    await this.host.font.onReady()
 
     const results: FontVariant[] = []
     for (const family of families) {
@@ -240,7 +203,7 @@ export class FontManager {
       if (variant) {
         // 更新 loaded 状态
         if (!variant.loaded) {
-          variant.loaded = document.fonts.check(`normal 400 16px "${family}"`)
+          variant.loaded = this.host.font.isFontAvailable(family, 400, 'normal')
         }
         results.push(variant)
       }
@@ -253,68 +216,12 @@ export class FontManager {
    * 用于: Editor 构造完成后 → 确保核心字体可用 → 开始首帧渲染
    */
   async waitForAllReady(): Promise<void> {
-    await document.fonts.ready
+    await this.host.font.onReady()
     for (const [, variant] of this.variants) {
       if (!variant.loaded) {
         const d = variant.descriptor
-        variant.loaded = document.fonts.check(`${d.style} ${d.weight} 16px "${d.family}"`)
+        variant.loaded = this.host.font.isFontAvailable(d.family, d.weight, d.style)
       }
-    }
-  }
-
-  // ================================================================
-  // 度量提取 (Canvas 启发式 — MVP; 预留 opentype.js 精确解析)
-  // ================================================================
-
-  /**
-   * 从 Canvas 提取字体度量 (启发式, upem=1000 归一化)
-   *
-   * TODO (TASK-403 L2): 集成 opentype.js 解析 hhea/OS2 表,
-   *   替换 Canvas 启发式, 实现跨平台一致度量
-   */
-  private extractMetricsCanvas(family: string, weight: number, style: string): FontMetrics {
-    const ctx = this.getMeasureContext()
-    const fontSize = 100 // 使用 100px 减少浮点误差
-    const fontStr = `${style} ${weight} ${fontSize}px "${family}", serif`
-
-    ctx.font = fontStr
-
-    // 测量全角/半角字符宽度
-    const fullWidth = ctx.measureText('中').width / fontSize * 1000
-    const halfWidth = ctx.measureText('a').width / fontSize * 1000
-
-    // ascent/descent 通过 textBaseline 推算
-    // TextMetrics 不直接暴露 ascent/descent (仅 Chrome 有实验性属性)
-    const tm = ctx.measureText('M')
-    const extended = tm as TextMetrics & {
-      fontBoundingBoxAscent?: number
-      fontBoundingBoxDescent?: number
-      actualBoundingBoxAscent?: number
-      actualBoundingBoxDescent?: number
-    }
-
-    // 优先使用 fontBoundingBox (Chrome 99+), 降级使用 actualBoundingBox
-    let ascent = extended.fontBoundingBoxAscent ?? extended.actualBoundingBoxAscent ?? fontSize * 0.8
-    let descent = extended.fontBoundingBoxDescent ?? extended.actualBoundingBoxDescent ?? fontSize * 0.2
-
-    // 归一化到 upem=1000
-    ascent = (ascent / fontSize) * 1000
-    descent = (descent / fontSize) * 1000
-
-    // lineGap: 通过行高反推
-    // 在不支持 fontBoundingBox 的浏览器, 使用启发式估算
-    const lineGap = extended.fontBoundingBoxAscent !== undefined
-      ? 0 // fontBoundingBox 已经包含 line gap
-      : 200 // 默认启发式
-
-    return {
-      ascent: Math.round(ascent),
-      descent: Math.round(-descent), // 存储为负值, 与 CSS 约定一致
-      lineGap,
-      capHeight: Math.round(fullWidth * 0.662), // 大写字母约 66.2% 全角
-      xHeight: Math.round(fullWidth * 0.458),   // x 高度约 45.8% 全角
-      fullWidthAdvance: Math.round(fullWidth),
-      halfWidthAdvance: Math.round(halfWidth),
     }
   }
 
@@ -333,13 +240,6 @@ export class FontManager {
 
   dispose(): void {
     this.variants.clear()
-    this.loadingPromises.clear()
     this.systemFonts = null
-    this.measureCanvas = null
-    this.measureCtx = null
   }
 }
-
-// ---- 全局单例 ----
-
-export const fontManager = new FontManager()

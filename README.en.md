@@ -16,6 +16,7 @@ The EMR Document Editor Engine is a professional Electronic Medical Record (EMR)
 - **Version Management**: Complete historical version records, supporting version rollback.
 - **Data Validation**: Supports data validation for form elements and required field checks.
 - **Audit Trail**: Detailed recording of document operation logs to meet compliance requirements.
+- **Framework/Platform-Agnostic Runtime**: The editor engine decouples the host environment via the `EditorHost` capability interface (text/font/surface/viewport/input/platform), allowing it to be embedded in any host such as React, Vue, Electron, or Web Workers — with zero browser globals in the engine source.
 
 ## 🛠 Tech Stack
 
@@ -78,6 +79,7 @@ EMRDocumentEngine/
 │   │   │   ├── FindReplaceEngine.ts   # Find & Replace
 │   │   │   ├── command/               # Command System (undo/redo)
 │   │   │   ├── document/              # Document Model
+│   │   │   ├── host/                  # Host Capability Interface (EditorHost six-tuple)
 │   │   │   ├── render/                # Rendering Module
 │   │   │   ├── layout/                # Layout Engine
 │   │   │   ├── interaction/           # Interaction Handling
@@ -88,12 +90,12 @@ EMRDocumentEngine/
 │   │   │   ├── loaders/               # Loaders
 │   │   │   ├── i18n/                  # Internationalization
 │   │   │   └── __tests__/             # Engine Unit Tests
+│   │   ├── platform/          # Host Platform Implementation (browser capability injection)
+│   │   │   └── dom/           #   DOM Host (Canvas/clipboard/IndexedDB etc.)
 │   │   ├── pages/             # Page Components
 │   │   ├── services/          # API Services
 │   │   ├── store/             # Global State (Zustand)
-│   │   ├── hooks/             # Custom Hooks
 │   │   ├── lib/               # Utility Functions
-│   │   ├── types/             # Type Definitions
 │   │   ├── App.tsx
 │   │   └── main.tsx
 │   ├── index.html
@@ -218,6 +220,7 @@ The editor engine uses a modular design. Core components include:
 - **TextMeasurer**: Text measurer, calculates text width and height.
 - **HistoryManager**: History manager, supports undo/redo.
 - **EventBus**: Event bus, handles inter-component communication.
+- **EditorHost**: Platform capability boundary (six-tuple: `text/font/surface/viewport/input/platform`); browser capabilities are injected through it, making the engine framework- and platform-agnostic.
 
 ### Backend Service Layer
 

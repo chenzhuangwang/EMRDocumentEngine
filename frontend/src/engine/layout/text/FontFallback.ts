@@ -7,7 +7,10 @@
 //   - 降级链: 主字体 → CJK 降级 → Latin 降级 → 通用 fallback
 //
 // 使用 document.fonts.check() (FontFaceSet API) 做缺字检测
+// (契约 §27: 经 FontHost.isGlyphAvailable 委托到平台实现)
 // ================================================================
+
+import type { EditorHost } from '../../host/EditorHost'
 
 // ---- FontRun — 使用同一字体的连续文本段 ----
 
@@ -86,31 +89,31 @@ export const LATIN_FALLBACK_CHAIN: FallbackChainConfig = {
 // ---- FontFallback 引擎 ----
 
 export class FontFallback {
+  private host: EditorHost
+
+  constructor(host: EditorHost) {
+    this.host = host
+  }
+
   /**
    * 检测文本中在指定字体下缺少字形的字符
    *
-   * 使用 document.fonts.check(font, char) API:
-   *   - 浏览器原生 FontFaceSet 检查
+   * 经 FontHost.isGlyphAvailable 委托 (契约 §27):
+   *   - 浏览器原生 FontFaceSet 检查 (在平台实现内)
    *   - 逐个字符检查 (去重后)
    */
   detectMissingGlyphs(text: string, family: string): Set<string> {
     const missing = new Set<string>()
+    const fontHost = this.host.font
 
-    // jsdom / 无 FontFaceSet 环境: 无法检测, 视为全部存在 (降级为默认字体渲染)
-    if (!document.fonts || typeof document.fonts.check !== 'function') {
-      return missing
-    }
-
+    // jsdom / 无 FontFaceSet 环境由 FontHost 内部降级: 视为全部存在
     const uniqueChars = new Set([...text])
-
-    // 构建字体描述字符串
-    const fontSpec = `12px "${family}"`
 
     for (const char of uniqueChars) {
       // 空格/换行/制表符等空白字符总是"存在"
       if (char.trim() === '' || char === '​') continue
 
-      if (!document.fonts.check(fontSpec, char)) {
+      if (!fontHost.isGlyphAvailable(family, char)) {
         missing.add(char)
       }
     }
@@ -205,7 +208,7 @@ export class FontFallback {
    */
   isCharAvailable(char: string, family: string): boolean {
     if (char.trim() === '') return true
-    return document.fonts.check(`12px "${family}"`, char)
+    return this.host.font.isGlyphAvailable(family, char)
   }
 
   /**

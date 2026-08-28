@@ -6,6 +6,7 @@ import { serializeDocument } from './document/io/DocumentSerializer'
 import { loadDocumentFromObject } from './document/io/DocumentLoader'
 import type { FieldType } from './document/core/DocumentModel'
 import { Draw } from './render/Draw'
+import type { EditorHost } from './host/EditorHost'
 import { AutoSaveManager } from './AutoSaveManager'
 import { AutoCorrectEngine } from './AutoCorrectEngine'
 import { PerformanceMetrics } from './PerformanceMetrics'
@@ -32,6 +33,8 @@ import type { EditorRuntimeState } from './state/EditorRuntimeState'
 import { FindReplaceEngine } from './FindReplaceEngine'
 import type { FindOptions, MatchResult } from './FindReplaceEngine'
 import { cumulativeCharWidths, findCharIndexAtX } from './layout/text/CharWidthHelper'
+import { FontManager } from './layout/text/FontManager'
+import { TextMeasurer } from './layout/text/TextMeasurer'
 import { resolveCellPosition } from './state/CaretScope'
 import { screenToDoc, findPageByDocY, pageCenteringOffset } from './layout/table/TableCoordUtil'
 import { insertRow, deleteRow, insertColumn, deleteColumn, getCellGridPosition, buildCellGrid, normalizeRange } from './document/table/TableOps'
@@ -48,7 +51,8 @@ import { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
 
 /** Editor: 引擎编排器 (架构 §3, v20.34) */
 export class Editor {
-  private container: HTMLElement
+  private detachContainer: () => void
+  private detachGlobal: () => void
   private doc: DocumentTree
   private pool: NodePool
   private draw: Draw
@@ -64,6 +68,9 @@ export class Editor {
   private autoCorrect: AutoCorrectEngine
   private perfMetrics: PerformanceMetrics
   private pluginManager: PluginManager
+  private readonly host: EditorHost
+  private readonly fontManager: FontManager
+  private readonly measurer: TextMeasurer
   private _formatPainterStyle: Record<string, unknown> | null = null
   // 表格单元格选择
   private _selectedTableId: string | null = null
@@ -76,8 +83,10 @@ export class Editor {
   private _onWindowFocus: () => void
   private _onVisibilityChange: () => void
 
-  constructor(container: HTMLElement, doc?: DocumentTree) {
-    this.container = container
+  constructor(host: EditorHost, doc?: DocumentTree) {
+    this.host = host
+    this.fontManager = new FontManager(host)
+    this.measurer = new TextMeasurer(host, this.fontManager)
     // 创建默认空文档
     if (!doc) {
       const d = createDocument('未命名文档')
@@ -95,16 +104,16 @@ export class Editor {
     }
 
     this.eventBus = new EventBus()
-    this.draw = new Draw(container, this.eventBus, this.doc)
+    this.draw = new Draw(host, this.eventBus, this.measurer, this.doc)
     this.store = new EditorStore(this.doc)
-    this.inputComposer = new InputComposer(container)
-    this.keyboardHandler = new KeyboardHandler(this, container)
-    this.mouseHandler = new MouseHandler(this, container)
-    this.clipboard = new ClipboardManager()
+    this.inputComposer = new InputComposer(host)
+    this.keyboardHandler = new KeyboardHandler(this, host)
+    this.mouseHandler = new MouseHandler(this, host, this.measurer)
+    this.clipboard = new ClipboardManager(host.platform.clipboard)
     this.findReplace = new FindReplaceEngine()
-    this.autoSave = new AutoSaveManager(doc.id, doc.title || '未命名文档', () => this.getSerializedDocument())
+    this.autoSave = new AutoSaveManager(doc.id, doc.title || '未命名文档', () => this.getSerializedDocument(), host.platform.storage)
     this.autoCorrect = new AutoCorrectEngine()
-    this.perfMetrics = new PerformanceMetrics()
+    this.perfMetrics = new PerformanceMetrics(host)
     this.pluginManager = new PluginManager()
     // 自动保存: 保存状态同步到 EditorStore
     this.autoSave.onSave((type) => {
@@ -112,8 +121,8 @@ export class Editor {
       else if (type === 'saved') this.store.setSaveStatus('saved')
       else if (type === 'error') this.store.setSaveStatus('error')
     })
-    // 初始化 IndexedDB (异步, 不阻塞构造函数)
-    this.autoSave.init().catch(err => console.warn('[AutoSave] IndexedDB init failed:', err))
+    // 初始化持久化存储 (异步, 不阻塞构造函数)
+    this.autoSave.init().catch(err => console.warn('[AutoSave] storage init failed:', err))
     this.commandManager = new CommandManager(
       this.eventBus,
       () => this.doc,
@@ -225,19 +234,22 @@ export class Editor {
       if (this.mouseHandler.wasDragging()) return
       this.handleClick(e)
     }
-    container.addEventListener('click', this._clickToFocus)
+    // 容器事件: click (聚焦+命中) + mouseup (格式刷, 优于 click 因先触发)
+    this.detachContainer = this.host.input.attachContainer({
+      click: this._clickToFocus,
+      mouseup: this._onMouseUp,
+    })
 
     // 外部剪贴板同步: 用户切到外部应用复制后回到编辑器,
     // 焦点/可见性变化时读取系统剪贴板, 覆盖内存里的旧数据。
     this._onWindowFocus = () => { this.syncExternalClipboard() }
     this._onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') this.syncExternalClipboard()
+      if (this.host.input.isVisible()) this.syncExternalClipboard()
     }
-    window.addEventListener('focus', this._onWindowFocus)
-    document.addEventListener('visibilitychange', this._onVisibilityChange)
-
-    // 格式刷 mouseup: 拖拽选区预览后松手应用格式 (优于 click 因为 mouseup 先触发)
-    container.addEventListener('mouseup', this._onMouseUp)
+    this.detachGlobal = this.host.input.attachGlobal({
+      focus: this._onWindowFocus,
+      visibilitychange: this._onVisibilityChange,
+    })
 
     this.notifyListeners('ready')
   }
@@ -333,7 +345,7 @@ export class Editor {
       return
     }
 
-    const rect = this.container.getBoundingClientRect()
+    const rect = this.host.viewport.bounds()
     const { scale, scrollY } = this.draw.getCoordinateSystem().transform
 
     // 屏幕坐标 → 文档坐标 (统一通过 TableCoordUtil, v20.35 修复: 之前缺少 /scale)
@@ -348,7 +360,7 @@ export class Editor {
     const page = pages[pageIndex]
     if (!page) return
 
-    const viewportW = this.container.clientWidth
+    const viewportW = this.host.viewport.size().width
     const offsetX = pageCenteringOffset(page.width, viewportW, scale)
     const docX = docX0 - offsetX / scale
     const docY = localY
@@ -448,7 +460,7 @@ export class Editor {
           const cumWidths = cumulativeCharWidths(itemText, {
             font: item.font || 'SimSun', size: item.size || 16,
             bold: item.bold, italic: item.italic,
-          })
+          }, this.measurer)
           const charIdx = findCharIndexAtX(relativeX, cumWidths, itemText.length || 0)
           return Math.max(0, accumulated + charIdx)
         }
@@ -1297,7 +1309,9 @@ export class Editor {
   /** 从系统剪贴板读取纯文本 → 构造 ClipboardData → InsertNodesCommand */
   private async pasteFromSystem(): Promise<void> {
     try {
-      const text = await navigator.clipboard?.readText()
+      const clipboard = this.host.platform.clipboard
+      if (!clipboard.canRead()) return
+      const text = await clipboard.readText()
       if (text) {
         this.clipboard.setPlainText(text)
         const data = this.clipboard.paste()
@@ -1323,8 +1337,9 @@ export class Editor {
    */
   private syncExternalClipboard(): void {
     try {
-      if (!navigator.clipboard?.readText) return
-      navigator.clipboard.readText().then((text) => {
+      const clipboard = this.host.platform.clipboard
+      if (!clipboard.canRead()) return
+      clipboard.readText().then((text) => {
         if (text && text !== this.clipboard.getPlainText()) {
           this.clipboard.setPlainText(text)
           console.debug('[Clipboard] external clipboard synced from system')
@@ -1573,10 +1588,10 @@ export class Editor {
       const style = this.copyFormatPainterStyle()
       if (!style) return // 无样式可复制, 不激活
       this._formatPainterStyle = style
-      this.container.style.cursor = 'copy'
+      this.host.input.setCursor('copy')
     } else {
       this._formatPainterStyle = null
-      this.container.style.cursor = ''
+      this.host.input.setCursor('')
     }
     this.store.setFormatPainterActive(active)
   }
@@ -1588,7 +1603,7 @@ export class Editor {
   private handleFormatPainterApply(e: MouseEvent): void {
     if (!this._formatPainterStyle) return
 
-    const rect = this.container.getBoundingClientRect()
+    const rect = this.host.viewport.bounds()
     const { scale, scrollY } = this.draw.getCoordinateSystem().transform
 
     const { x: docX0, y: docY0 } = screenToDoc(e.clientX, e.clientY, scale, scrollY, rect)
@@ -1602,7 +1617,7 @@ export class Editor {
     const page = pages[pageIndex]
     if (!page) { this.setFormatPainterActive(false); return }
 
-    const offsetX = pageCenteringOffset(page.width, this.container.clientWidth, scale)
+    const offsetX = pageCenteringOffset(page.width, this.host.viewport.size().width, scale)
     const docX = docX0 - offsetX / scale
 
     const nodeId = this.draw.getHitTestIndex().hitTest(docX, localY, pageIndex)
@@ -2035,14 +2050,12 @@ export class Editor {
   preparePrintPages(): string[] {
     const pages = this.draw.getPages()
     const result: string[] = []
-    const dpr = window.devicePixelRatio || 1
+    const surface = this.host.surface
+    const dpr = surface.devicePixelRatio() || 1
 
     for (const page of pages) {
-      const canvas = document.createElement('canvas')
-      canvas.width = page.width * dpr
-      canvas.height = page.height * dpr
-      const pctx = canvas.getContext('2d')
-      if (!pctx) continue
+      const offscreen = surface.createOffscreen(page.width * dpr, page.height * dpr)
+      const pctx = offscreen.ctx
 
       pctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       pctx.fillStyle = '#FFFFFF'
@@ -2050,7 +2063,7 @@ export class Editor {
 
       // 渲染页面内容 (复用现有渲染管线)
       this.draw.renderPageToContext(pctx, page, page.width)
-      result.push(canvas.toDataURL('image/png'))
+      result.push(offscreen.toDataURL('image/png'))
     }
     return result
   }
@@ -2100,10 +2113,8 @@ export class Editor {
 
   destroy(): void {
     this.listeners = []
-    this.container.removeEventListener('click', this._clickToFocus)
-    this.container.removeEventListener('mouseup', this._onMouseUp)
-    window.removeEventListener('focus', this._onWindowFocus)
-    document.removeEventListener('visibilitychange', this._onVisibilityChange)
+    this.detachContainer()
+    this.detachGlobal()
     this.keyboardHandler.destroy()
     this.mouseHandler.destroy()
     this.inputComposer.destroy()
@@ -2114,6 +2125,11 @@ export class Editor {
   /** 获取 AutoSaveManager (供页面卸载时立即保存) */
   getAutoSave(): AutoSaveManager { return this.autoSave }
   getPerfMetrics(): PerformanceMetrics { return this.perfMetrics }
+
+  /** 获取字体管理器 (字体注册等前向兼容访问) */
+  getFontManager(): FontManager { return this.fontManager }
+  /** 获取文本测量器 (测量/命中测试前向兼容访问) */
+  getTextMeasurer(): TextMeasurer { return this.measurer }
 
   on(event: EditorEventType, cb: (...args: unknown[]) => void): void {
     this.listeners.push({ event, callback: cb })

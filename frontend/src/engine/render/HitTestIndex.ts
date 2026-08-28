@@ -15,6 +15,7 @@ import type { SLIFItem, SLIFPage } from '../layout/core/SLIF'
 import type { Paragraph } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import { cumulativeCharWidths, findCharIndexAtX } from '../layout/text/CharWidthHelper'
+import type { TextMeasurer } from '../layout/text/TextMeasurer'
 import { calcUniformColWidths } from '../layout/table/TableCoordUtil'
 import { buildMergeMatrix } from '../document/table/MergeMatrix'
 
@@ -34,7 +35,12 @@ export interface TableHitResult {
 }
 
 export class HitTestIndex {
+  private measurer: TextMeasurer
   private buckets = new Map<number, HitEntry[]>()
+
+  constructor(measurer: TextMeasurer) {
+    this.measurer = measurer
+  }
 
   /**
    * 重建全部页面索引 — Phase 2: 仅索引顶级块
@@ -166,7 +172,7 @@ export class HitTestIndex {
    * @param docId      文档 ID (用于构造 paraPath)
    * @returns 命中结果 (paragraphPath + offset) 或 null
    */
-  static hitTestTable(
+  hitTestTable(
     tableItem: SLIFItem,
     docX: number,
     docY: number,
@@ -268,7 +274,7 @@ export class HitTestIndex {
           const cumWidths = cumulativeCharWidths(ciText, {
             font: ci.font || 'SimSun', size: ci.size || 16,
             bold: ci.bold, italic: ci.italic,
-          })
+          }, this.measurer)
           const charIdx = findCharIndexAtX(relativeX, cumWidths, ciText.length || 0)
           if (paraId) {
             return { paraPath: [docId, paraId], offset: Math.max(0, accumulated + charIdx) }
