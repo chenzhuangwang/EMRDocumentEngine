@@ -12,6 +12,25 @@ AI MUST preserve these architectural boundaries unless the user
 explicitly authorizes an architectural change.
 
 ============================================================
+CONTRACT STATUS
+============================================================
+
+This document defines architectural invariants and forbidden
+states. It is NOT a migration plan, task list, or refactoring
+roadmap. A rule describing a target architecture does not imply
+that the corresponding refactor must be performed immediately.
+
+AI MUST distinguish between:
+
+1. MUST NOT  — prohibited architecture (now forbidden)
+2. MUST      — required invariant (now binding)
+3. SHOULD    — preferred design (guidance)
+4. TARGET    — intended future location/state (later)
+
+Unless explicitly requested by the user, AI MUST NOT perform
+large refactors merely to satisfy TARGET placement.
+
+============================================================
 0. CORE PRINCIPLE
 ============================================================
 
@@ -319,6 +338,54 @@ The purpose is to preserve:
 - change tracking
 - consistency
 
+------------------------------------------------------------
+6.1 NodePool choke point (enforced at the type level)
+------------------------------------------------------------
+
+The choke point MUST be enforced by the type system, not by a
+comment or a naming convention.
+
+    `readonly nodes = new Map(...)` is NOT a choke point:
+    `readonly` locks the reference, not the Map. External code can
+    still call pool.nodes.get(x).children.push(...) or
+    pool.nodes.set(...) without any compiler error.
+
+NodePool MUST NOT expose a mutable Map of nodes. External code
+MUST NOT obtain a mutable reference to the internal node
+collection.
+
+The allowed surface is explicit:
+
+    Read:     getNode(id) / hasNode(id) / traversePool(cb)
+    Mutate:   addNode(node)         // registration, throws on dup id
+              removeNode(id)
+              updateNode(node)      // throws on id/type change
+              insertChild / removeChild / moveChild / detachChild
+              removeOrphanLeaf
+
+The choke point must close TWO distinct leak paths, not one:
+
+    PROBLEM A — the pool itself:
+        pool.nodes.set(...) / pool.nodes.delete(...)
+
+    PROBLEM B — a node's children array:
+        const row = pool.getNode(...); row.children.push(...)
+
+Making `nodes` private fixes A but NOT B. A caller holding a node
+reference can still mutate `node.children` in place. The controlled
+APIs above are the ONLY way to change structure; callers MUST NOT
+mutate node.children directly.
+
+Commands MUST NOT reach past NodePool into raw Map/array mutation:
+
+    FORBIDDEN:  pool.nodes.set(...) / pool.nodes.delete(...)
+    FORBIDDEN:  row.children.splice(...)
+    FORBIDDEN:  para.children.push(...)
+
+A Command that needs a structural operation NodePool does not yet
+provide MUST first extend NodePool with a controlled method, then
+call it — never mutate the tree directly.
+
 Any new API that exposes mutable internal document structures
 MUST be justified before implementation.
 
@@ -467,6 +534,52 @@ the existing command system appears inconvenient.
 If the command system is insufficient,
 improve the command system instead.
 
+------------------------------------------------------------
+8.1 History single owner
+------------------------------------------------------------
+
+The undo/redo command stacks MUST have exactly ONE owner:
+
+    engine/command/CommandUndoRedoStack
+
+It owns undoStack / redoStack and their merge window. No other
+module MAY hold a reference to the command stacks or maintain a
+parallel undo history.
+
+HistoryState (engine/state/HistoryState) is a PURE PROJECTION of
+{ canUndo, canRedo, undoDepth, redoDepth }. It MUST NOT store
+commands. Editor.syncHistoryState() reads from
+CommandUndoRedoStack and writes the projection into
+EditorStore.runtime.history — a canonical → projection flow,
+never a second source of truth.
+
+------------------------------------------------------------
+8.2 Undo/redo are document changes
+------------------------------------------------------------
+
+Undo and redo MUTATE the document. The "document changed" fact
+MUST NOT disappear on the undo/redo path.
+
+CommandManager.execute() emits document:changed. undo()/redo()
+MUST NOT downgrade to a bare render:request that skips the
+document-change subscribers.
+
+Undo/redo MUST still trigger:
+
+    - autoSave.markDirty()               (persistence)
+    - notifyListeners('contentChange')   (UI: toolbar, word count,
+                                          header/footer labels)
+
+An undo that is invisible to autosave and the UI is a correctness
+bug, not a style preference. History semantics (merge window, stack
+contents) MAY differ from normal edits, but the fact that the
+document changed MUST be signalled identically.
+
+"Document changed" is a fact; "why it changed" (user / undo / redo /
+remote / system) is a separate concern and MAY be distinguished via
+change origin when collaboration or auditing needs it. Do NOT solve
+that distinction by introducing a second event transport.
+
 ============================================================
 9. COLLABORATION / YJS
 ============================================================
@@ -576,6 +689,21 @@ first determine which subsystem owns it.
 
 Do not automatically add more code to Editor.ts.
 
+Concrete ownership anchors (God Object drift to reverse):
+
+    table merge/split algorithms  → document/table/TableOps.ts
+    format painter (copy/apply)   → its own feature module
+    selection-collection loop     → ONE shared helper, not 3 copies
+
+These are the specific drifts found in Editor.ts at the
+architecture freeze. They are the pattern to reverse, NOT to extend.
+
+A God Object symptom is copy-pasted logic across Editor methods —
+e.g. the same "collect selected text-node ids" loop repeated in
+toggleFormat / clearFormat / applyFormatPainterToSelection. When the
+same non-trivial logic is implemented for the second time, extract a
+shared helper/service unless there is a documented reason not to.
+
 ============================================================
 12. FEATURES MUST NOT POLLUTE CORE
 ============================================================
@@ -672,31 +800,41 @@ their responsibilities are explicitly different.
 The existence of multiple EventBus instances MUST NOT be
 used as a substitute for clear module APIs.
 
-Current intended event domains:
+Current event-bus state (audited at architecture freeze):
 
-1. Engine-level events
-   Examples:
-   - documentChanged
-   - commandExecuted
-   - selectionChanged
-   - layoutInvalidated
-   - layoutCompleted
-   - documentLoaded
-   - documentSaved
+ONE live EventBus — engine/interaction/EventBus.ts (typed, with
+EventPayloadMap). It is the ENGINE LIFECYCLE bus and carries:
 
-2. Interaction-level events
-   Examples:
-   - keyDown
-   - keyUp
-   - mouseDown
-   - mouseMove
-   - mouseUp
-   - compositionStart
-   - compositionUpdate
-   - compositionEnd
+    document:changed, state:changed, cursor:moved, selection:changed,
+    scale:changed, layout:changed, render:request, yjs:synced,
+    qc:completed, save:versionConflict
 
-Interaction events MUST remain separate from engine lifecycle
-and document events.
+    engine/EventBus.ts (root, string-keyed) is DEAD CODE — zero
+    importers — and MUST be deleted, not revived.
+
+    The live bus is PHYSICALLY MISLOCATED: it sits under
+    interaction/ yet owns engine lifecycle events, not interaction
+    events. Its eventual home is engine/events/. Until then, treat
+    engine/interaction/EventBus.ts as the single canonical engine
+    bus — do NOT add engine lifecycle events to a second bus, and
+    do NOT add interaction events to this one.
+
+    Interaction input (keyDown, mouseDown, compositionStart, …) is
+    currently delivered as direct callbacks on InputHost, NOT via
+    EventBus. Do not build a second EventBus for it unless a
+    genuine subscriber fan-out requirement appears.
+
+Canonical-bus rule:
+
+    There MUST be one canonical engine event bus.
+
+    Do NOT create another EventBus for the same semantic event
+    domain (e.g. a second transport for document:changed).
+
+    A future bus is justified only for a genuinely different domain
+    (worker communication, plugin messaging, …). Temporary
+    compatibility wrappers are allowed only when they do NOT
+    introduce a second source of truth or a second event transport.
 
 Preferred flow:
 
@@ -968,7 +1106,7 @@ Correctness is more important than convenience.
 25. FINAL ARCHITECTURAL INVARIANTS
 ============================================================
 
-The following five rules are NON-NEGOTIABLE:
+The following rules are NON-NEGOTIABLE:
 
 RULE 1:
 
@@ -991,7 +1129,14 @@ RULE 4:
 
 RULE 5:
 
-    Document mutation MUST have a controlled mutation choke point.
+    Document mutation MUST have a controlled mutation choke point,
+    enforced at the TYPE level through NodePool controlled methods
+    (see §6.1) — not by convention or comment.
+
+    More generally: architectural invariants SHOULD be enforced
+    through module visibility, TypeScript types, and API design
+    wherever technically possible. Do not rely solely on comments,
+    naming conventions, or developer discipline.
 
 RULE 6:
 
@@ -1003,6 +1148,25 @@ RULE 7:
 
     Engine modules MUST be safe to import in non-DOM runtimes.
     Importing an engine module MUST NOT trigger browser side effects.
+
+RULE 8:
+
+    Undo/redo MUTATE the document and MUST signal "document changed"
+    identically to execute(): autoSave.markDirty() and the UI
+    contentChange notification MUST NOT be skipped on the undo/redo
+    path (see §8.2).
+
+    Undo/redo MUST preserve the semantic meaning of "document
+    changed" while remaining distinguishable as a history operation
+    when needed (change origin: user / undo / redo / remote /
+    system) — never by inventing a second event transport for
+    history operations.
+
+RULE 9:
+
+    The undo/redo command stacks MUST have exactly ONE owner,
+    CommandUndoRedoStack. HistoryState is a PURE projection and
+    MUST NOT store commands (see §8.1).
 
 In short:
 
