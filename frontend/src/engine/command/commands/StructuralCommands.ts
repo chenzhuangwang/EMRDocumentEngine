@@ -38,7 +38,7 @@ export function removeSubtree(pool: NodePool, rootId: string): void {
     if (!node) continue
     const children = (node as unknown as { children?: string[] }).children
     if (children) for (const c of children) stack.push(c)
-    pool.nodes.delete(id)
+    pool.removeNode(id)
   }
 }
 
@@ -63,8 +63,8 @@ function cloneSubtree(pool: NodePool, rootId: string): Map<string, BaseNode> {
 function createTrailingParagraph(pool: NodePool): Paragraph {
   const text = createTextNode('')
   const para = createParagraph([text.id])
-  pool.nodes.set(text.id, text)
-  pool.nodes.set(para.id, para)
+  pool.addNode(text)
+  pool.addNode(para)
   return para
 }
 
@@ -187,7 +187,7 @@ export class InsertInlineNodeCommand implements ICommand {
     if (!para?.children) return null
 
     const node = this.makeNode()
-    pool.nodes.set(node.id, node)
+    pool.addNode(node)
     this.insertedNodeId = node.id
 
     const resolved = pool.resolveCharOffset(paraId, this.offset)
@@ -329,7 +329,7 @@ export class InsertFootnoteCommand implements ICommand {
 
     // 脚注引用, 插入正文
     const fnRef = this.makeRef(fnContent.id)
-    pool.nodes.set(fnRef.id, fnRef)
+    pool.addNode(fnRef)
     fnContent.refId = fnRef.id
     this.insertedRefId = fnRef.id
 
@@ -402,7 +402,7 @@ export class CreateCommentCommand implements ICommand {
     if (!para?.children) return null
 
     const marker = this.makeMarker()
-    pool.nodes.set(marker.id, marker)
+    pool.addNode(marker)
     this.insertedMarkerId = marker.id
 
     const resolved = pool.resolveCharOffset(paraId, this.offset)
@@ -680,7 +680,7 @@ export class EnsureBodyParagraphCommand implements ICommand {
     // 已有段落则视为无操作 (body 非空即无需补段落)
     if (doc.body.children.length > 0) return null
     const para = createParagraph()
-    pool.nodes.set(para.id, para)
+    pool.addNode(para)
     doc.body.children = [para.id]
     this.createdParaId = para.id
     return {
@@ -739,7 +739,7 @@ export class EnsureCellParagraphCommand implements ICommand {
       if (pool.nodes.get(id)?.type === 'paragraph') return null  // 已有段落
     }
     const para = createParagraph()
-    pool.nodes.set(para.id, para)
+    pool.addNode(para)
     cell.children = [...children, para.id]
     this.createdParaId = para.id
     return { invalidation: 'table' }
@@ -842,7 +842,7 @@ class RestoreTableCommand implements ICommand {
     if (idx >= 0) { doc.body.children.splice(idx, 1); removeSubtree(pool, this.tableId) }
 
     // 2. 重新注册快照节点
-    for (const [, node] of this.snapshot) pool.nodes.set(node.id, node)
+    for (const [, node] of this.snapshot) pool.addNode(node)
 
     // 3. 回到原位置
     const at = Math.min(this.parentIndex, doc.body.children.length)

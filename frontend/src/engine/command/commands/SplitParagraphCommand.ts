@@ -56,7 +56,7 @@ export class SplitParagraphCommand extends PositionalCommand {
     const newPara = createParagraph()
     if (afterText) {
       const afterNode = createTextNode(afterText, extractStyle(textNode))
-      pool.nodes.set(afterNode.id, afterNode)
+      pool.addNode(afterNode)
       newPara.children = [afterNode.id]
     }
     Object.assign(newPara, {
@@ -64,7 +64,7 @@ export class SplitParagraphCommand extends PositionalCommand {
       lineHeight: para.lineHeight, list: para.list,
       outlineLevel: para.outlineLevel,
     })
-    pool.nodes.set(newPara.id, newPara)
+    pool.addNode(newPara)
     this.newParaId = newPara.id
 
     // 4. 插入右半 children
@@ -88,7 +88,7 @@ export class SplitParagraphCommand extends PositionalCommand {
       lineHeight: para.lineHeight, list: para.list,
       outlineLevel: para.outlineLevel,
     })
-    pool.nodes.set(newPara.id, newPara)
+    pool.addNode(newPara)
     this.newParaId = newPara.id
     return this.insertAndReturn(para, newPara, pool, doc)
   }

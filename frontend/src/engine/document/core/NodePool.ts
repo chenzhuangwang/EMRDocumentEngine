@@ -12,9 +12,17 @@
 import type { BaseNode } from './DocumentModel'
 
 export class NodePool {
-  readonly nodes = new Map<string, BaseNode>()
+  private _nodes = new Map<string, BaseNode>()
   private _structureVersion = 0
   private _nodeVersions = new Map<string, number>()
+
+  /**
+   * 只读节点视图 — 类型级 choke point (契约 §6.1)。
+   * 外部仅可 get/has/遍历; set/delete 必须经 addNode/removeNode。
+   */
+  get nodes(): ReadonlyMap<string, BaseNode> {
+    return this._nodes
+  }
 
   // ---- rootIds: buildNodePool 注入, 供 QCEngine 等使用 ----
   rootIds: {
@@ -24,6 +32,22 @@ export class NodePool {
     footnotes?: string[]
     endnotes?: string[]
   } = { body: '' }
+
+  // ---- 节点注册 (唯一合法入口, 铁律 3 / 契约 §6.1) ----
+
+  /** 注册新节点 — 重复 id 抛错 (替代裸 pool.nodes.set) */
+  addNode(node: BaseNode): void {
+    if (this._nodes.has(node.id)) {
+      throw new Error(`NodePool.addNode: duplicate id ${node.id}`)
+    }
+    this._nodes.set(node.id, node)
+  }
+
+  /** 注销节点及其版本缓存 (替代裸 pool.nodes.delete) */
+  removeNode(nodeId: string): void {
+    this._nodes.delete(nodeId)
+    this._nodeVersions.delete(nodeId)
+  }
 
   // ---- 版本访问 ----
 
@@ -66,8 +90,7 @@ export class NodePool {
     const removedId = children.splice(index, 1)[0]
     const descendantIds = this.collectDescendants(removedId)
     for (const id of descendantIds) {
-      this.nodes.delete(id)
-      this._nodeVersions.delete(id)
+      this.removeNode(id)
     }
     this._structureVersion++
     return removedId
@@ -99,8 +122,7 @@ export class NodePool {
         throw new Error(`removeOrphanLeaf: ${nodeId} is not a leaf node`)
       }
     }
-    this.nodes.delete(nodeId)
-    this._nodeVersions.delete(nodeId)
+    this.removeNode(nodeId)
     this._structureVersion++
   }
 
@@ -235,7 +257,7 @@ export function buildNodePool(
       console.warn(`[NodePool] Duplicate ID: ${id}, skipping`)
       continue
     }
-    pool.nodes.set(id, node)
+    pool.addNode(node)
   }
 
   // Pass 2: 校验引用完整性

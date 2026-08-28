@@ -597,7 +597,7 @@ export class Editor {
       cursor.paragraphPath,
       (pool) => {
         const sep = createSeparatorNode()
-        pool.nodes.set(sep.id, sep)
+        pool.addNode(sep)
         return sep
       },
       { withTrailingParagraph: true, moveCursorToTrailing: true },
@@ -617,9 +617,9 @@ export class Editor {
         const contentText = createTextNode('')
         const contentPara = createParagraph([contentText.id])
         fnContent.children = [contentPara.id]
-        pool.nodes.set(fnContent.id, fnContent)
-        pool.nodes.set(contentText.id, contentText)
-        pool.nodes.set(contentPara.id, contentPara)
+        pool.addNode(fnContent)
+        pool.addNode(contentText)
+        pool.addNode(contentPara)
         return fnContent
       },
       (fnContentId) => createFootnoteRef(fnContentId),
@@ -657,23 +657,23 @@ export class Editor {
             const cellId = generateCommandId()
             const text = createTextNode('')
             const para = createParagraph([text.id])
-            pool.nodes.set(text.id, text)
-            pool.nodes.set(para.id, para)
-            pool.nodes.set(cellId, {
+            pool.addNode(text)
+            pool.addNode(para)
+            pool.addNode({
               type: 'cell' as const, id: cellId,
               children: [para.id],
               colspan: 1, rowspan: 1,
             } as unknown as BaseNode)
             cellIds.push(cellId)
           }
-          pool.nodes.set(rowId, {
+          pool.addNode({
             type: 'row' as const, id: rowId,
             children: cellIds, height: 24,
           } as unknown as BaseNode)
           rowIds.push(rowId)
         }
 
-        pool.nodes.set(tableId, {
+        pool.addNode({
           type: 'table' as const, id: tableId,
           columns: Array.from({ length: cols }, () => ({ width: colWidth, mode: 'percentage' as const })),
           children: rowIds,
@@ -767,7 +767,7 @@ export class Editor {
         cell.colspan = (cell.colspan || 1) + (nextCell.colspan || 1)
         // 右侧单元格内容并入当前单元格
         cell.children = [...(cell.children || []), ...(nextCell.children || [])]
-        pool.nodes.delete(nextCellId)
+        pool.removeNode(nextCellId)
         row.children.splice(colIdx + 1, 1)
         return true
       },
@@ -847,10 +847,10 @@ export class Editor {
         // 新单元格 (含一个空段落)
         const text = createTextNode('')
         const para = createParagraph([text.id])
-        pool.nodes.set(text.id, text as unknown as BaseNode)
-        pool.nodes.set(para.id, para as unknown as BaseNode)
+        pool.addNode(text as unknown as BaseNode)
+        pool.addNode(para as unknown as BaseNode)
         const newCell = createTableCell([para.id])
-        pool.nodes.set(newCell.id, newCell as unknown as BaseNode)
+        pool.addNode(newCell as unknown as BaseNode)
 
         if (colspan > 1) {
           // 水平拆分: 原 cell 缩为 colspan=1, 右侧新增 cell (保留剩余 colspan + 相同 rowspan)
@@ -864,7 +864,7 @@ export class Editor {
           const rowBelow = rowBelowId
             ? (pool.nodes.get(rowBelowId) as { children?: string[] } | undefined)
             : undefined
-          if (!rowBelow?.children) { pool.nodes.delete(newCell.id); return false }
+          if (!rowBelow?.children) { pool.removeNode(newCell.id); return false }
 
           cell.rowspan = 1
           if (rowspan > 2) newCell.rowspan = rowspan - 1
@@ -2101,7 +2101,7 @@ export class Editor {
           breakType: 'next_page' as const,
           nextPageSetup: { ...this.doc.pageSetup },
         } as unknown as BaseNode
-        pool.nodes.set(breakNode.id, breakNode)
+        pool.addNode(breakNode)
         return breakNode
       },
       { withTrailingParagraph: true, moveCursorToTrailing: true },

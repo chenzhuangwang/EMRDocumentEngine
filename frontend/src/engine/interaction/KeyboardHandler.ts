@@ -346,7 +346,7 @@ export class KeyboardHandler {
 
   /** 查找 cell 内第一个段落 ID */
   private firstParagraphInCell(
-    pool: { nodes: Map<string, { type?: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type?: string; children?: string[] }> },
     cellId: string,
   ): string | null {
     const cell = pool.nodes.get(cellId)
@@ -544,7 +544,7 @@ export class KeyboardHandler {
    */
   private findFirstParagraphOnPage(
     page: SLIFPage,
-    pool: { nodes: Map<string, { type: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type: string; children?: string[] }> },
     siblings: string[],
   ): string | null {
     // 1. 搜索正文顶级块
@@ -572,7 +572,7 @@ export class KeyboardHandler {
   }
 
   /** 从 nodeId 查找所属段落 ID */
-  private resolveItemParagraph(nodeId: string, pool: { nodes: Map<string, { type: string; children?: string[] }> }): string | null {
+  private resolveItemParagraph(nodeId: string, pool: { nodes: ReadonlyMap<string, { type: string; children?: string[] }> }): string | null {
     for (const [, node] of pool.nodes) {
       if (node.type === 'paragraph' && node.children?.includes(nodeId)) {
         return (node as unknown as { id: string }).id || null
@@ -588,7 +588,7 @@ export class KeyboardHandler {
    *  v20.35: 单元格内段落返回扩展 siblings, 包含表格前后段落,
    *  使 ArrowUp/ArrowDown 可以跳出/跳入表格。
    */
-  private getParagraphSiblings(paraId: string, doc: { body: { children: string[] }; header?: string[]; footer?: string[] }, pool?: { nodes: Map<string, { type: string; children?: string[] }> }): string[] {
+  private getParagraphSiblings(paraId: string, doc: { body: { children: string[] }; header?: string[]; footer?: string[] }, pool?: { nodes: ReadonlyMap<string, { type: string; children?: string[] }> }): string[] {
     const filterParas = (ids: string[]) => {
       if (!pool) return ids.filter(id => id === paraId || true)  // 无 pool 时不过滤
       return ids.filter(id => {
@@ -661,7 +661,7 @@ export class KeyboardHandler {
   }
 
   /** 计算段落文本总长度 (字符数) */
-  private getParagraphLength(paraId: string, pool: { nodes: Map<string, { type: string; children?: string[]; text?: string }> }): number {
+  private getParagraphLength(paraId: string, pool: { nodes: ReadonlyMap<string, { type: string; children?: string[]; text?: string }> }): number {
     const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
     if (!para?.children) return 0
     let len = 0
@@ -826,7 +826,7 @@ export class KeyboardHandler {
   /** 落点偏移: 垂直保列, 水平按方向到段首(→)/段尾(←) */
   private landingOffset(
     paraId: string,
-    pool: { nodes: Map<string, { type: string; children?: string[]; text?: string }> },
+    pool: { nodes: ReadonlyMap<string, { type: string; children?: string[]; text?: string }> },
     dir: 1 | -1,
     mode: 'horizontal' | 'vertical',
     cursorOffset: number,
@@ -838,7 +838,7 @@ export class KeyboardHandler {
 
   /** 进入表格某角 cell 的第一个段落 */
   private enterTable(
-    pool: { nodes: Map<string, { type?: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type?: string; children?: string[] }> },
     tableId: string,
     edge: 'top-left' | 'bottom-left' | 'bottom-right',
   ): string | null {
@@ -868,7 +868,7 @@ export class KeyboardHandler {
 
   /** 查找 cell 内最后一个段落 ID */
   private lastParagraphInCell(
-    pool: { nodes: Map<string, { type?: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type?: string; children?: string[] }> },
     cellId: string,
   ): string | null {
     const cell = pool.nodes.get(cellId)
@@ -881,7 +881,7 @@ export class KeyboardHandler {
 
   /** 取 (行下标, 列下标) 处的 cellId (阅读坐标) */
   private cellIdAt(
-    pool: { nodes: Map<string, { type?: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type?: string; children?: string[] }> },
     tableId: string,
     row: number,
     col: number,

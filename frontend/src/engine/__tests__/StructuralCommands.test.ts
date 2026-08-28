@@ -79,8 +79,8 @@ function makeCellWithPara(text: string): {
   const { doc, pool, cellId } = makeEmptyCellTable()
   const tn = createTextNode(text)
   const para = createParagraph([tn.id])
-  pool.nodes.set(tn.id, tn as unknown as BaseNode)
-  pool.nodes.set(para.id, para as unknown as BaseNode)
+  pool.addNode(tn as unknown as BaseNode)
+  pool.addNode(para as unknown as BaseNode)
   const cell = pool.nodes.get(cellId) as { children?: string[] }
   cell.children = [para.id]
   return { doc, pool, cellId, paraId: para.id, textId: tn.id }
@@ -113,8 +113,8 @@ describe('RemoveNodesCommand — cell 容器', () => {
     // 追加第二个段落, 只删第一个
     const tn2 = createTextNode('b')
     const para2 = createParagraph([tn2.id])
-    pool.nodes.set(tn2.id, tn2 as unknown as BaseNode)
-    pool.nodes.set(para2.id, para2 as unknown as BaseNode)
+    pool.addNode(tn2 as unknown as BaseNode)
+    pool.addNode(para2 as unknown as BaseNode)
     const cell = pool.nodes.get(cellId) as { children?: string[] }
     cell.children = [paraId, para2.id]
 
@@ -255,8 +255,8 @@ describe('EnsureHeaderFooterParagraphCommand', () => {
     const { doc, pool } = makeEmptyDoc()
     const tn = createTextNode('h')
     const para = createParagraph([tn.id])
-    pool.nodes.set(tn.id, tn as unknown as BaseNode)
-    pool.nodes.set(para.id, para as unknown as BaseNode)
+    pool.addNode(tn as unknown as BaseNode)
+    pool.addNode(para as unknown as BaseNode)
     doc.header = [para.id]
 
     const cmd = new EnsureHeaderFooterParagraphCommand('c1', 1, 'u', 'header')

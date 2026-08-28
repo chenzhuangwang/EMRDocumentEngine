@@ -123,7 +123,7 @@ export class InsertNodesCommand extends PositionalCommand {
     for (const childId of first.children) {
       currentPara.children.push(childId)
     }
-    pool.nodes.delete(first.id)  // 首段包装节点已并入 currentPara, 丢弃
+    pool.removeNode(first.id)  // 首段包装节点已并入 currentPara, 丢弃
     normalizeParagraph(currentPara, pool)
 
     // ================================================================
@@ -165,7 +165,7 @@ export class InsertNodesCommand extends PositionalCommand {
     // ================================================================
     if (rightText.length > 0) {
       const tn = createTextNode(rightText, rightStyle)
-      pool.nodes.set(tn.id, tn)
+      pool.addNode(tn)
       this.createdLeafIds.push(tn.id)
       cursorPara.children.push(tn.id)
     }
@@ -205,7 +205,7 @@ export class InsertNodesCommand extends PositionalCommand {
         const element = (childSn.element as ElementMeta) ||
           { code: { internal: '', dataElement: '' }, name: '' }
         const st = createSmartTextNode((childSn.text as string) || '', element, style as unknown as TextStyle)
-        pool.nodes.set(st.id, st)
+        pool.addNode(st)
         this.createdLeafIds.push(st.id)
         para.children.push(st.id)
       } else if (childSn.type === 'text') {
@@ -213,7 +213,7 @@ export class InsertNodesCommand extends PositionalCommand {
         for (const k of TEXT_STYLE_KEYS) { if (k in childSn) style[k] = childSn[k] }
         const tn = createTextNode((childSn.text as string) || '', style as unknown as TextStyle)
         if (childSn.element) (tn as unknown as Record<string, unknown>).element = childSn.element
-        pool.nodes.set(tn.id, tn)
+        pool.addNode(tn)
         this.createdLeafIds.push(tn.id)
         para.children.push(tn.id)
       } else {
@@ -221,13 +221,13 @@ export class InsertNodesCommand extends PositionalCommand {
         const node = { ...childSn } as Record<string, unknown>
         delete node.id // 擦除旧 ID
         node.id = generateId() // 新节点 UUID
-        pool.nodes.set(node.id as string, node as unknown as import('../../document/core/DocumentModel').BaseNode)
+        pool.addNode(node as unknown as import('../../document/core/DocumentModel').BaseNode)
         this.createdLeafIds.push(node.id as string)
         para.children.push(node.id as string)
       }
     }
 
-    pool.nodes.set(para.id, para)
+    pool.addNode(para)
     return para
   }
 
@@ -299,12 +299,12 @@ class UndoPasteCommand implements ICommand {
 
     // 2. 删除插入的段落包装节点
     for (const id of this.paraIds) {
-      pool.nodes.delete(id)
+      pool.removeNode(id)
     }
 
     // 3. 精确删除本次 forward 新建的叶节点 (已并入 currentPara 的首段子节点 / 右半文本节点)
     for (const id of this.createdLeafIds) {
-      pool.nodes.delete(id)
+      pool.removeNode(id)
     }
 
     // 4. 恢复原段落 children

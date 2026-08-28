@@ -95,7 +95,7 @@ export class DeleteRangeCommand extends PositionalCommand {
     if (para.children.length === 0) {
       const emptyText = createTextNode('')
       ;(para as { children: string[] }).children = [emptyText.id]
-      pool.nodes.set(emptyText.id, emptyText as unknown as import('../../document/core/DocumentModel').BaseNode)
+      pool.addNode(emptyText as unknown as import('../../document/core/DocumentModel').BaseNode)
     }
 
     return {

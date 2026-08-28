@@ -49,7 +49,7 @@ export class FindReplaceEngine {
   findAll(
     query: string,
     doc: DocumentTree,
-    pool: { nodes: Map<string, { type: string; text?: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type: string; text?: string; children?: string[] }> },
     options: FindOptions = {},
   ): MatchResult[] {
     if (!query) return []
@@ -94,7 +94,7 @@ export class FindReplaceEngine {
     currentPath: string[],
     currentOffset: number,
     doc: DocumentTree,
-    pool: { nodes: Map<string, { type: string; text?: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type: string; text?: string; children?: string[] }> },
     options: FindOptions = {},
   ): MatchResult | null {
     const all = this.findAll(query, doc, pool, options)
@@ -134,7 +134,7 @@ export class FindReplaceEngine {
     currentPath: string[],
     currentOffset: number,
     doc: DocumentTree,
-    pool: { nodes: Map<string, { type: string; text?: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type: string; text?: string; children?: string[] }> },
     options: FindOptions = {},
   ): MatchResult | null {
     const all = this.findAll(query, doc, pool, options)
@@ -187,7 +187,7 @@ export class FindReplaceEngine {
   highlightAll(
     query: string,
     doc: DocumentTree,
-    pool: { nodes: Map<string, { type: string; text?: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type: string; text?: string; children?: string[] }> },
     options: FindOptions = {},
   ): MatchResult[] {
     return this.findAll(query, doc, pool, options)
@@ -198,7 +198,7 @@ export class FindReplaceEngine {
   /** 获取段落的完整纯文本 */
   private getParagraphText(
     paraId: string,
-    pool: { nodes: Map<string, { type: string; text?: string; children?: string[] }> },
+    pool: { nodes: ReadonlyMap<string, { type: string; text?: string; children?: string[] }> },
   ): string | null {
     const para = pool.nodes.get(paraId)
     if (!para?.children) return null

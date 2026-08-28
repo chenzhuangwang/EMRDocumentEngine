@@ -10,7 +10,7 @@
 //     → eventBus.emit('state:changed', patch)
 // ================================================================
 
-import type { ICommand, InvalidationScope, CommandContext } from './ICommand'
+import type { ICommand, InvalidationScope, CommandContext, StatePatch } from './ICommand'
 import { CommandUndoRedoStack } from './CommandUndoRedoStack'
 import type { EventBus } from '../interaction/EventBus'
 import type { DocumentTree } from '../document/core/DocumentModel'
@@ -46,25 +46,7 @@ export class CommandManager {
     const patch = this.undoStack.execute(command, ctx)
     if (!patch) return
 
-    // 失效传播 (v20.22 强制映射)
-    this.dispatchInvalidation(patch.invalidation ?? 'paragraph')
-
-    // 顺序关键: 先更新光标状态, 再触发重布局+重绘
-    // 确保 document:changed 触发的 render() 使用的是最新光标位置
-    this.eventBus.emit('state:changed', patch)
-
-    this.eventBus.emit('document:changed', {
-      invalidation: patch.invalidation ?? 'paragraph',
-      dirtyNodeIds: [...this.dirtyTracker.getDirtyNodeIds()],
-    })
-
-    // 光标变更单独通知
-    if (patch.cursor) this.eventBus.emit('cursor:moved', {
-      paragraphPath: [],
-      offset: 0,
-      visible: true,
-      ...patch.cursor,
-    })
+    this.emitDocumentChange(patch)
   }
 
   undo(): void {
@@ -74,10 +56,7 @@ export class CommandManager {
       pool: this.getPool(),
     }
     const patch = this.undoStack.undo(ctx)
-    if (patch) {
-      this.eventBus.emit('state:changed', patch)
-      this.eventBus.emit('render:request')
-    }
+    if (patch) this.emitDocumentChange(patch)
   }
 
   redo(): void {
@@ -87,14 +66,34 @@ export class CommandManager {
       pool: this.getPool(),
     }
     const patch = this.undoStack.redo(ctx)
-    if (patch) {
-      this.eventBus.emit('state:changed', patch)
-      this.eventBus.emit('render:request')
-    }
+    if (patch) this.emitDocumentChange(patch)
   }
 
   canUndo(): boolean { return this.undoStack.canUndo() }
   canRedo(): boolean { return this.undoStack.canRedo() }
+
+  /**
+   * 文档变更统一通知 — execute / undo / redo 三条路径共用 (契约 §8.2 / RULE 8)。
+   * 顺序关键: 先失效传播 + 光标状态, 再触发 document:changed,
+   * 确保 commitDocumentChange 里的 render() 使用最新光标位置。
+   */
+  private emitDocumentChange(patch: StatePatch): void {
+    this.dispatchInvalidation(patch.invalidation ?? 'paragraph')
+
+    this.eventBus.emit('state:changed', patch)
+
+    this.eventBus.emit('document:changed', {
+      invalidation: patch.invalidation ?? 'paragraph',
+      dirtyNodeIds: [...this.dirtyTracker.getDirtyNodeIds()],
+    })
+
+    if (patch.cursor) this.eventBus.emit('cursor:moved', {
+      paragraphPath: [],
+      offset: 0,
+      visible: true,
+      ...patch.cursor,
+    })
+  }
 
   private dispatchInvalidation(scope: InvalidationScope): void {
     switch (scope) {

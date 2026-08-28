@@ -65,7 +65,7 @@ function makeRowspanTable() {
   A.rowspan = 2
   const dCellId = row1.children[0]
   row1.children.splice(0, 1) // 删除列0的 cell (rowspan 下半部分不重复)
-  pool.nodes.delete(dCellId)
+  pool.removeNode(dCellId)
   const D = pool.nodes.get(row1.children[0]) as unknown as TableCell
   return { doc, pool, table, A, B, D }
 }
@@ -81,7 +81,7 @@ function makeColspanTable() {
   // 合并 M 与右上 cell 的内容, 删除右上 cell
   M.children = [...M.children, ...topRight.children]
   row0.children.splice(1, 1)
-  pool.nodes.delete(topRight.id)
+  pool.removeNode(topRight.id)
   const L = pool.nodes.get(row1.children[0]) as unknown as TableCell
   const R = pool.nodes.get(row1.children[1]) as unknown as TableCell
   return { doc, pool, table, M, L, R }

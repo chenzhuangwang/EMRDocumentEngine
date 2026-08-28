@@ -56,7 +56,7 @@ export class MergeParagraphCommand extends PositionalCommand {
 
     // 5. 从区域兄弟数组中移除当前段 (叶子节点, 仅删除段落包装)
     region.siblings.splice(region.index, 1)
-    pool.nodes.delete(currentPara.id)
+    pool.removeNode(currentPara.id)
 
     // 6. 光标定位到合并点
     let charCount = 0

@@ -130,8 +130,8 @@ describe('CaretScope 单元格导航', () => {
     // 正文段落 (不在 cell 内)
     const tn = createTextNode('body')
     const para = createParagraph([tn.id])
-    pool.nodes.set(tn.id, tn as unknown as BaseNode)
-    pool.nodes.set(para.id, para as unknown as BaseNode)
+    pool.addNode(tn as unknown as BaseNode)
+    pool.addNode(para as unknown as BaseNode)
     doc.body.children.push(para.id)
 
     expect(getCaretScope([doc.id, para.id], pool)).toEqual({ type: 'body' })

@@ -60,7 +60,7 @@ export class InsertImageCommand implements ICommand {
       naturalHeight: this.naturalH,
       wrapMode: 'top-bottom' as const,
     }
-    pool.nodes.set(imgNode.id, imgNode)
+    pool.addNode(imgNode)
     this.insertedImageId = imgNode.id
 
     const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
@@ -75,7 +75,7 @@ export class InsertImageCommand implements ICommand {
           if (lo > 0 && lo < text.length) {
             // 光标在文本中间 → 拆分文本, 图片插入拆分点
             const afterNode = createTextNode(text.slice(lo), extractStyle(target as unknown as TextNode))
-            pool.nodes.set(afterNode.id, afterNode)
+            pool.addNode(afterNode)
             pool.updateNode(target.id, { text: text.slice(0, lo) } as Partial<TextNode>)
             para.children.splice(idx + 1, 0, imgNode.id, afterNode.id)
             this.splitAfterNodeId = afterNode.id
@@ -155,8 +155,8 @@ class RemoveImageCommand implements ICommand {
         if (afterIdx >= 0) para.children.splice(afterIdx, 1)
       }
     }
-    pool.nodes.delete(this.imageId)
-    if (this.afterNodeId) pool.nodes.delete(this.afterNodeId)
+    pool.removeNode(this.imageId)
+    if (this.afterNodeId) pool.removeNode(this.afterNodeId)
     if (this.truncatedTextNodeId) {
       pool.updateNode(this.truncatedTextNodeId, { text: this.originalText } as Partial<TextNode>)
     }

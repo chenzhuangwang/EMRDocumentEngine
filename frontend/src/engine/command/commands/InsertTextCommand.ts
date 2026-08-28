@@ -55,7 +55,7 @@ export class InsertTextCommand extends PositionalCommand {
       // 非 text 目标 (内联非文本节点 / 悬空引用 / 空段落或越界):
       // 在正确位置新建 text 节点, 而非误用头部插入或把非文本节点当文本拆分
       const newNode = createTextNode(this.text, style)
-      pool.nodes.set(newNode.id, newNode)
+      pool.addNode(newNode)
       if (textNodeId && targetNode) {
         // 内联非文本节点: localOffset 0=前, 1=后
         const idx = para.children.indexOf(textNodeId)
@@ -93,12 +93,12 @@ export class InsertTextCommand extends PositionalCommand {
     const after = textNode.text.slice(localOffset)
     pool.updateNode(textNode.id, { text: before || '' } as Partial<TextNode>)
     const newNode = createTextNode(this.text, style)
-    pool.nodes.set(newNode.id, newNode)
+    pool.addNode(newNode)
     const idx = para.children.indexOf(textNode.id)
     pool.insertChild(para.id, newNode.id, idx + 1)
     if (after) {
       const afterNode = createTextNode(after, extractStyle(textNode))
-      pool.nodes.set(afterNode.id, afterNode)
+      pool.addNode(afterNode)
       pool.insertChild(para.id, afterNode.id, idx + 2)
     }
     normalizeParagraph(para, pool)

@@ -110,9 +110,9 @@ function makeEmptyCell(pool: NodePool): TableCell {
   const text = createTextNode('')
   const para = createParagraph([text.id])
   const cell = createTableCell([para.id])
-  pool.nodes.set(text.id, text as unknown as BaseNode)
-  pool.nodes.set(para.id, para as unknown as BaseNode)
-  pool.nodes.set(cell.id, cell as unknown as BaseNode)
+  pool.addNode(text as unknown as BaseNode)
+  pool.addNode(para as unknown as BaseNode)
+  pool.addNode(cell as unknown as BaseNode)
   return cell
 }
 
@@ -152,7 +152,7 @@ export function insertRow(pool: NodePool, tableId: string, rowIndex: number): vo
   }
 
   const newRow = createTableRow(newCells)
-  pool.nodes.set(newRow.id, newRow as unknown as BaseNode)
+  pool.addNode(newRow as unknown as BaseNode)
   pool.insertChild(tableId, newRow.id, rowIndex + 1)
 }
 
