@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { cn } from '@/lib/utils'
-import { useEditorStore } from '@/store'
+import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { HeaderFooterToolbar } from '@/components/toolbar/HeaderFooterToolbar'
 
 interface ToolbarProps {
@@ -25,8 +25,6 @@ interface ToolbarProps {
   onExportClick?: () => void
   onPrint?: () => void
   onPageSetup?: () => void
-  /** 格式刷状态 */
-  formatPainterActive?: boolean
 }
 
 // ---- 常量 ----
@@ -65,15 +63,14 @@ interface ControlItem {
 }
 
 // ================================================================
-export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetup, formatPainterActive }: ToolbarProps) {
-  const paraStyle = useEditorStore((s) => s.paragraphStyle)
-  const textStyle = useEditorStore((s) => s.textStyle)
-  const canUndo = useEditorStore((s) => s.canUndo)
-  const canRedo = useEditorStore((s) => s.canRedo)
-  const hfEdit = useEditorStore((s) => s.headerFooterEdit)
-  const hfConfig = useEditorStore((s) => s.headerFooterConfig)
-  const setHfEdit = useEditorStore((s) => s.setHeaderFooterEdit)
-  const setHfConfig = useEditorStore((s) => s.setHeaderFooterConfig)
+export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetup }: ToolbarProps) {
+  const paraStyle = useEditorStoreSnapshot((s) => s.paragraphStyle)
+  const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
+  const canUndo = useEditorStoreSnapshot((s) => s.runtime.history.canUndo)
+  const canRedo = useEditorStoreSnapshot((s) => s.runtime.history.canRedo)
+  const formatPainterActive = useEditorStoreSnapshot((s) => s.formatPainterActive)
+  const hfEdit = useEditorStoreSnapshot((s) => s.headerFooterEdit)
+  const hfConfig = useEditorStoreSnapshot((s) => s.headerFooterConfig)
 
   // 页眉页脚编辑模式 → 上下文工具栏
   if (hfEdit.active) {
@@ -81,10 +78,10 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
       <HeaderFooterToolbar
         section={hfEdit.section}
         config={hfConfig}
-        onConfigChange={setHfConfig}
+        onConfigChange={(patch) => onFormat?.('headerFooterConfig', patch)}
         onInsertPageNumber={() => onInsert?.('pageNumber')}
         onInsertDate={() => onInsert?.('currentDate')}
-        onClose={() => setHfEdit(false)}
+        onClose={() => onFormat?.('headerFooterClose')}
       />
     )
   }
@@ -300,7 +297,7 @@ function ToolbarButton({
 // ---- 字体下拉 ----
 
 function FontDropdown({ onSelect }: { onSelect: (font: string) => void }) {
-  const textStyle = useEditorStore((s) => s.textStyle)
+  const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
   const selected = textStyle?.font || 'SimSun'
   return (
     <DropdownMenu.Root>
@@ -337,7 +334,7 @@ function FontDropdown({ onSelect }: { onSelect: (font: string) => void }) {
 // ---- 字号下拉 ----
 
 function FontSizeDropdown({ onSelect }: { onSelect: (size: number) => void }) {
-  const textStyle = useEditorStore((s) => s.textStyle)
+  const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
   const selected = textStyle?.size || 16
   return (
     <DropdownMenu.Root>
@@ -373,7 +370,7 @@ function FontSizeDropdown({ onSelect }: { onSelect: (size: number) => void }) {
 // ---- 文字颜色选择器 ----
 
 function ColorPicker({ onSelect }: { onSelect: (color: string) => void }) {
-  const textStyle = useEditorStore((s) => s.textStyle)
+  const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
   const currentColor = textStyle?.color || '#000000'
 
   return (
@@ -467,7 +464,7 @@ const HEADING_STYLES = [
 ]
 
 function HeadingDropdown({ onSelect }: { onSelect: (level: number) => void }) {
-  const paraStyle = useEditorStore((s) => s.paragraphStyle)
+  const paraStyle = useEditorStoreSnapshot((s) => s.paragraphStyle)
   const selected = paraStyle?.outlineLevel ?? 0
   const label = HEADING_STYLES.find(h => h.value === selected)?.label || '正文'
 
@@ -680,7 +677,7 @@ const HIGHLIGHT_COLORS = [
 ]
 
 function HighlightPicker({ onSelect }: { onSelect: (color: string) => void }) {
-  const textStyle = useEditorStore((s) => s.textStyle)
+  const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
   const currentHighlight = textStyle?.highlight || 'transparent'
 
   return (

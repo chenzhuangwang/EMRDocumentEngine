@@ -1,4 +1,5 @@
-import type { DocumentTree, BaseNode, Paragraph, TextNode } from './document/core/DocumentModel'
+import type { DocumentTree, BaseNode, Paragraph, HeaderFooterConfig } from './document/core/DocumentModel'
+import { DEFAULT_HEADER_FOOTER_CONFIG } from './document/core/DocumentModel'
 import { createDocument, createParagraph, createTextNode, extractStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent, createSmartTextNode } from './document/factory/ElementFormatter'
 import { NodePool, buildNodePool } from './document/core/NodePool'
 import { serializeDocument } from './document/io/DocumentSerializer'
@@ -23,6 +24,7 @@ import { FormatTextCommand } from './command/commands/FormatTextCommand'
 import { ClearFormatCommand } from './command/commands/FormatTextCommand'
 import { FormatPainterCommand } from './command/commands/FormatTextCommand'
 import { ParagraphStyleCommand } from './command/commands/ParagraphStyleCommand'
+import { SetHeaderFooterConfigCommand } from './command/commands/HeaderFooterConfigCommand'
 import { MergeParagraphCommand } from './command/commands/MergeParagraphCommand'
 import { ClipboardManager } from './command/ClipboardManager'
 import { EditorStore } from './state/EditorStore'
@@ -35,15 +37,16 @@ import { screenToDoc, findPageByDocY, pageCenteringOffset } from './layout/table
 import { insertRow, deleteRow, insertColumn, deleteColumn, getCellGridPosition, buildCellGrid, normalizeRange } from './document/table/TableOps'
 import type { CellRange } from './document/table/TableOps'
 import { createTableCell } from './document/factory/ElementFormatter'
+import {
+  InsertInlineNodeCommand, InsertBlockCommand, InsertFootnoteCommand,
+  CreateCommentCommand, AddCommentReplyCommand, ResolveCommentCommand,
+  SetPageSetupCommand, TableStructureCommand, EnsureHeaderFooterParagraphCommand,
+  EnsureBodyParagraphCommand,
+} from './command/commands/StructuralCommands'
+import { InsertImageCommand } from './command/commands/InsertImageCommand'
+import { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
 
-/** 辅助: 绕开 Readonly 直接写 store._state.runtime.cursor */
-type StoreInternal = { _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean } } } }
-
-function setCursor(store: EditorStore, path: string[], offset: number): void {
-  const si = store as unknown as StoreInternal
-  si._state.runtime.cursor = { paragraphPath: path, offset, visible: true }
-}
-
+/** Editor: 引擎编排器 (架构 §3, v20.34) */
 export class Editor {
   private container: HTMLElement
   private doc: DocumentTree
@@ -135,6 +138,8 @@ export class Editor {
     this.eventBus.on('render:request', () => {
       this.draw.recomputeLayout(this.pool)
       this.draw.render(this.pool, this.store.state.runtime)
+      this.syncHistoryState()
+      this.syncUiProjections()
     })
 
     // ---- 初始化 ----
@@ -152,13 +157,9 @@ export class Editor {
     })
     this.inputComposer.onCompositionEnd((text) => {
       let cursor = this.store.state.runtime.cursor
-      // 空文档 → 自动创建段落 (与 KeyboardHandler 保持一致)
+      // 空文档 → 自动创建段落 (与 KeyboardHandler 保持一致, 经 Command RULE 4)
       if (cursor.paragraphPath.length === 0) {
-        const para = createParagraph()
-        this.pool.nodes.set(para.id, para)
-        this.doc.body.children = [para.id]
-        const path: string[] = [this.doc.id, para.id]
-        setCursor(this.store, path, 0)
+        this.commandManager.execute(new EnsureBodyParagraphCommand(generateCommandId(), Date.now(), 'user'))
         cursor = this.store.state.runtime.cursor
       }
       // 获取光标处文本样式 (段尾回退到末尾节点)
@@ -195,7 +196,7 @@ export class Editor {
     const cursorPath = this.doc.body.children.length > 0
       ? [this.doc.id, this.doc.body.children[0]]
       : []
-    setCursor(this.store, cursorPath, 0)
+    this.store.setCursor({ paragraphPath: cursorPath, offset: 0, visible: true })
 
     this.draw.render(this.pool, this.store.state.runtime)
 
@@ -288,7 +289,36 @@ export class Editor {
     this.perfMetrics.recordLayout(t1 - t0)
     this.draw.render(this.pool, this.store.state.runtime)
     this.autoSave.markDirty()
+    this.syncHistoryState()
     this.notifyListeners('contentChange', this.doc)
+  }
+
+  /**
+   * 同步撤销/重做栈深度到 EditorStore.runtime.history (canonical owner, §7.2)。
+   * 在 document:changed (执行命令) 与 render:request (undo/redo) 后调用。
+   */
+  private syncHistoryState(): void {
+    this.store.updateRuntime({
+      history: {
+        canUndo: this.commandManager.canUndo(),
+        canRedo: this.commandManager.canRedo(),
+        undoDepth: this.commandManager.undoStack.getUndoDepth(),
+        redoDepth: this.commandManager.undoStack.getRedoDepth(),
+      },
+    })
+  }
+
+  /**
+   * 同步 UI 投影到 EditorStore — 文档/光标/选区变化后调用。
+   *
+   * paragraphStyle / textStyle / headerFooterConfig 的 canonical owner 是 DocumentTree,
+   * EditorStore 仅保存 UI 读取投影 (见 EditorStoreState 字段注释)。因 Editor.setDocument
+   * 不更新 store.document, 这些投影必须由 Editor 显式同步。
+   */
+  private syncUiProjections(): void {
+    this.store.setParagraphStyle(this.getParagraphStyle())
+    this.store.setTextStyle(this.getTextStyle())
+    this.store.setHeaderFooterConfig(this.getHeaderFooterConfig())
   }
 
   /** 点击命中检测 → 更新光标到点击位置 */
@@ -330,7 +360,7 @@ export class Editor {
       const para = this.findParagraphContaining(nodeId)
       if (para) {
         const offset = this.computeOffsetAtX(para, docX, docY, page)
-        setCursor(this.store, [this.doc.id, para.id], offset)
+        this.store.setCursor({ paragraphPath: [this.doc.id, para.id], offset, visible: true })
       }
     } else {
       // 未命中 → 判断点击位置相对于内容的位置
@@ -351,7 +381,7 @@ export class Editor {
             const lastPara = this.pool.nodes.get(lastParaId) as unknown as Paragraph | undefined
             if (lastPara) {
               const endOffset = this.getParagraphTextLength(lastPara)
-              setCursor(this.store, [this.doc.id, lastParaId], endOffset)
+              this.store.setCursor({ paragraphPath: [this.doc.id, lastParaId], offset: endOffset, visible: true })
             }
           }
         }
@@ -366,7 +396,7 @@ export class Editor {
             if (node && node.type === 'paragraph') { firstParaId = bodyChildren[i]; break }
           }
           if (firstParaId) {
-            setCursor(this.store, [this.doc.id, firstParaId], 0)
+            this.store.setCursor({ paragraphPath: [this.doc.id, firstParaId], offset: 0, visible: true })
           }
         }
       }
@@ -375,8 +405,7 @@ export class Editor {
 
     // 单击清空选区 (双击/三击已处理选区则跳过)
     if (!this.mouseHandler.wasMultiClick()) {
-      const si = this.store as unknown as { _state: { runtime: { selection: { active: boolean } } } }
-      si._state.runtime.selection.active = false
+      this.store.updateSelection({ active: false })
     }
 
     // 无论命中与否都重绘
@@ -509,7 +538,7 @@ export class Editor {
     const cursorPath = doc.body.children.length > 0
       ? [doc.id, doc.body.children[0]]
       : []
-    setCursor(this.store, cursorPath, 0)
+    this.store.setCursor({ paragraphPath: cursorPath, offset: 0, visible: true })
     this.draw.render(this.pool, this.store.state.runtime)
     this.notifyListeners('contentChange', doc)
   }
@@ -519,20 +548,16 @@ export class Editor {
    * 返回第一个段落 ID
    */
   ensureHeaderFooterParagraph(section: 'header' | 'footer'): string {
-    const targetIds = section === 'header' ? this.doc.header! : this.doc.footer!
-    if (targetIds.length > 0) return targetIds[0]
+    const arr = section === 'header'
+      ? (this.doc.header ?? (this.doc.header = []))
+      : (this.doc.footer ?? (this.doc.footer = []))
+    if (arr.length > 0) return arr[0]
 
-    // 创建空白段落 + 空文本节点
-    const para = createParagraph()
-    const textNode = createTextNode('')
-    para.children = [textNode.id]
-
-    // 加入文档和池
-    targetIds.push(para.id)
-    this.pool.nodes.set(para.id, para)
-    this.pool.nodes.set(textNode.id, textNode)
-
-    return para.id
+    // 经 Command 创建段落 (RULE 4), 命令同步写回 doc.header/footer
+    this.commandManager.execute(new EnsureHeaderFooterParagraphCommand(
+      generateCommandId(), Date.now(), 'user', section,
+    ))
+    return arr[0]
   }
 
   /**
@@ -543,40 +568,11 @@ export class Editor {
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return
 
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-    const fn = createFieldNode(fieldType)
-
-    // 注册到 NodePool
-    this.pool.nodes.set(fn.id, fn)
-
-    // 插入到段落 children 的光标偏移处
-    const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
-    if (!para?.children) return
-
-    // 找到光标所在的文本节点位置，在后面插入 FieldNode
-    const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
-    if (resolved) {
-      const idx = para.children.indexOf(resolved.textNodeId)
-      para.children.splice(idx + 1, 0, fn.id)
-    } else {
-      // 段尾: 追加到最后
-      para.children.push(fn.id)
-    }
-
-    // 触发重布局+重绘
-    this.draw.recomputeLayout(this.pool)
-    this.draw.render(this.pool, this.store.state.runtime)
-    this.notifyListeners('contentChange', this.doc)
-  }
-
-  /** 创建一个空段落 (空 text 节点 + 段落) 并注册进 pool, 返回段落 id。
-   *  用于非段落块 (表格/分隔线/分节符) 之后, 保证光标可定位到该块之后继续书写。 */
-  private createTrailingParagraph(): string {
-    const text = createTextNode('')
-    const para = createParagraph([text.id])
-    this.pool.nodes.set(text.id, text)
-    this.pool.nodes.set(para.id, para)
-    return para.id
+    this.commandManager.execute(new InsertInlineNodeCommand(
+      generateCommandId(), Date.now(), 'user',
+      cursor.paragraphPath, cursor.offset,
+      () => createFieldNode(fieldType),
+    ))
   }
 
   /** 在光标所在段落后插入分隔线 (TASK-462) */
@@ -584,24 +580,16 @@ export class Editor {
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return
 
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-    const idx = this.doc.body.children.indexOf(paraId)
-    if (idx < 0) return
-
-    const sep = createSeparatorNode()
-    this.pool.nodes.set(sep.id, sep)
-    this.doc.body.children.splice(idx + 1, 0, sep.id)
-
-    // 分隔线后创建空段落, 确保光标可定位到分隔线之后继续书写 (与 insertTable 一致)
-    const trailParaId = this.createTrailingParagraph()
-    this.doc.body.children.splice(
-      this.doc.body.children.indexOf(sep.id) + 1, 0, trailParaId,
-    )
-    setCursor(this.store, [this.doc.id, trailParaId], 0)
-
-    this.draw.recomputeLayout(this.pool)
-    this.draw.render(this.pool, this.store.state.runtime)
-    this.notifyListeners('contentChange', this.doc)
+    this.commandManager.execute(new InsertBlockCommand(
+      generateCommandId(), Date.now(), 'user',
+      cursor.paragraphPath,
+      (pool) => {
+        const sep = createSeparatorNode()
+        pool.nodes.set(sep.id, sep)
+        return sep
+      },
+      { withTrailingParagraph: true, moveCursorToTrailing: true },
+    ))
   }
 
   /** 在光标位置插入脚注引用 + 脚注内容 (R31, Ctrl+Alt+F) */
@@ -609,40 +597,21 @@ export class Editor {
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return
 
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-    const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
-    if (!para?.children) return
-
-    // 创建脚注内容 (空段落, 用户后续编辑)
-    const fnContent = createFootnoteContent('')
-    const contentText = createTextNode('')
-    const contentPara = createParagraph([contentText.id])
-    fnContent.children = [contentPara.id]
-    this.pool.nodes.set(fnContent.id, fnContent)
-    this.pool.nodes.set(contentText.id, contentText)
-    this.pool.nodes.set(contentPara.id, contentPara)
-
-    // 注册到文档级别
-    if (!this.doc.footnotes) this.doc.footnotes = []
-    this.doc.footnotes.push(fnContent.id)
-
-    // 创建脚注引用 (标记在正文中)
-    const fnRef = createFootnoteRef(fnContent.id)
-    fnContent.refId = fnRef.id
-    this.pool.nodes.set(fnRef.id, fnRef)
-
-    // 插入引用到光标位置
-    const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
-    if (resolved) {
-      const idx = para.children.indexOf(resolved.textNodeId)
-      para.children.splice(idx + 1, 0, fnRef.id)
-    } else {
-      para.children.push(fnRef.id)
-    }
-
-    this.draw.recomputeLayout(this.pool)
-    this.draw.render(this.pool, this.store.state.runtime)
-    this.notifyListeners('contentChange', this.doc)
+    this.commandManager.execute(new InsertFootnoteCommand(
+      generateCommandId(), Date.now(), 'user',
+      cursor.paragraphPath, cursor.offset,
+      (pool) => {
+        const fnContent = createFootnoteContent('')
+        const contentText = createTextNode('')
+        const contentPara = createParagraph([contentText.id])
+        fnContent.children = [contentPara.id]
+        pool.nodes.set(fnContent.id, fnContent)
+        pool.nodes.set(contentText.id, contentText)
+        pool.nodes.set(contentPara.id, contentPara)
+        return fnContent
+      },
+      (fnContentId) => createFootnoteRef(fnContentId),
+    ))
   }
 
   /** 在光标位置插入图片 (TASK-447), dataUrl 为 base64 或 blob URL */
@@ -650,62 +619,10 @@ export class Editor {
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return
 
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-    // 限制显示宽度不超过内容区域
-    const maxW = 794 - 180 // pageWidth - margins
-    const displayW = Math.min(naturalW || maxW, maxW)
-    const displayH = naturalW && naturalH
-      ? (displayW / naturalW) * naturalH
-      : 200
-
-    const imgNode = {
-      type: 'image' as const,
-      id: generateCommandId(),
-      src: dataUrl,
-      width: displayW,
-      height: displayH,
-      naturalWidth: naturalW,
-      naturalHeight: naturalH,
-      wrapMode: 'top-bottom' as const,
-    }
-
-    this.pool.nodes.set(imgNode.id, imgNode)
-
-    const para = this.pool.nodes.get(paraId) as { children?: string[] } | undefined
-    if (para?.children) {
-      const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
-      if (resolved) {
-        const target = this.pool.nodes.get(resolved.textNodeId)
-        const idx = para.children.indexOf(resolved.textNodeId)
-        if (target && (target as { type?: string }).type === 'text') {
-          const text = (target as unknown as { text: string }).text
-          const lo = resolved.localOffset
-          if (lo > 0 && lo < text.length) {
-            // 光标在文本中间 → 拆分文本, 图片插入拆分点
-            const afterNode = createTextNode(text.slice(lo), extractStyle(target as unknown as TextNode))
-            this.pool.nodes.set(afterNode.id, afterNode)
-            this.pool.updateNode(target.id, { text: text.slice(0, lo) } as Partial<TextNode>)
-            para.children.splice(idx + 1, 0, imgNode.id, afterNode.id)
-          } else {
-            // 光标在文本首/尾 → 图片插到文本前/后
-            para.children.splice(idx + (lo === 0 ? 0 : 1), 0, imgNode.id)
-          }
-        } else {
-          // 内联非文本节点 (image/field/footnote_ref) → localOffset 0=前, 1=后
-          para.children.splice(idx + (resolved.localOffset >= 1 ? 1 : 0), 0, imgNode.id)
-        }
-      } else {
-        para.children.push(imgNode.id)
-      }
-    }
-
-    // 光标移到图片之后 (图片占 1 字符), 使后续输入落在图片之后而非之前
-    const afterOffset = this.pool.getCharOffset(paraId, imgNode.id, 1)
-    setCursor(this.store, [this.doc.id, paraId], afterOffset)
-
-    this.draw.recomputeLayout(this.pool)
-    this.draw.render(this.pool, this.store.state.runtime)
-    this.notifyListeners('contentChange', this.doc)
+    this.commandManager.execute(new InsertImageCommand(
+      generateCommandId(), Date.now(), 'user',
+      cursor.paragraphPath, cursor.offset, dataUrl, naturalW, naturalH,
+    ))
   }
 
   /** 在光标位置后插入表格 (R83) */
@@ -713,61 +630,46 @@ export class Editor {
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return
 
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    this.commandManager.execute(new InsertBlockCommand(
+      generateCommandId(), Date.now(), 'user',
+      cursor.paragraphPath,
+      (pool) => {
+        const tableId = generateCommandId()
+        const colWidth = 100 / Math.max(cols, 1)
+        const rowIds: string[] = []
 
-    const tableId = generateCommandId()
-    const colWidth = 100 / Math.max(cols, 1)
-    const rowIds: string[] = []
+        for (let r = 0; r < rows; r++) {
+          const rowId = generateCommandId()
+          const cellIds: string[] = []
+          for (let c = 0; c < cols; c++) {
+            const cellId = generateCommandId()
+            const text = createTextNode('')
+            const para = createParagraph([text.id])
+            pool.nodes.set(text.id, text)
+            pool.nodes.set(para.id, para)
+            pool.nodes.set(cellId, {
+              type: 'cell' as const, id: cellId,
+              children: [para.id],
+              colspan: 1, rowspan: 1,
+            } as unknown as BaseNode)
+            cellIds.push(cellId)
+          }
+          pool.nodes.set(rowId, {
+            type: 'row' as const, id: rowId,
+            children: cellIds, height: 24,
+          } as unknown as BaseNode)
+          rowIds.push(rowId)
+        }
 
-    for (let r = 0; r < rows; r++) {
-      const rowId = generateCommandId()
-      const cellIds: string[] = []
-      for (let c = 0; c < cols; c++) {
-        const cellId = generateCommandId()
-        const text = createTextNode('')
-        const para = createParagraph([text.id])
-        this.pool.nodes.set(text.id, text)
-        this.pool.nodes.set(para.id, para)
-        this.pool.nodes.set(cellId, {
-          type: 'cell' as const, id: cellId,
-          children: [para.id],
-          colspan: 1, rowspan: 1,
+        pool.nodes.set(tableId, {
+          type: 'table' as const, id: tableId,
+          columns: Array.from({ length: cols }, () => ({ width: colWidth, mode: 'percentage' as const })),
+          children: rowIds,
         } as unknown as BaseNode)
-        cellIds.push(cellId)
-      }
-      this.pool.nodes.set(rowId, {
-        type: 'row' as const, id: rowId,
-        children: cellIds, height: 24,
-      } as unknown as BaseNode)
-      rowIds.push(rowId)
-    }
-
-    this.pool.nodes.set(tableId, {
-      type: 'table' as const, id: tableId,
-      columns: Array.from({ length: cols }, () => ({ width: colWidth, mode: 'percentage' as const })),
-      children: rowIds,
-    } as unknown as BaseNode)
-
-    // 在光标段落后插入表格
-    const idx = this.doc.body.children.indexOf(paraId)
-    if (idx >= 0) {
-      this.doc.body.children.splice(idx + 1, 0, tableId)
-    } else {
-      this.doc.body.children.push(tableId)
-    }
-
-    // 表格后创建空段落, 确保光标可定位到表格之后
-    const trailText = createTextNode('')
-    const trailPara = createParagraph([trailText.id])
-    this.pool.nodes.set(trailText.id, trailText)
-    this.pool.nodes.set(trailPara.id, trailPara)
-    this.doc.body.children.splice(
-      this.doc.body.children.indexOf(tableId) + 1, 0, trailPara.id,
-    )
-
-    this.draw.recomputeLayout(this.pool)
-    this.draw.render(this.pool, this.store.state.runtime)
-    this.notifyListeners('contentChange', this.doc)
+        return pool.nodes.get(tableId) as BaseNode
+      },
+      { withTrailingParagraph: true, moveCursorToTrailing: false },
+    ))
   }
 
   /** 选中表格单元格 (供鼠标点击使用) — 同时启动单格框选 */
@@ -828,68 +730,81 @@ export class Editor {
     const tableId = this._selectedTableId
     const rowIdx = this._selectedCellRow
     const colIdx = this._selectedCellCol
-    const table = this.pool.nodes.get(tableId) as { children?: string[] } | undefined
-    if (!table?.children) return
-    const rowId = table.children[rowIdx]
-    if (!rowId) return
-    const row = this.pool.nodes.get(rowId) as { children?: string[] } | undefined
-    if (!row?.children) return
-    const cellId = row.children[colIdx]
-    const nextCellId = row.children[colIdx + 1]
-    if (!cellId || !nextCellId) return
 
-    const cell = this.pool.nodes.get(cellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
-    const nextCell = this.pool.nodes.get(nextCellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
-    if (!cell || !nextCell) return
+    this.commandManager.execute(new TableStructureCommand(
+      generateCommandId(), Date.now(), 'user', tableId,
+      (pool) => {
+        const table = pool.nodes.get(tableId) as { children?: string[] } | undefined
+        if (!table?.children) return false
+        const rowId = table.children[rowIdx]
+        if (!rowId) return false
+        const row = pool.nodes.get(rowId) as { children?: string[] } | undefined
+        if (!row?.children) return false
+        const cellId = row.children[colIdx]
+        const nextCellId = row.children[colIdx + 1]
+        if (!cellId || !nextCellId) return false
 
-    // 仅支持同一行内相邻、且两侧均未跨行的合并 (跨行合并方向复杂, 暂不支持)
-    if ((cell.rowspan || 1) > 1 || (nextCell.rowspan || 1) > 1) return
+        const cell = pool.nodes.get(cellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
+        const nextCell = pool.nodes.get(nextCellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
+        if (!cell || !nextCell) return false
 
-    // 水平合并: colspan 累加右侧单元格的 colspan
-    cell.colspan = (cell.colspan || 1) + (nextCell.colspan || 1)
-    // 右侧单元格内容并入当前单元格
-    cell.children = [...(cell.children || []), ...(nextCell.children || [])]
-    this.pool.nodes.delete(nextCellId)
-    row.children.splice(colIdx + 1, 1)
+        // 仅支持同一行内相邻、且两侧均未跨行的合并 (跨行合并方向复杂, 暂不支持)
+        if ((cell.rowspan || 1) > 1 || (nextCell.rowspan || 1) > 1) return false
 
-    this.afterTableMutation()
+        // 水平合并: colspan 累加右侧单元格的 colspan
+        cell.colspan = (cell.colspan || 1) + (nextCell.colspan || 1)
+        // 右侧单元格内容并入当前单元格
+        cell.children = [...(cell.children || []), ...(nextCell.children || [])]
+        pool.nodes.delete(nextCellId)
+        row.children.splice(colIdx + 1, 1)
+        return true
+      },
+    ))
+    this.clearTableSelectionState()
   }
 
   /** 合并框选矩形为一个单元格 (colspan×rowspan) */
   mergeSelectedRange(range: CellRange): void {
     const { r0, r1, c0, c1 } = normalizeRange(range)
     if (r0 === r1 && c0 === c1) return
-    const grid = buildCellGrid(this.pool, range.tableId)
-    const boxCells = grid.cells.filter(gc => gc.row >= r0 && gc.row <= r1 && gc.col >= c0 && gc.col <= c1)
-    if (boxCells.length < 2) return
+    const tableId = range.tableId
 
-    // 左上角 cell 作为合并目标
-    const target = boxCells.find(gc => gc.row === r0 && gc.col === c0)
-    if (!target) return
-    const targetCell = this.pool.nodes.get(target.cellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
-    if (!targetCell) return
+    this.commandManager.execute(new TableStructureCommand(
+      generateCommandId(), Date.now(), 'user', tableId,
+      (pool) => {
+        const grid = buildCellGrid(pool, tableId)
+        const boxCells = grid.cells.filter(gc => gc.row >= r0 && gc.row <= r1 && gc.col >= c0 && gc.col <= c1)
+        if (boxCells.length < 2) return false
 
-    // 其余 cell 内容并入目标 cell, 并从各自行移除
-    for (const gc of boxCells) {
-      if (gc.cellId === target.cellId) continue
-      const cell = this.pool.nodes.get(gc.cellId) as { children?: string[] } | undefined
-      if (cell?.children?.length) {
-        targetCell.children = [...(targetCell.children || []), ...cell.children]
-        // 关键: 清空引用, 防止 removeChild 级联删除已并入目标 cell 的段落
-        cell.children = []
-      }
-      const row = this.pool.nodes.get(grid.rowIds[gc.row]) as { id: string; children?: string[] } | undefined
-      const idx = row?.children?.indexOf(gc.cellId)
-      if (row && idx !== undefined && idx >= 0) this.pool.removeChild(row.id, idx)
-    }
+        // 左上角 cell 作为合并目标
+        const target = boxCells.find(gc => gc.row === r0 && gc.col === c0)
+        if (!target) return false
+        const targetCell = pool.nodes.get(target.cellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
+        if (!targetCell) return false
 
-    // 目标 cell span = 矩形宽×高
-    const spanCol = c1 - c0 + 1
-    const spanRow = r1 - r0 + 1
-    if (spanCol > 1) targetCell.colspan = spanCol; else delete targetCell.colspan
-    if (spanRow > 1) targetCell.rowspan = spanRow; else delete targetCell.rowspan
+        // 其余 cell 内容并入目标 cell, 并从各自行移除
+        for (const gc of boxCells) {
+          if (gc.cellId === target.cellId) continue
+          const cell = pool.nodes.get(gc.cellId) as { children?: string[] } | undefined
+          if (cell?.children?.length) {
+            targetCell.children = [...(targetCell.children || []), ...cell.children]
+            // 关键: 清空引用, 防止 removeChild 级联删除已并入目标 cell 的段落
+            cell.children = []
+          }
+          const row = pool.nodes.get(grid.rowIds[gc.row]) as { id: string; children?: string[] } | undefined
+          const idx = row?.children?.indexOf(gc.cellId)
+          if (row && idx !== undefined && idx >= 0) pool.removeChild(row.id, idx)
+        }
 
-    this.afterTableMutation()
+        // 目标 cell span = 矩形宽×高
+        const spanCol = c1 - c0 + 1
+        const spanRow = r1 - r0 + 1
+        if (spanCol > 1) targetCell.colspan = spanCol; else delete targetCell.colspan
+        if (spanRow > 1) targetCell.rowspan = spanRow; else delete targetCell.rowspan
+        return true
+      },
+    ))
+    this.clearTableSelectionState()
   }
 
   /** 拆分合并的单元格 (支持 colspan 水平拆分 / rowspan 垂直拆分) */
@@ -898,74 +813,90 @@ export class Editor {
     const tableId = this._selectedTableId
     const rowIdx = this._selectedCellRow
     const colIdx = this._selectedCellCol
-    const table = this.pool.nodes.get(tableId) as { children?: string[] } | undefined
-    if (!table?.children) return
-    const rowId = table.children[rowIdx]
-    if (!rowId) return
-    const row = this.pool.nodes.get(rowId) as { children?: string[] } | undefined
-    if (!row?.children) return
-    const cellId = row.children[colIdx]
-    if (!cellId) return
-    const cell = this.pool.nodes.get(cellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
-    if (!cell) return
 
-    const colspan = cell.colspan || 1
-    const rowspan = cell.rowspan || 1
-    if (colspan <= 1 && rowspan <= 1) return
+    this.commandManager.execute(new TableStructureCommand(
+      generateCommandId(), Date.now(), 'user', tableId,
+      (pool) => {
+        const table = pool.nodes.get(tableId) as { children?: string[] } | undefined
+        if (!table?.children) return false
+        const rowId = table.children[rowIdx]
+        if (!rowId) return false
+        const row = pool.nodes.get(rowId) as { children?: string[] } | undefined
+        if (!row?.children) return false
+        const cellId = row.children[colIdx]
+        if (!cellId) return false
+        const cell = pool.nodes.get(cellId) as { colspan?: number; rowspan?: number; children?: string[] } | undefined
+        if (!cell) return false
 
-    // 新单元格 (含一个空段落)
-    const text = createTextNode('')
-    const para = createParagraph([text.id])
-    this.pool.nodes.set(text.id, text as unknown as BaseNode)
-    this.pool.nodes.set(para.id, para as unknown as BaseNode)
-    const newCell = createTableCell([para.id])
-    this.pool.nodes.set(newCell.id, newCell as unknown as BaseNode)
+        const colspan = cell.colspan || 1
+        const rowspan = cell.rowspan || 1
+        if (colspan <= 1 && rowspan <= 1) return false
 
-    if (colspan > 1) {
-      // 水平拆分: 原 cell 缩为 colspan=1, 右侧新增 cell (保留剩余 colspan + 相同 rowspan)
-      cell.colspan = 1
-      if (colspan > 2) newCell.colspan = colspan - 1
-      if (rowspan > 1) newCell.rowspan = rowspan
-      row.children.splice(colIdx + 1, 0, newCell.id)
-    } else {
-      // 垂直拆分: 原 cell 缩为 rowspan=1, 下一行对应列新增 cell (保留剩余 rowspan)
-      const rowBelowId = table.children[rowIdx + 1]
-      const rowBelow = rowBelowId
-        ? (this.pool.nodes.get(rowBelowId) as { children?: string[] } | undefined)
-        : undefined
-      if (!rowBelow?.children) { this.pool.nodes.delete(newCell.id); return }
+        // 新单元格 (含一个空段落)
+        const text = createTextNode('')
+        const para = createParagraph([text.id])
+        pool.nodes.set(text.id, text as unknown as BaseNode)
+        pool.nodes.set(para.id, para as unknown as BaseNode)
+        const newCell = createTableCell([para.id])
+        pool.nodes.set(newCell.id, newCell as unknown as BaseNode)
 
-      cell.rowspan = 1
-      if (rowspan > 2) newCell.rowspan = rowspan - 1
-      if (colspan > 1) newCell.colspan = colspan
+        if (colspan > 1) {
+          // 水平拆分: 原 cell 缩为 colspan=1, 右侧新增 cell (保留剩余 colspan + 相同 rowspan)
+          cell.colspan = 1
+          if (colspan > 2) newCell.colspan = colspan - 1
+          if (rowspan > 1) newCell.rowspan = rowspan
+          row.children.splice(colIdx + 1, 0, newCell.id)
+        } else {
+          // 垂直拆分: 原 cell 缩为 rowspan=1, 下一行对应列新增 cell (保留剩余 rowspan)
+          const rowBelowId = table.children[rowIdx + 1]
+          const rowBelow = rowBelowId
+            ? (pool.nodes.get(rowBelowId) as { children?: string[] } | undefined)
+            : undefined
+          if (!rowBelow?.children) { pool.nodes.delete(newCell.id); return false }
 
-      // 在下一行中, 找到网格列对应的插入点
-      const gp = getCellGridPosition(this.pool, tableId, rowIdx, colIdx)
-      const targetCol = gp?.col ?? colIdx
-      const grid = buildCellGrid(this.pool, tableId)
-      let insertIdx = rowBelow.children.length
-      for (let i = 0; i < rowBelow.children.length; i++) {
-        const gc = grid.byId.get(rowBelow.children[i])
-        if (gc && gc.col > targetCol) { insertIdx = i; break }
-      }
-      rowBelow.children.splice(insertIdx, 0, newCell.id)
-    }
+          cell.rowspan = 1
+          if (rowspan > 2) newCell.rowspan = rowspan - 1
+          if (colspan > 1) newCell.colspan = colspan
 
-    this.afterTableMutation()
+          // 在下一行中, 找到网格列对应的插入点
+          const gp = getCellGridPosition(pool, tableId, rowIdx, colIdx)
+          const targetCol = gp?.col ?? colIdx
+          const grid = buildCellGrid(pool, tableId)
+          let insertIdx = rowBelow.children.length
+          for (let i = 0; i < rowBelow.children.length; i++) {
+            const gc = grid.byId.get(rowBelow.children[i])
+            if (gc && gc.col > targetCol) { insertIdx = i; break }
+          }
+          rowBelow.children.splice(insertIdx, 0, newCell.id)
+        }
+        return true
+      },
+    ))
+    this.clearTableSelectionState()
   }
 
   /** 插入行 (选中单元格下方) */
   insertTableRow(): void {
     if (!this._selectedTableId || this._selectedCellRow < 0) return
-    insertRow(this.pool, this._selectedTableId, this._selectedCellRow)
-    this.afterTableMutation()
+    const tableId = this._selectedTableId
+    const rowIdx = this._selectedCellRow
+    this.commandManager.execute(new TableStructureCommand(
+      generateCommandId(), Date.now(), 'user', tableId,
+      (pool) => { insertRow(pool, tableId, rowIdx); return true },
+    ))
+    this.clearTableSelectionState()
   }
 
   /** 删除选中单元格所在行 */
   deleteTableRow(): void {
     if (!this._selectedTableId || this._selectedCellRow < 0) return
-    deleteRow(this.pool, this._selectedTableId, this._selectedCellRow)
-    this.afterTableMutation()
+    const tableId = this._selectedTableId
+    const rowIdx = this._selectedCellRow
+    this.commandManager.execute(new TableStructureCommand(
+      generateCommandId(), Date.now(), 'user', tableId,
+      (pool) => { deleteRow(pool, tableId, rowIdx); return true },
+    ))
+    this.clearTableSelectionState()
   }
 
   /** 插入列 (选中单元格右侧) */
@@ -973,8 +904,13 @@ export class Editor {
     if (!this._selectedTableId || this._selectedCellRow < 0 || this._selectedCellCol < 0) return
     const gp = getCellGridPosition(this.pool, this._selectedTableId, this._selectedCellRow, this._selectedCellCol)
     if (!gp) return
-    insertColumn(this.pool, this._selectedTableId, gp.col)
-    this.afterTableMutation()
+    const tableId = this._selectedTableId
+    const colIdx = gp.col
+    this.commandManager.execute(new TableStructureCommand(
+      generateCommandId(), Date.now(), 'user', tableId,
+      (pool) => { insertColumn(pool, tableId, colIdx); return true },
+    ))
+    this.clearTableSelectionState()
   }
 
   /** 删除选中单元格所在列 */
@@ -982,18 +918,20 @@ export class Editor {
     if (!this._selectedTableId || this._selectedCellRow < 0 || this._selectedCellCol < 0) return
     const gp = getCellGridPosition(this.pool, this._selectedTableId, this._selectedCellRow, this._selectedCellCol)
     if (!gp) return
-    deleteColumn(this.pool, this._selectedTableId, gp.col)
-    this.afterTableMutation()
+    const tableId = this._selectedTableId
+    const colIdx = gp.col
+    this.commandManager.execute(new TableStructureCommand(
+      generateCommandId(), Date.now(), 'user', tableId,
+      (pool) => { deleteColumn(pool, tableId, colIdx); return true },
+    ))
+    this.clearTableSelectionState()
   }
 
-  /** 表格结构变更后的统一收尾: 清选择 + 重布局 + 渲染 + 通知 */
-  private afterTableMutation(): void {
+  /** 表格结构变更后的统一收尾: 清选择状态 (重布局/渲染/通知由 Command 事件链完成) */
+  private clearTableSelectionState(): void {
     this._selectedTableId = null; this._selectedCellRow = -1; this._selectedCellCol = -1
     this._cellRange = null
     this.draw.cellSelection = null
-    this.draw.recomputeLayout(this.pool)
-    this.draw.render(this.pool, this.store.state.runtime)
-    this.notifyListeners('contentChange', this.doc)
   }
 
   /** 选择性粘贴 (Ctrl+Shift+V) — keep-source / match-destination / plain-text */
@@ -1023,11 +961,16 @@ export class Editor {
     this.commandManager.execute(cmd)
   }
 
-  /** 切换编辑器模式 (edit/readonly/form/clean/design/print) */
+  /**
+   * 切换编辑器模式 (edit/readonly/form/clean/design/print)
+   *
+   * mode 的 canonical owner 是 EditorStore.runtime.view.mode (§7.2),
+   * React 端经 useEditorStoreSnapshot 订阅回读。此处仅更新 store,
+   * 不再 emit 'mode:changed' (已无监听者) 或空 'state:changed'
+   * (后者会误触 setDirty(true), 把切模式当成文档变更)。
+   */
   setMode(mode: import('./state/EditorRuntimeState').EditorMode): void {
-    this.store.state.runtime.view.mode = mode
-    this.eventBus.emit('mode:changed', mode)
-    this.eventBus.emit('state:changed', {})
+    this.store.setMode(mode)
   }
 
   /** 插入 SmartTextNode (医疗结构化文本) */
@@ -1040,26 +983,11 @@ export class Editor {
       name,
       format: format ? { dataType: format } : undefined,
     }
-    const smartNode = createSmartTextNode(`[${name}]`, meta)
-    this.pool.nodes.set(smartNode.id, smartNode)
-
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-    const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
-    if (resolved) {
-      const para = this.pool.nodes.get(paraId) as { children?: string[] }
-      if (para?.children) {
-        const idx = para.children.indexOf(resolved.textNodeId)
-        if (idx >= 0) para.children.splice(idx + 1, 0, smartNode.id)
-        else para.children.push(smartNode.id)
-      }
-    } else {
-      const para = this.pool.nodes.get(paraId) as { children?: string[] }
-      if (para?.children) para.children.push(smartNode.id)
-    }
-
-    this.draw.recomputeLayout(this.pool)
-    this.draw.render(this.pool, this.store.state.runtime)
-    this.notifyListeners('contentChange', this.doc)
+    this.commandManager.execute(new InsertInlineNodeCommand(
+      generateCommandId(), Date.now(), 'user',
+      cursor.paragraphPath, cursor.offset,
+      () => createSmartTextNode(`[${name}]`, meta),
+    ))
   }
 
   /** 插入书签 — 在当前光标位置创建 BookmarkNode */
@@ -1067,28 +995,19 @@ export class Editor {
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return
 
-    const bookmarkId = generateCommandId()
     const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-    const bookmark: BaseNode = {
-      type: 'bookmark' as const, id: bookmarkId,
-      name,
-      targetId: paraId,
-      targetOffset: cursor.offset,
-    } as unknown as BaseNode
-    this.pool.nodes.set(bookmarkId, bookmark)
-
-    const para = this.pool.nodes.get(paraId) as { children?: string[] }
-    if (para?.children) {
-      const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
-      if (resolved) {
-        const idx = para.children.indexOf(resolved.textNodeId)
-        if (idx >= 0) para.children.splice(idx + 1, 0, bookmarkId)
-        else para.children.push(bookmarkId)
-      } else {
-        para.children.push(bookmarkId)
-      }
-    }
-    this.notifyListeners('contentChange', this.doc)
+    const offset = cursor.offset
+    this.commandManager.execute(new InsertInlineNodeCommand(
+      generateCommandId(), Date.now(), 'user',
+      cursor.paragraphPath, cursor.offset,
+      () => ({
+        type: 'bookmark' as const,
+        id: generateCommandId(),
+        name,
+        targetId: paraId,
+        targetOffset: offset,
+      } as unknown as BaseNode),
+    ))
   }
 
   /** 获取文档中所有书签/标题/脚注目标 (供 BookmarkDialog 使用) */
@@ -1123,45 +1042,27 @@ export class Editor {
     const markerId = generateCommandId()
     const threadId = generateCommandId()
     const ts = Date.now()
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-
-    // 创建 CommentMarker
-    const marker: BaseNode = {
-      type: 'comment_marker' as const, id: markerId,
-      threadId,
-      rangeStart: { path: [...cursor.paragraphPath], offset: Math.max(0, cursor.offset - 1) },
-      rangeEnd: { path: [...cursor.paragraphPath], offset: cursor.offset },
-    } as unknown as BaseNode
-    this.pool.nodes.set(markerId, marker)
-
-    // 插入到光标所在的文本节点之后
-    const para = this.pool.nodes.get(paraId) as { children?: string[] }
-    if (para?.children) {
-      const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
-      if (resolved) {
-        const idx = para.children.indexOf(resolved.textNodeId)
-        if (idx >= 0) para.children.splice(idx + 1, 0, markerId)
-        else para.children.push(markerId)
-      } else {
-        para.children.push(markerId)
-      }
-    }
-
-    // 初始化 comments 数组并添加 thread
-    if (!this.doc.comments) this.doc.comments = []
-    this.doc.comments.push({
-      id: threadId,
-      rangeStart: { path: [...cursor.paragraphPath], offset: Math.max(0, cursor.offset - 1) },
-      rangeEnd: { path: [...cursor.paragraphPath], offset: cursor.offset },
-      author: 'user',
-      createdAt: ts,
-      status: 'open' as const,
-      baseVersion: 1,
-      anchorStatus: 'valid' as const,
-      comments: [{ id: generateCommandId(), author: 'user', createdAt: ts, content }],
-    })
-
-    this.notifyListeners('contentChange', this.doc)
+    this.commandManager.execute(new CreateCommentCommand(
+      generateCommandId(), Date.now(), 'user',
+      cursor.paragraphPath, cursor.offset,
+      () => ({
+        type: 'comment_marker' as const, id: markerId,
+        threadId,
+        rangeStart: { path: [...cursor.paragraphPath], offset: Math.max(0, cursor.offset - 1) },
+        rangeEnd: { path: [...cursor.paragraphPath], offset: cursor.offset },
+      } as unknown as BaseNode),
+      () => ({
+        id: threadId,
+        rangeStart: { path: [...cursor.paragraphPath], offset: Math.max(0, cursor.offset - 1) },
+        rangeEnd: { path: [...cursor.paragraphPath], offset: cursor.offset },
+        author: 'user',
+        createdAt: ts,
+        status: 'open' as const,
+        baseVersion: 1,
+        anchorStatus: 'valid' as const,
+        comments: [{ id: generateCommandId(), author: 'user', createdAt: ts, content }],
+      }),
+    ))
   }
 
   /** 获取批注列表 */
@@ -1171,22 +1072,16 @@ export class Editor {
 
   /** 添加批注回复 */
   addCommentReply(threadId: string, content: string): void {
-    if (!this.doc.comments) return
-    const thread = this.doc.comments.find(t => t.id === threadId)
-    if (thread) {
-      thread.comments.push({ id: generateCommandId(), author: 'user', createdAt: Date.now(), content })
-      this.notifyListeners('contentChange', this.doc)
-    }
+    this.commandManager.execute(new AddCommentReplyCommand(
+      generateCommandId(), Date.now(), 'user', threadId, generateCommandId(), content,
+    ))
   }
 
   /** 解决/重新打开批注 */
   resolveComment(threadId: string, resolved: boolean): void {
-    if (!this.doc.comments) return
-    const thread = this.doc.comments.find(t => t.id === threadId)
-    if (thread) {
-      thread.status = resolved ? 'resolved' : 'reopened'
-      this.notifyListeners('contentChange', this.doc)
-    }
+    this.commandManager.execute(new ResolveCommentCommand(
+      generateCommandId(), Date.now(), 'user', threadId, resolved,
+    ))
   }
 
   execCommand(command: ICommand): void { this.commandManager.execute(command) }
@@ -1200,20 +1095,22 @@ export class Editor {
     pageWidth: number; pageHeight: number; orientation: 'portrait' | 'landscape'
     pageVerticalGap?: number
   }): void {
-    this.doc.pageSetup.width = values.pageWidth
-    this.doc.pageSetup.height = values.pageHeight
-    this.doc.pageSetup.marginTop = values.marginTop
-    this.doc.pageSetup.marginBottom = values.marginBottom
-    this.doc.pageSetup.marginLeft = values.marginLeft
-    this.doc.pageSetup.marginRight = values.marginRight
-    this.doc.pageSetup.orientation = values.orientation
+    this.commandManager.execute(new SetPageSetupCommand(
+      generateCommandId(), Date.now(), 'user',
+      {
+        width: values.pageWidth,
+        height: values.pageHeight,
+        marginTop: values.marginTop,
+        marginBottom: values.marginBottom,
+        marginLeft: values.marginLeft,
+        marginRight: values.marginRight,
+        orientation: values.orientation,
+      },
+    ))
     // 分页渲染间隙 — 存储不修改, 仅影响渲染视口
     if (typeof values.pageVerticalGap === 'number') {
       this.draw.setPageVerticalGap(values.pageVerticalGap)
     }
-    this.draw.recomputeLayout(this.pool)
-    this.draw.render(this.pool, this.store.state.runtime)
-    this.notifyListeners('contentChange', this.doc)
   }
   canRedo(): boolean { return this.commandManager.canRedo() }
 
@@ -1268,7 +1165,7 @@ export class Editor {
       if (end > start) {
         this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', selection.anchor.paragraphPath, start, end))
       }
-      setCursor(this.store, selection.anchor.paragraphPath, start)
+      this.store.setCursor({ paragraphPath: selection.anchor.paragraphPath, offset: start, visible: true })
       return true
     }
 
@@ -1369,7 +1266,7 @@ export class Editor {
     }
 
     const loParaId = siblings[lo]
-    setCursor(this.store, [...selection.anchor.paragraphPath.slice(0, -1), loParaId], loOff)
+    this.store.setCursor({ paragraphPath: [...selection.anchor.paragraphPath.slice(0, -1), loParaId], offset: loOff, visible: true })
 
     return true
   }
@@ -1647,16 +1544,13 @@ export class Editor {
     // 移动光标到焦点位置 (拖拽终点) + 清除选区 → 格式应用后只显示光标
     const focusPath = [...selection.focus.paragraphPath]
     const focusOffset = selection.focus.offset
-    setCursor(this.store, focusPath, focusOffset)
-    const si = this.store as unknown as {
-      _state: { runtime: { selection: { anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean }; active: boolean; granularity: string } } }
-    }
-    si._state.runtime.selection = {
+    this.store.setCursor({ paragraphPath: focusPath, offset: focusOffset, visible: true })
+    this.store.setSelection({
       anchor: { paragraphPath: focusPath, offset: focusOffset, visible: false },
       focus: { paragraphPath: focusPath, offset: focusOffset, visible: false },
       active: false,
       granularity: 'character',
-    }
+    })
 
     // 执行格式刷命令 (FormatPainterCommand → document:changed → recomputeLayout + render + contentChange)
     const cmd = new FormatPainterCommand(
@@ -1673,7 +1567,7 @@ export class Editor {
     this.draw.render(this.pool, this.store.state.runtime)
   }
 
-  /** 格式刷: 激活/取消 — 同步通知 React 层 */
+  /** 格式刷: 激活/取消 — 状态同步到 EditorStore (canonical owner, §7.2) */
   setFormatPainterActive(active: boolean): void {
     if (active) {
       const style = this.copyFormatPainterStyle()
@@ -1684,8 +1578,7 @@ export class Editor {
       this._formatPainterStyle = null
       this.container.style.cursor = ''
     }
-    // 统一通过回调同步到 React 层 (Zustand store)
-    this.notifyFormatPainterChange(active)
+    this.store.setFormatPainterActive(active)
   }
 
   /** 格式刷是否激活 */
@@ -1720,17 +1613,14 @@ export class Editor {
         // getTextStyle() 读到的是目标段落的格式, 而非旧光标位置
         const cursorOffset = this.computeOffsetAtX(para, docX, localY, page)
         const paraPath = [this.doc.id, para.id]
-        setCursor(this.store, paraPath, cursorOffset)
+        this.store.setCursor({ paragraphPath: paraPath, offset: cursorOffset, visible: true })
         // 同步清除选区 — anchor/focus 跟随新光标位置, active=false
-        const si = this.store as unknown as {
-          _state: { runtime: { selection: { anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean }; active: boolean; granularity: string } } }
-        }
-        si._state.runtime.selection = {
+        this.store.setSelection({
           anchor: { paragraphPath: [...paraPath], offset: cursorOffset, visible: false },
           focus: { paragraphPath: [...paraPath], offset: cursorOffset, visible: false },
           active: false,
           granularity: 'character',
-        }
+        })
         // applyFormatPainter 内部 commandManager.execute → document:changed → recomputeLayout + render
         // → notifyListeners('contentChange') → 工具栏读取当前光标位置格式 = 目标段落的新格式 ✓
         this.applyFormatPainter(para.id, this._formatPainterStyle)
@@ -1742,17 +1632,6 @@ export class Editor {
 
     // 刷新光标位置 (applyFormatPainter 内已通过 document:changed 触发 render, 此处 render 确保光标正确显示)
     this.draw.render(this.pool, this.store.state.runtime)
-  }
-
-  private onFormatPainterChange: ((active: boolean) => void) | null = null
-
-  /** 注册格式刷状态变更回调 (供 React 层同步) */
-  setOnFormatPainterChange(cb: (active: boolean) => void): void {
-    this.onFormatPainterChange = cb
-  }
-
-  private notifyFormatPainterChange(active: boolean): void {
-    this.onFormatPainterChange?.(active)
   }
 
   /** 格式刷: 将样式应用到目标段落的所有文本节点 (TASK-472) */
@@ -1965,15 +1844,12 @@ export class Editor {
     const lastParaId = bodyChildren[bodyChildren.length - 1]
     const lastPara = this.pool.nodes.get(lastParaId) as unknown as { children?: string[] } | undefined
     const totalLen = lastPara ? this.getParagraphTextLength(lastPara as unknown as Paragraph) : 0
-    const si = this.store as unknown as {
-      _state: { runtime: { selection: { anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean }; active: boolean; granularity: string } } }
-    }
-    si._state.runtime.selection = {
+    this.store.setSelection({
       anchor: { paragraphPath: [this.doc.id, firstParaId], offset: 0, visible: false },
       focus: { paragraphPath: [this.doc.id, lastParaId], offset: totalLen, visible: false },
       active: true,
       granularity: 'character',
-    }
+    })
     this.draw.render(this.pool, this.store.state.runtime)
   }
 
@@ -1985,7 +1861,28 @@ export class Editor {
   getStore(): EditorStore { return this.store }
 
   setRuntimeState(state: EditorRuntimeState): void { this.draw.setRuntimeState(state) }
-  setScale(scale: number): void { this.draw.setScale(scale) }
+  setScale(scale: number): void {
+    this.draw.setScale(scale)
+    this.store.setScale(scale)
+  }
+  /** 页眉页脚编辑模式切换 — 同步 EditorStore (canonical owner, §7.2) 与 Draw (渲染镜像) */
+  setHeaderFooterEditActive(active: boolean, section?: 'header' | 'footer'): void {
+    this.draw.setHeaderFooterEditActive(active, section)
+    this.store.setHeaderFooterEdit(active, section)
+  }
+  /** 页眉页脚编辑模式是否激活 */
+  isHeaderFooterEditActive(): boolean { return this.store.state.headerFooterEdit.active }
+  /** 当前编辑的页眉/页脚区域 */
+  getHeaderFooterEditSection(): 'header' | 'footer' { return this.store.state.headerFooterEdit.section }
+  /** 页眉页脚选项 (canonical owner = DocumentTree) */
+  getHeaderFooterConfig(): HeaderFooterConfig {
+    return this.doc.headerFooterConfig ?? { ...DEFAULT_HEADER_FOOTER_CONFIG }
+  }
+  /** 变更页眉页脚选项 — 走 Command 系统 (支持 undo/redo) 并同步 EditorStore 投影 */
+  setHeaderFooterConfig(patch: Partial<HeaderFooterConfig>): void {
+    this.commandManager.execute(new SetHeaderFooterConfigCommand(generateCommandId(), Date.now(), 'user', patch))
+    this.store.setHeaderFooterConfig(this.getHeaderFooterConfig())
+  }
   /** 获取字数统计 (R36) */
   getWordCount(): { chars: number; words: number; paragraphs: number; selectedChars?: number; selectedWords?: number } {
     let chars = 0
@@ -2078,7 +1975,10 @@ export class Editor {
   }
 
   /** 不可见字符显示切换 (TASK-475) */
-  setShowInvisible(v: boolean): void { this.draw.showInvisible = v }
+  setShowInvisible(v: boolean): void {
+    this.draw.showInvisible = v
+    this.store.setShowInvisible(v)
+  }
   getShowInvisible(): boolean { return this.draw.showInvisible }
 
   /** 聚焦编辑器 */
@@ -2101,21 +2001,30 @@ export class Editor {
   }
 
   replace(query: string, replacement: string, result: MatchResult, options?: FindOptions): void {
-    const replaced = this.findReplace.replace(query, replacement, result, this.doc, this.pool, options)
-    if (replaced) {
-      const si = this.store as unknown as { _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean } } } }
-      si._state.runtime.cursor = { paragraphPath: replaced.paragraphPath, offset: replaced.offset, visible: true }
-      this.draw.render(this.pool, this.store.state.runtime)
-    }
+    const newText = this.findReplace.computeReplacement(query, result.matchedText, replacement, options)
+    this.commandManager.execute(new ReplaceTextCommand(
+      generateCommandId(), Date.now(), 'user',
+      [{
+        paragraphPath: result.paragraphPath,
+        startOffset: result.startOffset,
+        endOffset: result.endOffset,
+        newText,
+      }],
+    ))
   }
 
   replaceAll(query: string, replacement: string, options?: FindOptions): number {
-    const count = this.findReplace.replaceAll(query, replacement, this.doc, this.pool, options)
-    if (count > 0) {
-      this.draw.recomputeLayout(this.pool)
-      this.draw.render(this.pool, this.store.state.runtime)
-    }
-    return count
+    const results = this.findReplace.findAll(query, this.doc, this.pool, options)
+    if (results.length === 0) return 0
+
+    const edits = results.map(r => ({
+      paragraphPath: r.paragraphPath,
+      startOffset: r.startOffset,
+      endOffset: r.endOffset,
+      newText: this.findReplace.computeReplacement(query, r.matchedText, replacement, options),
+    }))
+    this.commandManager.execute(new ReplaceTextCommand(generateCommandId(), Date.now(), 'user', edits))
+    return results.length
   }
 
   highlightAll(query: string, options?: FindOptions): MatchResult[] {
@@ -2151,31 +2060,17 @@ export class Editor {
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return
 
-    const refId = generateCommandId()
-    const refNode: BaseNode = {
-      type: 'cross_reference' as const, id: refId,
-      refType, targetRef: targetId, displayText,
-      font: 'SimSun', size: 16, bold: false, italic: false,
-      underline: true, color: '#2563EB',  // 蓝色下划线表示链接
-    } as unknown as BaseNode
-    this.pool.nodes.set(refId, refNode)
-
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-    const para = this.pool.nodes.get(paraId) as { children?: string[] }
-    if (para?.children) {
-      const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
-      if (resolved) {
-        const idx = para.children.indexOf(resolved.textNodeId)
-        if (idx >= 0) para.children.splice(idx + 1, 0, refId)
-        else para.children.push(refId)
-      } else {
-        para.children.push(refId)
-      }
-    }
-
-    this.draw.recomputeLayout(this.pool)
-    this.draw.render(this.pool, this.store.state.runtime)
-    this.notifyListeners('contentChange', this.doc)
+    this.commandManager.execute(new InsertInlineNodeCommand(
+      generateCommandId(), Date.now(), 'user',
+      cursor.paragraphPath, cursor.offset,
+      () => ({
+        type: 'cross_reference' as const,
+        id: generateCommandId(),
+        refType, targetRef: targetId, displayText,
+        font: 'SimSun', size: 16, bold: false, italic: false,
+        underline: true, color: '#2563EB',  // 蓝色下划线表示链接
+      } as unknown as BaseNode),
+    ))
   }
 
   /** 插入分节符 — 在当前段落后创建 SectionBreak */
@@ -2183,32 +2078,21 @@ export class Editor {
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return
 
-    const breakId = generateCommandId()
-    const breakNode: BaseNode = {
-      type: 'section_break' as const, id: breakId,
-      breakType: 'next_page' as const,
-      nextPageSetup: { ...this.doc.pageSetup },
-    } as unknown as BaseNode
-    this.pool.nodes.set(breakId, breakNode)
-
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-    const idx = this.doc.body.children.indexOf(paraId)
-    if (idx >= 0) {
-      this.doc.body.children.splice(idx + 1, 0, breakId)
-    } else {
-      this.doc.body.children.push(breakId)
-    }
-
-    // 分节符后创建空段落, 光标落到新页/新节, 确保可继续书写 (与 insertTable 一致)
-    const trailParaId = this.createTrailingParagraph()
-    this.doc.body.children.splice(
-      this.doc.body.children.indexOf(breakId) + 1, 0, trailParaId,
-    )
-    setCursor(this.store, [this.doc.id, trailParaId], 0)
-
-    this.draw.recomputeLayout(this.pool)
-    this.draw.render(this.pool, this.store.state.runtime)
-    this.notifyListeners('contentChange', this.doc)
+    this.commandManager.execute(new InsertBlockCommand(
+      generateCommandId(), Date.now(), 'user',
+      cursor.paragraphPath,
+      (pool) => {
+        const breakNode = {
+          type: 'section_break' as const,
+          id: generateCommandId(),
+          breakType: 'next_page' as const,
+          nextPageSetup: { ...this.doc.pageSetup },
+        } as unknown as BaseNode
+        pool.nodes.set(breakNode.id, breakNode)
+        return breakNode
+      },
+      { withTrailingParagraph: true, moveCursorToTrailing: true },
+    ))
   }
 
   /** 注册演示插件 (验证 PluginManager 系统) */
@@ -2238,6 +2122,8 @@ export class Editor {
     this.listeners = this.listeners.filter(l => !(l.event === event && l.callback === cb))
   }
   private notifyListeners(event: EditorEventType, ...args: unknown[]): void {
+    // 文档内容/光标变化后, 在通知 React 监听器前先同步 UI 投影 (保证快照读取到最新值)
+    if (event === 'contentChange') this.syncUiProjections()
     this.listeners.filter(l => l.event === event).forEach(l => {
       try { l.callback(...args) } catch (err) { console.error(`[Editor] "${event}" listener error:`, err) }
     })

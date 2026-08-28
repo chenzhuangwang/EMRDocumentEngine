@@ -312,6 +312,19 @@ export interface PageSetup {
   watermark?: WatermarkConfig
 }
 
+/** 页眉页脚选项 (§7.3 文档属性, canonical owner = DocumentTree) */
+export interface HeaderFooterConfig {
+  /** 首页不同 (首页使用独立页眉页脚) */
+  differentFirstPage: boolean
+  /** 奇偶页不同 (奇数页/偶数页使用不同页眉页脚) */
+  differentOddEven: boolean
+}
+
+export const DEFAULT_HEADER_FOOTER_CONFIG: HeaderFooterConfig = {
+  differentFirstPage: false,
+  differentOddEven: false,
+}
+
 export interface DocumentTree {
   type: typeof NodeType.DOCUMENT
   id: string
@@ -320,6 +333,8 @@ export interface DocumentTree {
   body: FlowBody
   header?: string[]
   footer?: string[]
+  /** 页眉页脚选项 (可选, 缺失时读取方用 DEFAULT_HEADER_FOOTER_CONFIG) */
+  headerFooterConfig?: HeaderFooterConfig
   footnotes?: string[]
   endnotes?: string[]
   comments?: CommentThread[]

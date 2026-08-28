@@ -42,6 +42,8 @@ export type {
   EditorRuntimeState,
 } from './state/EditorRuntimeState'
 export type { HistoryState } from './state/HistoryState'
+export { EditorStore } from './state/EditorStore'
+export type { EditorStoreState, SaveStatus } from './state/EditorStore'
 
 // Command
 export type {
@@ -51,6 +53,23 @@ export type {
 export { PositionalCommand, generateCommandId } from './command/ICommand'
 export { InsertTextCommand } from './command/commands/InsertTextCommand'
 export { DeleteRangeCommand } from './command/commands/DeleteRangeCommand'
+export { InsertImageCommand } from './command/commands/InsertImageCommand'
+export { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
+export type { ReplaceEdit } from './command/commands/ReplaceTextCommand'
+export {
+  RemoveNodesCommand,
+  InsertInlineNodeCommand,
+  InsertBlockCommand,
+  InsertFootnoteCommand,
+  CreateCommentCommand,
+  AddCommentReplyCommand,
+  ResolveCommentCommand,
+  SetPageSetupCommand,
+  EnsureHeaderFooterParagraphCommand,
+  EnsureBodyParagraphCommand,
+  EnsureCellParagraphCommand,
+  TableStructureCommand,
+} from './command/commands/StructuralCommands'
 export { normalizeParagraph } from './command/commands/ParagraphUtils'
 export { CommandUndoRedoStack } from './command/CommandUndoRedoStack'
 export { CommandManager } from './command/CommandManager'
@@ -86,7 +105,7 @@ export type {
   SeparatorNode, SectionBreak,
   BlockNode, BodyChild, FlowBody,
   CommentEntry, CommentThread,
-  PageSetup, DocumentTree,
+  PageSetup, DocumentTree, HeaderFooterConfig,
 } from './document/core/DocumentModel'
 
 // ModelD — 工具

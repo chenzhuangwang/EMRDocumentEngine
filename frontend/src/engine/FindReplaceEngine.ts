@@ -4,8 +4,10 @@
 // 职责:
 //   - findAll: 查找所有匹配项, 返回 MatchResult[]
 //   - findNext/findPrevious: 从当前位置向前/向后查找
-//   - replace/replaceAll: 替换匹配项
+//   - computeReplacement: 计算单个匹配项的实际替换文本 (纯函数, 不修改文档)
 //   - 支持: 正则/大小写/全词匹配
+//
+// 替换的文档变更改由 ReplaceTextCommand 经 CommandManager 执行 (契约 §5)。
 //
 // MatchResult 包含段落路径 + 偏移, 可直接用于光标定位和选区高亮
 // ================================================================
@@ -159,90 +161,24 @@ export class FindReplaceEngine {
   }
 
   /**
-   * 替换当前匹配项, 返回替换后的新文本
+   * 计算单个匹配项的实际替换文本 (供 ReplaceTextCommand 使用)。
+   * 纯函数, 不修改文档:
+   *   - 字面替换: 直接返回 replacement
+   *   - 正则替换: 对 matchedText 执行 replacement (展开 $n 分组引用)
    */
-  replace(
+  computeReplacement(
     query: string,
+    matchedText: string,
     replacement: string,
-    result: MatchResult,
-    _doc: DocumentTree,
-    pool: { nodes: Map<string, { type: string; text?: string; children?: string[] }> },
     options: FindOptions = {},
-  ): { paragraphPath: string[]; offset: number } | null {
-    const paraId = result.paragraphPath[result.paragraphPath.length - 1]
-    const para = pool.nodes.get(paraId)
-    if (!para?.children) return null
-
-    // 在段落文本中执行替换
-    const paraText = this.getParagraphText(paraId, pool)
-    if (!paraText) return null
-
-    const caseSensitive = options.caseSensitive ?? true
-    const useRegex = options.useRegex ?? false
-
-    // 在文本节点中定位到 startOffset, 执行替换
-    let offset = 0
-    for (const childId of para.children) {
-      const child = pool.nodes.get(childId)
-      if (!child || (child.type !== 'text' && child.type !== 'smarttext')) {
-        offset += 1
-        continue
-      }
-      const text = child.text || ''
-      const len = text.length
-
-      if (offset + len > result.startOffset) {
-        const localStart = result.startOffset - offset
-        const localEnd = result.endOffset - offset
-
-        if (useRegex) {
-          const re = new RegExp(query, caseSensitive ? 'g' : 'gi')
-          child.text = text.slice(0, localStart) +
-            text.slice(localStart, localEnd).replace(re, replacement) +
-            text.slice(localEnd)
-        } else {
-          child.text = text.slice(0, localStart) + replacement + text.slice(localEnd)
-        }
-
-        return {
-          paragraphPath: result.paragraphPath,
-          offset: result.startOffset + replacement.length,
-        }
-      }
-
-      offset += len
+  ): string {
+    if (options.useRegex) {
+      const caseSensitive = options.caseSensitive ?? true
+      const flags = caseSensitive ? 'g' : 'gi'
+      const re = new RegExp(query, flags)
+      return matchedText.replace(re, replacement)
     }
-
-    return null
-  }
-
-  /**
-   * 替换所有匹配项, 返回替换次数
-   */
-  replaceAll(
-    query: string,
-    replacement: string,
-    doc: DocumentTree,
-    pool: { nodes: Map<string, { type: string; text?: string; children?: string[] }> },
-    options: FindOptions = {},
-  ): number {
-    const results = this.findAll(query, doc, pool, options)
-    if (results.length === 0) return 0
-
-    // 从后往前替换 (避免偏移失效)
-    let count = 0
-    for (let i = results.length - 1; i >= 0; i--) {
-      const r = results[i]
-      // 更新 startOffset 以匹配已有替换后的文本
-      const adjustedResult = count > 0
-        ? { ...r, startOffset: r.startOffset, endOffset: r.endOffset }
-        : r
-
-      const replaced = this.replace(query, replacement, adjustedResult, doc, pool, options)
-      if (replaced) count++
-    }
-
-    return count
+    return replacement
   }
 
   /**

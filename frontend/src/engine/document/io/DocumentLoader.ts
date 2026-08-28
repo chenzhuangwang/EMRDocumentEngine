@@ -108,6 +108,7 @@ export function loadDocumentFromObject(obj: unknown, options?: DocumentLoadOptio
   if (!doc.footer) doc.footer = []
   if (!doc.pageSetup) doc.pageSetup = { ...DEFAULT_PAGE_SETUP_LITERAL }
   if (!doc.pageSetup.orientation) doc.pageSetup.orientation = 'portrait'
+  if (!doc.headerFooterConfig) doc.headerFooterConfig = { differentFirstPage: false, differentOddEven: false }
 
   // ---- [6] buildPool ----
   let pool: NodePool

@@ -3,7 +3,7 @@
 // ============================================================
 
 import { FileText, Type, Wifi, WifiOff, Minus, Plus, Pilcrow } from 'lucide-react'
-import { useEditorStore } from '@/store'
+import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { cn, formatWordCount } from '@/lib/utils'
 import { ModeSwitcher } from '@/components/views/ModeSwitcher'
 import type { EditorMode } from '@/engine'
@@ -39,7 +39,7 @@ export function StatusBar({
   mode,
   onModeChange,
 }: StatusBarProps) {
-  const saveStatus = useEditorStore((s) => s.saveStatus)
+  const saveStatus = useEditorStoreSnapshot((s) => s.saveStatus)
 
   return (
     <footer className="h-statusbar bg-gray-50 border-t border-gray-200 flex items-center justify-between px-4 text-xs text-gray-500 flex-shrink-0 select-none">

@@ -6,12 +6,12 @@
 // ================================================================
 
 import type { Editor } from '../Editor'
-import { createParagraph } from '../document/factory/ElementFormatter'
 import { extractStyle } from '../document/factory/ElementFormatter'
 import { InsertTextCommand } from '../command/commands/InsertTextCommand'
 import { DeleteRangeCommand } from '../command/commands/DeleteRangeCommand'
 import { SplitParagraphCommand } from '../command/commands/SplitParagraphCommand'
 import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand'
+import { EnsureBodyParagraphCommand, EnsureCellParagraphCommand } from '../command/commands/StructuralCommands'
 import { generateCommandId } from '../command/ICommand'
 import type { SLIFPage } from '../layout/core/SLIF'
 import { resolveCellPosition, getCaretScope, getAdjacentCell, resolveParagraphRegion } from '../state/CaretScope'
@@ -173,18 +173,12 @@ export class KeyboardHandler {
       let path = cur.paragraphPath
       let offset = cur.offset
 
-      // 空文档 → 首次输入自动创建段落
+      // 空文档 → 首次输入自动创建段落 (经 Command, RULE 4)
       if (path.length === 0) {
-        const doc = ed.getDocument()
-        const pool = ed.getPool()
-        const para = createParagraph()
-        pool.nodes.set(para.id, para)
-        doc.body.children = [para.id]
-        path = [doc.id, para.id]
-        offset = 0
-        // 持久化光标位置
-        const storeInternal = store as unknown as { _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean } } } }
-        storeInternal._state.runtime.cursor = { paragraphPath: path, offset: 0, visible: true }
+        ed.execCommand(new EnsureBodyParagraphCommand(generateCommandId(), Date.now(), 'user'))
+        const updated = store.state.runtime.cursor
+        path = updated.paragraphPath
+        offset = updated.offset
       }
 
       // 获取光标处文本样式, 使新输入继承当前格式
@@ -332,23 +326,20 @@ export class KeyboardHandler {
 
     // 目标 cell 的第一个段落 (空 cell 则创建)
     let targetParaId = this.firstParagraphInCell(pool, target.cellId)
-    if (!targetParaId) targetParaId = this.ensureCellParagraph(pool, target.cellId)
+    if (!targetParaId) targetParaId = this.ensureCellParagraph(target.cellId)
     if (!targetParaId) return
 
     // 更新光标到目标段落开头 + 清空选区
     const doc = ed.getDocument()
     const store = ed.getStore()
-    const si = store as unknown as {
-      _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean }; active: boolean; granularity: string } } }
-    }
     const path = [doc.id, targetParaId]
-    si._state.runtime.cursor = { paragraphPath: path, offset: 0, visible: true }
-    si._state.runtime.selection = {
+    store.setCursor({ paragraphPath: path, offset: 0, visible: true })
+    store.setSelection({
       anchor: { paragraphPath: path, offset: 0, visible: false },
       focus: { paragraphPath: path, offset: 0, visible: false },
       active: false,
       granularity: 'character',
-    }
+    })
 
     ed.getDraw().render(pool, store.state.runtime)
   }
@@ -366,17 +357,16 @@ export class KeyboardHandler {
     return null
   }
 
-  /** 空 cell 创建空段落 (供 Tab 导航落点) */
-  private ensureCellParagraph(
-    pool: { nodes: Map<string, { type?: string; children?: string[] }> },
-    cellId: string,
-  ): string | null {
-    const cell = pool.nodes.get(cellId)
-    if (!cell) return null
-    const para = createParagraph()
-    cell.children = [...(cell.children || []), para.id]
-    pool.nodes.set(para.id, para)
-    return para.id
+  /** 空 cell 创建空段落 (供 Tab 导航落点, 经 Command RULE 4) */
+  private ensureCellParagraph(cellId: string): string | null {
+    // 捕获导航前的源光标, 供 undo 时恢复 (此刻尚未 setCursor 到目标段落)
+    const src = this.editor.getStore().state.runtime.cursor
+    const cmd = new EnsureCellParagraphCommand(
+      generateCommandId(), Date.now(), 'user', cellId,
+      { paragraphPath: [...src.paragraphPath], offset: src.offset, visible: true },
+    )
+    this.editor.execCommand(cmd)
+    return cmd.paragraphId
   }
 
   // ================================================================
@@ -481,31 +471,29 @@ export class KeyboardHandler {
     }
 
     // 更新光标位置
-    const si = store as unknown as {
-      _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean }; active: boolean; granularity: string } } }
-    }
-
     const newPath = [...cursor.paragraphPath.slice(0, -1), newParaId]
-    si._state.runtime.cursor = { paragraphPath: newPath, offset: newOffset, visible: true }
+    store.setCursor({ paragraphPath: newPath, offset: newOffset, visible: true })
 
     if (shift) {
       // Shift+方向键: 扩展选区 (保持 anchor, 移动 focus)
-      const sel = si._state.runtime.selection
+      const sel = store.state.runtime.selection
       if (!sel.active) {
         // 首次扩展: 设置 anchor 为原光标位置
-        sel.anchor = { paragraphPath: [...cursor.paragraphPath], offset: cursor.offset, visible: false }
-        sel.active = true
-        sel.granularity = 'character'
+        store.updateSelection({
+          anchor: { paragraphPath: [...cursor.paragraphPath], offset: cursor.offset, visible: false },
+          active: true,
+          granularity: 'character',
+        })
       }
-      sel.focus = { paragraphPath: newPath, offset: newOffset, visible: false }
+      store.updateSelection({ focus: { paragraphPath: newPath, offset: newOffset, visible: false } })
     } else {
       // 无 Shift: 清除选区
-      si._state.runtime.selection = {
+      store.setSelection({
         anchor: { paragraphPath: newPath, offset: newOffset, visible: false },
         focus: { paragraphPath: newPath, offset: newOffset, visible: false },
         active: false,
         granularity: 'character',
-      }
+      })
     }
 
     ed.getDraw().render(pool, store.state.runtime)
@@ -822,7 +810,7 @@ export class KeyboardHandler {
       if (targetRow >= 0 && targetRow < grid.numRows) {
         const targetCell = this.findCellInRow(grid, targetRow, gc.col)
         if (targetCell) {
-          const paraId = this.firstParagraphInCell(pool, targetCell.cellId) ?? this.ensureCellParagraph(pool, targetCell.cellId)
+          const paraId = this.firstParagraphInCell(pool, targetCell.cellId) ?? this.ensureCellParagraph(targetCell.cellId)
           if (paraId) {
             return { paraId, offset: Math.min(cursorOffset, this.getParagraphLength(paraId, pool)) }
           }
@@ -862,7 +850,7 @@ export class KeyboardHandler {
     const cellIdx = edge === 'bottom-right' ? row.children.length - 1 : 0
     const cellId = row.children[cellIdx]
     if (!cellId) return null
-    return this.firstParagraphInCell(pool, cellId) ?? this.ensureCellParagraph(pool, cellId)
+    return this.firstParagraphInCell(pool, cellId) ?? this.ensureCellParagraph(cellId)
   }
 
   /** 进入相邻 cell 的落点: 前向段首(offset 0), 后向末段段尾 */
@@ -872,8 +860,8 @@ export class KeyboardHandler {
     dir: 1 | -1,
   ): { paraId: string; offset: number } | null {
     const paraId = dir === 1
-      ? this.firstParagraphInCell(pool, cellId) ?? this.ensureCellParagraph(pool, cellId)
-      : this.lastParagraphInCell(pool, cellId) ?? this.ensureCellParagraph(pool, cellId)
+      ? this.firstParagraphInCell(pool, cellId) ?? this.ensureCellParagraph(cellId)
+      : this.lastParagraphInCell(pool, cellId) ?? this.ensureCellParagraph(cellId)
     if (!paraId) return null
     return { paraId, offset: dir === 1 ? 0 : this.getParagraphLength(paraId, pool) }
   }

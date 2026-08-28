@@ -3,97 +3,21 @@
 // ============================================================
 
 import { create } from 'zustand'
-import type { DocumentDetail, UserInfo } from '@/services/api'
-import type { EditorMode } from '@/engine'
+import type { UserInfo } from '@/services/api'
 
-// ---- 编辑器状态 ----
+// ---- 编辑器状态 (app 级状态, 架构 §7.1) ----
 
 interface EditorState {
-  mode: EditorMode
-  pageMode: string
-  documentId: string | null
-  document: DocumentDetail | null
-  isDirty: boolean
-  saveStatus: 'saved' | 'saving' | 'unsaved' | 'error'
+  /** 在线协作人数 (Phase 2 collab 预留, 当前未接线 → 恒为 0) */
   onlineUsers: number
-  validationResults: ValidationResult[]
-  paragraphStyle: { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; continueNumbering?: boolean; indent?: number; outlineLevel?: number } | null
-  /** 光标处文本样式 (供 Toolbar 按钮状态同步) */
-  textStyle: {
-    font?: string; size?: number
-    bold?: boolean; italic?: boolean; underline?: boolean
-    strikeout?: boolean; superscript?: boolean; subscript?: boolean
-    color?: string; highlight?: string
-  } | null
-  /** 页眉页脚编辑状态 (TASK-470) */
-  headerFooterEdit: { active: boolean; section: 'header' | 'footer' }
-  headerFooterConfig: { differentFirstPage: boolean; differentOddEven: boolean }
 
-  setMode: (mode: EditorMode) => void
-  setPageMode: (mode: string) => void
-  setDocument: (doc: DocumentDetail | null) => void
-  setDirty: (dirty: boolean) => void
-  setSaveStatus: (status: 'saved' | 'saving' | 'unsaved' | 'error') => void
   setOnlineUsers: (count: number) => void
-  setValidationResults: (results: ValidationResult[]) => void
-  setParagraphStyle: (style: { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; continueNumbering?: boolean; indent?: number; outlineLevel?: number } | null) => void
-  setTextStyle: (style: {
-    font?: string; size?: number
-    bold?: boolean; italic?: boolean; underline?: boolean
-    strikeout?: boolean; superscript?: boolean; subscript?: boolean
-    color?: string; highlight?: string
-  } | null) => void
-  /** 格式刷状态 (TASK-472) */
-  formatPainter: { active: boolean; style: Record<string, unknown> | null }
-  setFormatPainter: (active: boolean, style?: Record<string, unknown> | null) => void
-  /** 撤销/重做状态 (供 Toolbar 按钮禁用态) */
-  canUndo: boolean
-  canRedo: boolean
-  setCanUndoRedo: (canUndo: boolean, canRedo: boolean) => void
-  /** 激活/关闭页眉页脚编辑 */
-  setHeaderFooterEdit: (active: boolean, section?: 'header' | 'footer') => void
-  setHeaderFooterConfig: (patch: Partial<{ differentFirstPage: boolean; differentOddEven: boolean }>) => void
-}
-
-
-export interface ValidationResult {
-  elementId: string
-  valid: boolean
-  message?: string
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
-  mode: 'edit',
-  pageMode: 'paging',
-  documentId: null,
-  document: null,
-  isDirty: false,
-  saveStatus: 'saved',
   onlineUsers: 0,
-  validationResults: [],
-  paragraphStyle: null,
-  textStyle: null,
-  formatPainter: { active: false, style: null },
-  canUndo: false,
-  canRedo: false,
-  headerFooterEdit: { active: false, section: 'header' },
-  headerFooterConfig: { differentFirstPage: false, differentOddEven: false },
 
-  setMode: (mode) => set({ mode }),
-  setPageMode: (pageMode) => set({ pageMode }),
-  setDocument: (document) => set({ document, isDirty: false, saveStatus: 'saved' }),
-  setDirty: (isDirty) => set({ isDirty, saveStatus: isDirty ? 'unsaved' : 'saved' }),
-  setSaveStatus: (saveStatus) => set({ saveStatus }),
   setOnlineUsers: (onlineUsers) => set({ onlineUsers }),
-  setValidationResults: (validationResults) => set({ validationResults }),
-  setParagraphStyle: (paragraphStyle) => set({ paragraphStyle }),
-  setTextStyle: (textStyle) => set({ textStyle }),
-  setFormatPainter: (active, style = null) => set({ formatPainter: { active, style } }),
-  setCanUndoRedo: (canUndo, canRedo) => set({ canUndo, canRedo }),
-  setHeaderFooterEdit: (active, section) =>
-    set({ headerFooterEdit: { active, section: section || 'header' } }),
-  setHeaderFooterConfig: (patch) =>
-    set((s) => ({ headerFooterConfig: { ...s.headerFooterConfig, ...patch } })),
 }))
 
 // ---- 用户状态 ----

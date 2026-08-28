@@ -23,7 +23,6 @@ interface EditorLayoutProps {
   onExportClick?: () => void
   onPrint?: () => void
   onPageSetup?: () => void
-  formatPainterActive?: boolean
   wordCount?: number
   pageIndex?: number
   pageCount?: number
@@ -62,7 +61,6 @@ export function EditorLayout({
   onExportClick,
   onPrint,
   onPageSetup,
-  formatPainterActive,
   wordCount = 0,
   pageIndex = 1,
   pageCount = 1,
@@ -106,7 +104,6 @@ export function EditorLayout({
         onExportClick={onExportClick}
         onPrint={onPrint}
         onPageSetup={onPageSetup}
-        formatPainterActive={formatPainterActive}
       />
       )}
 

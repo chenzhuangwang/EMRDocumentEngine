@@ -15,6 +15,7 @@ import {
   PanelLeft,
 } from 'lucide-react'
 import { useEditorStore, useUserStore, useUIStore } from '@/store'
+import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 
 interface HeaderBarProps {
   documentTitle: string
@@ -25,10 +26,10 @@ interface HeaderBarProps {
 }
 
 export function HeaderBar({ documentTitle, onTitleChange, onSave, onShare, onFormat }: HeaderBarProps) {
-  const saveStatus = useEditorStore((s) => s.saveStatus)
+  const saveStatus = useEditorStoreSnapshot((s) => s.saveStatus)
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
   const user = useUserStore((s) => s.user)
-  const isDirty = useEditorStore((s) => s.isDirty)
+  const isDirty = useEditorStoreSnapshot((s) => s.isDirty)
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
 

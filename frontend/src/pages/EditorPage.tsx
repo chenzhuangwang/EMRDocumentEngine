@@ -6,14 +6,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { EditorLayout } from '@/components/layout/EditorLayout'
 import { ReadingModeOverlay } from '@/components/views/ReadingMode'
-import { EditorProvider, useEditorRef, useEditorReady } from '@/components/editor/EditorProvider'
+import { EditorProvider, useEditorRef, useEditorReady, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { ExportDialog } from '@/components/dialogs/ExportDialog'
 import { FindReplaceDialog } from '@/components/dialogs/FindReplaceDialog'
 import { PrintDialog } from '@/components/dialogs/PrintDialog'
 import { PageSetupDialog } from '@/components/dialogs/PageSetupDialog'
 import { PasteSpecialDialog, type PasteFormat } from '@/components/dialogs/PasteSpecialDialog'
 import { BookmarkDialog } from '@/components/dialogs/BookmarkDialog'
-import { useEditorStore } from '@/store'
 import { documentApi, templateApi } from '@/services/api'
 import { generateCommandId } from '@/engine/command/ICommand'
 import { InsertTextCommand } from '@/engine/command/commands/InsertTextCommand'
@@ -114,75 +113,15 @@ function EditorPageInner({
   const [findMatchCount, setFindMatchCount] = useState(0)
   const [findMatchIndex, setFindMatchIndex] = useState(-1)
   const findResultsRef = useRef<import('@/engine').MatchResult[]>([])
-  const [zoom, setZoom] = useState(1)
-  const [showInvisible, setShowInvisible] = useState(false)
-  const editorMode = useEditorStore((s) => s.mode)
-  const setEditorMode = useEditorStore((s) => s.setMode)
+  const zoom = useEditorStoreSnapshot((s) => s.runtime.view.scale)
+  const showInvisible = useEditorStoreSnapshot((s) => s.runtime.view.showInvisible)
+  const editorMode = useEditorStoreSnapshot((s) => s.runtime.view.mode)
   const readingMode = editorMode === 'readonly'
   const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([])
   const [activeOutlineId, setActiveOutlineId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const docFileInputRef = useRef<HTMLInputElement>(null)
   const [templates, setTemplates] = useState<{ name: string; items: { id: string; name: string; description?: string }[] }[]>([])
-  const setDirty = useEditorStore((s) => s.setDirty)
-  const setSaveStatus = useEditorStore((s) => s.setSaveStatus)
-  const setParaStyle = useEditorStore((s) => s.setParagraphStyle)
-  const setTextStyle = useEditorStore((s) => s.setTextStyle)
-  const setFormatPainter = useEditorStore((s) => s.setFormatPainter)
-  const formatPainterActive = useEditorStore((s) => s.formatPainter.active)
-  const setCanUndoRedo = useEditorStore((s) => s.setCanUndoRedo)
-  const setHfEdit = useEditorStore((s) => s.setHeaderFooterEdit)
-
-  // 页眉页脚事件桥接: EventBus → Zustand store
-  // 依赖 ready: Editor 由父级 EditorProvider 的 useEffect 创建 (晚于本组件 effect),
-  // 首次 mount 时 editorRef.current 为 null, 需等 ready 翻转后再注册, 否则漏绑。
-  useEffect(() => {
-    if (!ready) return
-    const editor = editorRef.current
-    if (!editor) return
-    const bus = editor.getEventBus()
-    const handleDblClick = (section: 'header' | 'footer') => {
-      setHfEdit(true, section)
-    }
-    const handleBodyClick = () => {
-      setHfEdit(false)
-    }
-    bus.on('headerFooter:dblclick', handleDblClick)
-    bus.on('body:click', handleBodyClick)
-    return () => {
-      bus.off('headerFooter:dblclick', handleDblClick)
-      bus.off('body:click', handleBodyClick)
-    }
-  }, [ready, editorRef, setHfEdit])
-
-  // mode:changed 事件桥接: 引擎 → Zustand store (其他来源触发模式变更时同步 UI)
-  useEffect(() => {
-    if (!ready) return
-    const editor = editorRef.current
-    if (!editor) return
-    const bus = editor.getEventBus()
-    const handleModeChanged = (newMode: EditorMode) => {
-      setEditorMode(newMode)
-      // 切换到受限模式时清除格式刷 (引擎内部可能直接触发模式变更)
-      if (newMode === 'readonly' || newMode === 'clean' || newMode === 'print') {
-        if (editor.isFormatPainterActive) {
-          editor.setFormatPainterActive(false)
-        }
-      }
-    }
-    bus.on('mode:changed', handleModeChanged)
-    return () => { bus.off('mode:changed', handleModeChanged) }
-  }, [ready, editorRef, setEditorMode])
-
-  // 格式刷状态同步: Editor ↔ Zustand store
-  useEffect(() => {
-    if (!ready) return
-    const editor = editorRef.current
-    if (!editor) return
-    editor.setOnFormatPainterChange((active) => {
-      setFormatPainter(active)
-    })
-  }, [ready, editorRef, setFormatPainter])
 
   // 滚动双向同步: DOM container.scrollTop ↔ CoordinateSystem.scrollY
   // 注意: editorRef.current 在子组件 effect 执行时可能尚未就绪 (EditorProvider 用
@@ -229,43 +168,34 @@ function EditorPageInner({
       e.preventDefault()
       e.stopImmediatePropagation()
       const delta = -e.deltaY * 0.005
-      setZoom(z => {
-        const newZoom = Math.min(4, Math.max(0.25, z + delta))
-        editor.setScale(newZoom)
-        editor.getDraw().render(editor.getPool(), editor.getStore().state.runtime)
-        return newZoom
-      })
+      const cur = editor.getStore().state.runtime.view.scale
+      const newZoom = Math.min(4, Math.max(0.25, cur + delta))
+      editor.setScale(newZoom)
+      editor.getDraw().render(editor.getPool(), editor.getStore().state.runtime)
     }
     // Chrome 73+ 对 document/window/body 上的 wheel 强制 passive, 必须绑在普通 DOM 元素上
     container.addEventListener('wheel', onWheel, { passive: false, capture: true })
     return () => container.removeEventListener('wheel', onWheel, { capture: true })
-  }, [ready, editorRef, containerRef, setZoom])
+  }, [ready, editorRef, containerRef])
 
   // 缩放: Ctrl+plus/minus + Ctrl+0 重置
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!e.ctrlKey && !e.metaKey) return
+      const ed = editorRef.current
+      if (!ed) return
+      const cur = ed.getStore().state.runtime.view.scale
       if (e.key === '=' || e.key === '+') {
         e.preventDefault()
-        setZoom(z => {
-          const nz = Math.min(4, z + 0.1)
-          const ed = editorRef.current
-          if (ed) { ed.setScale(nz); ed.getDraw().render(ed.getPool(), ed.getStore().state.runtime) }
-          return nz
-        })
+        const nz = Math.min(4, cur + 0.1)
+        ed.setScale(nz); ed.getDraw().render(ed.getPool(), ed.getStore().state.runtime)
       } else if (e.key === '-') {
         e.preventDefault()
-        setZoom(z => {
-          const nz = Math.max(0.25, z - 0.1)
-          const ed = editorRef.current
-          if (ed) { ed.setScale(nz); ed.getDraw().render(ed.getPool(), ed.getStore().state.runtime) }
-          return nz
-        })
+        const nz = Math.max(0.25, cur - 0.1)
+        ed.setScale(nz); ed.getDraw().render(ed.getPool(), ed.getStore().state.runtime)
       } else if (e.key === '0') {
         e.preventDefault()
-        setZoom(1)
-        const ed = editorRef.current
-        if (ed) { ed.setScale(1); ed.getDraw().render(ed.getPool(), ed.getStore().state.runtime) }
+        ed.setScale(1); ed.getDraw().render(ed.getPool(), ed.getStore().state.runtime)
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -273,7 +203,6 @@ function EditorPageInner({
   }, [editorRef])
 
   const handleScaleChange = useCallback((newScale: number) => {
-    setZoom(newScale)
     const ed = editorRef.current
     if (ed) {
       ed.setScale(newScale)
@@ -282,18 +211,15 @@ function EditorPageInner({
   }, [editorRef])
 
   const handleToggleInvisible = useCallback(() => {
-    setShowInvisible(v => {
-      const nv = !v
-      const ed = editorRef.current
-      if (ed) {
-        ed.setShowInvisible(nv)
-        ed.getDraw().render(ed.getPool(), ed.getStore().state.runtime)
-      }
-      return nv
-    })
+    const ed = editorRef.current
+    if (ed) {
+      const nv = !ed.getStore().state.runtime.view.showInvisible
+      ed.setShowInvisible(nv)
+      ed.getDraw().render(ed.getPool(), ed.getStore().state.runtime)
+    }
   }, [editorRef])
 
-  // 编辑器模式切换
+  // 编辑器模式切换 (EditorStore.runtime.view.mode 为 canonical owner, 经 useEditorStoreSnapshot 回读)
   const handleEditorModeChange = useCallback((newMode: EditorMode) => {
     const editor = editorRef.current
     if (editor) {
@@ -305,8 +231,7 @@ function EditorPageInner({
         }
       }
     }
-    setEditorMode(newMode)
-  }, [editorRef, setEditorMode])
+  }, [editorRef])
 
   // 字数统计 + 段落样式 + 大纲 — 订阅 contentChange 事件
   useEffect(() => {
@@ -316,9 +241,6 @@ function EditorPageInner({
       const wc = editor.getWordCount()
       setWordCount(wc.words)
       setPageCount(editor.getDraw().getPages().length)
-      setParaStyle(editor.getParagraphStyle())
-      setTextStyle(editor.getTextStyle())
-      setCanUndoRedo(editor.canUndo(), editor.canRedo())
 
       // 大纲: 提取所有 outlineLevel > 0 的标题段落
       const doc = editor.getDocument()
@@ -366,18 +288,15 @@ function EditorPageInner({
 
     // 更新光标到目标段落开头
     const store = editor.getStore()
-    const si = store as unknown as {
-      _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { active: boolean; granularity: string; anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean } } } }
-    }
-    si._state.runtime.cursor = {
+    store.setCursor({
       paragraphPath: item.paragraphPath,
       offset: 0, visible: true,
-    }
-    si._state.runtime.selection = {
+    })
+    store.setSelection({
       anchor: { paragraphPath: item.paragraphPath, offset: 0, visible: false },
       focus: { paragraphPath: item.paragraphPath, offset: 0, visible: false },
       active: false, granularity: 'character',
-    }
+    })
     setActiveOutlineId(item.id)
 
     // 滚动到目标页面 — 按累加高度 (含分页间隙) 计算 scrollTop
@@ -442,9 +361,8 @@ function EditorPageInner({
       ed.highlightAll(query, options)
       const r = results[0]
       const store = ed.getStore()
-      const si = store as unknown as { _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean }; active: boolean; granularity: string } } } }
-      si._state.runtime.cursor = { paragraphPath: r.paragraphPath, offset: r.endOffset, visible: true }
-      si._state.runtime.selection = { anchor: { paragraphPath: r.paragraphPath, offset: r.startOffset, visible: false }, focus: { paragraphPath: r.paragraphPath, offset: r.endOffset, visible: false }, active: true, granularity: 'character' }
+      store.setCursor({ paragraphPath: r.paragraphPath, offset: r.endOffset, visible: true })
+      store.setSelection({ anchor: { paragraphPath: r.paragraphPath, offset: r.startOffset, visible: false }, focus: { paragraphPath: r.paragraphPath, offset: r.endOffset, visible: false }, active: true, granularity: 'character' })
       ed.getDraw().render(ed.getPool(), ed.getStore().state.runtime)
     }
   }, [editorRef])
@@ -457,9 +375,8 @@ function EditorPageInner({
     setFindMatchIndex(next)
     const r = results[next]
     const store = ed.getStore()
-    const si = store as unknown as { _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean }; active: boolean; granularity: string } } } }
-    si._state.runtime.cursor = { paragraphPath: r.paragraphPath, offset: r.endOffset, visible: true }
-    si._state.runtime.selection = { anchor: { paragraphPath: r.paragraphPath, offset: r.startOffset, visible: false }, focus: { paragraphPath: r.paragraphPath, offset: r.endOffset, visible: false }, active: true, granularity: 'character' }
+    store.setCursor({ paragraphPath: r.paragraphPath, offset: r.endOffset, visible: true })
+    store.setSelection({ anchor: { paragraphPath: r.paragraphPath, offset: r.startOffset, visible: false }, focus: { paragraphPath: r.paragraphPath, offset: r.endOffset, visible: false }, active: true, granularity: 'character' })
     ed.getDraw().render(ed.getPool(), ed.getStore().state.runtime)
   }, [editorRef, findMatchIndex])
 
@@ -471,9 +388,8 @@ function EditorPageInner({
     setFindMatchIndex(prev)
     const r = results[prev]
     const store = ed.getStore()
-    const si = store as unknown as { _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean }; active: boolean; granularity: string } } } }
-    si._state.runtime.cursor = { paragraphPath: r.paragraphPath, offset: r.endOffset, visible: true }
-    si._state.runtime.selection = { anchor: { paragraphPath: r.paragraphPath, offset: r.startOffset, visible: false }, focus: { paragraphPath: r.paragraphPath, offset: r.endOffset, visible: false }, active: true, granularity: 'character' }
+    store.setCursor({ paragraphPath: r.paragraphPath, offset: r.endOffset, visible: true })
+    store.setSelection({ anchor: { paragraphPath: r.paragraphPath, offset: r.startOffset, visible: false }, focus: { paragraphPath: r.paragraphPath, offset: r.endOffset, visible: false }, active: true, granularity: 'character' })
     ed.getDraw().render(ed.getPool(), ed.getStore().state.runtime)
   }, [editorRef, findMatchIndex])
 
@@ -504,10 +420,11 @@ function EditorPageInner({
   }, [editorRef])
 
   const handleSave = useCallback(async () => {
-    setSaveStatus('saving')
+    const editor = editorRef.current
+    if (!editor) return
+    const store = editor.getStore()
+    store.setSaveStatus('saving')
     try {
-      const editor = editorRef.current
-      if (!editor) return
       // 序列化含节点 payload 的完整 JSON 字符串 (后端 content 为 String 字段)
       const content = editor.getSerializedDocument()
       if (isNew) {
@@ -519,13 +436,13 @@ function EditorPageInner({
         await documentApi.update(docId, { title: documentTitle, content })
         console.debug('[EditorPage] updated:', docId)
       }
-      setSaveStatus('saved')
-      setDirty(false)
+      store.setSaveStatus('saved')
+      store.setDirty(false)
     } catch (err) {
       console.error('保存失败:', err)
-      setSaveStatus('error')
+      store.setSaveStatus('error')
     }
-  }, [setSaveStatus, setDirty, documentTitle, isNew, docId, editorRef])
+  }, [documentTitle, isNew, docId, editorRef])
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -548,7 +465,7 @@ function EditorPageInner({
       if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); handleFormat('indent') }
       // Shift+Tab: 减少缩进
       if (e.key === 'Tab' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); handleFormat('outdent') }
-      // ESC: 取消格式刷 (setFormatPainterActive 内部同步 Zustand)
+      // ESC: 取消格式刷 (setFormatPainterActive 内部同步 EditorStore)
       if (e.key === 'Escape') {
         const ed = editorRef.current
         if (ed?.isFormatPainterActive) { ed.setFormatPainterActive(false) }
@@ -658,19 +575,15 @@ function EditorPageInner({
       // 页眉页脚编辑模式切换
       case 'headerFooterEnter': {
         const section = _value as 'header' | 'footer'
-        const draw = ed.getDraw()
-        const isActive = draw.isHeaderFooterEditActive()
-        const currentSection = draw.getHeaderFooterEditSection()
+        const isActive = ed.isHeaderFooterEditActive()
+        const currentSection = ed.getHeaderFooterEditSection()
 
         if (isActive && currentSection === section) {
           // 已在编辑同一区域 → 关闭
-          draw.setHeaderFooterEditActive(false)
-          setHfEdit(false)
-          ed.getEventBus().emit('body:click')
+          ed.setHeaderFooterEditActive(false)
         } else {
           // 激活或切换区域
-          draw.setHeaderFooterEditActive(true, section)
-          setHfEdit(true, section)
+          ed.setHeaderFooterEditActive(true, section)
 
           // 确保目标区域有段落 (无则创建)
           const doc = ed.getDocument()
@@ -682,28 +595,29 @@ function EditorPageInner({
           // 自动将光标定位到对应区域的第一个段落
           const firstParaId = targetIds[0]
           const store = ed.getStore()
-          const si = store as unknown as {
-            _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { active: boolean; granularity: string; anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean } } } }
-          }
-          si._state.runtime.cursor = {
+          store.setCursor({
             paragraphPath: [doc.id, firstParaId],
             offset: 0,
             visible: true,
-          }
-          si._state.runtime.selection = {
+          })
+          store.setSelection({
             anchor: { paragraphPath: [doc.id, firstParaId], offset: 0, visible: false },
             focus: { paragraphPath: [doc.id, firstParaId], offset: 0, visible: false },
             active: false,
-            granularity: 'character' as const,
-          }
-
-          ed.getEventBus().emit('headerFooter:dblclick', section)
+            granularity: 'character',
+          })
         }
         // 重布局以包含新创建的段落
         ed.getDraw().recomputeLayout(ed.getPool())
         ed.getDraw().render(ed.getPool(), ed.getStore().state.runtime)
         break
       }
+      // 关闭页眉页脚编辑模式
+      case 'headerFooterClose': ed.setHeaderFooterEditActive(false); break
+      // 页眉页脚选项变更 (canonical = DocumentTree, 经 Command 系统)
+      case 'headerFooterConfig':
+        ed.setHeaderFooterConfig(_value as Partial<import('@/engine').HeaderFooterConfig>)
+        break
     }
   }, [editorRef])
 
@@ -925,7 +839,6 @@ function EditorPageInner({
         const t = threads.find(c => c.id === threadId)
         ed.resolveComment(threadId, t?.status !== 'resolved')
       }}
-      formatPainterActive={formatPainterActive}
       wordCount={wordCount}
       pageCount={pageCount}
       pageIndex={currentPageIndex + 1}

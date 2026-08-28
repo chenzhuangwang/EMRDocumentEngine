@@ -11,7 +11,7 @@ import type {
   ElementMeta, ColumnDefinition, FlowBody,
   FieldNode, FieldType, FootnoteRef, FootnoteContent,
 } from '../core/DocumentModel'
-import { NodeType, generateId, DEFAULT_PAGE_SETUP } from '../core/DocumentModel'
+import { NodeType, generateId, DEFAULT_PAGE_SETUP, DEFAULT_HEADER_FOOTER_CONFIG } from '../core/DocumentModel'
 import { NodePool } from '../core/NodePool'
 import { CURRENT_DOCUMENT_VERSION, versionToString } from '../version/DocumentFormatVersion'
 
@@ -26,6 +26,7 @@ export function createDocument(title: string, body?: FlowBody, pageSetup?: PageS
     body: body ?? { mode: 'flow', children: [] },
     header: [],
     footer: [],
+    headerFooterConfig: { ...DEFAULT_HEADER_FOOTER_CONFIG },
     // 显式声明当前格式版本 — DocumentLoader 加载时无需升级
     modelVersion: versionToString(CURRENT_DOCUMENT_VERSION),
   }

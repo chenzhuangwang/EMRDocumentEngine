@@ -79,7 +79,7 @@ export class MouseHandler {
     const hfSection = this.detectHeaderFooterRegion(e.clientX, e.clientY)
 
     // --- 页眉页脚编辑模式下, 单击定位光标 ---
-    if (hfSection && this.editor.getDraw().isHeaderFooterEditActive() && this.editor.getDraw().getHeaderFooterEditSection() === hfSection) {
+    if (hfSection && this.editor.isHeaderFooterEditActive() && this.editor.getHeaderFooterEditSection() === hfSection) {
       // 双击检测 (用于切换编辑的 header/footer 区域)
       const now = Date.now()
       const dx = Math.abs(e.clientX - this.lastClickX)
@@ -92,8 +92,7 @@ export class MouseHandler {
 
       if (dt < DOUBLE_CLICK_THRESHOLD && dx < DOUBLE_CLICK_DISTANCE && dy < DOUBLE_CLICK_DISTANCE) {
         // 双击: 重新激活 (已在编辑模式, 保持)
-        this.editor.getDraw().setHeaderFooterEditActive(true, hfSection)
-        this.editor.getEventBus().emit('headerFooter:dblclick', hfSection)
+        this.editor.setHeaderFooterEditActive(true, hfSection)
         return
       }
 
@@ -101,22 +100,19 @@ export class MouseHandler {
       const hfResult = this.hitTestHeaderFooter(e.clientX, e.clientY, hfSection)
       if (hfResult) {
         const store = this.editor.getStore()
-        const si = store as unknown as {
-          _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { active: boolean; granularity: string; anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean } } } }
-        }
 
-        si._state.runtime.cursor = {
+        store.setCursor({
           paragraphPath: [...hfResult.paraPath],
           offset: hfResult.offset,
           visible: true,
-        }
+        })
 
-        si._state.runtime.selection = {
+        store.setSelection({
           anchor: { paragraphPath: [...hfResult.paraPath], offset: hfResult.offset, visible: false },
           focus: { paragraphPath: [...hfResult.paraPath], offset: hfResult.offset, visible: false },
           active: false,
-          granularity: 'character' as const,
-        }
+          granularity: 'character',
+        })
 
         this.anchorParaPath = [...hfResult.paraPath]
         this.anchorOffset = hfResult.offset
@@ -139,27 +135,23 @@ export class MouseHandler {
 
       if (dt < DOUBLE_CLICK_THRESHOLD && dx < DOUBLE_CLICK_DISTANCE && dy < DOUBLE_CLICK_DISTANCE) {
         // 双击页眉/页脚 → 激活编辑模式
-        this.editor.getDraw().setHeaderFooterEditActive(true, hfSection)
-        this.editor.getEventBus().emit('headerFooter:dblclick', hfSection)
+        this.editor.setHeaderFooterEditActive(true, hfSection)
 
         // 确保目标区域有段落 (无则创建) + 光标定位到第一个段落
         const doc = this.editor.getDocument()
         const paraId = this.editor.ensureHeaderFooterParagraph(hfSection)
         const store = this.editor.getStore()
-        const si = store as unknown as {
-          _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { active: boolean; granularity: string; anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean } } } }
-        }
-        si._state.runtime.cursor = {
+        store.setCursor({
           paragraphPath: [doc.id, paraId],
           offset: 0,
           visible: true,
-        }
-        si._state.runtime.selection = {
+        })
+        store.setSelection({
           anchor: { paragraphPath: [doc.id, paraId], offset: 0, visible: false },
           focus: { paragraphPath: [doc.id, paraId], offset: 0, visible: false },
           active: false,
-          granularity: 'character' as const,
-        }
+          granularity: 'character',
+        })
         this.anchorParaPath = [doc.id, paraId]
         this.anchorOffset = 0
         // 重布局让新创建的页眉/页脚段落在 page.footerItems/page.headerItems 中出现
@@ -172,10 +164,8 @@ export class MouseHandler {
     }
 
     // 在正文区域点击 → 如果当前在页眉页脚编辑模式, 退出
-    const draw = this.editor.getDraw()
-    if (draw.isHeaderFooterEditActive()) {
-      draw.setHeaderFooterEditActive(false)
-      this.editor.getEventBus().emit('body:click')
+    if (this.editor.isHeaderFooterEditActive()) {
+      this.editor.setHeaderFooterEditActive(false)
       return
     }
 
@@ -184,9 +174,6 @@ export class MouseHandler {
     if (!result) return
 
     const store = this.editor.getStore()
-    const si = store as unknown as {
-      _state: { runtime: { cursor: { paragraphPath: string[]; offset: number; visible: boolean }; selection: { active: boolean; granularity: string; anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean } } } }
-    }
 
     // --- 双击/三击检测 ---
     const now = Date.now()
@@ -216,17 +203,17 @@ export class MouseHandler {
         const fullText = this.getParagraphFullText(para)
         const { start, end } = this.findWordBoundaries(fullText, result.offset)
         this._wasMultiClick = true
-        si._state.runtime.cursor = {
+        store.setCursor({
           paragraphPath: [...result.paraPath],
           offset: end,
           visible: true,
-        }
-        si._state.runtime.selection = {
+        })
+        store.setSelection({
           anchor: { paragraphPath: [...result.paraPath], offset: start, visible: false },
           focus: { paragraphPath: [...result.paraPath], offset: end, visible: false },
           active: start !== end,
           granularity: 'character',
-        }
+        })
         this.anchorParaPath = [...result.paraPath]
         this.anchorOffset = start
         this.editor.getDraw().render(this.editor.getPool(), store.state.runtime)
@@ -238,17 +225,17 @@ export class MouseHandler {
       if (para?.children) {
         const totalLen = this.getParagraphFullText(para).length
         this._wasMultiClick = true
-        si._state.runtime.cursor = {
+        store.setCursor({
           paragraphPath: [...result.paraPath],
           offset: totalLen,
           visible: true,
-        }
-        si._state.runtime.selection = {
+        })
+        store.setSelection({
           anchor: { paragraphPath: [...result.paraPath], offset: 0, visible: false },
           focus: { paragraphPath: [...result.paraPath], offset: totalLen, visible: false },
           active: totalLen > 0,
           granularity: 'character',
-        }
+        })
         this.anchorParaPath = [...result.paraPath]
         this.anchorOffset = 0
         this.editor.getDraw().render(this.editor.getPool(), store.state.runtime)
@@ -257,19 +244,19 @@ export class MouseHandler {
     }
 
     // 更新光标到点击位置
-    si._state.runtime.cursor = {
+    store.setCursor({
       paragraphPath: [...result.paraPath],
       offset: result.offset,
       visible: true,
-    }
+    })
 
     // 清空选区, 记录新选区锚点
-    si._state.runtime.selection = {
+    store.setSelection({
       anchor: { paragraphPath: [...result.paraPath], offset: result.offset, visible: false },
       focus: { paragraphPath: [...result.paraPath], offset: result.offset, visible: false },
       active: false,
-      granularity: 'character' as const,
-    }
+      granularity: 'character',
+    })
 
     this.anchorParaPath = [...result.paraPath]
     this.anchorOffset = result.offset
@@ -351,9 +338,6 @@ export class MouseHandler {
     const focusOffset = result.offset
 
     const store = this.editor.getStore()
-    const si = store as unknown as {
-      _state: { runtime: { selection: { anchor: { paragraphPath: string[]; offset: number; visible: boolean }; focus: { paragraphPath: string[]; offset: number; visible: boolean }; active: boolean; granularity: string } } }
-    }
 
     const samePara = this.anchorParaPath.join('.') === focusParaPath.join('.')
 
@@ -361,20 +345,20 @@ export class MouseHandler {
       // 同段落: offset 直接比较, start <= end
       const start = Math.min(this.anchorOffset, focusOffset)
       const end = Math.max(this.anchorOffset, focusOffset)
-      si._state.runtime.selection = {
+      store.setSelection({
         anchor: { paragraphPath: [...this.anchorParaPath], offset: start, visible: false },
         focus: { paragraphPath: [...focusParaPath], offset: end, visible: false },
         active: start !== end,
         granularity: 'character',
-      }
+      })
     } else {
       // 跨段落: anchor 保留下原始位置, focus 用当前段落+offset
-      si._state.runtime.selection = {
+      store.setSelection({
         anchor: { paragraphPath: [...this.anchorParaPath], offset: this.anchorOffset, visible: false },
         focus: { paragraphPath: [...focusParaPath], offset: focusOffset, visible: false },
         active: true,
         granularity: 'character',
-      }
+      })
     }
 
     this.editor.getDraw().render(this.editor.getPool(), store.state.runtime)
