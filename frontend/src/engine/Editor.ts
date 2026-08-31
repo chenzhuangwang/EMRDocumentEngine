@@ -29,7 +29,7 @@ import { SetHeaderFooterConfigCommand } from './command/commands/HeaderFooterCon
 import { MergeParagraphCommand } from './command/commands/MergeParagraphCommand'
 import { ClipboardManager } from './command/ClipboardManager'
 import { EditorStore } from './state/EditorStore'
-import type { EditorRuntimeState } from './state/EditorRuntimeState'
+import type { EditorRuntimeState, SelectionState } from './state/EditorRuntimeState'
 import { FindReplaceEngine } from './FindReplaceEngine'
 import type { FindOptions, MatchResult } from './FindReplaceEngine'
 import { cumulativeCharWidths, findCharIndexAtX } from './layout/text/CharWidthHelper'
@@ -525,6 +525,58 @@ export class Editor {
       offset += len
     }
     return ids
+  }
+
+  /**
+   * 收集选区覆盖的所有文本节点 ID (同段/跨段)。
+   * 同段落取 [min,max) 区间内 text node；跨段落遍历 body[lo..hi] 逐段收集。
+   * 空选区 (起止重合) 返回空数组。
+   */
+  private collectSelectionTextNodeIds(selection: SelectionState): string[] {
+    const nodeIds: string[] = []
+    const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
+    const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
+
+    if (anchorParaId === focusParaId) {
+      // 同段落选区: 收集选区范围内所有 text node
+      const start = Math.min(selection.anchor.offset, selection.focus.offset)
+      const end = Math.max(selection.anchor.offset, selection.focus.offset)
+      if (start < end) {
+        nodeIds.push(...this.collectTextNodeIds(anchorParaId, start, end))
+      }
+      return nodeIds
+    }
+
+    // 跨段落选区: 遍历 anchor→focus 之间所有段落, 逐段收集 text node
+    const bodyChildren = this.doc.body.children
+    const aIdx = bodyChildren.indexOf(anchorParaId)
+    const fIdx = bodyChildren.indexOf(focusParaId)
+    if (aIdx < 0 || fIdx < 0) return nodeIds
+
+    const lo = Math.min(aIdx, fIdx)
+    const hi = Math.max(aIdx, fIdx)
+    // 与 Draw.renderSelectionUnified 逻辑一致: 首段偏移 = 索引较小端对应的 anchor/focus offset
+    const loOff = aIdx === lo ? selection.anchor.offset : selection.focus.offset
+    const hiOff = aIdx === hi ? selection.anchor.offset : selection.focus.offset
+    const INF = Number.MAX_SAFE_INTEGER
+
+    for (let i = lo; i <= hi; i++) {
+      const paraId = bodyChildren[i]
+      if (i === lo && i === hi) {
+        // 防御性: samePara 已在上方拦截, 此处仅在极端边界触发
+        if (loOff < hiOff) nodeIds.push(...this.collectTextNodeIds(paraId, loOff, hiOff))
+      } else if (i === lo) {
+        // 首段: 从 loOff 到段落末尾的全部文本节点
+        nodeIds.push(...this.collectTextNodeIds(paraId, loOff, INF))
+      } else if (i === hi) {
+        // 末段: 从段落开头到 hiOff 的全部文本节点
+        nodeIds.push(...this.collectTextNodeIds(paraId, 0, hiOff))
+      } else {
+        // 中间段: 全部文本节点
+        nodeIds.push(...this.collectTextNodeIds(paraId, 0, INF))
+      }
+    }
+    return nodeIds
   }
 
   getDocument(): DocumentTree { return this.doc }
@@ -1356,47 +1408,7 @@ export class Editor {
     let nodeIds: string[] = []
 
     if (selection.active) {
-      const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
-      const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
-
-      if (anchorParaId === focusParaId) {
-        // 同段落选区: 收集选区范围内所有 text node
-        const start = Math.min(selection.anchor.offset, selection.focus.offset)
-        const end = Math.max(selection.anchor.offset, selection.focus.offset)
-        if (start < end) {
-          nodeIds = this.collectTextNodeIds(anchorParaId, start, end)
-        }
-      } else {
-        // 跨段落选区: 遍历 anchor→focus 之间所有段落, 逐段收集 text node
-        const bodyChildren = this.doc.body.children
-        const aIdx = bodyChildren.indexOf(anchorParaId)
-        const fIdx = bodyChildren.indexOf(focusParaId)
-        if (aIdx >= 0 && fIdx >= 0) {
-          const lo = Math.min(aIdx, fIdx)
-          const hi = Math.max(aIdx, fIdx)
-          // 与 Draw.renderSelectionUnified 逻辑一致: 首段偏移 = 索引较小端对应的 anchor/focus offset
-          const loOff = aIdx === lo ? selection.anchor.offset : selection.focus.offset
-          const hiOff = aIdx === hi ? selection.anchor.offset : selection.focus.offset
-          const INF = Number.MAX_SAFE_INTEGER
-
-          for (let i = lo; i <= hi; i++) {
-            const paraId = bodyChildren[i]
-            if (i === lo && i === hi) {
-              // 防御性: samePara 已在上方拦截, 此处仅在极端边界触发
-              if (loOff < hiOff) nodeIds.push(...this.collectTextNodeIds(paraId, loOff, hiOff))
-            } else if (i === lo) {
-              // 首段: 从 loOff 到段落末尾的全部文本节点
-              nodeIds.push(...this.collectTextNodeIds(paraId, loOff, INF))
-            } else if (i === hi) {
-              // 末段: 从段落开头到 hiOff 的全部文本节点
-              nodeIds.push(...this.collectTextNodeIds(paraId, 0, hiOff))
-            } else {
-              // 中间段: 全部文本节点
-              nodeIds.push(...this.collectTextNodeIds(paraId, 0, INF))
-            }
-          }
-        }
-      }
+      nodeIds = this.collectSelectionTextNodeIds(selection)
     }
 
     if (nodeIds.length === 0) {
@@ -1434,37 +1446,7 @@ export class Editor {
     let nodeIds: string[] = []
 
     if (selection.active) {
-      const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
-      const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
-
-      if (anchorParaId === focusParaId) {
-        const start = Math.min(selection.anchor.offset, selection.focus.offset)
-        const end = Math.max(selection.anchor.offset, selection.focus.offset)
-        if (start < end) nodeIds = this.collectTextNodeIds(anchorParaId, start, end)
-      } else {
-        const bodyChildren = this.doc.body.children
-        const aIdx = bodyChildren.indexOf(anchorParaId)
-        const fIdx = bodyChildren.indexOf(focusParaId)
-        if (aIdx >= 0 && fIdx >= 0) {
-          const lo = Math.min(aIdx, fIdx)
-          const hi = Math.max(aIdx, fIdx)
-          const loOff = aIdx === lo ? selection.anchor.offset : selection.focus.offset
-          const hiOff = aIdx === hi ? selection.anchor.offset : selection.focus.offset
-          const INF = Number.MAX_SAFE_INTEGER
-          for (let i = lo; i <= hi; i++) {
-            const paraId = bodyChildren[i]
-            if (i === lo && i === hi) {
-              if (loOff < hiOff) nodeIds.push(...this.collectTextNodeIds(paraId, loOff, hiOff))
-            } else if (i === lo) {
-              nodeIds.push(...this.collectTextNodeIds(paraId, loOff, INF))
-            } else if (i === hi) {
-              nodeIds.push(...this.collectTextNodeIds(paraId, 0, hiOff))
-            } else {
-              nodeIds.push(...this.collectTextNodeIds(paraId, 0, INF))
-            }
-          }
-        }
-      }
+      nodeIds = this.collectSelectionTextNodeIds(selection)
     }
 
     if (nodeIds.length === 0) {
@@ -1512,44 +1494,7 @@ export class Editor {
   /** 格式刷: 将样式应用到当前选区内的所有文本节点 (拖拽松手/批量) */
   private applyFormatPainterToSelection(style: Record<string, unknown>): void {
     const selection = this.store.state.runtime.selection
-    const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
-    const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
-
-    let nodeIds: string[] = []
-
-    if (anchorParaId === focusParaId) {
-      // 同段落选区
-      const start = Math.min(selection.anchor.offset, selection.focus.offset)
-      const end = Math.max(selection.anchor.offset, selection.focus.offset)
-      if (start < end) {
-        nodeIds = this.collectTextNodeIds(anchorParaId, start, end)
-      }
-    } else {
-      // 跨段落选区
-      const bodyChildren = this.doc.body.children
-      const aIdx = bodyChildren.indexOf(anchorParaId)
-      const fIdx = bodyChildren.indexOf(focusParaId)
-      if (aIdx >= 0 && fIdx >= 0) {
-        const lo = Math.min(aIdx, fIdx)
-        const hi = Math.max(aIdx, fIdx)
-        const loOff = aIdx === lo ? selection.anchor.offset : selection.focus.offset
-        const hiOff = aIdx === hi ? selection.anchor.offset : selection.focus.offset
-        const INF = Number.MAX_SAFE_INTEGER
-
-        for (let i = lo; i <= hi; i++) {
-          const paraId = bodyChildren[i]
-          if (i === lo && i === hi) {
-            if (loOff < hiOff) nodeIds.push(...this.collectTextNodeIds(paraId, loOff, hiOff))
-          } else if (i === lo) {
-            nodeIds.push(...this.collectTextNodeIds(paraId, loOff, INF))
-          } else if (i === hi) {
-            nodeIds.push(...this.collectTextNodeIds(paraId, 0, hiOff))
-          } else {
-            nodeIds.push(...this.collectTextNodeIds(paraId, 0, INF))
-          }
-        }
-      }
-    }
+    let nodeIds = this.collectSelectionTextNodeIds(selection)
 
     if (nodeIds.length === 0) {
       this.setFormatPainterActive(false)
