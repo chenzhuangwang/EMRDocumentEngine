@@ -32,7 +32,7 @@ import { EditorStore } from './state/EditorStore'
 import type { EditorRuntimeState, SelectionState, CursorState } from './state/EditorRuntimeState'
 import { FindReplaceEngine } from './FindReplaceEngine'
 import type { FindOptions, MatchResult } from './FindReplaceEngine'
-import { cumulativeCharWidths, findCharIndexAtX } from './layout/text/CharWidthHelper'
+import { computeOffsetInItems } from './layout/text/CharWidthHelper'
 import { FontManager } from './layout/text/FontManager'
 import { TextMeasurer } from './layout/text/TextMeasurer'
 import { resolveCellPosition } from './state/CaretScope'
@@ -460,37 +460,9 @@ export class Editor {
     const related = page.items
       .filter(it => para.children.includes(it.nodeId) || it.nodeId === para.id)
     // items 已按 Y 排序 (LayoutEngine 顺序插入), 此处不需额外 sort
-
-    let accumulated = 0
-    for (const item of related) {
-      const itemText = (item as { text?: string }).text || ''
-      const bodyW = (item as { markerWidth?: number }).markerWidth != null
-        ? item.width - (item as { markerWidth: number }).markerWidth
-        : item.width
-
-      // 命中当前行?
-      const yHit = docY >= item.y && docY <= item.y + item.ascent + item.descent
-      if (yHit) {
-        // X 在 item 左侧 → 光标放在 item 行首
-        if (docX < item.x) return accumulated
-        // X 在 item 内部 → 逐字计算偏移
-        if (docX <= item.x + bodyW) {
-          const relativeX = docX - item.x
-          const cumWidths = cumulativeCharWidths(itemText, {
-            font: item.font || 'SimSun', size: item.size || 16,
-            bold: item.bold, italic: item.italic,
-          }, this.measurer)
-          const charIdx = findCharIndexAtX(relativeX, cumWidths, itemText.length || 0)
-          return Math.max(0, accumulated + charIdx)
-        }
-        // X 在 item 右侧 → 光标放在 item 行尾
-        return accumulated + itemText.length
-      }
-
-      accumulated += itemText.length
-    }
-
-    return Math.max(0, accumulated)
+    // 同一行内可能含多个 text item (局部选区格式化会拆分 TextNode),
+    // 故越过 item 右边界后需继续检查后续 item, 而非提前返回 (行尾点击定位)。
+    return computeOffsetInItems(related, docX, docY, this.measurer)
   }
 
   /** 计算段落内所有文本节点的总字符数 (文本节点计 text.length, 非文本节点计 1) */
