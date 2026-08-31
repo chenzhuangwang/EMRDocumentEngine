@@ -474,18 +474,21 @@ export class Editor {
     return Math.max(0, accumulated)
   }
 
-  /** 计算段落内所有文本节点的总字符数 */
-  private getParagraphTextLength(para: Paragraph): number {
+  /** 计算段落内所有文本节点的总字符数 (文本节点计 text.length, 非文本节点计 1) */
+  private getParagraphTextLengthById(paraId: string): number {
+    const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
+    if (!para?.children) return 0
     let len = 0
     for (const childId of para.children) {
-      const node = this.pool.nodes.get(childId)
-      if (node && (node as unknown as { type: string }).type === 'text') {
-        len += ((node as unknown as { text: string }).text || '').length
-      } else {
-        len += 1
-      }
+      const node = this.pool.nodes.get(childId) as { type?: string; text?: string } | undefined
+      len += node?.type === 'text' ? (node.text || '').length : 1
     }
     return len
+  }
+
+  /** 计算段落内所有文本节点的总字符数 (按段落对象) */
+  private getParagraphTextLength(para: Paragraph): number {
+    return this.getParagraphTextLengthById(para.id)
   }
 
   /** 获取页面中最后一个 SLIF item 的底部 Y 坐标, 无内容返回 -1 */
@@ -1318,26 +1321,12 @@ export class Editor {
           this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, hiOff))
         }
       } else if (pi === lo) {
-        const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
-        let totalLen = 0
-        if (para?.children) {
-          for (const cid of para.children) {
-            const n = this.pool.nodes.get(cid) as { type?: string; text?: string } | undefined
-            totalLen += n?.type === 'text' ? (n.text || '').length : 1
-          }
-        }
+        const totalLen = this.getParagraphTextLengthById(paraId)
         if (loOff < totalLen) {
           this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, loOff, totalLen))
         }
       } else {
-        const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
-        let totalLen = 0
-        if (para?.children) {
-          for (const cid of para.children) {
-            const n = this.pool.nodes.get(cid) as { type?: string; text?: string } | undefined
-            totalLen += n?.type === 'text' ? (n.text || '').length : 1
-          }
-        }
+        const totalLen = this.getParagraphTextLengthById(paraId)
         if (totalLen > 0) {
           this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, totalLen))
         }
