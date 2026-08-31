@@ -355,6 +355,8 @@ export class MouseHandler {
         active: start !== end,
         granularity: 'character',
       })
+      // 光标跟随选区终点 (focus), 而非固定停在锚点 (起始位置)
+      store.setCursor({ paragraphPath: [...focusParaPath], offset: end, visible: true })
     } else {
       // 跨段落: anchor 保留下原始位置, focus 用当前段落+offset
       store.setSelection({
@@ -363,6 +365,8 @@ export class MouseHandler {
         active: true,
         granularity: 'character',
       })
+      // 光标跟随选区终点 (focus)
+      store.setCursor({ paragraphPath: [...focusParaPath], offset: focusOffset, visible: true })
     }
 
     this.editor.getDraw().render(this.editor.getPool(), store.state.runtime)
