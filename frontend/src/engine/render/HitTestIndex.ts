@@ -246,6 +246,9 @@ export class HitTestIndex {
     // cellItems 中的文本 item 以 cell 局部坐标 (0,0) 存储
     let accumulated = 0
     let paraId: string | null = null
+    // 记录点击命中的段落及其"行尾偏移" — 越过当前行最后一个 item 后回退到该行末尾
+    let hitParaId: string | null = null
+    let hitParaEnd = 0
 
     for (const ci of cellItems) {
       const ciText = ci.text || ''
@@ -262,6 +265,7 @@ export class HitTestIndex {
       // Y 命中检查
       const yHit = localY >= ci.y && localY <= ci.y + ciHeight
       if (yHit) {
+        hitParaId = paraId
         if (localX < ci.x) {
           if (paraId) {
             return { paraPath: [docId, paraId], offset: accumulated }
@@ -281,13 +285,17 @@ export class HitTestIndex {
           }
           return null
         }
-        if (paraId) {
-          return { paraPath: [docId, paraId], offset: accumulated + ciText.length }
-        }
-        return null
+        // 点击越过当前 item 右边界 → 继续检查下一 item (拆分节点后同一行可含多 item),
+        // 同时记住该段落当前行的末尾偏移, 供循环结束后回退到行尾。
+        hitParaEnd = accumulated + ciText.length
       }
 
       accumulated += ciText.length
+    }
+
+    // 点击命中了某段落行但未落在任何 item 内 (越过行尾) → 回退到该段落行尾
+    if (hitParaId) {
+      return { paraPath: [docId, hitParaId], offset: Math.max(0, hitParaEnd) }
     }
 
     // 超出 cell 内所有文本, 返回 cell 最后 paragraph 的末尾

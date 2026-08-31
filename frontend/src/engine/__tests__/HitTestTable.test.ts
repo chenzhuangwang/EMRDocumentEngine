@@ -120,6 +120,76 @@ describe('HitTestTable', () => {
   })
 })
 
+// ---- 拆分文本节点后的行尾命中 (修复 cell 内短路 bug) ----
+
+/**
+ * 单 cell 表格, 段落 "Hello" 经局部选区格式化拆成 "H"/"ell"/"o" 三个 TextNode,
+ * 渲染为三个相邻 text item (x 逐元素累积)。
+ */
+function makeSplitCellFixture() {
+  const doc = createDocument('test')
+  const allNodes = new Map<string, BaseNode>()
+  allNodes.set(doc.id, doc as unknown as BaseNode)
+
+  const tH = createTextNode('H')
+  const tEll = createTextNode('ell')
+  const tO = createTextNode('o')
+  const para = createParagraph([tH.id, tEll.id, tO.id])
+  for (const n of [tH, tEll, tO, para]) allNodes.set(n.id, n as unknown as BaseNode)
+
+  const pool = buildNodePool(allNodes, { body: doc.id })
+
+  // "Hello" 拆成 "H"/"ell"/"o" 三个相邻 item (x 逐元素累积, 文本总宽 50)
+  const items: SLIFItem[] = [
+    { ...cellText(tH.id, 'H', 10), x: 0 },
+    { ...cellText(tEll.id, 'ell', 30), x: 10 },
+    { ...cellText(tO.id, 'o', 10), x: 40 },
+  ]
+
+  const tableItem: SLIFItem = {
+    nodeId: 'tableSplit', nodeType: 'table', type: 'table',
+    x: 0, y: 0, width: 200, height: 24,
+    ascent: 24, descent: 0, font: 'SimSun', size: 12,
+    columnWidths: [200],
+    rows: [{ height: 24, cells: [cell('cellSplit', 200, items)] }],
+  }
+
+  return { doc, pool, tableItem, para }
+}
+
+describe('HitTestTable 拆分文本节点后的行尾命中', () => {
+  it('点击 cell 内文本末尾 → 返回段尾 offset 5 (旧 bug 返回 1)', () => {
+    const { doc, pool, tableItem, para } = makeSplitCellFixture()
+
+    // CELL_PAD=6, 文本总宽 50 → 点击恰在最后一个 item 右边界 (localX=50)
+    const hit = hitIndex.hitTestTable(tableItem, 6 + 50, 10, pool, doc.id)
+    expect(hit).not.toBeNull()
+    expect(hit!.paraPath[1]).toBe(para.id)
+    expect(hit!.offset).toBe(5)
+  })
+
+  it('点击越过文本末尾右边界 → 仍回退到段尾 offset 5 (旧 bug 返回 1)', () => {
+    const { doc, pool, tableItem, para } = makeSplitCellFixture()
+
+    // 点击越过最后一个 item (localX=51 > 文本总宽 50)
+    const hit = hitIndex.hitTestTable(tableItem, 6 + 51, 10, pool, doc.id)
+    expect(hit).not.toBeNull()
+    expect(hit!.paraPath[1]).toBe(para.id)
+    expect(hit!.offset).toBe(5)
+  })
+
+  it('点击中间 item "ell" → 返回中间 offset (旧 bug 返回 1)', () => {
+    const { doc, pool, tableItem, para } = makeSplitCellFixture()
+
+    // 点击 "ell" 中部 (x=10..40, localX=25 位于 "ell" 内部)
+    const hit = hitIndex.hitTestTable(tableItem, 6 + 25, 10, pool, doc.id)
+    expect(hit).not.toBeNull()
+    expect(hit!.paraPath[1]).toBe(para.id)
+    // 旧 bug 在首个 item "H" 处短路返回 1; 修复后应落在 "ell" 内 (offset > 1)
+    expect(hit!.offset).toBeGreaterThan(1)
+  })
+})
+
 describe('buildMergeMatrix colspan 列数', () => {
   it('全 colspan 场景列数不低估', () => {
     const rows = [

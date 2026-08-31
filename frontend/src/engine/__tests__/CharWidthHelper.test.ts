@@ -4,7 +4,8 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { cumulativeCharWidths, findCharIndexAtX, cumulativeWidthUpTo } from '../layout/text/CharWidthHelper'
+import { cumulativeCharWidths, findCharIndexAtX, cumulativeWidthUpTo, computeOffsetInItems } from '../layout/text/CharWidthHelper'
+import type { OffsetHitItem } from '../layout/text/CharWidthHelper'
 import { testMeasurer } from './helpers'
 
 const FONT_CFG = { font: 'SimSun', size: 16 }
@@ -136,5 +137,67 @@ describe('cumulativeWidthUpTo', () => {
 
   it('空文本返回 0', () => {
     expect(cumulativeWidthUpTo('', 5, FONT_CFG, testMeasurer)).toBe(0)
+  })
+})
+
+describe('computeOffsetInItems — 拆分节点后行尾/中段点击', () => {
+  function item(text: string, x: number, width: number): OffsetHitItem {
+    return { text, x, y: 0, width, ascent: 12, descent: 4, font: 'SimSun', size: 16 }
+  }
+
+  // 用 measurer 推导宽度, 保证 x/width 与 cumulativeCharWidths 内部一致 (避免硬编码浮点误差)
+  const wH = cumulativeWidthUpTo('H', 1, FONT_CFG, testMeasurer)
+  const wEll = cumulativeWidthUpTo('ell', 3, FONT_CFG, testMeasurer)
+  const wO = cumulativeWidthUpTo('o', 1, FONT_CFG, testMeasurer)
+  const x0 = 90
+  const x1 = x0 + wH
+  const x2 = x1 + wEll
+  // "Hello" 经局部选区格式化拆成 "H"/"ell"/"o" 三个相邻 item
+  const splitItems: OffsetHitItem[] = [
+    item('H', x0, wH),
+    item('ell', x1, wEll),
+    item('o', x2, wO),
+  ]
+
+  it('点击文字末尾 (越过最后 item 右边界) → 返回整段长度 5 (旧 bug 返回 1)', () => {
+    expect(computeOffsetInItems(splitItems, x2 + wO + 1, 5, testMeasurer)).toBe(5)
+    expect(computeOffsetInItems(splitItems, x2 + wO + 100, 5, testMeasurer)).toBe(5)
+  })
+
+  it('点击中间 item "ell" 第一个字符内部 → 返回 offset 2 (旧 bug 返回 1)', () => {
+    const cumEll = cumulativeCharWidths('ell', FONT_CFG, testMeasurer)
+    const relX = cumEll[0] + (cumEll[1] - cumEll[0]) * 0.3 // 明显在第一个 'l' 内部
+    expect(computeOffsetInItems(splitItems, x1 + relX, 5, testMeasurer)).toBe(2)
+  })
+
+  it('点击第三个 item "o" 右半 → 返回 offset 5', () => {
+    const cumO = cumulativeCharWidths('o', FONT_CFG, testMeasurer)
+    expect(computeOffsetInItems(splitItems, x2 + cumO[0] * 0.6, 5, testMeasurer)).toBe(5)
+  })
+
+  it('点击行首之前 → 返回 0', () => {
+    expect(computeOffsetInItems(splitItems, x0 - 10, 5, testMeasurer)).toBe(0)
+  })
+
+  it('点击恰在 "H"/"ell" 边界 → 返回 1', () => {
+    expect(computeOffsetInItems(splitItems, x1, 5, testMeasurer)).toBe(1)
+  })
+
+  it('单 item 行 (未拆分) 点击末尾 → 仍返回整段长度', () => {
+    const wHello = cumulativeWidthUpTo('Hello', 5, FONT_CFG, testMeasurer)
+    const single = [item('Hello', x0, wHello)]
+    expect(computeOffsetInItems(single, x0 + wHello + 1, 5, testMeasurer)).toBe(5)
+  })
+
+  it('不同行: 点击第二行 item → 正确累积第一行长度', () => {
+    const wAB = cumulativeWidthUpTo('AB', 2, FONT_CFG, testMeasurer)
+    const wCD = cumulativeWidthUpTo('CD', 2, FONT_CFG, testMeasurer)
+    const twoLines: OffsetHitItem[] = [
+      item('AB', x0, wAB),     // 第一行 y=0
+      item('CD', x0, wCD),     // 第二行 y=16
+    ]
+    twoLines[1].y = 16
+    // 点击第二行 CD 末尾 → 累积 AB(2) + CD(2) = 4
+    expect(computeOffsetInItems(twoLines, x0 + wCD, 20, testMeasurer)).toBe(4)
   })
 })
