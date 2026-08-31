@@ -597,6 +597,20 @@ export class Editor {
     return [resolved.textNodeId]
   }
 
+  /**
+   * 将光标定位到指定点并折叠选区 (锚点/焦点跟随该点, active=false)。
+   * 供"应用格式后只保留光标"类场景复用, 避免 setCursor + setSelection 组合重复。
+   */
+  private collapseSelectionToPoint(paragraphPath: string[], offset: number): void {
+    this.store.setCursor({ paragraphPath, offset, visible: true })
+    this.store.setSelection({
+      anchor: { paragraphPath: [...paragraphPath], offset, visible: false },
+      focus: { paragraphPath: [...paragraphPath], offset, visible: false },
+      active: false,
+      granularity: 'character',
+    })
+  }
+
   getDocument(): DocumentTree { return this.doc }
   /** 序列化文档为 JSON 字符串 (含全部节点 payload, 供保存/自动保存使用) */
   getSerializedDocument(): string {
@@ -1498,15 +1512,7 @@ export class Editor {
     }
 
     // 移动光标到焦点位置 (拖拽终点) + 清除选区 → 格式应用后只显示光标
-    const focusPath = [...selection.focus.paragraphPath]
-    const focusOffset = selection.focus.offset
-    this.store.setCursor({ paragraphPath: focusPath, offset: focusOffset, visible: true })
-    this.store.setSelection({
-      anchor: { paragraphPath: focusPath, offset: focusOffset, visible: false },
-      focus: { paragraphPath: focusPath, offset: focusOffset, visible: false },
-      active: false,
-      granularity: 'character',
-    })
+    this.collapseSelectionToPoint([...selection.focus.paragraphPath], selection.focus.offset)
 
     // 执行格式刷命令 (FormatPainterCommand → document:changed → recomputeLayout + render + contentChange)
     const cmd = new FormatPainterCommand(
@@ -1569,14 +1575,7 @@ export class Editor {
         // getTextStyle() 读到的是目标段落的格式, 而非旧光标位置
         const cursorOffset = this.computeOffsetAtX(para, docX, localY, page)
         const paraPath = [this.doc.id, para.id]
-        this.store.setCursor({ paragraphPath: paraPath, offset: cursorOffset, visible: true })
-        // 同步清除选区 — anchor/focus 跟随新光标位置, active=false
-        this.store.setSelection({
-          anchor: { paragraphPath: [...paraPath], offset: cursorOffset, visible: false },
-          focus: { paragraphPath: [...paraPath], offset: cursorOffset, visible: false },
-          active: false,
-          granularity: 'character',
-        })
+        this.collapseSelectionToPoint(paraPath, cursorOffset)
         // applyFormatPainter 内部 commandManager.execute → document:changed → recomputeLayout + render
         // → notifyListeners('contentChange') → 工具栏读取当前光标位置格式 = 目标段落的新格式 ✓
         this.applyFormatPainter(para.id, this._formatPainterStyle)
