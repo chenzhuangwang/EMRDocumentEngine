@@ -30,7 +30,7 @@ export class TextParticle {
     },
     x: number,
     y: number,
-    options: { defaultColor?: string; defaultFont?: string; defaultSize?: number; showInvisible?: boolean } = {},
+    options: { defaultColor?: string; defaultFont?: string; defaultSize?: number; showInvisible?: boolean; ascent?: number; descent?: number } = {},
   ): void {
     const fontSize = el.size || options.defaultSize || 16
     const fontFamily = el.font || options.defaultFont || 'SimSun'
@@ -52,8 +52,11 @@ export class TextParticle {
       actualBoundingBoxAscent?: number; actualBoundingBoxDescent?: number
       fontBoundingBoxAscent?: number; fontBoundingBoxDescent?: number
     }
-    let textAscent = m.actualBoundingBoxAscent ?? m.fontBoundingBoxAscent ?? fontSize * 0.8
-    let textDescent = m.actualBoundingBoxDescent ?? m.fontBoundingBoxDescent ?? fontSize * 0.2
+    // 基线优先取行级 ascent/descent (item.ascent/descent), 保证同一行内加粗/非加粗
+    // 片段基线对齐; 逐字形 actualBoundingBoxAscent 会随样式/字符变化, 导致字母/数字
+    // 加粗后产生垂直位移 (中文因填充满 em 框而不受影响)。
+    let textAscent = options.ascent ?? m.actualBoundingBoxAscent ?? m.fontBoundingBoxAscent ?? fontSize * 0.8
+    let textDescent = options.descent ?? m.actualBoundingBoxDescent ?? m.fontBoundingBoxDescent ?? fontSize * 0.2
     // 空白字符 actualBoundingBox 为 0, 回退到 fontSize 估算
     if (textAscent < 1) textAscent = fontSize * 0.8
     if (textDescent < 1) textDescent = fontSize * 0.2

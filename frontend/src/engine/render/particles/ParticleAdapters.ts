@@ -41,6 +41,8 @@ export const textParticle: IParticle = {
       defaultFont: options?.defaultFont,
       defaultSize: options?.defaultSize,
       showInvisible: options?.showInvisible,
+      ascent: item.ascent,
+      descent: item.descent,
     })
   },
 }
@@ -91,6 +93,8 @@ export const fieldParticle: IParticle = {
       defaultFont: options?.defaultFont,
       defaultSize: options?.defaultSize,
       showInvisible: options?.showInvisible,
+      ascent: item.ascent,
+      descent: item.descent,
     })
   },
 }
