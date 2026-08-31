@@ -156,4 +156,17 @@ describe('契约不变量可执行验证 (ContractCompliance)', () => {
       'interaction/EventBus.ts',
     ])
   })
+
+  it('§6.1: 节点 children 必须 readonly string[] (PROBLEM B 类型级咽喉)', () => {
+    const src = engineSources['/src/engine/document/core/DocumentModel.ts']
+    expect(src).toBeTruthy()
+    // PROBLEM B: children 若声明为可变 string[]，外部可 children.push/splice 绕过咽喉。
+    // 契约 §6.1 / 铁律 1 要求 readonly string[]，由类型系统强制 (与 ReadonlyMap 对称)。
+    // 注: ClipboardManager 的 sp.children.push 是 SerializedPara 序列化 DTO (§13)，非池内节点，
+    // 其 children: SerializedChild[] 可变是合法的——故此处只锁 DocumentModel 的类型声明，不扫全库。
+    expect(
+      src,
+      'DocumentModel 节点 children 必须为 readonly string[]，不得退化为可变 string[]',
+    ).not.toMatch(/children:\s*string\[\]/)
+  })
 })

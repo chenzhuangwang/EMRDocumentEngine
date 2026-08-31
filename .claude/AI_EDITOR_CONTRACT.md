@@ -389,6 +389,48 @@ call it — never mutate the tree directly.
 Any new API that exposes mutable internal document structures
 MUST be justified before implementation.
 
+------------------------------------------------------------
+6.2 Two mutation layers: Command = gate, NodePool/DocumentModel = enforcement
+------------------------------------------------------------
+
+"Mutation gate" and "mutation enforcement" are DIFFERENT layers
+and MUST NOT be conflated:
+
+    Command system        = the GATE — who may INITIATE a document
+                            change, and which changes are recorded as
+                            undoable/redoable commands.
+                            (All document mutations MUST pass through
+                            CommandManager — §5, RULE 4.)
+
+    NodePool / DocumentModel controlled API
+                          = the ENFORCEMENT — how a document MAY
+                            legally change once a command runs.
+
+NodePool enforces NODE STRUCTURE only (children / nodes, via the
+§6.1 controlled methods insertChild / removeChild / moveChild / …).
+
+DocumentTree / DocumentModel own the NON-STRUCTURAL document fields:
+
+    pageSetup / headerFooterConfig / metadata / modelVersion
+
+    These are NOT NodePool's responsibility. Their runtime mutations
+    MUST still be Command-gated (e.g. HeaderFooterConfigCommand,
+    SetPageSetupCommand). The only other legitimate writers are the
+    load path (DocumentLoader, §14) and the migration path
+    (ModelUpgrader, §14). External code MUST NOT assign these fields
+    directly.
+
+Do NOT phrase the invariant as "NodePool is the ONLY document
+mutation entry". The correct statement is:
+
+    All external document mutations MUST enter through the Command
+    system.
+
+    DocumentModel and NodePool MUST expose controlled mutation APIs
+    for their RESPECTIVE domains.
+
+    No mutable internal representation may be directly exposed.
+
 ============================================================
 7. STATE OWNERSHIP
 ============================================================
@@ -435,6 +477,18 @@ Examples:
 - active page
 - editing mode
 - editor runtime state
+
+Note — EditorStore.document is NOT a second document owner:
+
+    EditorStoreState.document holds a REFERENCE to the canonical
+    DocumentTree, not an independent copy. Its single writer is
+    EditorStore.setDocument(), which replaces the reference when a
+    whole document is loaded/replaced. In-place edits mutate the
+    canonical DocumentTree through NodePool and are NOT copied into
+    EditorStore.
+
+    EditorStore.document is a reference/view to DocumentModel
+    (§7.3). It MUST NOT become an independent document state store.
 
 ------------------------------------------------------------
 7.3 Document State
@@ -618,6 +672,23 @@ Prefer:
 
 The goal is to prevent the document engine from becoming
 tightly coupled to a specific CRDT implementation.
+
+    Core engine modules MUST NOT import Yjs types directly —
+    including `import type { Doc } from 'yjs'`: a type-only import
+    still makes the engine aware of the CRDT implementation.
+
+    Collaboration-specific types MUST be hidden behind an
+    engine-defined abstraction. The presence of a "collab" execution
+    mode MUST NOT cause Yjs types to leak into core commands.
+    Concretely, CommandContext's collab branch MUST reference an
+    engine-defined interface (or `unknown`), never a Yjs type:
+
+        type CommandContext =
+          | LocalDocumentContext
+          | CollaborationContext   // engine-defined, not Yjs
+
+    The Yjs binding (YjsAdapter / DocumentBinding) belongs in the
+    collaboration adapter / platform layer, NOT in core commands.
 
 ============================================================
 10. REACT INTEGRATION
