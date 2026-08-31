@@ -9,7 +9,8 @@
 //   §10  React 依赖禁令
 //   §9   Yjs 依赖禁令
 //   §27  engine → platform/UI 依赖方向
-//   §6.1 NodePool 单一变更咽喉       (.nodes.set/delete + nodes 只读暴露)
+//   §6.1 NodePool 单一变更咽喉       (.nodes.set/delete + nodes 只读暴露 + children readonly)
+//   §6.2 非结构字段外部直写禁令      (pageSetup/headerFooterConfig/metadata/modelVersion)
 //   §15  EventBus 唯一实现
 //
 // 这类不变量此前靠人肉审计 + 注释约定; 本测试让回归在 CI 直接暴露。
@@ -168,5 +169,35 @@ describe('契约不变量可执行验证 (ContractCompliance)', () => {
       src,
       'DocumentModel 节点 children 必须为 readonly string[]，不得退化为可变 string[]',
     ).not.toMatch(/children:\s*string\[\]/)
+  })
+
+  it('§6.2: 非结构字段不得被外部代码直接赋值 (Command 门控 / 加载 / 迁移之外)', () => {
+    // 非结构字段 (pageSetup/headerFooterConfig/metadata/modelVersion) 归 DocumentTree 所有,
+    // 非 NodePool 职责 (§6.2)。运行时变更必须 Command 门控; 合法直接写入者仅限:
+    //   document/io       (加载构造, §14)
+    //   document/version  (迁移, §14)
+    //   command/commands  (命令门控, 如 HeaderFooterConfigCommand / SetPageSetupCommand)
+    // 例外: state/EditorStore.ts 的 this._state.headerFooterConfig 是 UI 读取投影 (§7.2),
+    //       canonical = DocumentTree, 非文档字段赋值, 故单列白名单。
+    const NON_STRUCTURAL = 'pageSetup|headerFooterConfig|metadata|modelVersion'
+    const re = new RegExp(`\\.(${NON_STRUCTURAL})\\s*=(?!=)`, 'g')
+    const writesDocument = (f: string) =>
+      f.includes('/document/io/') ||
+      f.includes('/document/version/') ||
+      f.includes('/command/commands/')
+    const isProjection = (f: string) => f.includes('/state/EditorStore.ts')
+
+    const hits: string[] = []
+    for (const file of ENGINE_FILES) {
+      if (writesDocument(file) || isProjection(file)) continue
+      const src = stripStrings(stripComments(engineSources[file]))
+      re.lastIndex = 0
+      let m: RegExpExecArray | null
+      while ((m = re.exec(src))) hits.push(`${rel(file)}:${lineOf(src, m.index)}  ${m[1]}`)
+    }
+    expect(
+      hits,
+      `外部代码直接赋值非结构字段 (契约 §6.2, 白名单 document/io|version|command/commands):\n  ${hits.join('\n  ')}`,
+    ).toEqual([])
   })
 })
