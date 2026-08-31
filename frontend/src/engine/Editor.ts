@@ -29,7 +29,7 @@ import { SetHeaderFooterConfigCommand } from './command/commands/HeaderFooterCon
 import { MergeParagraphCommand } from './command/commands/MergeParagraphCommand'
 import { ClipboardManager } from './command/ClipboardManager'
 import { EditorStore } from './state/EditorStore'
-import type { EditorRuntimeState, SelectionState } from './state/EditorRuntimeState'
+import type { EditorRuntimeState, SelectionState, CursorState } from './state/EditorRuntimeState'
 import { FindReplaceEngine } from './FindReplaceEngine'
 import type { FindOptions, MatchResult } from './FindReplaceEngine'
 import { cumulativeCharWidths, findCharIndexAtX } from './layout/text/CharWidthHelper'
@@ -577,6 +577,24 @@ export class Editor {
       }
     }
     return nodeIds
+  }
+
+  /**
+   * 解析本次格式操作的目标文本节点 ID。
+   * 优先取选区覆盖的节点；无选区/空选区时回退到光标处节点。
+   * 无法确定目标 (无段落路径或偏移解析失败) 返回 null, 调用方应直接 return。
+   */
+  private resolveTargetTextNodeIds(selection: SelectionState, cursor: CursorState): string[] | null {
+    if (selection.active) {
+      const ids = this.collectSelectionTextNodeIds(selection)
+      if (ids.length > 0) return ids
+    }
+    // 无选区 → 只作用于光标处节点
+    if (cursor.paragraphPath.length === 0) return null
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
+    if (!resolved) return null
+    return [resolved.textNodeId]
   }
 
   getDocument(): DocumentTree { return this.doc }
@@ -1405,20 +1423,8 @@ export class Editor {
     const selection = this.store.state.runtime.selection
     const cursor = this.store.state.runtime.cursor
 
-    let nodeIds: string[] = []
-
-    if (selection.active) {
-      nodeIds = this.collectSelectionTextNodeIds(selection)
-    }
-
-    if (nodeIds.length === 0) {
-      // 无选区 → 只格式化光标处节点
-      if (cursor.paragraphPath.length === 0) return
-      const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-      const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
-      if (!resolved) return
-      nodeIds = [resolved.textNodeId]
-    }
+    const nodeIds = this.resolveTargetTextNodeIds(selection, cursor)
+    if (!nodeIds) return
 
     // Toggle: 读首个节点已有样式决定方向
     const firstNode = this.pool.nodes.get(nodeIds[0]) as unknown as { bold?: boolean; italic?: boolean; underline?: boolean } | undefined
@@ -1443,19 +1449,9 @@ export class Editor {
   clearFormat(): void {
     const selection = this.store.state.runtime.selection
     const cursor = this.store.state.runtime.cursor
-    let nodeIds: string[] = []
 
-    if (selection.active) {
-      nodeIds = this.collectSelectionTextNodeIds(selection)
-    }
-
-    if (nodeIds.length === 0) {
-      if (cursor.paragraphPath.length === 0) return
-      const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-      const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
-      if (!resolved) return
-      nodeIds = [resolved.textNodeId]
-    }
+    const nodeIds = this.resolveTargetTextNodeIds(selection, cursor)
+    if (!nodeIds) return
 
     const cmd = new ClearFormatCommand(generateCommandId(), Date.now(), 'user', nodeIds)
     this.commandManager.execute(cmd)
