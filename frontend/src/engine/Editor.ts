@@ -1866,20 +1866,15 @@ export class Editor {
     let selectedWords: number | undefined
     const sel = this.store.state.runtime.selection
     if (sel.active) {
-      const anchorParaId = sel.anchor.paragraphPath[sel.anchor.paragraphPath.length - 1]
-      const focusParaId = sel.focus.paragraphPath[sel.focus.paragraphPath.length - 1]
-      if (anchorParaId === focusParaId) {
-        const start = Math.min(sel.anchor.offset, sel.focus.offset)
-        const end = Math.max(sel.anchor.offset, sel.focus.offset)
-        const nodeIds = this.collectTextNodeIds(anchorParaId, start, end)
-        let selText = ''
-        for (const nid of nodeIds) {
-          const n = this.pool.nodes.get(nid) as { text?: string } | undefined
-          if (n?.text) selText += n.text
-        }
-        selectedChars = [...selText].length
-        selectedWords = (selText.match(/[\w一-鿿]+/g) || []).length
+      // 复用 collectSelectionTextNodeIds: 同段/跨段选区统一收集 (修复跨段选区计数缺失)
+      const nodeIds = this.collectSelectionTextNodeIds(sel)
+      let selText = ''
+      for (const nid of nodeIds) {
+        const n = this.pool.nodes.get(nid) as { text?: string } | undefined
+        if (n?.text) selText += n.text
       }
+      selectedChars = [...selText].length
+      selectedWords = (selText.match(/[\w一-鿿]+/g) || []).length
     }
 
     return { chars, words, paragraphs, selectedChars, selectedWords }
