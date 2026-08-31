@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createDomTextHost } from './DomTextHost'
+import { createDomTextHost } from '../../platform/dom/DomTextHost'
 
 describe('DomTextHost', () => {
   it('measure 返回宽度 (mock canvas: CJK=fontSize, latin=0.55×fontSize)', () => {
