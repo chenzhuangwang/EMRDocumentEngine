@@ -345,28 +345,9 @@ export class Editor {
       return
     }
 
-    const rect = this.host.viewport.bounds()
-    const { scale, scrollY } = this.draw.getCoordinateSystem().transform
-
-    // 屏幕坐标 → 文档坐标 (统一通过 TableCoordUtil, v20.35 修复: 之前缺少 /scale)
-    const { x: docX0, y: docY0 } = screenToDoc(e.clientX, e.clientY, scale, scrollY, rect)
-
-    const pages = this.draw.getPages()
-    if (pages.length === 0) return
-
-    // 分页间隙 — 命中检测要把带间隙的文档 Y 反查到正确的 pageIndex + 页面内 localY
-    const gap = this.draw.getPageVerticalGap()
-    const { pageIndex, localY } = findPageByDocY(docY0, pages, gap)
-    const page = pages[pageIndex]
-    if (!page) return
-
-    const viewportW = this.host.viewport.size().width
-    const offsetX = pageCenteringOffset(page.width, viewportW, scale)
-    const docX = docX0 - offsetX / scale
-    const docY = localY
-
-    // 命中检测 — 可能返回 null (空段落/点击在内容下方)
-    const nodeId = this.draw.getHitTestIndex().hitTest(docX, docY, pageIndex)
+    const hit = this.resolveMouseHit(e)
+    if (!hit) return
+    const { nodeId, docX, docY, page } = hit
 
     if (nodeId) {
       const para = this.findParagraphContaining(nodeId)
@@ -381,35 +362,19 @@ export class Editor {
 
       if (lastItemBottom >= 0 && docY > lastItemBottom) {
         // 点击在所有内容下方 → 光标移到最后一个段落末尾
-        const bodyChildren = this.doc.body.children
-        if (bodyChildren.length > 0) {
-          // 从后往前找最后一个段落 (跳过 table/separator/section_break)
-          let lastParaId: string | null = null
-          for (let i = bodyChildren.length - 1; i >= 0; i--) {
-            const node = this.pool.nodes.get(bodyChildren[i])
-            if (node && node.type === 'paragraph') { lastParaId = bodyChildren[i]; break }
-          }
-          if (lastParaId) {
-            const lastPara = this.pool.nodes.get(lastParaId) as unknown as Paragraph | undefined
-            if (lastPara) {
-              const endOffset = this.getParagraphTextLength(lastPara)
-              this.store.setCursor({ paragraphPath: [this.doc.id, lastParaId], offset: endOffset, visible: true })
-            }
+        const lastParaId = this.findLastParagraphId()
+        if (lastParaId) {
+          const lastPara = this.pool.nodes.get(lastParaId) as unknown as Paragraph | undefined
+          if (lastPara) {
+            const endOffset = this.getParagraphTextLength(lastPara)
+            this.store.setCursor({ paragraphPath: [this.doc.id, lastParaId], offset: endOffset, visible: true })
           }
         }
       } else if (firstItemTop >= 0 && docY < firstItemTop) {
         // 点击在所有内容上方 → 光标移到第一个段落开头
-        const bodyChildren = this.doc.body.children
-        if (bodyChildren.length > 0) {
-          // 从前往后找第一个段落 (跳过 table/separator/section_break)
-          let firstParaId: string | null = null
-          for (let i = 0; i < bodyChildren.length; i++) {
-            const node = this.pool.nodes.get(bodyChildren[i])
-            if (node && node.type === 'paragraph') { firstParaId = bodyChildren[i]; break }
-          }
-          if (firstParaId) {
-            this.store.setCursor({ paragraphPath: [this.doc.id, firstParaId], offset: 0, visible: true })
-          }
+        const firstParaId = this.findFirstParagraphId()
+        if (firstParaId) {
+          this.store.setCursor({ paragraphPath: [this.doc.id, firstParaId], offset: 0, visible: true })
         }
       }
       // 行间空白 (在内容范围内但未命中任何 item) → 光标保持原位, 不移动
@@ -433,6 +398,60 @@ export class Editor {
       }
     }
     return null
+  }
+
+  /** 在 body 中查找第一个段落 ID (跳过 table/separator/section_break), 无则 null */
+  private findFirstParagraphId(): string | null {
+    const bodyChildren = this.doc.body.children
+    for (let i = 0; i < bodyChildren.length; i++) {
+      const node = this.pool.nodes.get(bodyChildren[i])
+      if (node && node.type === 'paragraph') return bodyChildren[i]
+    }
+    return null
+  }
+
+  /** 在 body 中查找最后一个段落 ID (跳过 table/separator/section_break), 无则 null */
+  private findLastParagraphId(): string | null {
+    const bodyChildren = this.doc.body.children
+    for (let i = bodyChildren.length - 1; i >= 0; i--) {
+      const node = this.pool.nodes.get(bodyChildren[i])
+      if (node && node.type === 'paragraph') return bodyChildren[i]
+    }
+    return null
+  }
+
+  /**
+   * 将鼠标事件解析为文档命中信息 (handleClick 与格式刷 handleFormatPainterApply 共用)。
+   * 返回 null 表示无页面或目标页面缺失, 调用方据此提前返回。
+   */
+  private resolveMouseHit(e: MouseEvent): {
+    nodeId: string | null
+    docX: number
+    docY: number
+    page: import('./layout/core/SLIF').SLIFPage
+  } | null {
+    const rect = this.host.viewport.bounds()
+    const { scale, scrollY } = this.draw.getCoordinateSystem().transform
+
+    // 屏幕坐标 → 文档坐标 (统一通过 TableCoordUtil, v20.35 修复: 之前缺少 /scale)
+    const { x: docX0, y: docY0 } = screenToDoc(e.clientX, e.clientY, scale, scrollY, rect)
+
+    const pages = this.draw.getPages()
+    if (pages.length === 0) return null
+
+    // 分页间隙 — 命中检测要把带间隙的文档 Y 反查到正确的 pageIndex + 页面内 localY
+    const gap = this.draw.getPageVerticalGap()
+    const { pageIndex, localY } = findPageByDocY(docY0, pages, gap)
+    const page = pages[pageIndex]
+    if (!page) return null
+
+    const viewportW = this.host.viewport.size().width
+    const offsetX = pageCenteringOffset(page.width, viewportW, scale)
+    const docX = docX0 - offsetX / scale
+    // 命中检测 — 可能返回 null (空段落/点击在内容下方)
+    const nodeId = this.draw.getHitTestIndex().hitTest(docX, localY, pageIndex)
+
+    return { nodeId, docX, docY: localY, page }
   }
 
   /** 根据文档坐标 X/Y 计算段落内的字符偏移 — Phase 5 使用 page.items 直接过滤 */
@@ -1539,30 +1558,16 @@ export class Editor {
   private handleFormatPainterApply(e: MouseEvent): void {
     if (!this._formatPainterStyle) return
 
-    const rect = this.host.viewport.bounds()
-    const { scale, scrollY } = this.draw.getCoordinateSystem().transform
+    const hit = this.resolveMouseHit(e)
+    if (!hit) { this.setFormatPainterActive(false); return }
+    const { nodeId, docX, docY, page } = hit
 
-    const { x: docX0, y: docY0 } = screenToDoc(e.clientX, e.clientY, scale, scrollY, rect)
-
-    const pages = this.draw.getPages()
-    if (pages.length === 0) { this.setFormatPainterActive(false); return }
-
-    // 分页间隙 — 把带间隙的文档 Y 反查到正确的 pageIndex + 页面内 localY
-    const gap = this.draw.getPageVerticalGap()
-    const { pageIndex, localY } = findPageByDocY(docY0, pages, gap)
-    const page = pages[pageIndex]
-    if (!page) { this.setFormatPainterActive(false); return }
-
-    const offsetX = pageCenteringOffset(page.width, this.host.viewport.size().width, scale)
-    const docX = docX0 - offsetX / scale
-
-    const nodeId = this.draw.getHitTestIndex().hitTest(docX, localY, pageIndex)
     if (nodeId) {
       const para = this.findParagraphContaining(nodeId)
       if (para) {
         // 定位光标到目标位置 + 清除旧选区, 确保 document:changed 触发 contentChange 时
         // getTextStyle() 读到的是目标段落的格式, 而非旧光标位置
-        const cursorOffset = this.computeOffsetAtX(para, docX, localY, page)
+        const cursorOffset = this.computeOffsetAtX(para, docX, docY, page)
         const paraPath = [this.doc.id, para.id]
         this.collapseSelectionToPoint(paraPath, cursorOffset)
         // applyFormatPainter 内部 commandManager.execute → document:changed → recomputeLayout + render
