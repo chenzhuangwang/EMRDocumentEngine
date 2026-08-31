@@ -26,15 +26,15 @@ function getParaText(pool: NodePool, paraId: string): string {
   const para = pool.nodes.get(paraId) as unknown as Record<string, unknown> | undefined
   if (!para?.children) return ''
   let text = ''
-  for (const cid of para.children as string[]) {
+  for (const cid of para.children as readonly string[]) {
     const n = pool.nodes.get(cid) as { type?: string; text?: string } | undefined
     if (n?.type === 'text') text += n.text || ''
   }
   return text
 }
 
-function getChildren(pool: NodePool, paraId: string): string[] {
-  const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+function getChildren(pool: NodePool, paraId: string): readonly string[] {
+  const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
   return para?.children ?? []
 }
 

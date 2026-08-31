@@ -39,7 +39,7 @@ function mkPara(allNodes: Map<string, BaseNode>, text: string): Paragraph {
 
 /** 读取段落第一个 text 节点 id */
 function paraTextId(pool: ReturnType<typeof buildNodePool>, paraId: string): string {
-  return (pool.nodes.get(paraId) as unknown as { children?: string[] }).children![0]
+  return (pool.nodes.get(paraId) as unknown as { children?: readonly string[] }).children![0]
 }
 
 describe('分隔线后空段落: 布局 + 导航', () => {

@@ -73,7 +73,7 @@ describe('表格后空段落: 布局 + 命中检测', () => {
     expect(tableItem).toBeDefined()
 
     // 表格后的空段落应产生一个 item (nodeId = 空 text 节点)
-    const trailTextId = (pool.nodes.get(trailPara.id) as unknown as { children?: string[] })?.children?.[0]
+    const trailTextId = (pool.nodes.get(trailPara.id) as unknown as { children?: readonly string[] })?.children?.[0]
     const trailItem = items.find(i => i.nodeId === trailTextId)
     expect(trailItem).toBeDefined()
     expect(trailItem!.y).toBe(tableItem.y + tableItem.height)
@@ -84,7 +84,7 @@ describe('表格后空段落: 布局 + 命中检测', () => {
     const { pages, trailPara, pool } = makeDocWithTrailingEmpty()
     const page = pages[0]
     const tableItem = page.items.find(i => i.type === 'table')!
-    const trailTextId = (pool.nodes.get(trailPara.id) as unknown as { children?: string[] })?.children?.[0]!
+    const trailTextId = (pool.nodes.get(trailPara.id) as unknown as { children?: readonly string[] })?.children?.[0]!
 
     const hitIndex = new HitTestIndex(testMeasurer)
     hitIndex.rebuild(pages)
@@ -100,7 +100,7 @@ describe('表格后空段落: 布局 + 命中检测', () => {
     const { pages, trailPara, pool } = makeDocWithTrailingEmpty()
     const page = pages[0]
     const tableItem = page.items.find(i => i.type === 'table')!
-    const trailTextId = (pool.nodes.get(trailPara.id) as unknown as { children?: string[] })?.children?.[0]!
+    const trailTextId = (pool.nodes.get(trailPara.id) as unknown as { children?: readonly string[] })?.children?.[0]!
 
     // computeCaretPos 使用 getFlatPageItems 搜索正文 item; 空尾随段落的 text item 必须在其中,
     // 且位于表格底部之下 (这样光标才会画在表格后面而不是叠在表格上)
@@ -116,8 +116,8 @@ describe('表格后空段落: 布局 + 命中检测', () => {
 
     // 末行末列 cell 的段落 (dddd)
     const lastCellPara = (() => {
-      const rowNode = pool.nodes.get(table.children[table.children.length - 1]) as unknown as { children?: string[] }
-      const cellNode = pool.nodes.get(rowNode!.children![rowNode!.children!.length - 1]) as unknown as { children?: string[] }
+      const rowNode = pool.nodes.get(table.children[table.children.length - 1]) as unknown as { children?: readonly string[] }
+      const cellNode = pool.nodes.get(rowNode!.children![rowNode!.children!.length - 1]) as unknown as { children?: readonly string[] }
       return cellNode.children![0]
     })()
 

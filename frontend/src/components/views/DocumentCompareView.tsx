@@ -241,7 +241,7 @@ function getDiffText(diff: DiffResult, oldPool: NodePool, newPool: NodePool): st
   const targetId = diff.op === 'delete' ? diff.oldParaId : diff.newParaId || diff.paraId
   if (!targetId) return '(无内容)'
 
-  const para = pool.nodes.get(targetId) as { children?: string[] } | undefined
+  const para = pool.nodes.get(targetId) as { children?: readonly string[] } | undefined
   if (!para?.children) return '(无内容)'
 
   const parts: string[] = []

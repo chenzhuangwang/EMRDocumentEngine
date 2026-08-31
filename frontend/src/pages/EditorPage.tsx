@@ -253,7 +253,7 @@ function EditorPageInner({
           if (para && !paraPageMap.has(item.nodeId)) {
             // 递归查找所属段落
             for (const [, n] of pool.nodes) {
-              if (n.type === 'paragraph' && (n as { children?: string[] }).children?.includes(item.nodeId)) {
+              if (n.type === 'paragraph' && (n as { children?: readonly string[] }).children?.includes(item.nodeId)) {
                 paraPageMap.set((n as unknown as { id: string }).id, pi)
               }
             }
@@ -645,7 +645,7 @@ function EditorPageInner({
       const orderedCounters = new Map<number, number>()
       let lastListLevel = 0
       for (const paraId of doc.body.children) {
-        const para = pool.nodes.get(paraId) as { children?: string[]; list?: ListStyle } | undefined
+        const para = pool.nodes.get(paraId) as { children?: readonly string[]; list?: ListStyle } | undefined
         if (para?.children) {
           let line = ''
           // 列表标记
@@ -692,7 +692,7 @@ function EditorPageInner({
       }
 
       for (const paraId of doc.body.children) {
-        const para = pool.nodes.get(paraId) as { children?: string[]; outlineLevel?: number; alignment?: string; list?: ListStyle } | undefined
+        const para = pool.nodes.get(paraId) as { children?: readonly string[]; outlineLevel?: number; alignment?: string; list?: ListStyle } | undefined
         if (!para?.children) continue
 
         // 收集段落文本

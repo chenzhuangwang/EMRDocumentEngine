@@ -18,8 +18,8 @@ function makeCtx(pool: NodePool, doc: DocumentTree): CommandContext {
   return { mode: 'local', doc, pool }
 }
 
-function getChildren(pool: NodePool, paraId: string): string[] {
-  const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+function getChildren(pool: NodePool, paraId: string): readonly string[] {
+  const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
   return para?.children ?? []
 }
 

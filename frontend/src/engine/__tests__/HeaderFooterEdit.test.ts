@@ -28,7 +28,7 @@ function ctxOf(doc: DocumentTree, pool: NodePool): CommandContext {
 }
 
 function paraText(pool: NodePool, paraId: string): string {
-  const para = pool.nodes.get(paraId) as { children?: string[] } | undefined
+  const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
   if (!para?.children) return ''
   return para.children.map(cid => {
     const n = pool.nodes.get(cid) as { type?: string; text?: string } | undefined

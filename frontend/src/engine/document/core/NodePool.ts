@@ -136,7 +136,7 @@ export class NodePool {
   removeOrphanLeaf(nodeId: string): void {
     const node = this.nodes.get(nodeId)
     if (node && 'children' in node) {
-      const children = (node as unknown as Record<string, unknown>).children as string[] | undefined
+      const children = (node as unknown as Record<string, unknown>).children as readonly string[] | undefined
       if (children && children.length > 0) {
         throw new Error(`removeOrphanLeaf: ${nodeId} is not a leaf node`)
       }
@@ -221,7 +221,7 @@ export class NodePool {
     const result: string[] = [nodeId]
     const node = this.nodes.get(nodeId)
     if (node && 'children' in node) {
-      for (const childId of (node as unknown as Record<string, unknown>).children as string[]) {
+      for (const childId of (node as unknown as Record<string, unknown>).children as readonly string[]) {
         result.push(...this.collectDescendants(childId))
       }
     }
@@ -245,7 +245,7 @@ export function traversePool(
     if (!node) return
     visitor(node, depth)
     if ('children' in node) {
-      for (const childId of (node as unknown as Record<string, unknown>).children as string[]) {
+      for (const childId of (node as unknown as Record<string, unknown>).children as readonly string[]) {
         walk(childId, depth + 1)
       }
     }
@@ -282,7 +282,7 @@ export function buildNodePool(
   // Pass 2: 校验引用完整性
   for (const node of flatNodes.values()) {
     if ('children' in node) {
-      for (const childId of (node as unknown as Record<string, unknown>).children as string[]) {
+      for (const childId of (node as unknown as Record<string, unknown>).children as readonly string[]) {
         if (!pool.nodes.has(childId)) {
           console.warn(`[NodePool] Orphan reference: ${node.id} → ${childId}`)
         }

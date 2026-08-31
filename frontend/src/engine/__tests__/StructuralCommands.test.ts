@@ -81,13 +81,13 @@ function makeCellWithPara(text: string): {
   const para = createParagraph([tn.id])
   pool.addNode(tn as unknown as BaseNode)
   pool.addNode(para as unknown as BaseNode)
-  const cell = pool.nodes.get(cellId) as { children?: string[] }
+  const cell = pool.nodes.get(cellId) as { children?: readonly string[] }
   cell.children = [para.id]
   return { doc, pool, cellId, paraId: para.id, textId: tn.id }
 }
 
-function cellChildren(pool: NodePool, cellId: string): string[] {
-  return (pool.nodes.get(cellId) as { children?: string[] } | undefined)?.children ?? []
+function cellChildren(pool: NodePool, cellId: string): readonly string[] {
+  return (pool.nodes.get(cellId) as { children?: readonly string[] } | undefined)?.children ?? []
 }
 
 // ================================================================
@@ -115,7 +115,7 @@ describe('RemoveNodesCommand — cell 容器', () => {
     const para2 = createParagraph([tn2.id])
     pool.addNode(tn2 as unknown as BaseNode)
     pool.addNode(para2 as unknown as BaseNode)
-    const cell = pool.nodes.get(cellId) as { children?: string[] }
+    const cell = pool.nodes.get(cellId) as { children?: readonly string[] }
     cell.children = [paraId, para2.id]
 
     const cmd = new RemoveNodesCommand('c1', 1, 'u', [

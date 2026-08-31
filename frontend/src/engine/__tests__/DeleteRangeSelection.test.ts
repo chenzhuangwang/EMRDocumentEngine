@@ -26,7 +26,7 @@ function getParaText(pool: NodePool, paraId: string): string {
   const para = pool.nodes.get(paraId) as unknown as Record<string, unknown> | undefined
   if (!para?.children) return ''
   let text = ''
-  for (const cid of para.children as string[]) {
+  for (const cid of para.children as readonly string[]) {
     const n = pool.nodes.get(cid) as { type?: string; text?: string } | undefined
     if (n?.type === 'text') text += n.text || ''
   }
@@ -51,7 +51,7 @@ describe('DeleteRangeCommand — 选区删除', () => {
     // 空文本节点存在, paragraphs children 不为空
     const para = pool.nodes.get(paraId) as unknown as Record<string, unknown>
     expect(Array.isArray(para.children)).toBe(true)
-    expect((para.children as string[]).length).toBeGreaterThan(0)
+    expect((para.children as readonly string[]).length).toBeGreaterThan(0)
   })
 
   it('select partial "ell" (1-4) in "Hello" → leaves "Ho"', () => {
@@ -97,7 +97,7 @@ describe('DeleteRangeCommand — 选区删除', () => {
     expect(patch!.selection).toEqual({ active: false })
     // 段落必须至少有一个子节点
     const para = pool.nodes.get(paraId) as unknown as Record<string, unknown>
-    expect((para.children as string[]).length).toBeGreaterThan(0)
+    expect((para.children as readonly string[]).length).toBeGreaterThan(0)
   })
 })
 
