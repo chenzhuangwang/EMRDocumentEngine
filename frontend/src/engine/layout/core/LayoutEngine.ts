@@ -296,6 +296,14 @@ export class LayoutEngine {
           y += line.height
           continue
         }
+        // 行起始 X (对齐/缩进后) — 元素级 X 累积基准 (修复拆分节点后多 item 重叠/选区偏移)
+        let lineStartX = this.config.marginLeft + (line.indent ?? 0)
+        if (line.alignment === 'center') {
+          lineStartX = this.config.marginLeft + (contentWidth - line.width) / 2 + (line.indent ?? 0)
+        } else if (line.alignment === 'right') {
+          lineStartX = this.config.marginLeft + contentWidth - line.width
+        }
+        let cursorX = lineStartX
         for (const el of line.elements) {
           if (el.type === 'section_break') continue
           if (el.type === 'footnote_ref') {
@@ -327,13 +335,8 @@ export class LayoutEngine {
           }
           const charHeight = measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || 16 })
 
-          // 计算 X 偏移: 基础 marginLeft + 缩进 + 对齐
-          let itemX = this.config.marginLeft + (line.indent ?? 0)
-          if (line.alignment === 'center') {
-            itemX = this.config.marginLeft + (contentWidth - line.width) / 2 + (line.indent ?? 0)
-          } else if (line.alignment === 'right') {
-            itemX = this.config.marginLeft + contentWidth - line.width
-          }
+          // 元素级 X: 从行内累积游标取值 (而非整行同一起点), 修复拆分节点后多 item 重叠/选区偏移
+          let itemX = cursorX
 
           // 列表标记: 从首元素 text 中剥离, 通过 listMarker 字段传给 Draw
           let itemText: string | undefined = el.value
@@ -353,10 +356,16 @@ export class LayoutEngine {
             itemListMarker = undefined // 非首元素不带标记
           }
 
+          // 元素实际渲染宽度 (与 LineBreaker 同源度量), 供 x 累积 + hit-test 精确命中
+          const itemWidth = measurer.measureWidth(itemText || '', {
+            font: el.font || 'SimSun', size: el.size || 16,
+            bold: el.bold, italic: el.italic,
+          })
+
           items.push({
             nodeId: el.id, nodeType: el.type, type: el.type,
             text: itemText,
-            x: itemX, y, width: line.width / line.elements.length,
+            x: itemX, y, width: (itemMarkerWidth || 0) + itemWidth,
             height: charHeight,
             ascent: line.maxAscent, descent: line.maxDescent,
             font: el.font || 'SimSun', size: el.size || 16,
@@ -370,6 +379,9 @@ export class LayoutEngine {
             markerWidth: itemMarkerWidth,
             fieldType: (el as { fieldType?: string }).fieldType,
           })
+
+          // 推进元素级 X 游标 (标记宽度 + 正文宽度)
+          cursorX += (itemMarkerWidth || 0) + itemWidth
         }
         y += line.height
       }
@@ -908,19 +920,25 @@ export class LayoutEngine {
 
     const items: SLIFItem[] = []
     for (const line of allLines) {
+      // 行起始 X (对齐后) — 元素级 X 累积基准 (与正文一致: 逐元素累积, 避免拆分节点后选区偏移)
+      let lineStartX = this.config.marginLeft + (line.indent ?? 0)
+      if (line.alignment === 'center') {
+        lineStartX = this.config.marginLeft + (contentWidth - line.width) / 2
+      } else if (line.alignment === 'right') {
+        lineStartX = this.config.marginLeft + contentWidth - line.width
+      }
+      let cursorX = lineStartX
       for (const el of line.elements) {
         const charHeight = measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || 12 })
-        let itemX = this.config.marginLeft + (line.indent ?? 0)
-        if (line.alignment === 'center') {
-          itemX = this.config.marginLeft + (contentWidth - line.width) / 2
-        } else if (line.alignment === 'right') {
-          itemX = this.config.marginLeft + contentWidth - line.width
-        }
+        const elWidth = measurer.measureWidth(el.value || '', {
+          font: el.font || 'SimSun', size: el.size || 12,
+          bold: el.bold, italic: el.italic,
+        })
 
         items.push({
           nodeId: el.id, nodeType: el.type, type: el.type,
           text: el.value,
-          x: itemX, y, width: line.width / (line.elements.length || 1),
+          x: cursorX, y, width: elWidth,
           height: charHeight,
           ascent: line.maxAscent, descent: line.maxDescent,
           font: el.font || 'SimSun', size: el.size || 12,
@@ -929,6 +947,7 @@ export class LayoutEngine {
           strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,
             fieldType: (el as { fieldType?: string }).fieldType,
           })
+        cursorX += elWidth
       }
       y += line.height
     }

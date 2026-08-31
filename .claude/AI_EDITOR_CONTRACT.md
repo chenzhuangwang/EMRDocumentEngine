@@ -690,6 +690,44 @@ tightly coupled to a specific CRDT implementation.
     The Yjs binding (YjsAdapter / DocumentBinding) belongs in the
     collaboration adapter / platform layer, NOT in core commands.
 
+------------------------------------------------------------
+9.1 Collaboration boundary (fixed now, implemented later)
+------------------------------------------------------------
+
+Collaboration is a DEFERRED capability. Its boundary is fixed now so
+that core document modules are not pre-emptively coupled to it.
+
+Collaboration MUST remain isolated from core document modules.
+
+    Presence / Awareness (onlineUsers, remote cursor/selection
+    presence, user metadata) MUST NOT become document state. They
+    MUST NOT be stored in DocumentModel and MUST NOT be serialized
+    into the persisted document.
+
+    onlineUsers is AWARENESS ("who is here"), not DOCUMENT CONTENT.
+    Its home is application state / a collaboration Awareness manager
+    (currently Zustand useEditorStore), never DocumentModel, never the
+    document JSON.
+
+    Document Sync ("what is being edited" — InsertText / DeleteRange /
+    FormatText as Operations) and Awareness ("where users are / who
+    they are") are DIFFERENT concerns and MUST NOT be conflated.
+
+Yjs is a transport / synchronization mechanism, NOT a DocumentModel.
+Yjs types MUST NOT leak into core document / layout / render modules
+(no TextParticle → Y.Text, no TableOps → Y.Map, no DocumentModel →
+Y.Array). The Yjs binding (YjsAdapter / DocumentBinding) belongs in
+the collaboration adapter / platform transport layer.
+
+Future design note (NOT binding until collaboration is implemented):
+
+    Commands SHOULD NOT each branch on local/collab internally
+    (an `if (ctx.mode === 'local') … else …` spread across 13
+    commands). Prefer a Mutation/Transaction abstraction with
+    separate local and collaboration executors, so InsertTextCommand
+    expresses "insert this text" rather than "if Yjs do this, if
+    local do that".
+
 ============================================================
 10. REACT INTEGRATION
 ============================================================
@@ -774,6 +812,41 @@ e.g. the same "collect selected text-node ids" loop repeated in
 toggleFormat / clearFormat / applyFormatPainterToSelection. When the
 same non-trivial logic is implemented for the second time, extract a
 shared helper/service unless there is a documented reason not to.
+
+------------------------------------------------------------
+11.1 Editor Facade Growth Rule
+------------------------------------------------------------
+
+File size alone is NOT a violation. Editor.ts MAY remain large
+while it acts as a facade/orchestrator (initialization, dependency
+wiring, lifecycle, module coordination, a thin facade API).
+
+The real indicator is whether Editor.ts absorbs logic that has an
+independent domain owner.
+
+    AI MUST NOT add substantial domain-specific logic to Editor.ts
+    merely for convenience when an existing subsystem (CommandManager,
+    DocumentModel, LayoutEngine, Draw, EditorStore, AutoSaveManager,
+    FindReplaceEngine, AutoCorrectEngine, PluginManager,
+    PerformanceMetrics) or a new feature module is the natural owner.
+
+    Editor.ts MUST remain primarily an orchestrator/facade.
+
+    When Editor.ts repeatedly accumulates logic from the same domain,
+    that domain SHOULD be extracted into its own module.
+
+    Repeated non-trivial logic MUST be extracted rather than
+    duplicated.
+
+Practical test — if a change to Editor.ts adds:
+
+    - a new algorithm
+    - a new data structure
+    - feature-specific state
+    - feature-specific business rules
+    - a second implementation of existing logic
+
+prefer a dedicated module over adding the logic to Editor.ts.
 
 ============================================================
 12. FEATURES MUST NOT POLLUTE CORE

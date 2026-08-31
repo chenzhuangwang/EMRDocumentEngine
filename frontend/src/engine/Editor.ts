@@ -21,9 +21,9 @@ import { generateCommandId } from './command/ICommand'
 import { InsertTextCommand } from './command/commands/InsertTextCommand'
 import { InsertNodesCommand } from './command/commands/InsertNodesCommand'
 import { DeleteRangeCommand } from './command/commands/DeleteRangeCommand'
-import { FormatTextCommand } from './command/commands/FormatTextCommand'
-import { ClearFormatCommand } from './command/commands/FormatTextCommand'
 import { FormatPainterCommand } from './command/commands/FormatTextCommand'
+import { FormatTextRangeCommand } from './command/commands/FormatTextCommand'
+import type { FormatRange } from './command/commands/FormatTextCommand'
 import { ParagraphStyleCommand } from './command/commands/ParagraphStyleCommand'
 import { SetHeaderFooterConfigCommand } from './command/commands/HeaderFooterConfigCommand'
 import { MergeParagraphCommand } from './command/commands/MergeParagraphCommand'
@@ -602,21 +602,87 @@ export class Editor {
   }
 
   /**
-   * 解析本次格式操作的目标文本节点 ID。
-   * 优先取选区覆盖的节点；无选区/空选区时回退到光标处节点。
+   * 收集选区覆盖的段落区间 (同段/跨段)。每段一个 FormatRange。
+   * 同段落取 [min,max) 区间；跨段落遍历 body[lo..hi] 逐段生成。
+   * 空选区 (起止重合) 返回空数组。
+   */
+  private collectSelectionRanges(selection: SelectionState): FormatRange[] {
+    const ranges: FormatRange[] = []
+    const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
+    const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
+
+    if (anchorParaId === focusParaId) {
+      const start = Math.min(selection.anchor.offset, selection.focus.offset)
+      const end = Math.max(selection.anchor.offset, selection.focus.offset)
+      if (start < end) {
+        ranges.push({ path: [...selection.anchor.paragraphPath], start, end })
+      }
+      return ranges
+    }
+
+    // 跨段落选区: 遍历 anchor→focus 之间所有段落, 逐段生成区间
+    const bodyChildren = this.doc.body.children
+    const aIdx = bodyChildren.indexOf(anchorParaId)
+    const fIdx = bodyChildren.indexOf(focusParaId)
+    if (aIdx < 0 || fIdx < 0) return ranges
+
+    const lo = Math.min(aIdx, fIdx)
+    const hi = Math.max(aIdx, fIdx)
+    const loOff = aIdx === lo ? selection.anchor.offset : selection.focus.offset
+    const hiOff = aIdx === hi ? selection.anchor.offset : selection.focus.offset
+
+    for (let i = lo; i <= hi; i++) {
+      const paraId = bodyChildren[i]
+      const path = [this.doc.id, paraId]
+      if (i === lo && i === hi) {
+        if (loOff < hiOff) ranges.push({ path, start: loOff, end: hiOff })
+      } else if (i === lo) {
+        ranges.push({ path, start: loOff, end: this.getParagraphTextLengthById(paraId) })
+      } else if (i === hi) {
+        ranges.push({ path, start: 0, end: hiOff })
+      } else {
+        ranges.push({ path, start: 0, end: this.getParagraphTextLengthById(paraId) })
+      }
+    }
+    return ranges
+  }
+
+  /**
+   * 解析本次格式操作的目标段落区间。
+   * 优先取选区覆盖的区间；无选区/空选区时回退到光标处整个文本节点。
    * 无法确定目标 (无段落路径或偏移解析失败) 返回 null, 调用方应直接 return。
    */
-  private resolveTargetTextNodeIds(selection: SelectionState, cursor: CursorState): string[] | null {
+  private resolveTargetFormatRanges(selection: SelectionState, cursor: CursorState): FormatRange[] | null {
     if (selection.active) {
-      const ids = this.collectSelectionTextNodeIds(selection)
-      if (ids.length > 0) return ids
+      const ranges = this.collectSelectionRanges(selection)
+      if (ranges.length > 0) return ranges
     }
-    // 无选区 → 只作用于光标处节点
+    // 无选区 → 只作用于光标处整个文本节点 (保留旧行为)
     if (cursor.paragraphPath.length === 0) return null
     const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
     const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
     if (!resolved) return null
-    return [resolved.textNodeId]
+    const node = this.pool.nodes.get(resolved.textNodeId) as { type?: string; text?: string } | undefined
+    if (node?.type !== 'text') return null
+    const start = this.pool.getCharOffset(paraId, resolved.textNodeId, 0)
+    return [{ path: [...cursor.paragraphPath], start, end: start + (node.text || '').length }]
+  }
+
+  /** 读取选区区间内首个文本节点的样式 (供 toggle 方向判断, 与旧 collectSelectionTextNodeIds 首节点语义一致) */
+  private getFirstRangeTextNodeStyle(range: FormatRange): Record<string, unknown> | null {
+    const paraId = range.path[range.path.length - 1]
+    const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
+    if (!para?.children) return null
+    let offset = 0
+    for (const childId of para.children) {
+      const node = this.pool.nodes.get(childId) as { type?: string; text?: string } | undefined
+      const len = node?.type === 'text' ? (node.text || '').length : 1
+      if (node?.type === 'text' && offset + len > range.start && offset < range.end) {
+        return node as unknown as Record<string, unknown>
+      }
+      offset += len
+    }
+    return null
   }
 
   /**
@@ -1440,16 +1506,16 @@ export class Editor {
     } catch { /* 忽略 */ }
   }
 
-  /** 切换文本样式 (bold/italic/underline) → FormatTextCommand, 支持选区 */
+  /** 切换文本样式 (bold/italic/underline) → FormatTextRangeCommand, 支持段内局部选区 */
   toggleFormat(style: Partial<import('./document/core/DocumentModel').TextStyle>): void {
     const selection = this.store.state.runtime.selection
     const cursor = this.store.state.runtime.cursor
 
-    const nodeIds = this.resolveTargetTextNodeIds(selection, cursor)
-    if (!nodeIds) return
+    const ranges = this.resolveTargetFormatRanges(selection, cursor)
+    if (!ranges || ranges.length === 0) return
 
-    // Toggle: 读首个节点已有样式决定方向
-    const firstNode = this.pool.nodes.get(nodeIds[0]) as unknown as { bold?: boolean; italic?: boolean; underline?: boolean } | undefined
+    // Toggle: 读选区首个文本节点已有样式决定方向 (有→false/无→true)
+    const firstNode = this.getFirstRangeTextNodeStyle(ranges[0])
     const changes: Record<string, unknown> = {}
     for (const [key, val] of Object.entries(style)) {
       if (val === true && firstNode?.[key as keyof typeof firstNode]) {
@@ -1459,10 +1525,11 @@ export class Editor {
       }
     }
 
-    const cmd = new FormatTextCommand(
+    const cmd = new FormatTextRangeCommand(
       generateCommandId(), Date.now(), 'user',
-      nodeIds,
+      ranges,
       changes as Partial<import('./document/core/DocumentModel').TextStyle>,
+      'merge',
     )
     this.commandManager.execute(cmd)
   }
@@ -1472,10 +1539,11 @@ export class Editor {
     const selection = this.store.state.runtime.selection
     const cursor = this.store.state.runtime.cursor
 
-    const nodeIds = this.resolveTargetTextNodeIds(selection, cursor)
-    if (!nodeIds) return
+    const ranges = this.resolveTargetFormatRanges(selection, cursor)
+    if (!ranges || ranges.length === 0) return
 
-    const cmd = new ClearFormatCommand(generateCommandId(), Date.now(), 'user', nodeIds)
+    // 全量替换为默认样式 (replace 模式, 未指定字段重置为默认)
+    const cmd = new FormatTextRangeCommand(generateCommandId(), Date.now(), 'user', ranges, {}, 'replace')
     this.commandManager.execute(cmd)
   }
 
@@ -1512,9 +1580,9 @@ export class Editor {
   /** 格式刷: 将样式应用到当前选区内的所有文本节点 (拖拽松手/批量) */
   private applyFormatPainterToSelection(style: Record<string, unknown>): void {
     const selection = this.store.state.runtime.selection
-    let nodeIds = this.collectSelectionTextNodeIds(selection)
+    const ranges = this.collectSelectionRanges(selection)
 
-    if (nodeIds.length === 0) {
+    if (ranges.length === 0) {
       this.setFormatPainterActive(false)
       return
     }
@@ -1522,11 +1590,12 @@ export class Editor {
     // 移动光标到焦点位置 (拖拽终点) + 清除选区 → 格式应用后只显示光标
     this.collapseSelectionToPoint([...selection.focus.paragraphPath], selection.focus.offset)
 
-    // 执行格式刷命令 (FormatPainterCommand → document:changed → recomputeLayout + render + contentChange)
-    const cmd = new FormatPainterCommand(
+    // 执行格式刷命令 (FormatTextRangeCommand → document:changed → recomputeLayout + render + contentChange)
+    const cmd = new FormatTextRangeCommand(
       generateCommandId(), Date.now(), 'user',
-      nodeIds,
+      ranges,
       style as Partial<import('./document/core/DocumentModel').TextStyle>,
+      'replace',
     )
     this.commandManager.execute(cmd)
 
