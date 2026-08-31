@@ -7,8 +7,7 @@
 // 依赖方向: platform/dom → engine/host (单向, 契约 §27)
 // ============================================================
 
-import type { StorageHost } from '../../engine/host/EditorHost'
-import type { SaveSnapshot } from '../../engine/AutoSaveManager'
+import type { StorageHost, SaveSnapshot } from '../../engine/host/EditorHost'
 
 const DB_NAME = 'emr-editor-autosave'
 const STORE_NAME = 'snapshots'

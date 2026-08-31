@@ -9,20 +9,10 @@
 // 保留策略、恢复决策; 传输 (open/put/list/delete/close) 交平台。
 // ============================================================
 
-import type { DocumentTree } from './document/core/DocumentModel'
-import type { StorageHost } from './host/EditorHost'
+import type { StorageHost, SaveSnapshot } from './host/EditorHost'
 
 const MAX_VERSIONS = 3
 const DEBOUNCE_MS = 3000
-
-export interface SaveSnapshot {
-  id: string
-  documentId: string
-  title: string
-  tree: DocumentTree
-  savedAt: number
-  version: number
-}
 
 export type SaveEventType = 'saving' | 'saved' | 'error'
 export type SaveEventListener = (type: SaveEventType, error?: Error) => void

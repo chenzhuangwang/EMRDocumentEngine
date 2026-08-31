@@ -133,7 +133,8 @@ export { createLaTeXParticle } from './render/particles/LaTeXParticle'
 
 // ---- R30+: Engine modules ----
 export { AutoSaveManager } from './AutoSaveManager'
-export type { SaveEventType, SaveEventListener, SaveSnapshot } from './AutoSaveManager'
+export type { SaveEventType, SaveEventListener } from './AutoSaveManager'
+export type { SaveSnapshot } from './host/EditorHost'
 export { AutoCorrectEngine } from './AutoCorrectEngine'
 export type { AutoCorrectRule } from './AutoCorrectEngine'
 export { DocumentDiffer } from './DocumentDiffer'

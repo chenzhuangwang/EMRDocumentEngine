@@ -18,7 +18,7 @@
 import type { FontMetrics } from '../layout/text/FontMetrics'
 import type { FontDescriptor } from '../layout/text/FontManager'
 import type { ThemeColors } from '../state/EditorTheme'
-import type { SaveSnapshot } from '../AutoSaveManager'
+import type { DocumentTree } from '../document/core/DocumentModel'
 
 // ---- 文本测量结果 (engine 自有类型, 非 DOM TextMetrics) ----
 
@@ -182,6 +182,16 @@ export interface HtmlMeasureResult {
   height: number
   /** 元素 textContent (供 Canvas fillText 回退绘制) */
   text: string
+}
+
+/** 自动保存快照 — 引擎域类型, 定义在 host 边界 (契约 §19: host 不反向依赖 feature) */
+export interface SaveSnapshot {
+  id: string
+  documentId: string
+  title: string
+  tree: DocumentTree
+  savedAt: number
+  version: number
 }
 
 /** 自动保存持久化 — 引擎只做域逻辑 (快照构造/防抖/保留策略), 传输交平台 (契约 §27.1) */

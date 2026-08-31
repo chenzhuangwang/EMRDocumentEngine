@@ -11,8 +11,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { AutoSaveManager } from '../AutoSaveManager'
-import type { SaveSnapshot } from '../AutoSaveManager'
-import type { StorageHost } from '../host/EditorHost'
+import type { StorageHost, SaveSnapshot } from '../host/EditorHost'
 import type { DocumentTree } from '../document/core/DocumentModel'
 
 /** 内存版 StorageHost — Map 存快照, list 按 documentId 过滤 */
