@@ -63,7 +63,7 @@ export function collectDocumentNodes(doc: DocumentTree, pool: NodePool): Map<str
 /**
  * 序列化为 JSON 字符串。
  *
- * 输出结构: { ...DocumentTree, modelVersion: '4.0.0', nodes: { [id]: nodeObject } }
+ * 输出结构: { ...DocumentTree, modelVersion: '4.2.0', nodes: { [id]: nodeObject } }
  * 扁平表包含 doc 可达的全部节点 payload, 供 DocumentLoader 重建 NodePool。
  */
 export function serializeDocument(doc: DocumentTree, pool: NodePool): string {

@@ -11,7 +11,8 @@
 // 后者一次提交所有 edit, 使「全部替换」成为单个可撤销操作。
 // ================================================================
 
-import type { TextNode } from '../../document/core/DocumentModel'
+import type { TextNode, SmartTextNode } from '../../document/core/DocumentModel'
+import { smartTextDisplayValue } from '../../document/factory/ElementFormatter'
 import type { NodePool } from '../../document/core/NodePool'
 import type { CursorState } from '../../state/EditorRuntimeState'
 import type { CommandContext, ICommand, SerializedCommand, StatePatch } from '../ICommand'
@@ -50,11 +51,14 @@ function resolveEditLocation(
 
   let offset = 0
   for (const childId of para.children) {
-    const node = pool.nodes.get(childId) as { type?: string; text?: string } | undefined
+    const node = pool.nodes.get(childId) as { type?: string; text?: string; value?: string } | undefined
     if (!node) { offset += 1; continue }
 
     if (node.type === 'text' || node.type === 'smarttext') {
-      const len = (node.text || '').length
+      const nodeText = node.type === 'smarttext'
+        ? smartTextDisplayValue(node as unknown as { text: string; value?: string })
+        : (node.text || '')
+      const len = nodeText.length
       if (offset + len > startOffset) {
         const localStart = startOffset - offset
         const localEnd = endOffset - offset
@@ -78,7 +82,7 @@ export class ReplaceTextCommand implements ICommand {
   readonly edits: ReplaceEdit[]
 
   /** forward 时快照受影响节点的旧全文, 供 invert 恢复 */
-  private _restore: Array<{ nodeId: string; oldText: string }> = []
+  private _restore: Array<{ nodeId: string; oldText: string; isSmart: boolean; oldValue?: string }> = []
   private _restoreCursor: Partial<CursorState> = {}
 
   constructor(id: string, timestamp: number, author: string, edits: ReplaceEdit[]) {
@@ -110,17 +114,25 @@ export class ReplaceTextCommand implements ICommand {
 
     this._restore = []
     for (const [nodeId, rs] of byNode) {
-      const node = pool.nodes.get(nodeId) as { text?: string } | undefined
+      const node = pool.nodes.get(nodeId) as { type?: string; text?: string; value?: string } | undefined
       if (!node) continue
-      const oldText = node.text || ''
-      this._restore.push({ nodeId, oldText })
+      // smarttext 操作运行时值 (value), text 节点操作 text (契约 §2.1)
+      const isSmart = node.type === 'smarttext'
+      const oldText = isSmart
+        ? smartTextDisplayValue(node as unknown as { text: string; value?: string })
+        : (node.text || '')
+      this._restore.push({ nodeId, oldText, isSmart, oldValue: isSmart ? node.value : undefined })
 
       const sorted = rs.slice().sort((a, b) => b.localStart - a.localStart)
       let cur = oldText
       for (const r of sorted) {
         cur = cur.slice(0, r.localStart) + r.newText + cur.slice(r.localEnd)
       }
-      pool.updateNode(nodeId, { text: cur } as Partial<TextNode>)
+      if (isSmart) {
+        pool.updateNode(nodeId, { value: cur } as Partial<SmartTextNode>)
+      } else {
+        pool.updateNode(nodeId, { text: cur } as Partial<TextNode>)
+      }
     }
 
     // Step 3: 光标落到最后一个 edit 之后 (与旧 replace 行为对齐, 用实际替换文本长度)
@@ -161,12 +173,12 @@ class RestoreTextCommand implements ICommand {
   readonly id: string
   readonly timestamp: number
   readonly author: string
-  private readonly restore: Array<{ nodeId: string; oldText: string }>
+  private readonly restore: Array<{ nodeId: string; oldText: string; isSmart: boolean; oldValue?: string }>
   private readonly cursor: Partial<CursorState>
 
   constructor(
     id: string, timestamp: number, author: string,
-    restore: Array<{ nodeId: string; oldText: string }>,
+    restore: Array<{ nodeId: string; oldText: string; isSmart: boolean; oldValue?: string }>,
     cursor: Partial<CursorState>,
   ) {
     this.id = id
@@ -180,7 +192,11 @@ class RestoreTextCommand implements ICommand {
     if (ctx.mode !== 'local') return null
     const { pool } = ctx
     for (const r of this.restore) {
-      pool.updateNode(r.nodeId, { text: r.oldText } as Partial<TextNode>)
+      if (r.isSmart) {
+        pool.updateNode(r.nodeId, { value: r.oldValue } as Partial<SmartTextNode>)
+      } else {
+        pool.updateNode(r.nodeId, { text: r.oldText } as Partial<TextNode>)
+      }
     }
     return { cursor: this.cursor, invalidation: 'flowbody' }
   }

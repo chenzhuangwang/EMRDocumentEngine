@@ -14,6 +14,7 @@ import type { DocumentTree } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import { generateCommandId } from './ICommand'
 import { generateId } from '../document/core/DocumentModel'
+import { smartTextDisplayValue } from '../document/factory/ElementFormatter'
 import { resolveCellPosition } from '../state/CaretScope'
 import type { ClipboardHost } from '../host/EditorHost'
 
@@ -216,7 +217,7 @@ export class ClipboardManager {
           if (k !== 'id' && k !== 'metadata') cc[k] = child[k]
         }
         sp.children.push(cc)
-        plainText += (child.text as string) || ''
+        plainText += smartTextDisplayValue(child as unknown as { text: string; value?: string })
       } else {
         // 其他非文本节点 (image/field/footnote_ref/...): 有交集 → 完整克隆
         const cc: SerializedChild = { type: child.type as string, id: generateId() }
@@ -260,7 +261,9 @@ export class ClipboardManager {
         type: 'text',
         id: generateCommandId(),
         text: para.children
-          .map(c => c.text || '')
+          .map(c => c.type === 'smarttext'
+            ? smartTextDisplayValue(c as unknown as { text: string; value?: string })
+            : (c.text as string) || '')
           .join(''),
         font: 'SimSun',
         size: 16,
@@ -287,7 +290,9 @@ export class ClipboardManager {
       children: para.children.map(c => ({
         type: c.type || 'text',
         id: generateCommandId(),
-        text: c.text || '',
+        text: c.type === 'smarttext'
+          ? smartTextDisplayValue(c as unknown as { text: string; value?: string })
+          : (c.text as string) || '',
         font: defaultFont,
         size: defaultSize,
       })),

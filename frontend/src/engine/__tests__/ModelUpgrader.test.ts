@@ -7,7 +7,7 @@ import {
   modelUpgrader,
 } from '../document/version/ModelUpgrader'
 import {
-  parseVersion, compareVersions, versionToString,
+  parseVersion, compareVersions, versionToString, CURRENT_DOCUMENT_VERSION,
 } from '../document/version/DocumentFormatVersion'
 import { MergeMatrix, buildMergeMatrix } from '../document/table/MergeMatrix'
 import { createDocument } from '../document/factory/ElementFormatter'
@@ -37,12 +37,12 @@ describe('versionToString', () => {
 })
 
 describe('ModelUpgrader', () => {
-  it('should upgrade v1→v4 document', () => {
+  it('should upgrade v1→current document', () => {
     const doc = createDocument('测试') as unknown as Record<string, unknown>
     doc.modelVersion = '1.0.0'
     const upgraded = modelUpgrader.upgrade(doc as never)
     const ver = (upgraded as unknown as Record<string, unknown>).modelVersion
-    expect(ver).toBe('4.0.0')
+    expect(ver).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
   })
 
   it('should add header/footer fields when upgrading from v1', () => {
@@ -60,7 +60,7 @@ describe('ModelUpgrader', () => {
   })
 
   it('should check compatibility for same version', () => {
-    const result = modelUpgrader.checkCompatibility('4.0.0')
+    const result = modelUpgrader.checkCompatibility(versionToString(CURRENT_DOCUMENT_VERSION))
     expect(result.status).toBe('current')
     expect(result.needsUpgrade).toBe(false)
   })

@@ -189,8 +189,8 @@ export class QCEngine {
       }
       case 'smarttext_required_not_empty': {
         for (const [, node] of pool.nodes) {
-          const n = node as { type?: string; text?: string; element?: { required?: boolean } }
-          if (n.type === 'smarttext' && n.element?.required && !n.text) {
+          const n = node as { type?: string; value?: string; element?: { required?: boolean } }
+          if (n.type === 'smarttext' && n.element?.required && !n.value) {
             return false
           }
         }

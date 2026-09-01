@@ -40,8 +40,18 @@ export function createTextNode(text: string, style?: TextStyle): TextNode {
   return { type: NodeType.TEXT, id: generateId(), text, ...style }
 }
 
-export function createSmartTextNode(text: string, element: ElementMeta, style?: TextStyle): SmartTextNode {
-  return { type: NodeType.SMART_TEXT, id: generateId(), text, element, ...style }
+export function createSmartTextNode(text: string, element: ElementMeta, style?: TextStyle, value?: string): SmartTextNode {
+  const node: SmartTextNode = { type: NodeType.SMART_TEXT, id: generateId(), text, element, ...style }
+  if (value !== undefined) node.value = value
+  return node
+}
+
+/**
+ * SmartTextNode 有效显示文本: 有值时显示值, 否则显示占位符 (契约 §2.1)。
+ * value 为 undefined 或空串时视为「未填」, 回退到 text 占位符。
+ */
+export function smartTextDisplayValue(node: { text: string; value?: string }): string {
+  return node.value !== undefined && node.value !== '' ? node.value : node.text
 }
 
 export function createFieldNode(fieldType: FieldType, format?: string, style?: TextStyle): FieldNode {

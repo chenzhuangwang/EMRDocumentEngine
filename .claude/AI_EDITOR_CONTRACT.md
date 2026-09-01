@@ -178,10 +178,15 @@ value is record-time data.
 Concretely:
 
     SmartTextNode.element / .format  → definition (semantic)
-    a dedicated value slot            → runtime value
+    SmartTextNode.text               → placeholder (the empty /
+                                        unfilled display form)
+    SmartTextNode.value              → runtime value (patient
+                                        data, optional)
 
     SmartTextNode.text MUST NOT be overloaded as both
-    placeholder AND value.
+    placeholder AND value. The runtime value lives ONLY in
+    .value. A missing/empty .value means "not filled"; readers
+    render .value when present, otherwise .text.
 
 ------------------------------------------------------------
 2.2 Semantic style vs presentation style
@@ -199,6 +204,33 @@ rendered", which §2 already forbids.
 A style-reference dictionary (style: {id} → shared definition)
 is a LATER optimization; do not introduce it until templates
 show genuine large-scale style duplication.
+
+Concretely:
+
+    Presentation / box-model attributes of a rendered element
+    (all optional, keyed by NODE id — per element instance):
+
+        borderStyle   string          — border line style
+                                        (e.g. "none", "solid")
+        contentWrap   boolean         — wrap content in a box
+        contentStyle  string          — raw CSS box-style string
+        minWidth      number | string — minimum box width
+        textAlign     string          — horizontal alignment
+                                        (e.g. "left", "center")
+
+    (borderColor / outline are the same presentation category,
+    per the list above.)
+
+    These live in a presentation-style layer in the RENDER domain
+    (engine/render/presentation/, §4), as a SEPARATE object
+    associated to a node by id. DocumentModel — including
+    SmartTextNode, ElementMeta, and Paragraph — MUST NOT grow any
+    of these fields; the boundary is type-enforced.
+
+    The shared style-reference system (a node's `style: {id}` plus
+    the template's `styles` / `globalStyles` dictionaries) is a
+    SEPARATE, deferred concern (the "LATER optimization" above) —
+    not the same as these per-instance inline presentation fields.
 
 ============================================================
 3. LAYOUT BOUNDARY
@@ -949,6 +981,34 @@ These belong to a TemplateDefinition layer (a feature, per
 
 DocumentModel MUST NOT store template-design attributes as
 document semantics.
+
+Concretely:
+
+    Template-design attributes of a smarttext control (all
+    optional, keyed by NODE id — per control instance):
+
+        deletable  boolean  — control may be removed by the
+                              template author at design time
+        editable   boolean  — control accepts user input
+                              (distinct from ElementEnums.editable,
+                              which means "enum allows free input")
+        tips       string   — design-time hint / tooltip text
+        label      string   — label text shown beside the control
+        prefix     string   — literal text before the control
+        suffix     string   — literal text after the control
+        single     boolean  — the data element may appear only once
+
+    These seven fields live in a TemplateDefinition feature layer
+    (engine/template/, §12) as a SEPARATE object associated to a
+    node by id. SmartTextNode and ElementMeta MUST NOT grow any of
+    these seven fields — the boundary is type-enforced.
+
+    The template artifact (a document + its TemplateDefinitions)
+    is distinct from a filled record (a document with
+    SmartTextNode.value set). When persisted, TemplateDefinitions
+    MUST be stored as a separate top-level structure in the
+    template artifact, never merged into the node payload that
+    DocumentSerializer emits.
 
 ============================================================
 13. DOCUMENT SERIALIZATION

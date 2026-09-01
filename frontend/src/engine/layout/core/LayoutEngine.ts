@@ -21,6 +21,7 @@ import type { LineElement } from '../line/LineLayout'
 import { PageBreaker } from '../page/PageBreaker'
 import type { ILine, IPage } from '../page/PageLayout'
 import { DEFAULT_PAGE_SETUP } from '../../document/core/DocumentModel'
+import { smartTextDisplayValue } from '../../document/factory/ElementFormatter'
 import { MergeMatrix } from '../../document/table/MergeMatrix'
 import { FootnoteLayout } from '../footnote/FootnoteLayout'
 import { ListParticle } from '../../render/particles/ListParticle'
@@ -135,7 +136,9 @@ export class LayoutEngine {
             // 交叉引用节点使用 displayText
             const textVal = childType === 'cross_reference'
               ? ((child as unknown as { displayText: string }).displayText || tn.text || '?')
-              : tn.text
+              : childType === 'smarttext'
+                ? smartTextDisplayValue(tn as unknown as { text: string; value?: string })
+                : tn.text
             const value = listMarker ? listMarker + textVal : textVal
             if (listMarker) listMarker = '' // 仅首节点添加
             // 标题: 缩放字号 + 加粗

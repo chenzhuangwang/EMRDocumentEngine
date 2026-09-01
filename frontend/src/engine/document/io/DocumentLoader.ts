@@ -55,7 +55,7 @@ export interface DocumentLoadResult {
   sourceVersion: DocumentFormatVersion
   /** 是否经过了升级 (false 表示已是当前版本) */
   wasUpgraded: boolean
-  /** 升级路径: ['1.0.0', '4.0.0'] — 当前实现仅记录首尾 */
+  /** 升级路径: ['1.0.0', '4.2.0'] — 当前实现仅记录首尾 */
   upgradePath: string[]
 }
 

@@ -7,6 +7,8 @@
 //   v1.0.0 → v2.0.0  新增 modelVersion 字段
 //   v2.0.0 → v3.0.0  body.children 迁移为 ID 引用 (breaking)
 //   v3.0.0 → v4.0.0  新增 pageSetup.orientation 默认值
+//   v4.0.0 → v4.1.0  ElementFormat 新增可选字段 (scale/minRows/enums)
+//   v4.1.0 → v4.2.0  SmartTextNode 新增可选字段 value (运行时值)
 //
 // 不实现 downgrade(): EMR 场景下不需要"用旧引擎开新文档"。
 // 详见 knowledge/document-version-system-design.md §4 决策 4。
@@ -151,6 +153,28 @@ modelUpgrader.register({
     if (doc.pageSetup && !doc.pageSetup.orientation) {
       doc.pageSetup.orientation = 'portrait'
     }
+    return doc
+  },
+})
+
+// v4.0→v4.1: ElementFormat 新增可选字段 (scale/minRows/enums)
+// 纯向后兼容: 新字段均可选, 旧文档无需数据迁移, 仅标记版本号。
+modelUpgrader.register({
+  from: { major: 4, minor: 0, patch: 0 },
+  to: { major: 4, minor: 1, patch: 0 },
+  breaking: false,
+  upgrade(doc: DocumentTree): DocumentTree {
+    return doc
+  },
+})
+
+// v4.1→v4.2: SmartTextNode 新增可选字段 value (运行时值, 契约 §2.1)
+// 纯向后兼容: value 可选, 旧文档 text 即占位符, 读取方回退 text, 无需数据迁移。
+modelUpgrader.register({
+  from: { major: 4, minor: 1, patch: 0 },
+  to: { major: 4, minor: 2, patch: 0 },
+  breaking: false,
+  upgrade(doc: DocumentTree): DocumentTree {
     return doc
   },
 })

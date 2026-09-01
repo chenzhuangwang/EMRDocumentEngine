@@ -13,6 +13,7 @@
 // ================================================================
 
 import type { DocumentTree } from './document/core/DocumentModel'
+import { smartTextDisplayValue } from './document/factory/ElementFormatter'
 
 // ---- 类型 ----
 
@@ -208,7 +209,9 @@ export class FindReplaceEngine {
       const child = pool.nodes.get(childId)
       if (!child) continue
       if (child.type === 'text' || child.type === 'smarttext') {
-        parts.push(child.text || '')
+        parts.push(child.type === 'smarttext'
+          ? smartTextDisplayValue(child as unknown as { text: string; value?: string })
+          : (child.text || ''))
       } else {
         parts.push('') // 非文本节点占位
       }

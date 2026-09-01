@@ -10,7 +10,7 @@ import {
   createDocument, createTextNode, createSmartTextNode,
   createFieldNode, createSeparatorNode, createSectionBreak,
   createImageNode, createSimpleTable, createFootnoteRef, createFootnoteContent,
-  extractStyle, sameStyle,
+  extractStyle, sameStyle, smartTextDisplayValue,
 } from '../document/factory/ElementFormatter'
 import { sanitizeText } from '../security/SecurityConfig'
 import { validateKaTeX } from '../render/KaTeXRenderer'
@@ -43,6 +43,12 @@ describe('ElementFormatter factories', () => {
     const st = createSmartTextNode('120', element)
     expect(st.type).toBe('smarttext')
     expect(st.element.code.dataElement).toBe('DE001')
+  })
+
+  it('smartTextDisplayValue: 有值显示值, 空值回退占位符 (契约 §2.1)', () => {
+    expect(smartTextDisplayValue({ text: '[姓名]', value: '张三' })).toBe('张三')
+    expect(smartTextDisplayValue({ text: '[姓名]', value: '' })).toBe('[姓名]')
+    expect(smartTextDisplayValue({ text: '[姓名]', value: undefined })).toBe('[姓名]')
   })
 
   it('should create field node', () => {

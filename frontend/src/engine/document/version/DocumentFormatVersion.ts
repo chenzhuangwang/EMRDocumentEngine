@@ -12,6 +12,8 @@
 //   v1.0.0 → v2.0.0  新增 modelVersion 字段 (R67, v6.0)
 //   v2.0.0 → v3.0.0  body.children 迁移为 ID 引用 (breaking)
 //   v3.0.0 → v4.0.0  新增 pageSetup.orientation 默认值
+//   v4.0.0 → v4.1.0  ElementFormat 新增可选字段 (scale/minRows/enums)
+//   v4.1.0 → v4.2.0  SmartTextNode 新增可选字段 value (运行时值)
 //
 // SLIF 是 layout 中间输出, 不独立演化 — 用 type alias 复用本类型。
 // ================================================================
@@ -24,7 +26,7 @@ export interface DocumentFormatVersion {
 }
 
 /** 当前引擎支持的最高文档格式版本 */
-export const CURRENT_DOCUMENT_VERSION: DocumentFormatVersion = { major: 4, minor: 0, patch: 0 }
+export const CURRENT_DOCUMENT_VERSION: DocumentFormatVersion = { major: 4, minor: 2, patch: 0 }
 
 /** 与 CURRENT_DOCUMENT_VERSION 对齐 (SLIF 是中间格式, 派生自文档格式) */
 export type SLIFVersion = DocumentFormatVersion

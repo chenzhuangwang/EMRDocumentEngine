@@ -204,7 +204,12 @@ export class InsertNodesCommand extends PositionalCommand {
         for (const k of TEXT_STYLE_KEYS) { if (k in childSn) style[k] = childSn[k] }
         const element = (childSn.element as ElementMeta) ||
           { code: { internal: '', dataElement: '' }, name: '' }
-        const st = createSmartTextNode((childSn.text as string) || '', element, style as unknown as TextStyle)
+        const st = createSmartTextNode(
+          (childSn.text as string) || '',
+          element,
+          style as unknown as TextStyle,
+          (childSn.value as string) || undefined,
+        )
         pool.addNode(st)
         this.createdLeafIds.push(st.id)
         children.push(st.id)

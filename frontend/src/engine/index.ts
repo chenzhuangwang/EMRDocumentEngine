@@ -99,7 +99,7 @@ export {
 } from './document/core/DocumentModel'
 export type {
   TextStyle, ParagraphStyle, ListStyle,
-  ElementCode, ElementFormat, PrivacyConfig, ElementMeta,
+  ElementCode, ElementFormat, ElementEnums, ElementEnumOption, PrivacyConfig, ElementMeta,
   BaseNode, TextNode, SmartTextNode, ImageNode,
   BookmarkNode, CrossReferenceNode, FieldNode, FieldType,
   FootnoteRef, FootnoteContent, CommentMarker,
@@ -117,7 +117,7 @@ export {
   createImageNode, createTable, createTableRow, createTableCell,
   createSimpleTable, createSeparatorNode, createSectionBreak,
   insertAt, removeAt, findById, findByDE, findByInternal,
-  takeSnapshot, restoreSnapshot, extractStyle, sameStyle,
+  takeSnapshot, restoreSnapshot, extractStyle, sameStyle, smartTextDisplayValue,
 } from './document/factory/ElementFormatter'
 
 // ---- R30+: Particles ----
@@ -143,6 +143,14 @@ export type { DiffResult, DiffOperation, TextChange } from './DocumentDiffer'
 // ---- R30+: QC ----
 export { QCEngine } from './qc/QCEngine'
 export type { QCRule, QCIssue, QCResult, QCSeverity, QCGrade } from './qc/QCEngine'
+
+// ---- TemplateDefinition (契约 §12.1) ----
+export { TemplateDefinitionStore } from './template/TemplateDefinition'
+export type { TemplateDefinition, TemplateDefinitionMap } from './template/TemplateDefinition'
+
+// ---- PresentationStyle (契约 §2.2) ----
+export { PresentationStyleStore } from './render/presentation/PresentationStyle'
+export type { PresentationStyle, PresentationStyleMap } from './render/presentation/PresentationStyle'
 
 // ---- R30+: System ----
 export { EditorTheme } from './state/EditorTheme'

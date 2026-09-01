@@ -2,11 +2,12 @@
 // DocumentLoader 单元测试 (架构 Phase 3+4, 2026-08-27)
 //
 // 覆盖 Phase 1 设计文档 §5 列出的全部 6+ 路径:
-//   - v1→v4 (走完整链 v1→v2→v3→v4)
-//   - v2→v4 (跳 v2→v3 直接到 v3→v4)
-//   - v3→v4 (只走最后一步)
-//   - v4→v4 (no-op)
-//   - v5→v4 (too-new 拒绝)
+//   - v1→当前 (走完整链 v1→v2→v3→v4→v4.1)
+//   - v2→当前 (跳过 v1)
+//   - v3→当前 (走 v4→v4.1)
+//   - v4.0→v4.1 (新增迁移器, 纯版本号标记)
+//   - 当前→当前 (no-op)
+//   - v5→当前 (too-new 拒绝)
 //   - malformed modelVersion (parseVersion 容错: NaN → 0)
 //   - 必填字段缺失 (validate 抛错)
 //   - 引用悬空 (validate 抛错)
@@ -59,42 +60,58 @@ function makeDocWithModelVersion(version: string, modelFields?: Partial<Document
 // ============ 路径: 升级链 ============
 
 describe('DocumentLoader 升级路径', () => {
-  it('v1 → v4 走完整链 (v1→v2→v3→v4)', () => {
+  it('v1 → 当前 走完整链 (v1→v2→v3→v4→v4.1→v4.2)', () => {
     const raw = makeDocWithModelVersion('1.0.0')
     const r = loadDocumentFromObject(raw)
-    expect(r.doc.modelVersion).toBe('4.0.0')
+    expect(r.doc.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
     expect(r.wasUpgraded).toBe(true)
-    expect(r.upgradePath).toEqual(['1.0.0', '4.0.0'])
+    expect(r.upgradePath).toEqual(['1.0.0', versionToString(CURRENT_DOCUMENT_VERSION)])
     expect(r.sourceVersion).toEqual({ major: 1, minor: 0, patch: 0 })
   })
 
-  it('v2 → v4 (跳过 v2→v3 之前的链路, 走 v3→v4)', () => {
+  it('v2 → 当前 (跳过 v1, 走 v3→v4→v4.1→v4.2)', () => {
     const raw = makeDocWithModelVersion('2.0.0')
     const r = loadDocumentFromObject(raw)
-    expect(r.doc.modelVersion).toBe('4.0.0')
+    expect(r.doc.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
     expect(r.wasUpgraded).toBe(true)
   })
 
-  it('v3 → v4 (只走最后一步)', () => {
+  it('v3 → 当前 (走 v4→v4.1→v4.2)', () => {
     const raw = makeDocWithModelVersion('3.0.0')
     const r = loadDocumentFromObject(raw)
-    expect(r.doc.modelVersion).toBe('4.0.0')
+    expect(r.doc.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
     expect(r.wasUpgraded).toBe(true)
   })
 
-  it('v4 → v4 (no-op, wasUpgraded=false)', () => {
+  it('v4.0 → 当前 (ElementFormat 新增可选字段, 仅版本号标记)', () => {
     const raw = makeDocWithModelVersion('4.0.0')
     const r = loadDocumentFromObject(raw)
-    expect(r.doc.modelVersion).toBe('4.0.0')
+    expect(r.doc.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
+    expect(r.wasUpgraded).toBe(true)
+    expect(r.upgradePath).toEqual(['4.0.0', versionToString(CURRENT_DOCUMENT_VERSION)])
+  })
+
+  it('v4.1 → 当前 (SmartTextNode 新增 value, 仅版本号标记)', () => {
+    const raw = makeDocWithModelVersion('4.1.0')
+    const r = loadDocumentFromObject(raw)
+    expect(r.doc.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
+    expect(r.wasUpgraded).toBe(true)
+    expect(r.upgradePath).toEqual(['4.1.0', versionToString(CURRENT_DOCUMENT_VERSION)])
+  })
+
+  it('当前版本 → 当前 (no-op, wasUpgraded=false)', () => {
+    const raw = makeDocWithModelVersion(versionToString(CURRENT_DOCUMENT_VERSION))
+    const r = loadDocumentFromObject(raw)
+    expect(r.doc.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
     expect(r.wasUpgraded).toBe(false)
     expect(r.upgradePath).toEqual([])
   })
 
   it('缺失 modelVersion 默认视为 v1, 触发完整链', () => {
-    const raw = makeDocWithModelVersion('4.0.0')
+    const raw = makeDocWithModelVersion(versionToString(CURRENT_DOCUMENT_VERSION))
     delete (raw as { modelVersion?: string }).modelVersion
     const r = loadDocumentFromObject(raw)
-    expect(r.doc.modelVersion).toBe('4.0.0')
+    expect(r.doc.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
     expect(r.sourceVersion).toEqual({ major: 1, minor: 0, patch: 0 })
     expect(r.wasUpgraded).toBe(true)
   })
@@ -103,7 +120,7 @@ describe('DocumentLoader 升级路径', () => {
 // ============ 路径: 拒绝 ============
 
 describe('DocumentLoader 拒绝路径', () => {
-  it('v5 → v4 抛 LoadError (too-new)', () => {
+  it('v5 → 当前 抛 LoadError (too-new)', () => {
     const raw = makeDocWithModelVersion('5.0.0')
     expect(() => loadDocumentFromObject(raw)).toThrow(LoadError)
     try {
@@ -113,11 +130,11 @@ describe('DocumentLoader 拒绝路径', () => {
     }
   })
 
-  it('malformed modelVersion (parseVersion 容错为 0.0.0 → 升级到 4.0.0)', () => {
+  it('malformed modelVersion (parseVersion 容错为 0.0.0 → 升级到当前)', () => {
     const raw = makeDocWithModelVersion('not-a-version')
     const r = loadDocumentFromObject(raw)
-    // parseVersion 对 NaN 用 0 兜底, 等价 v0.0.0, 升级链把它拉到 v4.0.0
-    expect(r.doc.modelVersion).toBe('4.0.0')
+    // parseVersion 对 NaN 用 0 兜底, 等价 v0.0.0, 升级链把它拉到当前版本
+    expect(r.doc.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
     expect(r.wasUpgraded).toBe(true)
   })
 
@@ -274,15 +291,15 @@ describe('DocumentLoader 类型接口', () => {
   })
 
   it('options 可省略 (使用默认 upgrader)', () => {
-    const raw = makeDocWithModelVersion('4.0.0')
+    const raw = makeDocWithModelVersion(versionToString(CURRENT_DOCUMENT_VERSION))
     const r = loadDocumentFromObject(raw, undefined)
-    expect(r.doc.modelVersion).toBe('4.0.0')
+    expect(r.doc.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
   })
 
   it('options.upgrader 可注入 (用于隔离测试)', () => {
     const raw = makeDocWithModelVersion('1.0.0')
     const injectedOptions: DocumentLoadOptions = {}
     const r = loadDocumentFromObject(raw, injectedOptions)
-    expect(r.doc.modelVersion).toBe('4.0.0')
+    expect(r.doc.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
   })
 })

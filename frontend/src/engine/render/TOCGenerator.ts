@@ -15,6 +15,7 @@
 
 import type { DocumentTree, Paragraph } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
+import { smartTextDisplayValue } from '../document/factory/ElementFormatter'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 
 // ---- TOC 条目 ----
@@ -235,7 +236,9 @@ export class TOCGenerator {
       if (!child) continue
       const c = child as { type?: string; text?: string }
       if (c.type === 'text' || c.type === 'smarttext') {
-        parts.push(c.text || '')
+        parts.push(c.type === 'smarttext'
+          ? smartTextDisplayValue(c as unknown as { text: string; value?: string })
+          : (c.text || ''))
       }
     }
     return parts.join('').trim()

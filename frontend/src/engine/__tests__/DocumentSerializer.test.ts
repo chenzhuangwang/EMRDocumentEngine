@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { buildNodePool } from '../document/core/NodePool'
-import { createDocument, createParagraph, createTextNode } from '../document/factory/ElementFormatter'
+import { createDocument, createParagraph, createTextNode, createSmartTextNode } from '../document/factory/ElementFormatter'
 import { collectDocumentNodes, serializeDocument } from '../document/io/DocumentSerializer'
 import type { BaseNode, DocumentTree } from '../document/core/DocumentModel'
 import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/version/DocumentFormatVersion'
@@ -80,5 +80,27 @@ describe('DocumentSerializer serializeDocument', () => {
     expect(nodes.has(bodyParaId)).toBe(true)
     expect(nodes.has(footParaId)).toBe(true)
     expect(nodes.has(doc.id)).toBe(false)
+  })
+
+  it('serializeDocument 透传 smarttext value (运行时值, 契约 §2.1)', () => {
+    const doc = createDocument('smarttest')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+
+    const element = { code: { internal: 'DE001', dataElement: 'DE001' }, name: '姓名' }
+    const st = createSmartTextNode('[姓名]', element, undefined, '张三')
+    const para = createParagraph([st.id])
+
+    all.set(st.id, st as unknown as BaseNode)
+    all.set(para.id, para as unknown as BaseNode)
+    doc.body.children = [para.id]
+    doc.header = []
+    doc.footer = []
+
+    const pool = buildNodePool(all, { body: doc.id })
+    const parsed = JSON.parse(serializeDocument(doc, pool))
+
+    expect(parsed.nodes[st.id].text).toBe('[姓名]')
+    expect(parsed.nodes[st.id].value).toBe('张三')
   })
 })

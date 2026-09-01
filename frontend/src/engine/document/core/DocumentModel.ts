@@ -83,6 +83,31 @@ export interface ElementFormat {
   minLength?: number
   maxLength?: number
   dictionary?: string
+  /** 数值精度 (小数点后位数), 如金额 scale=2 */
+  scale?: number
+  /** 多行文本控件的最小行数 */
+  minRows?: number
+  /** 枚举选项 (下拉/单选/复选) */
+  enums?: ElementEnums
+}
+
+/** 枚举选项集 (下拉/单选/复选控件的候选值定义) */
+export interface ElementEnums {
+  /** 是否多选 */
+  multiple?: boolean
+  /** 是否允许手动输入 */
+  editable?: boolean
+  /** 是否可搜索过滤 */
+  searchable?: boolean
+  data?: ElementEnumOption[]
+}
+
+/** 单个枚举选项 */
+export interface ElementEnumOption {
+  name: string
+  value: string
+  /** 选中后互斥 (排除其他选项) */
+  exclusive?: boolean
 }
 
 export interface PrivacyConfig {
@@ -120,7 +145,10 @@ export interface TextNode extends BaseNode, TextStyle {
 
 export interface SmartTextNode extends BaseNode, TextStyle {
   type: typeof NodeType.SMART_TEXT
+  /** 占位符 (未填时的显示形式, 如 '[姓名]') — 契约 §2.1 */
   text: string
+  /** 运行时值 (患者数据, 可选) — 缺失/空串视为未填, 读取方渲染 value 否则渲染 text — 契约 §2.1 */
+  value?: string
   element: ElementMeta
 }
 
@@ -340,7 +368,7 @@ export interface DocumentTree {
   comments?: CommentThread[]
   metadata?: Record<string, unknown>
   /**
-   * 文档格式版本 (semver 字符串, 例 '4.0.0')
+   * 文档格式版本 (semver 字符串, 例 '4.2.0')
    * 由 DocumentSerializer 写入, DocumentLoader 读取并触发升级链。
    * 历史文档缺失该字段时, 视为 '1.0.0'。
    */
