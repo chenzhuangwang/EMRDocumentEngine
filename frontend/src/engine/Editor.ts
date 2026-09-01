@@ -48,6 +48,8 @@ import {
 } from './command/commands/StructuralCommands'
 import { InsertImageCommand } from './command/commands/InsertImageCommand'
 import { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
+import type { TemplateDefinitionStore } from './template/TemplateDefinition'
+import type { PresentationStyleStore } from './render/presentation/PresentationStyle'
 
 /** Editor: 引擎编排器 (架构 §3, v20.34) */
 export class Editor {
@@ -79,6 +81,9 @@ export class Editor {
   // 单元格框选范围 (网格坐标)
   private _cellRange: CellRange | null = null
   private listeners: EditorListener[] = []
+  // 模板设计期属性 (契约 §12.1) + 表现层样式 (契约 §2.2) — per-editor 实例状态 (§7.6)
+  private templateDefinitions: TemplateDefinitionStore | null = null
+  private presentationStyles: PresentationStyleStore | null = null
   private _clickToFocus: (e: MouseEvent) => void
   private _onWindowFocus: () => void
   private _onVisibilityChange: () => void
@@ -679,17 +684,27 @@ export class Editor {
   }
 
   getDocument(): DocumentTree { return this.doc }
+  /** 模板设计期属性 (契约 §12.1) — 编辑约束消费 (P1); 当前承载 */
+  getTemplateDefinitions(): TemplateDefinitionStore | null { return this.templateDefinitions }
+  /** 表现层样式 (契约 §2.2) — 渲染消费 */
+  getPresentationStyles(): PresentationStyleStore | null { return this.presentationStyles }
   /** 序列化文档为 JSON 字符串 (含全部节点 payload, 供保存/自动保存使用) */
   getSerializedDocument(): string {
     return serializeDocument(this.doc, this.pool)
   }
-  setDocument(doc: DocumentTree, nodes?: Map<string, BaseNode>): void {
+  setDocument(
+    doc: DocumentTree,
+    nodes?: Map<string, BaseNode>,
+    stores?: { templateDefinitions?: TemplateDefinitionStore; presentationStyles?: PresentationStyleStore },
+  ): void {
     // 确保 header/footer 字段存在 (兼容旧版文档数据)
     if (!doc.header) doc.header = []
     if (!doc.footer) doc.footer = []
     this.doc = doc
     this.pool = loadDocumentFromObject(doc, { extraNodes: nodes }).pool
-    this.draw.setDocument(doc, this.pool)
+    this.templateDefinitions = stores?.templateDefinitions ?? null
+    this.presentationStyles = stores?.presentationStyles ?? null
+    this.draw.setDocument(doc, this.pool, this.presentationStyles)
     this.draw.recomputeLayout(this.pool)
 
     // 自动应用文档水印 (R70)

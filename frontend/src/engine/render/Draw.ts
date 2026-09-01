@@ -25,6 +25,7 @@ import { createFootnoteParticle } from './particles/FootnoteParticle'
 import { createTableParticle } from './particles/TableParticle'
 import { createImageParticle } from './particles/ImageParticle'
 import { createControlParticle } from './particles/ControlParticle'
+import type { PresentationStyleStore } from './presentation/PresentationStyle'
 import { createChartParticle } from './particles/ChartParticle'
 import { createBarcodeParticle } from './particles/BarcodeParticle'
 import { particleRegistry } from './particles/ParticleRegistry'
@@ -53,6 +54,10 @@ export class Draw {
   private pool: NodePool | null = null
   private _state: EditorRuntimeState | null = null
   private pages: SLIFPage[] = []
+
+  // 表现层样式 (契约 §2.2) — per-editor 实例状态 (§7.6), 随 setDocument 更新
+  private presentationStyles: PresentationStyleStore | null = null
+  private presentationStyleOf = (nodeId: string) => this.presentationStyles?.get(nodeId)
 
   // 页眉页脚编辑模式 (TASK-470/471 双击激活)
   private hfEditActive = false
@@ -136,9 +141,10 @@ export class Draw {
     }
   }
 
-  setDocument(doc: DocumentTree, pool?: NodePool): void {
+  setDocument(doc: DocumentTree, pool?: NodePool, presentationStyles?: PresentationStyleStore | null): void {
     this.document = doc
     if (pool) this.pool = pool
+    this.presentationStyles = presentationStyles ?? null
   }
 
   setRuntimeState(state: EditorRuntimeState): void { this._state = state }
@@ -453,6 +459,7 @@ export class Draw {
               textRenderer.render(ctx, { ...item, text: this.resolveFieldText(item, i) }, item.x, pageY + item.y, {
                 showInvisible: this._showInvisible,
                 pageIndex: i,
+                presentationStyleOf: this.presentationStyleOf,
               })
             }
           }
@@ -746,6 +753,7 @@ export class Draw {
         textRenderer.render(ctx, { ...item, text: this.resolveFieldText(item, pageIndex) }, item.x, pageY + item.y, {
           showInvisible: this._showInvisible,
           pageIndex,
+          presentationStyleOf: this.presentationStyleOf,
         })
       }
     }

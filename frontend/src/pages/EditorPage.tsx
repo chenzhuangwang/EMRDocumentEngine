@@ -347,7 +347,10 @@ function EditorPageInner({
           const parsed = JSON.parse(text)
           if (isExternalTemplate(parsed)) {
             const result = templateImporter.import(parsed)
-            ed.setDocument(result.doc, result.nodes)
+            ed.setDocument(result.doc, result.nodes, {
+              templateDefinitions: result.templateDefinitions,
+              presentationStyles: result.presentationStyles,
+            })
             return
           }
         } catch { /* 非 JSON → 回落 registry */ }

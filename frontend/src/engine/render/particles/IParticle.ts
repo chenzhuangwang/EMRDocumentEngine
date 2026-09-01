@@ -6,6 +6,7 @@
 // ============================================================
 
 import type { SLIFItem } from '../../layout/core/SLIF'
+import type { PresentationStyle } from '../presentation/PresentationStyle'
 
 /** 渲染上下文选项 */
 export interface RenderOptions {
@@ -23,6 +24,8 @@ export interface RenderOptions {
   pageIndex?: number
   /** 总页数 (用于 NUMPAGES 域) */
   totalPages?: number
+  /** 表现层样式查询 (按 nodeId), draw time 读取 — 契约 §2.2 */
+  presentationStyleOf?: (nodeId: string) => PresentationStyle | undefined
 }
 
 /** 粒子渲染器接口 */
