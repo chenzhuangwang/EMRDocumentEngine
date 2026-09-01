@@ -1060,12 +1060,21 @@ Concretely:
     single are editing-constraint concerns consumed by the command
     layer (a later phase), not the renderer.
 
-    The template artifact (a document + its TemplateDefinitions)
-    is distinct from a filled record (a document with
-    SmartTextNode.value set). When persisted, TemplateDefinitions
-    MUST be stored as a separate top-level structure in the
-    template artifact, never merged into the node payload that
-    DocumentSerializer emits.
+    The template artifact (a document + its TemplateDefinitions +
+    its PresentationStyles) is distinct from a filled record (a
+    document with SmartTextNode.value set).
+
+    Serialization: when a template artifact is persisted, the two
+    stores are emitted as TOP-LEVEL fields of the artifact —
+        templateDefinitions  — { [nodeId]: TemplateDefinition }
+        presentationStyles   — { [nodeId]: PresentationStyle }
+    — SIBLING to the `nodes` flat table, keyed by node id, never
+    merged into a node payload that DocumentSerializer emits.
+    DocumentLoader reads them back into per-editor store instances
+    on load, so a template round-trips (import → edit → save →
+    load) without losing design-time or presentation fields. A
+    filled record MAY omit them; the loader treats absence as
+    empty stores.
 
 ------------------------------------------------------------
 12.2 Template importer boundary
