@@ -232,6 +232,18 @@ Concretely:
     SEPARATE, deferred concern (the "LATER optimization" above) —
     not the same as these per-instance inline presentation fields.
 
+    Runtime consumption (P0): at draw time the renderer reads the
+    per-node presentation style by nodeId (SLIFItem.nodeId) and
+    applies it as rendering configuration —
+        borderStyle   → whether/how the control box border is drawn
+        minWidth      → minimum box width
+        contentWrap   → wrap content inside the box
+        textAlign     → horizontal alignment
+    The renderer MUST NOT write presentation fields back into
+    DocumentModel, and MUST NOT fold them into SLIF as canonical
+    state (SLIF remains a derived projection; presentation fields
+    are looked up by nodeId at draw time).
+
 ============================================================
 3. LAYOUT BOUNDARY
 ============================================================
@@ -634,6 +646,29 @@ There MUST be one canonical owner.
 
 Other modules may derive or read the value,
 but MUST NOT maintain an independent mutable copy.
+
+------------------------------------------------------------
+7.6 Template / Presentation stores
+------------------------------------------------------------
+
+The template-design layer (TemplateDefinitionStore, §12.1) and
+presentation layer (PresentationStyleStore, §2.2) are instance
+state owned by the Editor — per-editor, per-loaded-template, NOT
+module-level singletons (§27.3). They are associated to nodes by
+nodeId and hold configuration, NOT document content; they MUST NOT
+be folded into DocumentModel nodes or into DocumentSerializer's
+node payload.
+
+They enter the editor only through the LOAD path (§12.2): the
+importer produces them, and the load boundary MUST carry them into
+the Editor instance so render/command consumers can reach them.
+They are not part of EditorStore.runtime (a UI projection); they
+are held alongside DocumentModel as editor-level state.
+
+Document content ownership remains §7.3 (DocumentModel). A single
+TemplateDefinition or PresentationStyle value has a single owner:
+the corresponding store, keyed by nodeId. Renderers and commands
+READ them and MUST NOT maintain an independent copy.
 
 ============================================================
 8. COMMANDS AND HISTORY
@@ -1047,6 +1082,13 @@ Concretely:
     external node ids verbatim as engine node ids (identity is
     preserved for the per-id stores); it generates ids only for
     nodes the external format does not name.
+
+    The load boundary MUST carry TemplateImportResult.templateDefinitions
+    and presentationStyles into the Editor instance (per-editor state,
+    §7.6) rather than dropping them at the load boundary. They MUST NOT
+    be written into DocumentSerializer's node payload (§12.1).
+    presentationStyles is consumed by the renderer (§2.2);
+    templateDefinitions is carried for later design-time consumers (§12.1).
 
     The shared style-reference dictionary (external styles /
     globalStyles) is DEFERRED per §2.2. P0 resolves only text-level
