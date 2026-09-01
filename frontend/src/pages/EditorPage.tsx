@@ -17,6 +17,7 @@ import { documentApi, templateApi } from '@/services/api'
 import { generateCommandId } from '@/engine/command/ICommand'
 import { InsertTextCommand } from '@/engine/command/commands/InsertTextCommand'
 import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
+import { templateImporter, isExternalTemplate } from '@/engine'
 import { TOCGenerator } from '@/engine/render/TOCGenerator'
 import { ListParticle } from '@/engine/render/particles/ListParticle'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
@@ -335,13 +336,27 @@ function EditorPageInner({
     const reader = new FileReader()
     reader.onload = () => {
       const text = reader.result as string
+      const ed = editorRef.current
+      if (!ed) return
+
+      // 外部模板 JSON → TemplateImporter (契约 §12.2)。以顶层 `document` 字段
+      // 为锚点判别, 与引擎自身序列化格式 (type=document + body) 无损区分。
+      const trimmed = text.trim()
+      if (trimmed.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(text)
+          if (isExternalTemplate(parsed)) {
+            const result = templateImporter.import(parsed)
+            ed.setDocument(result.doc, result.nodes)
+            return
+          }
+        } catch { /* 非 JSON → 回落 registry */ }
+      }
+
       const result = documentLoaderRegistry.load(text, file.name)
       if (result?.doc) {
-        const ed = editorRef.current
-        if (ed) {
-          // 传入加载器展开的节点映射, setDocument 据此重建 NodePool
-          ed.setDocument(result.doc, result.nodes)
-        }
+        // 传入加载器展开的节点映射, setDocument 据此重建 NodePool
+        ed.setDocument(result.doc, result.nodes)
       }
     }
     reader.readAsText(file)
@@ -793,6 +808,7 @@ function EditorPageInner({
       documentTitle={documentTitle}
       onTitleChange={onTitleChange}
       onSave={handleSave}
+      onImportDocument={() => docFileInputRef.current?.click()}
       onFormat={handleFormat}
       onInsert={(type: string) => {
         const ed = editorRef.current

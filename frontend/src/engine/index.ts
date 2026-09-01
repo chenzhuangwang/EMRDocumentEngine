@@ -152,6 +152,10 @@ export type { TemplateDefinition, TemplateDefinitionMap } from './template/Templ
 export { PresentationStyleStore } from './render/presentation/PresentationStyle'
 export type { PresentationStyle, PresentationStyleMap } from './render/presentation/PresentationStyle'
 
+// ---- TemplateImporter (契约 §12.2) ----
+export { TemplateImporter, templateImporter, isExternalTemplate } from './import/TemplateImporter'
+export type { TemplateImportResult } from './import/TemplateImporter'
+
 // ---- R30+: System ----
 export { EditorTheme } from './state/EditorTheme'
 export type { ThemePreset, ThemeColors } from './state/EditorTheme'

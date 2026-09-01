@@ -18,6 +18,7 @@ interface EditorLayoutProps {
   documentTitle: string
   onTitleChange?: (title: string) => void
   onSave?: () => void
+  onImportDocument?: () => void
   onFormat?: (action: string, value?: unknown) => void
   onInsert?: (elementType: string) => void
   onExportClick?: () => void
@@ -56,6 +57,7 @@ export function EditorLayout({
   documentTitle,
   onTitleChange,
   onSave,
+  onImportDocument,
   onFormat,
   onInsert,
   onExportClick,
@@ -92,6 +94,7 @@ export function EditorLayout({
         documentTitle={documentTitle}
         onTitleChange={onTitleChange}
         onSave={onSave}
+        onImportDocument={onImportDocument}
         onFormat={onFormat}
       />
       )}

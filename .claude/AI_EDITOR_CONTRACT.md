@@ -1010,6 +1010,55 @@ Concretely:
     template artifact, never merged into the node payload that
     DocumentSerializer emits.
 
+------------------------------------------------------------
+12.2 Template importer boundary
+------------------------------------------------------------
+
+The external template importer maps a third-party template
+document (which has its own node/field schema) into the engine's
+layered model. It is a FEATURE (§12), not core; it is a LOAD
+path (§6.2), not an editor mutation, so it constructs a FRESH
+DocumentTree rather than mutating an existing one.
+
+The importer's job is ROUTING. It reads one external node and
+dispatches each of its fields to the single layer that owns it:
+
+    external semantic fields       → ElementMeta (DocumentModel)
+    external runtime value         → SmartTextNode.value
+    external template-design flds  → TemplateDefinitionStore (§12.1)
+    external presentation flds     → PresentationStyleStore (§2.2)
+
+The importer MUST NOT invent new persistent fields on
+SmartTextNode / ElementMeta / Paragraph to carry what belongs to
+the TemplateDefinition or PresentationStyle layers. An external
+field with no canonical home MUST be dropped or deferred, never
+smuggled into DocumentModel.
+
+Concretely:
+
+    TemplateImportResult {
+      doc                  — DocumentTree (semantic content)
+      nodes                — Map<string, BaseNode> (NodePool source)
+      templateDefinitions  — TemplateDefinitionStore (§12.1)
+      presentationStyles   — PresentationStyleStore (§2.2)
+    }
+
+    Home: engine/import/ (§12 feature home). The importer reuses
+    external node ids verbatim as engine node ids (identity is
+    preserved for the per-id stores); it generates ids only for
+    nodes the external format does not name.
+
+    The shared style-reference dictionary (external styles /
+    globalStyles) is DEFERRED per §2.2. P0 resolves only text-level
+    style (styles.text → TextStyle font/size/bold) into the semantic
+    TextStyle; paragraph/table style dictionaries are not imported.
+
+    Deferred external constructs (documented, not yet mapped):
+        checkfield      → P0 text label only (checkbox semantics later)
+        insert / delete → P0 markers dropped, sibling content kept
+                          (revision tracking is a separate concern)
+        scripts / valid → not part of the four-layer model
+
 ============================================================
 13. DOCUMENT SERIALIZATION
 ============================================================

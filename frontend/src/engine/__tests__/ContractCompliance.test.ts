@@ -177,6 +177,7 @@ describe('契约不变量可执行验证 (ContractCompliance)', () => {
     //   document/io       (加载构造, §14)
     //   document/version  (迁移, §14)
     //   command/commands  (命令门控, 如 HeaderFooterConfigCommand / SetPageSetupCommand)
+    //   import            (TemplateImporter 导入构造, 契约 §12.2 声明的加载路径)
     // 例外: state/EditorStore.ts 的 this._state.headerFooterConfig 是 UI 读取投影 (§7.2),
     //       canonical = DocumentTree, 非文档字段赋值, 故单列白名单。
     const NON_STRUCTURAL = 'pageSetup|headerFooterConfig|metadata|modelVersion'
@@ -184,7 +185,8 @@ describe('契约不变量可执行验证 (ContractCompliance)', () => {
     const writesDocument = (f: string) =>
       f.includes('/document/io/') ||
       f.includes('/document/version/') ||
-      f.includes('/command/commands/')
+      f.includes('/command/commands/') ||
+      f.includes('/import/')
     const isProjection = (f: string) => f.includes('/state/EditorStore.ts')
 
     const hits: string[] = []

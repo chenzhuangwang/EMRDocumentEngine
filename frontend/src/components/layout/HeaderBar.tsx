@@ -11,6 +11,7 @@ import {
   ChevronDown,
   User,
   FileText,
+  FolderOpen,
   PanelLeftClose,
   PanelLeft,
 } from 'lucide-react'
@@ -22,10 +23,11 @@ interface HeaderBarProps {
   onTitleChange?: (title: string) => void
   onSave?: () => void
   onShare?: () => void
+  onImportDocument?: () => void
   onFormat?: (action: string) => void
 }
 
-export function HeaderBar({ documentTitle, onTitleChange, onSave, onShare, onFormat }: HeaderBarProps) {
+export function HeaderBar({ documentTitle, onTitleChange, onSave, onShare, onImportDocument, onFormat }: HeaderBarProps) {
   const saveStatus = useEditorStoreSnapshot((s) => s.saveStatus)
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
   const user = useUserStore((s) => s.user)
@@ -91,6 +93,14 @@ export function HeaderBar({ documentTitle, onTitleChange, onSave, onShare, onFor
           title="保存 (Ctrl+S)"
         >
           <Save size={16} />
+        </button>
+
+        <button
+          className="toolbar-btn"
+          onClick={onImportDocument}
+          title="导入文档/模板 (JSON/HTML/Markdown)"
+        >
+          <FolderOpen size={16} />
         </button>
       </div>
 
