@@ -13,9 +13,15 @@
 //   - serializeDocument:    序列化为 JSON 字符串
 //                            (DocumentTree + nodes 扁平表 + 显式 modelVersion)
 //
+// 模板 artifact 扩展 (契约 §12.1):
+//   序列化时把两个 per-editor store 作为 TOP-LEVEL 字段一并写出
+//   (templateDefinitions / presentationStyles), 与 nodes 平级, 绝不混入
+//   节点 payload。见 serializeDocument 的 stores 参数。
+//
 // 加载链路已迁移至 DocumentLoader:
 //   loadDocument(json) / loadDocumentFromObject(obj, options)
-//   — 负责 detect / checkCompatibility / upgrade / validate / buildModel / buildPool。
+//   — 负责 detect / checkCompatibility / upgrade / validate / buildModel / buildPool,
+//     并读回上述两个顶层字段到 DocumentLoadResult。
 //
 // 反序列化测试不再覆盖本模块 — 见 __tests__/DocumentLoader.test.ts。
 // ================================================================
@@ -23,12 +29,26 @@
 import type { BaseNode, DocumentTree } from '../core/DocumentModel'
 import type { NodePool } from '../core/NodePool'
 import { versionToString, CURRENT_DOCUMENT_VERSION } from '../version/DocumentFormatVersion'
+import type { TemplateDefinitionStore } from '../../template/TemplateDefinition'
+import type { PresentationStyleStore } from '../../render/presentation/PresentationStyle'
 
 /** 序列化时附在 DocumentTree 上的扁平节点表字段名 */
 const NODES_FIELD = 'nodes'
 
+/** 序列化时附在 DocumentTree 上的模板设计期字段 (顶层, 契约 §12.1) */
+const TEMPLATE_DEFS_FIELD = 'templateDefinitions'
+
+/** 序列化时附在 DocumentTree 上的表现层字段 (顶层, 契约 §12.1) */
+const PRESENTATION_STYLES_FIELD = 'presentationStyles'
+
 /** 序列化时写入的 modelVersion (Phase 3 起显式声明) */
 const MODEL_VERSION_STRING = versionToString(CURRENT_DOCUMENT_VERSION)
+
+/** serializeDocument 的 store 参数 (可选, 缺省表示纯 record 不含设计期/表现层字段) */
+export interface SerializeStores {
+  templateDefinitions?: TemplateDefinitionStore
+  presentationStyles?: PresentationStyleStore
+}
 
 /**
  * 收集文档可达的全部节点 (不含 doc 本身), 返回扁平 Map。
@@ -60,20 +80,40 @@ export function collectDocumentNodes(doc: DocumentTree, pool: NodePool): Map<str
   return result
 }
 
+/** store → { [nodeId]: def } 普通对象 (供 JSON 序列化) */
+function storeToObject<T>(store: { entries(): IterableIterator<[string, T]> }): Record<string, T> {
+  const out: Record<string, T> = {}
+  for (const [id, def] of store.entries()) out[id] = def
+  return out
+}
+
 /**
  * 序列化为 JSON 字符串。
  *
- * 输出结构: { ...DocumentTree, modelVersion: '4.2.0', nodes: { [id]: nodeObject } }
- * 扁平表包含 doc 可达的全部节点 payload, 供 DocumentLoader 重建 NodePool。
+ * 输出结构: { ...DocumentTree, modelVersion: '4.2.0', nodes: { [id]: nodeObject },
+ *             templateDefinitions?: { [nodeId]: def },
+ *             presentationStyles?: { [nodeId]: style } }
+ * 扁平表包含 doc 可达的全部节点 payload, 供 DocumentLoader 重建 NodePool;
+ * 两个 store (契约 §12.1) 作为顶层字段 SIBLING 于 nodes, 绝不写入节点 payload。
  */
-export function serializeDocument(doc: DocumentTree, pool: NodePool): string {
+export function serializeDocument(doc: DocumentTree, pool: NodePool, stores?: SerializeStores): string {
   const nodes: Record<string, BaseNode> = {}
   for (const [id, node] of collectDocumentNodes(doc, pool)) {
     nodes[id] = node
   }
-  return JSON.stringify({
+
+  const out: Record<string, unknown> = {
     ...doc,
     modelVersion: MODEL_VERSION_STRING,
     [NODES_FIELD]: nodes,
-  })
+  }
+
+  if (stores?.templateDefinitions && stores.templateDefinitions.size > 0) {
+    out[TEMPLATE_DEFS_FIELD] = storeToObject(stores.templateDefinitions)
+  }
+  if (stores?.presentationStyles && stores.presentationStyles.size > 0) {
+    out[PRESENTATION_STYLES_FIELD] = storeToObject(stores.presentationStyles)
+  }
+
+  return JSON.stringify(out)
 }

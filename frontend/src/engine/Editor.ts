@@ -690,7 +690,10 @@ export class Editor {
   getPresentationStyles(): PresentationStyleStore | null { return this.presentationStyles }
   /** 序列化文档为 JSON 字符串 (含全部节点 payload, 供保存/自动保存使用) */
   getSerializedDocument(): string {
-    return serializeDocument(this.doc, this.pool)
+    return serializeDocument(this.doc, this.pool, {
+      templateDefinitions: this.templateDefinitions ?? undefined,
+      presentationStyles: this.presentationStyles ?? undefined,
+    })
   }
   setDocument(
     doc: DocumentTree,
@@ -701,9 +704,11 @@ export class Editor {
     if (!doc.header) doc.header = []
     if (!doc.footer) doc.footer = []
     this.doc = doc
-    this.pool = loadDocumentFromObject(doc, { extraNodes: nodes }).pool
-    this.templateDefinitions = stores?.templateDefinitions ?? null
-    this.presentationStyles = stores?.presentationStyles ?? null
+    const loaded = loadDocumentFromObject(doc, { extraNodes: nodes })
+    this.pool = loaded.pool
+    // 优先级: 显式 stores (外部模板路径) > 加载器从 doc 顶层字段读回 (引擎序列化格式, 契约 §12.1)
+    this.templateDefinitions = stores?.templateDefinitions ?? loaded.templateDefinitions ?? null
+    this.presentationStyles = stores?.presentationStyles ?? loaded.presentationStyles ?? null
     this.draw.setDocument(doc, this.pool, this.presentationStyles, this.templateDefinitions)
     this.draw.recomputeLayout(this.pool)
 

@@ -14,6 +14,10 @@
 
 import type { BaseNode, DocumentTree } from '../core/DocumentModel'
 import { buildNodePool, type NodePool } from '../core/NodePool'
+import { TemplateDefinitionStore } from '../../template/TemplateDefinition'
+import type { TemplateDefinition } from '../../template/TemplateDefinition'
+import { PresentationStyleStore } from '../../render/presentation/PresentationStyle'
+import type { PresentationStyle } from '../../render/presentation/PresentationStyle'
 import {
   CURRENT_DOCUMENT_VERSION,
   parseVersion,
@@ -21,6 +25,11 @@ import {
   type DocumentFormatVersion,
 } from '../version/DocumentFormatVersion'
 import { modelUpgrader, type ModelUpgrader } from '../version/ModelUpgrader'
+
+// ---- 模板 store 顶层字段名 (契约 §12.1, 与 DocumentSerializer 保持一致) ----
+
+const STORE_TEMPLATE_DEFS_FIELD = 'templateDefinitions'
+const STORE_PRESENTATION_STYLES_FIELD = 'presentationStyles'
 
 // ---- 错误类型 ----
 
@@ -57,6 +66,10 @@ export interface DocumentLoadResult {
   wasUpgraded: boolean
   /** 升级路径: ['1.0.0', '4.2.0'] — 当前实现仅记录首尾 */
   upgradePath: string[]
+  /** 模板设计期 store (从 artifact 顶层字段读回, 缺失 → undefined) — 契约 §12.1 */
+  templateDefinitions?: TemplateDefinitionStore
+  /** 表现层 store (从 artifact 顶层字段读回, 缺失 → undefined) — 契约 §12.1 */
+  presentationStyles?: PresentationStyleStore
 }
 
 // ---- 公共 API ----
@@ -124,6 +137,8 @@ export function loadDocumentFromObject(obj: unknown, options?: DocumentLoadOptio
     sourceVersion: sourceVer,
     wasUpgraded: upgradePath.length > 0,
     upgradePath,
+    templateDefinitions: readTemplateDefinitions(raw),
+    presentationStyles: readPresentationStyles(raw),
   }
 }
 
@@ -224,4 +239,28 @@ const DEFAULT_PAGE_SETUP_LITERAL = {
   marginLeft: 90,
   marginRight: 90,
   orientation: 'portrait' as const,
+}
+
+// ---- 模板 store 读回 (契约 §12.1) ----
+
+/** 从 artifact 顶层字段读回 TemplateDefinitionStore (缺失/空 → undefined) */
+function readTemplateDefinitions(raw: Record<string, unknown>): TemplateDefinitionStore | undefined {
+  const field = raw[STORE_TEMPLATE_DEFS_FIELD]
+  if (!field || typeof field !== 'object') return undefined
+  const store = new TemplateDefinitionStore()
+  for (const [id, def] of Object.entries(field as Record<string, unknown>)) {
+    if (def && typeof def === 'object') store.set(id, def as TemplateDefinition)
+  }
+  return store.size > 0 ? store : undefined
+}
+
+/** 从 artifact 顶层字段读回 PresentationStyleStore (缺失/空 → undefined) */
+function readPresentationStyles(raw: Record<string, unknown>): PresentationStyleStore | undefined {
+  const field = raw[STORE_PRESENTATION_STYLES_FIELD]
+  if (!field || typeof field !== 'object') return undefined
+  const store = new PresentationStyleStore()
+  for (const [id, style] of Object.entries(field as Record<string, unknown>)) {
+    if (style && typeof style === 'object') store.set(id, style as PresentationStyle)
+  }
+  return store.size > 0 ? store : undefined
 }
