@@ -154,6 +154,52 @@ Examples of document state:
 
 These belong to the document model.
 
+------------------------------------------------------------
+2.1 SmartText / EMR Field boundary
+------------------------------------------------------------
+
+A SmartTextNode represents a structured EMR field. Its
+"definition" (what the field IS) and its runtime "value"
+(what a patient's record says) are DIFFERENT concerns and
+MUST be stored separately.
+
+    Field definition (document semantic):
+        data element code, name, labels, data type, min/max
+        length, dictionary, enum options, required, readonly,
+        privacy/masking, numeric scale, textarea rows.
+
+    Field value (runtime patient data):
+        the actual entered value.
+
+A SmartTextNode MUST NOT carry the definition and the value
+in one field. The definition is template-time metadata; the
+value is record-time data.
+
+Concretely:
+
+    SmartTextNode.element / .format  → definition (semantic)
+    a dedicated value slot            → runtime value
+
+    SmartTextNode.text MUST NOT be overloaded as both
+    placeholder AND value.
+
+------------------------------------------------------------
+2.2 Semantic style vs presentation style
+------------------------------------------------------------
+
+DocumentModel owns SEMANTIC style — typography and character
+style that is part of content meaning (TextStyle: font, size,
+bold, italic, underline, color, highlight, ...).
+
+DocumentModel MUST NOT own PRESENTATION / box-model / CSS
+layout — borderStyle, borderColor, outline, contentStyle,
+contentWrap, minWidth, textAlign — these answer "how it is
+rendered", which §2 already forbids.
+
+A style-reference dictionary (style: {id} → shared definition)
+is a LATER optimization; do not introduce it until templates
+show genuine large-scale style duplication.
+
 ============================================================
 3. LAYOUT BOUNDARY
 ============================================================
@@ -886,6 +932,23 @@ Do not add unrelated feature-specific logic to:
 unless the functionality is genuinely part of that subsystem.
 
 Prefer feature modules/adapters.
+
+------------------------------------------------------------
+12.1 Template / Form Definition boundary
+------------------------------------------------------------
+
+Template authoring metadata MUST NOT become document content.
+
+Template-design attributes of a smarttext control —
+    deletable, editable, tips, label, prefix, suffix, single
+— describe how a template AUTHOR configures the control at
+design time, not what the document content IS.
+
+These belong to a TemplateDefinition layer (a feature, per
+§12), NOT to DocumentModel / SmartTextNode.
+
+DocumentModel MUST NOT store template-design attributes as
+document semantics.
 
 ============================================================
 13. DOCUMENT SERIALIZATION
