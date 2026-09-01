@@ -176,3 +176,27 @@ export function sameStyle(a: TextStyle, b: TextStyle): boolean {
     a.italic === b.italic && a.color === b.color &&
     a.underline === b.underline && a.strikeout === b.strikeout
 }
+
+/**
+ * 选区样式快照: 各字段全部一致 → 返回该值; 任一字段不一致 → 该字段置 undefined
+ * (混合/不定态, 供工具栏按钮保持未激活)。空数组 → 返回 {}。
+ */
+const TEXT_STYLE_KEYS = [
+  'font', 'size', 'bold', 'italic', 'underline', 'underlineStyle',
+  'strikeout', 'color', 'highlight', 'superscript', 'subscript', 'letterSpacing',
+] as const
+
+export function uniformTextStyle(styles: TextStyle[]): TextStyle {
+  const out: TextStyle = {}
+  if (styles.length === 0) return out
+  const target = out as Record<string, unknown>
+  const first = styles[0] as Record<string, unknown>
+  for (const k of TEXT_STYLE_KEYS) target[k] = first[k]
+  for (let i = 1; i < styles.length; i++) {
+    const s = styles[i] as Record<string, unknown>
+    for (const k of TEXT_STYLE_KEYS) {
+      if (target[k] !== s[k]) target[k] = undefined
+    }
+  }
+  return out
+}

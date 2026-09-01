@@ -194,7 +194,7 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
 
       {/* 组7：段落格式 */}
       <ToolbarGroup>
-        <ToolbarButton title="左对齐" active={paraStyle?.alignment === 'left' || !paraStyle?.alignment} onClick={() => onFormat?.('alignLeft')}>
+        <ToolbarButton title="左对齐" active={paraStyle?.alignment === 'left'} onClick={() => onFormat?.('alignLeft')}>
           <AlignLeft size={16} />
         </ToolbarButton>
         <ToolbarButton title="居中" active={paraStyle?.alignment === 'center'} onClick={() => onFormat?.('alignCenter')}>
@@ -203,7 +203,7 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
         <ToolbarButton title="右对齐" active={paraStyle?.alignment === 'right'} onClick={() => onFormat?.('alignRight')}>
           <AlignRight size={16} />
         </ToolbarButton>
-        <ToolbarButton title="两端对齐" onClick={() => onFormat?.('alignJustify')}>
+        <ToolbarButton title="两端对齐" active={paraStyle?.alignment === 'justify'} onClick={() => onFormat?.('alignJustify')}>
           <AlignJustify size={16} />
         </ToolbarButton>
       </ToolbarGroup>

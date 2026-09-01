@@ -40,4 +40,38 @@ describe('EditorStore', () => {
     expect(store.state.runtime.cursor.paragraphPath).toEqual(['doc1', 'para1'])
     expect(store.state.runtime.cursor.offset).toBe(5)
   })
+
+  it('onCursorOrSelectionChange 在 setCursor/setSelection/updateSelection 触发', () => {
+    const doc = createDocument('测试')
+    const store = new EditorStore(doc)
+    let count = 0
+    store.onCursorOrSelectionChange(() => { count++ })
+
+    store.setCursor({ paragraphPath: ['d', 'p'], offset: 1, visible: true })
+    expect(count).toBe(1)
+
+    store.setSelection({
+      anchor: { paragraphPath: ['d', 'p'], offset: 0, visible: false },
+      focus: { paragraphPath: ['d', 'p'], offset: 2, visible: false },
+      active: true,
+      granularity: 'character',
+    })
+    expect(count).toBe(2)
+
+    store.updateSelection({ active: false })
+    expect(count).toBe(3)
+  })
+
+  it('onCursorOrSelectionChange 不因 setCursorVisible / setTextStyle 触发', () => {
+    const doc = createDocument('测试')
+    const store = new EditorStore(doc)
+    let count = 0
+    store.onCursorOrSelectionChange(() => { count++ })
+
+    store.setCursorVisible(false)  // 光标闪烁路径, 不应触发
+    expect(count).toBe(0)
+
+    store.setTextStyle({ bold: true })  // 投影写入, 不应触发 (防回环)
+    expect(count).toBe(0)
+  })
 })

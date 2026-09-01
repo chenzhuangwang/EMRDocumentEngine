@@ -1,6 +1,6 @@
 import type { DocumentTree, BaseNode, Paragraph, HeaderFooterConfig } from './document/core/DocumentModel'
 import { DEFAULT_HEADER_FOOTER_CONFIG } from './document/core/DocumentModel'
-import { createDocument, createParagraph, createTextNode, extractStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent, createSmartTextNode } from './document/factory/ElementFormatter'
+import { createDocument, createParagraph, createTextNode, extractStyle, uniformTextStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent, createSmartTextNode } from './document/factory/ElementFormatter'
 import { NodePool, buildNodePool } from './document/core/NodePool'
 import { serializeDocument } from './document/io/DocumentSerializer'
 import { loadDocumentFromObject } from './document/io/DocumentLoader'
@@ -106,6 +106,8 @@ export class Editor {
     this.eventBus = new EventBus()
     this.draw = new Draw(host, this.eventBus, this.measurer, this.doc)
     this.store = new EditorStore(this.doc)
+    // 光标/选区移动后实时同步段落/文本样式投影 (工具栏联动), 单一 choke point
+    this.store.onCursorOrSelectionChange(() => this.syncStyleProjections())
     this.inputComposer = new InputComposer(host)
     this.keyboardHandler = new KeyboardHandler(this, host)
     this.mouseHandler = new MouseHandler(this, host, this.measurer)
@@ -328,9 +330,14 @@ export class Editor {
    * 不更新 store.document, 这些投影必须由 Editor 显式同步。
    */
   private syncUiProjections(): void {
+    this.syncStyleProjections()
+    this.store.setHeaderFooterConfig(this.getHeaderFooterConfig())
+  }
+
+  /** 同步段落/文本样式投影 — 文档/光标/选区变化后调用 (工具栏联动) */
+  private syncStyleProjections(): void {
     this.store.setParagraphStyle(this.getParagraphStyle())
     this.store.setTextStyle(this.getTextStyle())
-    this.store.setHeaderFooterConfig(this.getHeaderFooterConfig())
   }
 
   /** 点击命中检测 → 更新光标到点击位置 */
@@ -1729,41 +1736,17 @@ export class Editor {
     }
   }
 
-  /** 获取光标处文本样式 (供 Toolbar 状态同步) */
-  getTextStyle(): {
-    font?: string; size?: number
-    bold?: boolean; italic?: boolean; underline?: boolean
-    underlineStyle?: 'single' | 'double' | 'wave'
-    strikeout?: boolean; superscript?: boolean; subscript?: boolean
-    color?: string; highlight?: string; letterSpacing?: number
-  } | null {
-    const cursor = this.store.state.runtime.cursor
-    if (cursor.paragraphPath.length === 0) return null
-    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-
-    // 读取段落 outlineLevel: LayoutEngine 对标题强制加粗+缩放字号 (见 HEADING_SCALE)
-    const para = this.pool.nodes.get(paraId) as { children?: readonly string[]; outlineLevel?: number } | undefined
-    const outlineLevel = para?.outlineLevel ?? 0
+  /** 文本节点有效样式 (含标题强制加粗 + 缩放字号), 供选区快照与光标处样式复用 */
+  private effectiveTextStyleForNode(textNodeId: string): import('./document/core/DocumentModel').TextStyle | null {
+    const node = this.pool.nodes.get(textNodeId)
+    if (!node || node.type !== 'text') return null
+    const tn = node as unknown as import('./document/core/DocumentModel').TextNode
+    // 标题: LayoutEngine 渲染时强制 bold=true + 缩放字号, 工具栏必须同步反映
+    const para = this.findParagraphContaining(textNodeId)
+    const outlineLevel = (para as unknown as { outlineLevel?: number } | null)?.outlineLevel ?? 0
     const isHeading = outlineLevel > 0
     const HEADING_SCALE: Record<number, number> = { 1: 2.0, 2: 1.5, 3: 1.25, 4: 1.125, 5: 1.0, 6: 0.875 }
     const headingScale = isHeading ? (HEADING_SCALE[outlineLevel] ?? 1) : 1
-
-    const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
-    let tn: { font?: string; size?: number; bold?: boolean; italic?: boolean; underline?: boolean; underlineStyle?: 'single' | 'double' | 'wave'; strikeout?: boolean; superscript?: boolean; subscript?: boolean; color?: string; highlight?: string; letterSpacing?: number } | undefined
-    if (resolved) {
-      tn = this.pool.nodes.get(resolved.textNodeId) as typeof tn
-    } else {
-      // 光标在段尾 → 取最后一个 text node 的样式
-      const paraChildren = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
-      if (paraChildren?.children) {
-        for (let i = paraChildren.children.length - 1; i >= 0; i--) {
-          const n = this.pool.nodes.get(paraChildren.children[i]) as { type?: string } & typeof tn
-          if (n?.type === 'text') { tn = n; break }
-        }
-      }
-    }
-    if (!tn) return null
-    // 标题: LayoutEngine 渲染时强制 bold=true + 缩放字号, 工具栏必须同步反映
     const baseSize = tn.size || 16
     return {
       font: tn.font,
@@ -1781,22 +1764,81 @@ export class Editor {
     }
   }
 
-  /** 获取光标/选区首段落的格式 (供 Toolbar active 状态) */
+  /** 获取光标/选区文本样式快照 (供 Toolbar 状态同步) */
+  getTextStyle(): {
+    font?: string; size?: number
+    bold?: boolean; italic?: boolean; underline?: boolean
+    underlineStyle?: 'single' | 'double' | 'wave'
+    strikeout?: boolean; superscript?: boolean; subscript?: boolean
+    color?: string; highlight?: string; letterSpacing?: number
+  } | null {
+    // 有选区 → 选区样式快照 (统一→值, 混合→undefined 不定态)
+    const selection = this.store.state.runtime.selection
+    if (selection.active) {
+      const nodeIds = this.collectSelectionTextNodeIds(selection)
+      if (nodeIds.length > 0) {
+        const styles: import('./document/core/DocumentModel').TextStyle[] = []
+        for (const nid of nodeIds) {
+          const s = this.effectiveTextStyleForNode(nid)
+          if (s) styles.push(s)
+        }
+        return styles.length > 0 ? uniformTextStyle(styles) : null
+      }
+    }
+
+    // 无选区 → 取光标紧邻后方字符格式
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return null
+    const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
+    if (resolved) {
+      return this.effectiveTextStyleForNode(resolved.textNodeId)
+    }
+    // 光标在段尾 → 取最后一个 text node 的样式 (继承上一字符格式)
+    const paraChildren = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
+    if (paraChildren?.children) {
+      for (let i = paraChildren.children.length - 1; i >= 0; i--) {
+        const n = this.pool.nodes.get(paraChildren.children[i]) as { type?: string } | undefined
+        if (n?.type === 'text') return this.effectiveTextStyleForNode(paraChildren.children[i])
+      }
+    }
+    return null
+  }
+
+  /** 单段落格式投影 (alignment 缺省视为 left) */
+  private paragraphStyleProjectionOf(paraId: string): { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; continueNumbering?: boolean; indent?: number; outlineLevel?: number } {
+    const para = this.pool.nodes.get(paraId) as Record<string, unknown> | undefined
+    const list = para?.list as { type?: string; level?: number; numberStyle?: string; continueNumbering?: boolean } | undefined
+    return {
+      alignment: (para?.alignment as string | undefined) ?? 'left',
+      listType: list?.type,
+      listLevel: list?.level,
+      numberStyle: list?.numberStyle,
+      continueNumbering: list?.continueNumbering,
+      indent: para?.indent as number | undefined,
+      outlineLevel: para?.outlineLevel as number | undefined,
+    }
+  }
+
+  /** 获取光标/选区段落格式 (供 Toolbar active 状态) — 多段落统一→值, 混合→undefined */
   getParagraphStyle(): { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; continueNumbering?: boolean; indent?: number; outlineLevel?: number } | null {
     const paraIds = this.getSelectedParagraphIds()
     if (paraIds.length === 0) return null
-    const paraId = paraIds[0]
-    const para = this.pool.nodes.get(paraId) as Record<string, unknown> | undefined
-    if (!para) return null
-    return {
-      alignment: para.alignment as string | undefined,
-      listType: para.list ? (para.list as { type: string }).type : undefined,
-      listLevel: para.list ? (para.list as { level?: number }).level : undefined,
-      numberStyle: para.list ? (para.list as { numberStyle?: string }).numberStyle : undefined,
-      continueNumbering: para.list ? (para.list as { continueNumbering?: boolean }).continueNumbering : undefined,
-      indent: para.indent as number | undefined,
-      outlineLevel: para.outlineLevel as number | undefined,
+
+    const projections = paraIds.map(id => this.paragraphStyleProjectionOf(id))
+    const KEYS = ['alignment', 'listType', 'listLevel', 'numberStyle', 'continueNumbering', 'indent', 'outlineLevel'] as const
+    const merged: { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; continueNumbering?: boolean; indent?: number; outlineLevel?: number } = {}
+    const first = projections[0]
+    for (const k of KEYS) (merged as Record<string, unknown>)[k] = (first as Record<string, unknown>)[k]
+    for (let i = 1; i < projections.length; i++) {
+      const p = projections[i]
+      for (const k of KEYS) {
+        if ((merged as Record<string, unknown>)[k] !== (p as Record<string, unknown>)[k]) {
+          (merged as Record<string, unknown>)[k] = undefined
+        }
+      }
     }
+    return merged
   }
 
   /** 收集当前选区涉及的所有段落 ID */

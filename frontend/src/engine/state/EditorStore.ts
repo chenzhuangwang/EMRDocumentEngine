@@ -43,6 +43,8 @@ type Listener = (state: EditorStoreState) => void
 export class EditorStore {
   private _state: EditorStoreState
   private listeners = new Set<Listener>()
+  /** 光标/选区变更订阅 (setCursor/setSelection/updateSelection 触发, 不含 setCursorVisible 闪烁) */
+  private cursorSelectionListeners = new Set<() => void>()
   /** 单调递增版本号 — 供 useSyncExternalStore 检测变更 (in-place mutation 下引用不变) */
   private version = 0
 
@@ -82,6 +84,7 @@ export class EditorStore {
   setCursor(cursor: CursorState): void {
     this._state.runtime.cursor = cursor
     this.notify()
+    this.notifyCursorSelectionChanged()
   }
 
   /**
@@ -94,6 +97,7 @@ export class EditorStore {
   setSelection(selection: SelectionState): void {
     this._state.runtime.selection = selection
     this.notify()
+    this.notifyCursorSelectionChanged()
   }
 
   /**
@@ -102,6 +106,7 @@ export class EditorStore {
   updateSelection(patch: Partial<SelectionState>): void {
     Object.assign(this._state.runtime.selection, patch)
     this.notify()
+    this.notifyCursorSelectionChanged()
   }
 
   /**
@@ -186,8 +191,22 @@ export class EditorStore {
     return () => { this.listeners.delete(listener) }
   }
 
+  /**
+   * 订阅光标/选区变更 (setCursor/setSelection/updateSelection)。
+   * 供 Editor 在光标/选区移动后重新同步 paragraphStyle/textStyle 投影。
+   * 不触发于 setCursorVisible (光标闪烁) 与投影写入 (防回环)。
+   */
+  onCursorOrSelectionChange(cb: () => void): () => void {
+    this.cursorSelectionListeners.add(cb)
+    return () => { this.cursorSelectionListeners.delete(cb) }
+  }
+
   private notify(): void {
     this.version++
     this.listeners.forEach(l => { try { l(this._state) } catch {} })
+  }
+
+  private notifyCursorSelectionChanged(): void {
+    this.cursorSelectionListeners.forEach(cb => { try { cb() } catch {} })
   }
 }

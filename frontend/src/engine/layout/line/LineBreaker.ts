@@ -152,19 +152,25 @@ export class LineBreaker {
         continue
       }
 
-      if (currentLineWidth + elWidth >= options.maxWidth && currentLineElements.length > 0) {
-        lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
-        currentLineElements = []
-        currentLineWidth = 0
-        maxAscent = 0
-        maxDescent = 0
-      }
+      // ---- 折行判定: 文本元素优先按「剩余宽度」拆分, 避免节点边界整行下沉 ----
+      let remainingW = options.maxWidth - currentLineWidth
 
-      // 文本元素超出单行宽度 → 逐字累加拆分 (CJK + Latin 混排)
+      // 文本元素超出剩余空间 → 逐字拆分填充当前行 (CJK + Latin 混排)
+      // 关键修复: 格式化把单节点拆成多节点后, 中段节点往往「窄于整行但宽于剩余空间」。
+      // 若拆分只以「整行宽度」判定, 这类节点会被误判为放不下而整段换行,
+      // 导致选区结束位置之后的文本被强制下沉、排版错位。
       if ((el.type === 'text' || el.type === 'smarttext' || el.type === 'hyperlink') &&
-          elWidth > options.maxWidth - currentLineWidth &&
-          (el.value || '').length > 0) {
-        const remainingW = options.maxWidth - currentLineWidth
+          elWidth > remainingW && (el.value || '').length > 0) {
+        // 当前行已满 (剩余宽度 ≤ 0) → 先 flush, 再按整行宽度拆分
+        if (remainingW <= 0 && currentLineElements.length > 0) {
+          lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
+          currentLineElements = []
+          currentLineWidth = 0
+          maxAscent = 0
+          maxDescent = 0
+          remainingW = options.maxWidth
+        }
+
         const parts = this.splitTextElement(el, remainingW, options)
 
         // 第一部分: 填入当前行
@@ -176,16 +182,30 @@ export class LineBreaker {
         if (hAscent > maxAscent) maxAscent = hAscent
         if (hDescent > maxDescent) maxDescent = hDescent
 
-        // 剩余部分: 每部分各占一行
+        // 首段已填满当前行 → flush
+        lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
+
+        // 剩余部分: 除末段外每段各占一行 (末段留在行中, 供后续元素拼接)
         for (let p = 1; p < parts.length; p++) {
-          lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
           const part = parts[p]
           currentLineElements = [part]
           currentLineWidth = this.getElementWidth(part, options)
           maxAscent = part.size ? part.size * 0.8 : options.defaultSize * 0.8
           maxDescent = part.size ? part.size * 0.2 : options.defaultSize * 0.2
+          if (p < parts.length - 1) {
+            lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
+          }
         }
         continue
+      }
+
+      // 非文本元素 (image 等) 超出剩余空间 → 整行换行
+      if (currentLineWidth + elWidth >= options.maxWidth && currentLineElements.length > 0) {
+        lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
+        currentLineElements = []
+        currentLineWidth = 0
+        maxAscent = 0
+        maxDescent = 0
       }
 
       // 零宽字符（占位用）— 保留在行中用于光标位置跟踪，但不占宽度
