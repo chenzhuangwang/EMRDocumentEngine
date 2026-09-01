@@ -232,13 +232,20 @@ Concretely:
     SEPARATE, deferred concern (the "LATER optimization" above) —
     not the same as these per-instance inline presentation fields.
 
-    Runtime consumption (P0): at draw time the renderer reads the
+    Runtime consumption: at draw time the renderer reads the
     per-node presentation style by nodeId (SLIFItem.nodeId) and
     applies it as rendering configuration —
         borderStyle   → whether/how the control box border is drawn
         minWidth      → minimum box width
-        contentWrap   → wrap content inside the box
-        textAlign     → horizontal alignment
+        textAlign     → in-box horizontal alignment of the drawn
+                        text ("left" / "center" / "right"), applied
+                        at draw time; it shifts only the text glyph
+                        inside an already-laid-out box and takes
+                        effect when the box is wider than the text
+                        (i.e. when minWidth pads the box)
+    contentWrap / contentStyle are DEFERRED — they change layout
+    (wrapping, box height, raw CSS box parsing), a LAYOUT-domain
+    concern, not draw-time-only.
     The renderer MUST NOT write presentation fields back into
     DocumentModel, and MUST NOT fold them into SLIF as canonical
     state (SLIF remains a derived projection; presentation fields
@@ -1037,6 +1044,21 @@ Concretely:
     (engine/template/, §12) as a SEPARATE object associated to a
     node by id. SmartTextNode and ElementMeta MUST NOT grow any of
     these seven fields — the boundary is type-enforced.
+
+    Runtime consumption: at draw time the renderer reads the
+    per-node TemplateDefinition by nodeId (SLIFItem.nodeId) and
+    draws the literal-affix fields as text beside the control —
+        label    → label text drawn immediately before the control
+        prefix   → literal drawn before the control (after label)
+        suffix   → literal drawn after the control
+    These are draw-time overlays; they do NOT participate in
+    layout reflow (box position/width come from layout; the affix
+    literals are measured and drawn around the box). Their layout
+    interaction (wrapping, width contribution) is DEFERRED.
+    tips / deletable / editable / single are NOT consumed at draw
+    time: tips is a design-time tooltip, and deletable / editable /
+    single are editing-constraint concerns consumed by the command
+    layer (a later phase), not the renderer.
 
     The template artifact (a document + its TemplateDefinitions)
     is distinct from a filled record (a document with
