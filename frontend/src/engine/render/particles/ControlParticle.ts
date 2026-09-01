@@ -37,15 +37,26 @@ export function createControlParticle(): IParticle {
       const rawMinW = style?.minWidth
       const minW = typeof rawMinW === 'number' ? rawMinW : (rawMinW != null ? parseFloat(String(rawMinW)) : 0)
       const minBoxWidth = Number.isFinite(minW) && minW > 0 ? minW : 0
+      // textAlign 盒内水平对齐 (契约 §2.2) — 仅当盒宽 > 文本宽时生效
+      const align = style?.textAlign
+
+      // 模板设计期属性 (契约 §12.1) — draw time 按 nodeId 查询, 附属字面量
+      const def = options?.templateDefinitionOf?.(item.nodeId)
+      const label = typeof def?.label === 'string' ? def.label : ''
+      const prefix = typeof def?.prefix === 'string' ? def.prefix : ''
+      const suffix = typeof def?.suffix === 'string' ? def.suffix : ''
 
       // 检查隐私脱敏
       const meta = (item as { elementMeta?: { privacy?: { enabled: boolean; maskChar: string } } }).elementMeta
       const isMasked = meta?.privacy?.enabled
       const displayText = isMasked ? (meta!.privacy!.maskChar || '*').repeat(value.length) : value
-      const textW = ctx.measureText(displayText).width
-      const boxW = Math.max(textW, minBoxWidth) + padding * 2
 
       ctx.save()
+      ctx.font = `${fontSize}px "${fontFamily}"`
+      ctx.textBaseline = 'alphabetic'
+
+      const textW = ctx.measureText(displayText).width
+      const boxW = Math.max(textW, minBoxWidth) + padding * 2
 
       if (drawBox) {
         // 背景
@@ -60,11 +71,23 @@ export function createControlParticle(): IParticle {
         ctx.setLineDash([])
       }
 
-      // 文本
-      ctx.font = `${fontSize}px "${fontFamily}"`
+      // 盒内文本 — textAlign 只偏移盒内 glyph, 不改布局 (契约 §2.2)
+      const contentW = boxW - padding * 2
+      let textX = x
+      if (align === 'center') textX = x + (contentW - textW) / 2
+      else if (align === 'right') textX = x + (contentW - textW)
+
       ctx.fillStyle = isMasked ? '#9CA3AF' : (item.color || '#374151')
-      ctx.textBaseline = 'alphabetic'
-      ctx.fillText(displayText, x, y)
+      ctx.fillText(displayText, textX, y)
+
+      // 附属字面量 label/prefix/suffix (契约 §12.1) — draw-time overlay, 不参与布局重排
+      ctx.fillStyle = isMasked ? '#9CA3AF' : (item.color || '#374151')
+      const leftEdge = x - padding
+      const prefixW = prefix ? ctx.measureText(prefix).width : 0
+      const labelW = label ? ctx.measureText(label).width : 0
+      if (label) ctx.fillText(label, leftEdge - prefixW - labelW, y)
+      if (prefix) ctx.fillText(prefix, leftEdge - prefixW, y)
+      if (suffix) ctx.fillText(suffix, leftEdge + boxW, y)
 
       ctx.restore()
     },

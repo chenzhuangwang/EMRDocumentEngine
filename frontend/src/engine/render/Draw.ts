@@ -26,6 +26,7 @@ import { createTableParticle } from './particles/TableParticle'
 import { createImageParticle } from './particles/ImageParticle'
 import { createControlParticle } from './particles/ControlParticle'
 import type { PresentationStyleStore } from './presentation/PresentationStyle'
+import type { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import { createChartParticle } from './particles/ChartParticle'
 import { createBarcodeParticle } from './particles/BarcodeParticle'
 import { particleRegistry } from './particles/ParticleRegistry'
@@ -58,6 +59,10 @@ export class Draw {
   // 表现层样式 (契约 §2.2) — per-editor 实例状态 (§7.6), 随 setDocument 更新
   private presentationStyles: PresentationStyleStore | null = null
   private presentationStyleOf = (nodeId: string) => this.presentationStyles?.get(nodeId)
+
+  // 模板设计期属性 (契约 §12.1) — per-editor 实例状态 (§7.6), 随 setDocument 更新
+  private templateDefinitions: TemplateDefinitionStore | null = null
+  private templateDefinitionOf = (nodeId: string) => this.templateDefinitions?.get(nodeId)
 
   // 页眉页脚编辑模式 (TASK-470/471 双击激活)
   private hfEditActive = false
@@ -141,10 +146,11 @@ export class Draw {
     }
   }
 
-  setDocument(doc: DocumentTree, pool?: NodePool, presentationStyles?: PresentationStyleStore | null): void {
+  setDocument(doc: DocumentTree, pool?: NodePool, presentationStyles?: PresentationStyleStore | null, templateDefinitions?: TemplateDefinitionStore | null): void {
     this.document = doc
     if (pool) this.pool = pool
     this.presentationStyles = presentationStyles ?? null
+    this.templateDefinitions = templateDefinitions ?? null
   }
 
   setRuntimeState(state: EditorRuntimeState): void { this._state = state }
@@ -460,6 +466,7 @@ export class Draw {
                 showInvisible: this._showInvisible,
                 pageIndex: i,
                 presentationStyleOf: this.presentationStyleOf,
+                templateDefinitionOf: this.templateDefinitionOf,
               })
             }
           }
@@ -754,6 +761,7 @@ export class Draw {
           showInvisible: this._showInvisible,
           pageIndex,
           presentationStyleOf: this.presentationStyleOf,
+          templateDefinitionOf: this.templateDefinitionOf,
         })
       }
     }

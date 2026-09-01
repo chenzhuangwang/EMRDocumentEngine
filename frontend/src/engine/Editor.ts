@@ -704,7 +704,7 @@ export class Editor {
     this.pool = loadDocumentFromObject(doc, { extraNodes: nodes }).pool
     this.templateDefinitions = stores?.templateDefinitions ?? null
     this.presentationStyles = stores?.presentationStyles ?? null
-    this.draw.setDocument(doc, this.pool, this.presentationStyles)
+    this.draw.setDocument(doc, this.pool, this.presentationStyles, this.templateDefinitions)
     this.draw.recomputeLayout(this.pool)
 
     // 自动应用文档水印 (R70)
