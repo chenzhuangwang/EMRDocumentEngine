@@ -332,6 +332,14 @@ The conceptual dependency is:
 Rendering MUST be treated as a projection of state,
 not the source of truth.
 
+Inline nodes nested inside table cells (smarttext controls,
+field codes, …) MUST be dispatched through the same particle
+registry (particleRegistry) as body text — a table particle MUST
+NOT render cell items via a direct ctx.fillText bypass. This
+keeps per-node presentation / template-design fields (§2.2 /
+§12.1) applied uniformly: a smarttext inside a table cell renders
+the same control box + presentation styles as one in the body.
+
 ============================================================
 5. COMMAND MUTATION GATE
 ============================================================
