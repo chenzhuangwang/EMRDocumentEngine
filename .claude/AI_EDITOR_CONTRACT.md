@@ -1063,9 +1063,17 @@ Concretely:
     layout reflow (box position/width come from layout; the affix
     literals are measured and drawn around the box). Their layout
     interaction (wrapping, width contribution) is DEFERRED.
-    tips / deletable are NOT consumed at draw time and remain
-    design-time concerns (tooltip / removal gate) for a later
-    phase — the renderer never reads them.
+    deletable is consumed by the COMMAND layer at control-removal
+    time (not the renderer). A smarttext whose TemplateDefinition
+    .deletable === false is a locked control: RemoveControlCommand
+    MUST refuse to remove it — forward returns null, mutating
+    nothing and pushing nothing onto the undo stack. deletable ===
+    true or absent (no store entry) means the control is removable.
+
+    tips is a read-only design-time hint, consumed by the UI at
+    hover time via Editor.getTip(nodeId) — a read API returning
+    the control's TemplateDefinition.tips (or undefined when the
+    node has no definition). The renderer never reads tips.
 
     editable is consumed by the COMMAND layer at find & replace
     time (not the renderer). A smarttext whose TemplateDefinition
