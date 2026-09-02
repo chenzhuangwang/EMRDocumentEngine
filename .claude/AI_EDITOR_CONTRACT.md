@@ -976,6 +976,42 @@ Practical test — if a change to Editor.ts adds:
 
 prefer a dedicated module over adding the logic to Editor.ts.
 
+------------------------------------------------------------
+11.2 God Object drift reversal — the three named homes
+------------------------------------------------------------
+
+The three drifts named in §11 have canonical homes. Editor.ts MUST
+delegate to them and MUST NOT re-absorb the logic:
+
+    selection-collection  →  document/selection/SelectionCollector.ts
+        A single shared helper owns "collect selected text-node ids /
+        paragraph ranges from a SelectionState". The FormatRange type
+        { path, start, end } is a DOCUMENT-domain concept (a projected
+        selection range over DocumentModel) and lives here too — the
+        command layer imports it, never the reverse (§19). Editor.ts
+        and FormatTextCommand.ts both reuse the same helper instead of
+        each carrying an offset-accumulation loop.
+
+    format painter        →  engine/format/FormatPainter.ts
+        A feature module owns the copy/apply logic and the transient
+        copied-style state. The activation BOOLEAN remains canonical in
+        EditorStore (§7.2); only the copied TextStyle and the hit-test/
+        apply orchestration move here. Editor.ts keeps a thin facade
+        (copyFormatPainterStyle / setFormatPainterActive / ... ) that
+        delegates, preserving the public API surface.
+
+    table merge/split     →  document/table/TableOps.ts
+        The colspan/rowspan merge and split algorithms are pure pool
+        mutations (like insertRow / deleteRow already there) and move
+        into TableOps as mergeAdjacentCells / mergeRange / splitCell.
+        Editor.ts keeps only the interaction orchestration: read the
+        selected cell / range, wrap the TableOps call in a
+        TableStructureCommand, then clear the selection state.
+
+The pattern to reverse (§11) is copy-pasted offset-accumulation loops
+and inline cell-span algorithms; these homes are the reversal, not a
+new place to keep extending Editor.ts.
+
 ============================================================
 12. FEATURES MUST NOT POLLUTE CORE
 ============================================================
