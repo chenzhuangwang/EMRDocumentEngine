@@ -1063,10 +1063,25 @@ Concretely:
     layout reflow (box position/width come from layout; the affix
     literals are measured and drawn around the box). Their layout
     interaction (wrapping, width contribution) is DEFERRED.
-    tips / deletable / editable / single are NOT consumed at draw
-    time: tips is a design-time tooltip, and deletable / editable /
-    single are editing-constraint concerns consumed by the command
-    layer (a later phase), not the renderer.
+    tips / deletable / editable are NOT consumed at draw time and
+    remain design-time concerns (tooltip / removal gate / input
+    gate) for a later phase — the renderer never reads them.
+
+    single is consumed by the COMMAND layer at paste/insert time
+    (not the renderer). A single-valued data element — identified
+    by element.code.dataElement, falling back to
+    element.code.internal — MUST NOT be duplicated by a paste:
+    when InsertNodesCommand would introduce a smarttext whose
+    element identity already exists in the target document AND that
+    existing element is marked single === true, the duplicate
+    instance is dropped (the existing first instance is kept).
+    Import (§12.2) does NOT dedupe: a template may legitimately
+    reference the same data element in multiple sections (e.g. a
+    summary header plus the body form), and single guards
+    user-introduced duplication only. Design-time fields live in
+    the per-editor store keyed by node id, so they do NOT survive
+    copy/paste; the guard therefore keys off the EXISTING element's
+    single flag, not the pasted node's.
 
     The template artifact (a document + its TemplateDefinitions +
     its PresentationStyles) is distinct from a filled record (a
