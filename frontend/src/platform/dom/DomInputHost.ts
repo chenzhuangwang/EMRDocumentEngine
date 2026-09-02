@@ -88,11 +88,13 @@ export class DomInputHost implements InputHost {
     if (listeners.mousedown) container.addEventListener('mousedown', listeners.mousedown)
     if (listeners.click) container.addEventListener('click', listeners.click)
     if (listeners.mouseup) container.addEventListener('mouseup', listeners.mouseup)
+    if (listeners.mouseleave) container.addEventListener('mouseleave', listeners.mouseleave)
     return () => {
       if (listeners.keydown) container.removeEventListener('keydown', listeners.keydown)
       if (listeners.mousedown) container.removeEventListener('mousedown', listeners.mousedown)
       if (listeners.click) container.removeEventListener('click', listeners.click)
       if (listeners.mouseup) container.removeEventListener('mouseup', listeners.mouseup)
+      if (listeners.mouseleave) container.removeEventListener('mouseleave', listeners.mouseleave)
     }
   }
 

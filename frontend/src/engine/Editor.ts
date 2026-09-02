@@ -48,6 +48,7 @@ import {
 } from './command/commands/StructuralCommands'
 import { InsertImageCommand } from './command/commands/InsertImageCommand'
 import { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
+import { RemoveControlCommand } from './command/commands/RemoveControlCommand'
 import type { TemplateDefinitionStore } from './template/TemplateDefinition'
 import type { PresentationStyleStore } from './render/presentation/PresentationStyle'
 
@@ -690,6 +691,37 @@ export class Editor {
   /** 读取控件设计期提示文本 (契约 §12.1 tips) — 供 UI 悬浮提示消费 */
   getTip(nodeId: string): string | undefined {
     return this.templateDefinitions?.get(nodeId)?.tips
+  }
+  /** 设计模式选中的控件节点 id (契约 §12.3), 无选中为 null */
+  getSelectedControlId(): string | null { return this.store.state.designSelectedControlId }
+  /** 设计模式悬停的控件节点 id (契约 §12.3), 无悬停为 null */
+  getHoveredControlId(): string | null { return this.store.state.designHoveredControlId }
+  /** 选中/清除控件 (设计模式, 契约 §12.3) — null 清除选中, 同步 Draw 高亮并重绘 */
+  selectControl(nodeId: string | null): void {
+    this.store.setDesignSelectedControlId(nodeId)
+    this.draw.designSelectedControlId = nodeId
+    this.draw.render(this.pool, this.store.state.runtime)
+  }
+  /** 更新设计模式悬停控件 (契约 §12.3), null 清除 — 仅供 UI 悬浮提示, 不触发重绘 */
+  setHoveredControl(nodeId: string | null): void {
+    this.store.setDesignHoveredControlId(nodeId)
+  }
+  /**
+   * 删除设计模式选中的控件 (契约 §12.3) — 走 RemoveControlCommand,
+   * deletable 守卫 (§12.1) 在命令 forward 内执行。
+   * 返回是否实际删除; 守卫拒绝 (deletable:false) 时保留选中并返回 false。
+   */
+  deleteSelectedControl(): boolean {
+    const nodeId = this.store.state.designSelectedControlId
+    if (!nodeId) return false
+    const para = this.findParagraphContaining(nodeId)
+    if (!para) return false
+    this.execCommand(new RemoveControlCommand(
+      generateCommandId(), Date.now(), 'user', [this.doc.id, para.id], nodeId,
+    ))
+    if (this.pool.nodes.has(nodeId)) return false // 守卫拒绝 (deletable:false) 或未删除
+    this.selectControl(null)
+    return true
   }
   /** 表现层样式 (契约 §2.2) — 渲染消费 */
   getPresentationStyles(): PresentationStyleStore | null { return this.presentationStyles }

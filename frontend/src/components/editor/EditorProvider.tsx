@@ -32,6 +32,8 @@ const DEFAULT_STORE_STATE: EditorStoreState = {
   paragraphStyle: null,
   textStyle: null,
   headerFooterConfig: { differentFirstPage: false, differentOddEven: false },
+  designSelectedControlId: null,
+  designHoveredControlId: null,
 }
 
 interface EditorProviderProps {

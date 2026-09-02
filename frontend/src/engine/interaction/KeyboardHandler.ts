@@ -44,6 +44,11 @@ export class KeyboardHandler {
     // 仅设计模式允许所有操作, 其余模式有编辑限制
     const blockEdit = !isDesign && (isReadonly || isForm)
 
+    // 设计模式: Delete/Backspace 删除选中控件 (契约 §12.3, deletable 守卫经 RemoveControlCommand)
+    if (isDesign && (e.key === 'Delete' || e.key === 'Backspace')) {
+      if (ed.getSelectedControlId()) { e.preventDefault(); ed.deleteSelectedControl(); return }
+    }
+
     // Ctrl+Z / Ctrl+Y
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); ed.undo(); return }
     if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); ed.redo(); return }

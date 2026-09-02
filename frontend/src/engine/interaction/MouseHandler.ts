@@ -13,6 +13,7 @@ import { computeOffsetInItems } from '../layout/text/CharWidthHelper'
 import type { TextMeasurer } from '../layout/text/TextMeasurer'
 import { screenToDoc, findPageByDocY, pageCenteringOffset } from '../layout/table/TableCoordUtil'
 import { getCellGridPosition } from '../document/table/TableOps'
+import { findControlItemAt } from './ControlHitTest'
 
 /** 双击时间阈值 (ms) */
 const DOUBLE_CLICK_THRESHOLD = 400
@@ -56,7 +57,7 @@ export class MouseHandler {
     this.editor = editor
     this.host = host
     this.measurer = measurer
-    this.detachContainer = host.input.attachContainer({ mousedown: this.onMouseDown })
+    this.detachContainer = host.input.attachContainer({ mousedown: this.onMouseDown, mouseleave: this.onMouseLeave })
     this.detachGlobal = host.input.attachGlobal({ mousemove: this.onMouseMove, mouseup: this.onMouseUp })
   }
 
@@ -78,6 +79,13 @@ export class MouseHandler {
     this.cellBoxActive = false
     this.dragStartX = e.clientX
     this.dragStartY = e.clientY
+
+    // --- 设计模式: 点击选中/取消控件 (契约 §12.3), 优先于其他命中检测 ---
+    if (this.editor.getStore().state.runtime.view.mode === 'design') {
+      const controlId = this.hitTestControl(e.clientX, e.clientY)
+      this.editor.selectControl(controlId)
+      return
+    }
 
     // 先检查是否在页眉/页脚区域
     const hfSection = this.detectHeaderFooterRegion(e.clientX, e.clientY)
@@ -312,6 +320,13 @@ export class MouseHandler {
   }
 
   private onMouseMove = (e: MouseEvent) => {
+    // 设计模式悬停提示 (契约 §12.3) — 不拖拽时也命中控件, 供 UI tooltip 消费
+    if (!this.dragging && this.editor.getStore().state.runtime.view.mode === 'design') {
+      const controlId = this.hitTestControl(e.clientX, e.clientY)
+      this.editor.setHoveredControl(controlId)
+      return
+    }
+
     if (!this.dragging) return
 
     // 阈值判定
@@ -377,6 +392,13 @@ export class MouseHandler {
     this.cellBoxActive = false
   }
 
+  /** 鼠标离开容器 → 清除设计模式悬停 (契约 §12.3), 避免 tooltip 残留 */
+  private onMouseLeave = () => {
+    if (this.editor.getStore().state.runtime.view.mode === 'design') {
+      this.editor.setHoveredControl(null)
+    }
+  }
+
   /** 命中检测 — Phase 2: 二级碰撞检测
    *  Level 1: HitTestIndex 顶级块索引
    *  Level 2: 命中 table 外框 → hitTestTable() cell 内精确定位
@@ -435,6 +457,31 @@ export class MouseHandler {
       return { paraPath: [doc.id, nearest.id], offset }
     }
     return null
+  }
+
+  /** 设计模式控件命中检测 (契约 §12.3) — 屏幕坐标 → smarttext 控件 nodeId
+   *  复用 hitTest 的坐标变换 (screenToDoc + findPageByDocY + pageCenteringOffset),
+   *  在 getFlatPageItems 展平项中查找 nodeType==='smarttext' 且包围盒含点的控件。
+   */
+  private hitTestControl(clientX: number, clientY: number): string | null {
+    const rect = this.host.viewport.bounds()
+    const coord = this.editor.getDraw().getCoordinateSystem()
+    const { scale, scrollY } = coord.transform
+
+    const { x: docX0, y: docY0 } = screenToDoc(clientX, clientY, scale, scrollY, rect)
+
+    const pages = this.editor.getDraw().getPages()
+    if (pages.length === 0) return null
+
+    const gap = this.editor.getDraw().getPageVerticalGap()
+    const { pageIndex, localY } = findPageByDocY(docY0, pages, gap)
+    const page = pages[pageIndex]
+    if (!page) return null
+
+    const offsetX = pageCenteringOffset(page.width, this.host.viewport.size().width, scale)
+    const docX = docX0 - offsetX / scale
+
+    return findControlItemAt(page, docX, localY)
   }
 
   /** 查找 nodeId 所属段落, 无则返回 null */

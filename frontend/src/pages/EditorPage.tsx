@@ -872,6 +872,7 @@ function EditorPageInner({
       templates={templates}
     >
       <div ref={containerRef} className="flex-1 bg-[#E5E7EB] relative overflow-y-auto overflow-x-hidden" style={{ minHeight: '400px' }} />
+      <DesignControlTooltip />
       {/* 隐藏的文件选择器 (TASK-447 图片插入) */}
       <input
         ref={fileInputRef}
@@ -962,6 +963,35 @@ function EditorPageInner({
       />
     </EditorLayout>
     </ReadingModeOverlay>
+  )
+}
+
+// ---- 设计模式控件悬浮提示 (契约 §12.3 tips 消费点) ----
+
+function DesignControlTooltip() {
+  const editorRef = useEditorRef()
+  const mode = useEditorStoreSnapshot((s) => s.runtime.view.mode)
+  const hoveredId = useEditorStoreSnapshot((s) => s.designHoveredControlId)
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+
+  // 仅设计模式跟踪鼠标位置 (tooltip 跟随光标), 非设计模式清空
+  useEffect(() => {
+    if (mode !== 'design') { setPos(null); return }
+    const onMove = (e: MouseEvent) => setPos({ x: e.clientX, y: e.clientY })
+    window.addEventListener('mousemove', onMove)
+    return () => window.removeEventListener('mousemove', onMove)
+  }, [mode])
+
+  const tip = hoveredId ? editorRef.current?.getTip(hoveredId) : undefined
+  if (mode !== 'design' || !hoveredId || !tip || !pos) return null
+
+  return (
+    <div
+      className="pointer-events-none fixed z-50 max-w-xs rounded-md bg-gray-900/95 px-2.5 py-1.5 text-xs text-white shadow-lg"
+      style={{ left: pos.x + 14, top: pos.y + 14 }}
+    >
+      {tip}
+    </div>
   )
 }
 

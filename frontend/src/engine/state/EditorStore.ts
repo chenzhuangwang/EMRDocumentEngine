@@ -36,6 +36,10 @@ export interface EditorStoreState {
   textStyle: TextStyle | null
   /** 页眉页脚选项投影 (canonical owner = DocumentTree, 此处为 UI 读取投影) */
   headerFooterConfig: HeaderFooterConfig
+  /** 设计模式选中的控件节点 id (canonical owner = Editor, 契约 §12.3) — 无选中为 null */
+  designSelectedControlId: string | null
+  /** 设计模式悬停的控件节点 id (canonical owner = Editor, 契约 §12.3) — 供 UI 悬浮提示, 无悬停为 null */
+  designHoveredControlId: string | null
 }
 
 type Listener = (state: EditorStoreState) => void
@@ -59,6 +63,8 @@ export class EditorStore {
       paragraphStyle: null,
       textStyle: null,
       headerFooterConfig: { ...DEFAULT_HEADER_FOOTER_CONFIG },
+      designSelectedControlId: null,
+      designHoveredControlId: null,
     }
   }
 
@@ -171,6 +177,20 @@ export class EditorStore {
   /** 编辑模式 (edit/readonly/form/clean/design/print) — 唯一受控写入入口 */
   setMode(mode: EditorMode): void {
     this._state.runtime.view.mode = mode
+    this.notify()
+  }
+
+  /** 设计模式选中控件 (契约 §12.3) — 唯一受控写入入口, 同值不重复通知 */
+  setDesignSelectedControlId(id: string | null): void {
+    if (this._state.designSelectedControlId === id) return
+    this._state.designSelectedControlId = id
+    this.notify()
+  }
+
+  /** 设计模式悬停控件 (契约 §12.3) — 唯一受控写入入口, 同值不重复通知 */
+  setDesignHoveredControlId(id: string | null): void {
+    if (this._state.designHoveredControlId === id) return
+    this._state.designHoveredControlId = id
     this.notify()
   }
 

@@ -83,6 +83,9 @@ export class Draw {
   // 单元格框选范围 (网格坐标, 由 Editor 注入)
   cellSelection: { tableId: string; startRow: number; startCol: number; endRow: number; endCol: number } | null = null
 
+  // 设计模式选中的控件节点 id (契约 §12.3, 由 Editor 注入) — 高亮 overlay
+  designSelectedControlId: string | null = null
+
   constructor(
     host: EditorHost,
     eventBus: EventBus,
@@ -559,6 +562,11 @@ export class Draw {
       this.renderCellSelection(pool, this.cellSelection, pageVerticalGap, ictx)
     }
 
+    // --- 设计模式控件选中高亮 (契约 §12.3, draw-time overlay) ---
+    if (this.designSelectedControlId) {
+      this.renderDesignSelection(this.designSelectedControlId, pageVerticalGap, ictx)
+    }
+
     // --- 光标 (文字上方, 仅在 visible 时绘制) ---
     if (cursor.visible) {
       const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, pageVerticalGap)
@@ -730,6 +738,41 @@ export class Draw {
         }
       }
     }
+    ictx.restore()
+  }
+
+  /** 渲染设计模式控件选中高亮 (契约 §12.3) — 虚线边框 draw-time overlay, 不触发回流
+   *  遍历所有页面 (选中控件可能位于 visible 之外) — 与 renderCellSelection 同源方案
+   */
+  private renderDesignSelection(
+    nodeId: string,
+    pageVerticalGap: number = 0,
+    ictx: CanvasRenderingContext2D,
+  ): void {
+    ictx.save()
+    ictx.fillStyle = 'rgba(37, 99, 235, 0.10)' // primary-600 @ 10%
+    ictx.strokeStyle = '#2563EB'               // primary-600
+    ictx.lineWidth = 1.5
+    ictx.setLineDash([5, 3])
+
+    const scrollY = this.coordSystem.transform.scrollY
+
+    for (let i = 0; i < this.pages.length; i++) {
+      const page = this.pages[i]
+      if (!page) continue
+      const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
+      for (const item of getFlatPageItems(page)) {
+        if (item.nodeId !== nodeId || item.nodeType !== 'smarttext') continue
+        const x = item.x - 2
+        const y = spY + item.y - 2
+        const w = (item.width || 0) + 4
+        const h = (item.height || item.ascent + item.descent) + 4
+        ictx.fillRect(x, y, w, h)
+        ictx.strokeRect(x, y, w, h)
+      }
+    }
+
+    ictx.setLineDash([])
     ictx.restore()
   }
 

@@ -141,6 +141,7 @@ export interface ContainerListeners {
   mousedown?: (e: MouseEvent) => void
   click?: (e: MouseEvent) => void
   mouseup?: (e: MouseEvent) => void
+  mouseleave?: (e: MouseEvent) => void
 }
 
 export interface GlobalListeners {
