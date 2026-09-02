@@ -7,6 +7,8 @@
 import type { TextNode, TextStyle, Paragraph } from '../../document/core/DocumentModel'
 import { extractStyle, createTextNode } from '../../document/factory/ElementFormatter'
 import type { NodePool } from '../../document/core/NodePool'
+import type { FormatRange } from '../../document/selection/SelectionCollector'
+import { collectTextNodeIds } from '../../document/selection/SelectionCollector'
 import { ICommand, CommandContext, StatePatch, SerializedCommand, generateCommandId } from '../ICommand'
 
 export class FormatTextCommand implements ICommand {
@@ -187,15 +189,6 @@ export class FormatPainterCommand implements ICommand {
 // 恢复拆分前的节点结构 (不依赖 sameStyle 的启发式合并)。
 // ================================================================
 
-export interface FormatRange {
-  /** [docId, paraId] — 与 PositionalCommand.path 语义一致 */
-  path: string[]
-  /** 段内字符偏移 (inclusive) */
-  start: number
-  /** 段内字符偏移 (exclusive) */
-  end: number
-}
-
 /** 全量替换样式 (清除格式 / 格式刷的"替换而非合并"语义) — 未指定字段重置为默认 */
 export function replacementStyle(source: Partial<TextStyle>): Partial<TextNode> {
   return {
@@ -212,23 +205,6 @@ export function replacementStyle(source: Partial<TextStyle>): Partial<TextNode> 
     subscript: source.subscript ?? undefined,
     letterSpacing: source.letterSpacing ?? undefined,
   }
-}
-
-/** 收集段落 [start,end) 内完整覆盖的文本节点 id (经边界拆分后即"精确命中") */
-function collectTextNodeIdsInRange(pool: NodePool, paraId: string, start: number, end: number): string[] {
-  const para = pool.nodes.get(paraId) as Paragraph | undefined
-  if (!para) return []
-  const ids: string[] = []
-  let offset = 0
-  for (const childId of para.children) {
-    const node = pool.nodes.get(childId) as { type?: string; text?: string } | undefined
-    const len = node?.type === 'text' ? (node.text || '').length : 1
-    if (node?.type === 'text' && offset + len > start && offset < end) {
-      ids.push(childId)
-    }
-    offset += len
-  }
-  return ids
 }
 
 export class FormatTextRangeCommand implements ICommand {
@@ -265,7 +241,7 @@ export class FormatTextRangeCommand implements ICommand {
       this.splitAt(pool, paraId, range.end)
 
       // 2. 收集 [start,end) 内完整覆盖的文本节点
-      const ids = collectTextNodeIdsInRange(pool, paraId, range.start, range.end)
+      const ids = collectTextNodeIds(pool, paraId, range.start, range.end)
 
       // 3. 应用样式 (先快照旧样式供 invert 还原)
       for (const nodeId of ids) {

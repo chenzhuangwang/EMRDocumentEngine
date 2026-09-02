@@ -23,7 +23,6 @@ import { InsertNodesCommand } from './command/commands/InsertNodesCommand'
 import { DeleteRangeCommand } from './command/commands/DeleteRangeCommand'
 import { FormatPainterCommand } from './command/commands/FormatTextCommand'
 import { FormatTextRangeCommand } from './command/commands/FormatTextCommand'
-import type { FormatRange } from './command/commands/FormatTextCommand'
 import { ParagraphStyleCommand } from './command/commands/ParagraphStyleCommand'
 import { SetHeaderFooterConfigCommand } from './command/commands/HeaderFooterConfigCommand'
 import { MergeParagraphCommand } from './command/commands/MergeParagraphCommand'
@@ -39,6 +38,11 @@ import { resolveCellPosition } from './state/CaretScope'
 import { screenToDoc, findPageByDocY, pageCenteringOffset } from './layout/table/TableCoordUtil'
 import { insertRow, deleteRow, insertColumn, deleteColumn, getCellGridPosition, buildCellGrid, normalizeRange } from './document/table/TableOps'
 import type { CellRange } from './document/table/TableOps'
+import {
+  collectTextNodeIds, collectSelectionSegments,
+  paragraphTextLength, findFirstTextNodeInRange,
+} from './document/selection/SelectionCollector'
+import type { FormatRange } from './document/selection/SelectionCollector'
 import { createTableCell } from './document/factory/ElementFormatter'
 import {
   InsertInlineNodeCommand, InsertBlockCommand, InsertFootnoteCommand,
@@ -484,14 +488,7 @@ export class Editor {
 
   /** 计算段落内所有文本节点的总字符数 (文本节点计 text.length, 非文本节点计 1) */
   private getParagraphTextLengthById(paraId: string): number {
-    const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
-    if (!para?.children) return 0
-    let len = 0
-    for (const childId of para.children) {
-      const node = this.pool.nodes.get(childId) as { type?: string; text?: string } | undefined
-      len += node?.type === 'text' ? (node.text || '').length : 1
-    }
-    return len
+    return paragraphTextLength(this.pool, paraId)
   }
 
   /** 计算段落内所有文本节点的总字符数 (按段落对象) */
@@ -517,123 +514,49 @@ export class Editor {
   }
 
   /**
-   * 收集段落中偏移范围内的所有文本节点 ID
-   * @param paraId 段落 ID
-   * @param startOffset 起始字符偏移 (inclusive)
-   * @param endOffset 结束字符偏移 (exclusive), 传 Number.MAX_SAFE_INTEGER 表示到段落末尾
-   */
-  private collectTextNodeIds(paraId: string, startOffset: number, endOffset: number): string[] {
-    const ids: string[] = []
-    const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
-    if (!para?.children) return ids
-    let offset = 0
-    for (const cid of para.children) {
-      const n = this.pool.nodes.get(cid) as { type?: string; text?: string } | undefined
-      const len = n?.type === 'text' ? ((n.text as string) || '').length : 1
-      if (n?.type === 'text' && offset + len > startOffset && offset < endOffset) {
-        ids.push(cid)
-      }
-      offset += len
-    }
-    return ids
-  }
-
-  /**
    * 收集选区覆盖的所有文本节点 ID (同段/跨段)。
-   * 同段落取 [min,max) 区间内 text node；跨段落遍历 body[lo..hi] 逐段收集。
-   * 空选区 (起止重合) 返回空数组。
+   * 空选区 (起止重合) 返回空数组。委托 SelectionCollector (§11.2)。
    */
   private collectSelectionTextNodeIds(selection: SelectionState): string[] {
-    const nodeIds: string[] = []
     const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
     const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
-
-    if (anchorParaId === focusParaId) {
-      // 同段落选区: 收集选区范围内所有 text node
-      const start = Math.min(selection.anchor.offset, selection.focus.offset)
-      const end = Math.max(selection.anchor.offset, selection.focus.offset)
-      if (start < end) {
-        nodeIds.push(...this.collectTextNodeIds(anchorParaId, start, end))
-      }
-      return nodeIds
-    }
-
-    // 跨段落选区: 遍历 anchor→focus 之间所有段落, 逐段收集 text node
-    const bodyChildren = this.doc.body.children
-    const aIdx = bodyChildren.indexOf(anchorParaId)
-    const fIdx = bodyChildren.indexOf(focusParaId)
-    if (aIdx < 0 || fIdx < 0) return nodeIds
-
-    const lo = Math.min(aIdx, fIdx)
-    const hi = Math.max(aIdx, fIdx)
-    // 与 Draw.renderSelectionUnified 逻辑一致: 首段偏移 = 索引较小端对应的 anchor/focus offset
-    const loOff = aIdx === lo ? selection.anchor.offset : selection.focus.offset
-    const hiOff = aIdx === hi ? selection.anchor.offset : selection.focus.offset
-    const INF = Number.MAX_SAFE_INTEGER
-
-    for (let i = lo; i <= hi; i++) {
-      const paraId = bodyChildren[i]
-      if (i === lo && i === hi) {
-        // 防御性: samePara 已在上方拦截, 此处仅在极端边界触发
-        if (loOff < hiOff) nodeIds.push(...this.collectTextNodeIds(paraId, loOff, hiOff))
-      } else if (i === lo) {
-        // 首段: 从 loOff 到段落末尾的全部文本节点
-        nodeIds.push(...this.collectTextNodeIds(paraId, loOff, INF))
-      } else if (i === hi) {
-        // 末段: 从段落开头到 hiOff 的全部文本节点
-        nodeIds.push(...this.collectTextNodeIds(paraId, 0, hiOff))
-      } else {
-        // 中间段: 全部文本节点
-        nodeIds.push(...this.collectTextNodeIds(paraId, 0, INF))
-      }
+    const segments = collectSelectionSegments(
+      this.doc.body.children, anchorParaId, selection.anchor.offset,
+      focusParaId, selection.focus.offset,
+    )
+    const nodeIds: string[] = []
+    for (const s of segments) {
+      nodeIds.push(...collectTextNodeIds(this.pool, s.paraId, s.start, s.end))
     }
     return nodeIds
   }
 
   /**
    * 收集选区覆盖的段落区间 (同段/跨段)。每段一个 FormatRange。
-   * 同段落取 [min,max) 区间；跨段落遍历 body[lo..hi] 逐段生成。
-   * 空选区 (起止重合) 返回空数组。
+   * 空选区 (起止重合) 返回空数组。跨段遍历委托 SelectionCollector (§11.2)。
    */
   private collectSelectionRanges(selection: SelectionState): FormatRange[] {
-    const ranges: FormatRange[] = []
     const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
     const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
 
+    // 同段: 保留完整 anchor 段落路径 (原行为)
     if (anchorParaId === focusParaId) {
       const start = Math.min(selection.anchor.offset, selection.focus.offset)
       const end = Math.max(selection.anchor.offset, selection.focus.offset)
-      if (start < end) {
-        ranges.push({ path: [...selection.anchor.paragraphPath], start, end })
-      }
-      return ranges
+      if (start < end) return [{ path: [...selection.anchor.paragraphPath], start, end }]
+      return []
     }
 
-    // 跨段落选区: 遍历 anchor→focus 之间所有段落, 逐段生成区间
-    const bodyChildren = this.doc.body.children
-    const aIdx = bodyChildren.indexOf(anchorParaId)
-    const fIdx = bodyChildren.indexOf(focusParaId)
-    if (aIdx < 0 || fIdx < 0) return ranges
-
-    const lo = Math.min(aIdx, fIdx)
-    const hi = Math.max(aIdx, fIdx)
-    const loOff = aIdx === lo ? selection.anchor.offset : selection.focus.offset
-    const hiOff = aIdx === hi ? selection.anchor.offset : selection.focus.offset
-
-    for (let i = lo; i <= hi; i++) {
-      const paraId = bodyChildren[i]
-      const path = [this.doc.id, paraId]
-      if (i === lo && i === hi) {
-        if (loOff < hiOff) ranges.push({ path, start: loOff, end: hiOff })
-      } else if (i === lo) {
-        ranges.push({ path, start: loOff, end: this.getParagraphTextLengthById(paraId) })
-      } else if (i === hi) {
-        ranges.push({ path, start: 0, end: hiOff })
-      } else {
-        ranges.push({ path, start: 0, end: this.getParagraphTextLengthById(paraId) })
-      }
-    }
-    return ranges
+    // 跨段: 委托 collectSelectionSegments, 再物化 path (两级) 与 end (段末→实际长度)
+    const segments = collectSelectionSegments(
+      this.doc.body.children, anchorParaId, selection.anchor.offset,
+      focusParaId, selection.focus.offset,
+    )
+    return segments.map((s) => ({
+      path: [this.doc.id, s.paraId],
+      start: s.start,
+      end: s.end === Number.MAX_SAFE_INTEGER ? paragraphTextLength(this.pool, s.paraId) : s.end,
+    }))
   }
 
   /**
@@ -657,21 +580,10 @@ export class Editor {
     return [{ path: [...cursor.paragraphPath], start, end: start + (node.text || '').length }]
   }
 
-  /** 读取选区区间内首个文本节点的样式 (供 toggle 方向判断, 与旧 collectSelectionTextNodeIds 首节点语义一致) */
+  /** 读取选区区间内首个文本节点的样式 (供 toggle 方向判断) */
   private getFirstRangeTextNodeStyle(range: FormatRange): Record<string, unknown> | null {
-    const paraId = range.path[range.path.length - 1]
-    const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
-    if (!para?.children) return null
-    let offset = 0
-    for (const childId of para.children) {
-      const node = this.pool.nodes.get(childId) as { type?: string; text?: string } | undefined
-      const len = node?.type === 'text' ? (node.text || '').length : 1
-      if (node?.type === 'text' && offset + len > range.start && offset < range.end) {
-        return node as unknown as Record<string, unknown>
-      }
-      offset += len
-    }
-    return null
+    const node = findFirstTextNodeInRange(this.pool, range)
+    return node ? (node as unknown as Record<string, unknown>) : null
   }
 
   /**
