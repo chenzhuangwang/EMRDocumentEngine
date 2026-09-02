@@ -50,6 +50,7 @@ import { InsertImageCommand } from './command/commands/InsertImageCommand'
 import { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
 import { RemoveControlCommand } from './command/commands/RemoveControlCommand'
 import { InsertControlCommand } from './command/commands/InsertControlCommand'
+import { UpdateControlDefinitionCommand } from './command/commands/UpdateControlDefinitionCommand'
 import { TemplateDefinitionStore } from './template/TemplateDefinition'
 import type { TemplateDefinition } from './template/TemplateDefinition'
 import type { PresentationStyleStore } from './render/presentation/PresentationStyle'
@@ -693,6 +694,21 @@ export class Editor {
   /** 读取控件设计期提示文本 (契约 §12.1 tips) — 供 UI 悬浮提示消费 */
   getTip(nodeId: string): string | undefined {
     return this.templateDefinitions?.get(nodeId)?.tips
+  }
+  /** 读取控件设计期属性完整定义 (契约 §12.5) — 供设计态属性编辑面板展示 */
+  getControlDefinition(nodeId: string): TemplateDefinition | undefined {
+    return this.templateDefinitions?.get(nodeId)
+  }
+  /**
+   * 就地编辑控件设计期属性 (契约 §12.5) — 经 UpdateControlDefinitionCommand。
+   * 整体替换语义: 传入「编辑后的完整 def」, undefined/空对象 → 删除条目。
+   * store 为 per-editor 实例 (§7.6), 惰性建立以支撑空白文档设计态。
+   */
+  setControlDefinition(nodeId: string, definition?: TemplateDefinition): void {
+    if (!this.templateDefinitions) this.templateDefinitions = new TemplateDefinitionStore()
+    this.execCommand(new UpdateControlDefinitionCommand(
+      generateCommandId(), Date.now(), 'user', nodeId, definition,
+    ))
   }
   /** 设计模式选中的控件节点 id (契约 §12.3), 无选中为 null */
   getSelectedControlId(): string | null { return this.store.state.designSelectedControlId }
