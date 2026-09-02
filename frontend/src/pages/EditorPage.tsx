@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { EditorLayout } from '@/components/layout/EditorLayout'
 import { ReadingModeOverlay } from '@/components/views/ReadingMode'
+import { DesignControlPalette } from '@/components/views/DesignControlPalette'
 import { EditorProvider, useEditorRef, useEditorReady, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { ExportDialog } from '@/components/dialogs/ExportDialog'
 import { FindReplaceDialog } from '@/components/dialogs/FindReplaceDialog'
@@ -873,6 +874,7 @@ function EditorPageInner({
     >
       <div ref={containerRef} className="flex-1 bg-[#E5E7EB] relative overflow-y-auto overflow-x-hidden" style={{ minHeight: '400px' }} />
       <DesignControlTooltip />
+      <DesignControlPalette />
       {/* 隐藏的文件选择器 (TASK-447 图片插入) */}
       <input
         ref={fileInputRef}

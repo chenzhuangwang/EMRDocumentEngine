@@ -1,4 +1,4 @@
-import type { DocumentTree, BaseNode, Paragraph, HeaderFooterConfig } from './document/core/DocumentModel'
+import type { DocumentTree, BaseNode, Paragraph, HeaderFooterConfig, ElementMeta } from './document/core/DocumentModel'
 import { DEFAULT_HEADER_FOOTER_CONFIG } from './document/core/DocumentModel'
 import { createDocument, createParagraph, createTextNode, extractStyle, uniformTextStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent, createSmartTextNode } from './document/factory/ElementFormatter'
 import { NodePool, buildNodePool } from './document/core/NodePool'
@@ -49,7 +49,9 @@ import {
 import { InsertImageCommand } from './command/commands/InsertImageCommand'
 import { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
 import { RemoveControlCommand } from './command/commands/RemoveControlCommand'
-import type { TemplateDefinitionStore } from './template/TemplateDefinition'
+import { InsertControlCommand } from './command/commands/InsertControlCommand'
+import { TemplateDefinitionStore } from './template/TemplateDefinition'
+import type { TemplateDefinition } from './template/TemplateDefinition'
 import type { PresentationStyleStore } from './render/presentation/PresentationStyle'
 
 /** Editor: 引擎编排器 (架构 §3, v20.34) */
@@ -1207,6 +1209,23 @@ export class Editor {
       generateCommandId(), Date.now(), 'user',
       cursor.paragraphPath, cursor.offset,
       () => createSmartTextNode(`[${name}]`, meta),
+    ))
+  }
+
+  /**
+   * 插入控件库条目 (设计态, 契约 §12.4) — 经 InsertControlCommand。
+   * 同时写入语义层 (SmartTextNode.element) 与设计期层 (TemplateDefinition),
+   * single 守卫 (§12.1) 在命令 forward 内执行 (重复 single 控件拒绝插入)。
+   * 设计期 store 为 per-editor 实例 (§7.6), 惰性建立以支撑空白文档设计态。
+   */
+  insertControl(element: ElementMeta, definition?: TemplateDefinition): void {
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return
+    if (!this.templateDefinitions) this.templateDefinitions = new TemplateDefinitionStore()
+    this.commandManager.execute(new InsertControlCommand(
+      generateCommandId(), Date.now(), 'user',
+      cursor.paragraphPath, cursor.offset,
+      element, definition,
     ))
   }
 
