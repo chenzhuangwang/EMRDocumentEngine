@@ -36,14 +36,13 @@ import { FontManager } from './layout/text/FontManager'
 import { TextMeasurer } from './layout/text/TextMeasurer'
 import { resolveCellPosition } from './state/CaretScope'
 import { screenToDoc, findPageByDocY, pageCenteringOffset } from './layout/table/TableCoordUtil'
-import { insertRow, deleteRow, insertColumn, deleteColumn, getCellGridPosition, buildCellGrid, normalizeRange } from './document/table/TableOps'
+import { insertRow, deleteRow, insertColumn, deleteColumn, getCellGridPosition, mergeAdjacentCells, mergeRange, splitCell } from './document/table/TableOps'
 import type { CellRange } from './document/table/TableOps'
 import {
   collectTextNodeIds, collectSelectionSegments,
   paragraphTextLength, findFirstTextNodeInRange,
 } from './document/selection/SelectionCollector'
 import type { FormatRange } from './document/selection/SelectionCollector'
-import { createTableCell } from './document/factory/ElementFormatter'
 import {
   InsertInlineNodeCommand, InsertBlockCommand, InsertFootnoteCommand,
   CreateCommentCommand, AddCommentReplyCommand, ResolveCommentCommand,
@@ -883,76 +882,18 @@ export class Editor {
 
     this.commandManager.execute(new TableStructureCommand(
       generateCommandId(), Date.now(), 'user', tableId,
-      (pool) => {
-        const table = pool.nodes.get(tableId) as { children?: readonly string[] } | undefined
-        if (!table?.children) return false
-        const rowId = table.children[rowIdx]
-        if (!rowId) return false
-        const row = pool.nodes.get(rowId) as { children?: readonly string[] } | undefined
-        if (!row?.children) return false
-        const cellId = row.children[colIdx]
-        const nextCellId = row.children[colIdx + 1]
-        if (!cellId || !nextCellId) return false
-
-        const cell = pool.nodes.get(cellId) as { colspan?: number; rowspan?: number; children?: readonly string[] } | undefined
-        const nextCell = pool.nodes.get(nextCellId) as { colspan?: number; rowspan?: number; children?: readonly string[] } | undefined
-        if (!cell || !nextCell) return false
-
-        // 仅支持同一行内相邻、且两侧均未跨行的合并 (跨行合并方向复杂, 暂不支持)
-        if ((cell.rowspan || 1) > 1 || (nextCell.rowspan || 1) > 1) return false
-
-        // 水平合并: colspan 累加右侧单元格的 colspan
-        cell.colspan = (cell.colspan || 1) + (nextCell.colspan || 1)
-        // 右侧单元格内容并入当前单元格
-        cell.children = [...(cell.children || []), ...(nextCell.children || [])]
-        pool.removeNode(nextCellId)
-        pool.detachChild(rowId, colIdx + 1)
-        return true
-      },
+      (pool) => mergeAdjacentCells(pool, tableId, rowIdx, colIdx),
     ))
     this.clearTableSelectionState()
   }
 
   /** 合并框选矩形为一个单元格 (colspan×rowspan) */
   mergeSelectedRange(range: CellRange): void {
-    const { r0, r1, c0, c1 } = normalizeRange(range)
-    if (r0 === r1 && c0 === c1) return
     const tableId = range.tableId
 
     this.commandManager.execute(new TableStructureCommand(
       generateCommandId(), Date.now(), 'user', tableId,
-      (pool) => {
-        const grid = buildCellGrid(pool, tableId)
-        const boxCells = grid.cells.filter(gc => gc.row >= r0 && gc.row <= r1 && gc.col >= c0 && gc.col <= c1)
-        if (boxCells.length < 2) return false
-
-        // 左上角 cell 作为合并目标
-        const target = boxCells.find(gc => gc.row === r0 && gc.col === c0)
-        if (!target) return false
-        const targetCell = pool.nodes.get(target.cellId) as { colspan?: number; rowspan?: number; children?: readonly string[] } | undefined
-        if (!targetCell) return false
-
-        // 其余 cell 内容并入目标 cell, 并从各自行移除
-        for (const gc of boxCells) {
-          if (gc.cellId === target.cellId) continue
-          const cell = pool.nodes.get(gc.cellId) as { children?: readonly string[] } | undefined
-          if (cell?.children?.length) {
-            targetCell.children = [...(targetCell.children || []), ...cell.children]
-            // 关键: 清空引用, 防止 removeChild 级联删除已并入目标 cell 的段落
-            cell.children = []
-          }
-          const row = pool.nodes.get(grid.rowIds[gc.row]) as { id: string; children?: readonly string[] } | undefined
-          const idx = row?.children?.indexOf(gc.cellId)
-          if (row && idx !== undefined && idx >= 0) pool.removeChild(row.id, idx)
-        }
-
-        // 目标 cell span = 矩形宽×高
-        const spanCol = c1 - c0 + 1
-        const spanRow = r1 - r0 + 1
-        if (spanCol > 1) targetCell.colspan = spanCol; else delete targetCell.colspan
-        if (spanRow > 1) targetCell.rowspan = spanRow; else delete targetCell.rowspan
-        return true
-      },
+      (pool) => mergeRange(pool, tableId, range),
     ))
     this.clearTableSelectionState()
   }
@@ -966,61 +907,7 @@ export class Editor {
 
     this.commandManager.execute(new TableStructureCommand(
       generateCommandId(), Date.now(), 'user', tableId,
-      (pool) => {
-        const table = pool.nodes.get(tableId) as { children?: readonly string[] } | undefined
-        if (!table?.children) return false
-        const rowId = table.children[rowIdx]
-        if (!rowId) return false
-        const row = pool.nodes.get(rowId) as { children?: readonly string[] } | undefined
-        if (!row?.children) return false
-        const cellId = row.children[colIdx]
-        if (!cellId) return false
-        const cell = pool.nodes.get(cellId) as { colspan?: number; rowspan?: number; children?: readonly string[] } | undefined
-        if (!cell) return false
-
-        const colspan = cell.colspan || 1
-        const rowspan = cell.rowspan || 1
-        if (colspan <= 1 && rowspan <= 1) return false
-
-        // 新单元格 (含一个空段落)
-        const text = createTextNode('')
-        const para = createParagraph([text.id])
-        pool.addNode(text as unknown as BaseNode)
-        pool.addNode(para as unknown as BaseNode)
-        const newCell = createTableCell([para.id])
-        pool.addNode(newCell as unknown as BaseNode)
-
-        if (colspan > 1) {
-          // 水平拆分: 原 cell 缩为 colspan=1, 右侧新增 cell (保留剩余 colspan + 相同 rowspan)
-          cell.colspan = 1
-          if (colspan > 2) newCell.colspan = colspan - 1
-          if (rowspan > 1) newCell.rowspan = rowspan
-          pool.insertChild(rowId, newCell.id, colIdx + 1)
-        } else {
-          // 垂直拆分: 原 cell 缩为 rowspan=1, 下一行对应列新增 cell (保留剩余 rowspan)
-          const rowBelowId = table.children[rowIdx + 1]
-          const rowBelow = rowBelowId
-            ? (pool.nodes.get(rowBelowId) as { children?: readonly string[] } | undefined)
-            : undefined
-          if (!rowBelow?.children) { pool.removeNode(newCell.id); return false }
-
-          cell.rowspan = 1
-          if (rowspan > 2) newCell.rowspan = rowspan - 1
-          if (colspan > 1) newCell.colspan = colspan
-
-          // 在下一行中, 找到网格列对应的插入点
-          const gp = getCellGridPosition(pool, tableId, rowIdx, colIdx)
-          const targetCol = gp?.col ?? colIdx
-          const grid = buildCellGrid(pool, tableId)
-          let insertIdx = rowBelow.children.length
-          for (let i = 0; i < rowBelow.children.length; i++) {
-            const gc = grid.byId.get(rowBelow.children[i])
-            if (gc && gc.col > targetCol) { insertIdx = i; break }
-          }
-          pool.insertChild(rowBelowId, newCell.id, insertIdx)
-        }
-        return true
-      },
+      (pool) => splitCell(pool, tableId, rowIdx, colIdx),
     ))
     this.clearTableSelectionState()
   }

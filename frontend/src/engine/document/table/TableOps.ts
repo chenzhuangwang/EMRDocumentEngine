@@ -256,6 +256,129 @@ export function deleteColumn(pool: NodePool, tableId: string, colIndex: number):
 }
 
 // ============================================================
+// 合并/拆分操作 (契约 §11.2, Drift 1 反转)
+// ============================================================
+
+/** 合并同一行内相邻两个单元格 (单格右合并) — 两侧均须未跨行 */
+export function mergeAdjacentCells(
+  pool: NodePool, tableId: string, rowIdx: number, colIdx: number,
+): boolean {
+  const table = pool.nodes.get(tableId) as unknown as Table | undefined
+  if (!table?.children) return false
+  const rowId = table.children[rowIdx]
+  if (!rowId) return false
+  const row = pool.nodes.get(rowId) as unknown as TableRow | undefined
+  if (!row?.children) return false
+  const cellId = row.children[colIdx]
+  const nextCellId = row.children[colIdx + 1]
+  if (!cellId || !nextCellId) return false
+
+  const cell = pool.nodes.get(cellId) as unknown as TableCell | undefined
+  const nextCell = pool.nodes.get(nextCellId) as unknown as TableCell | undefined
+  if (!cell || !nextCell) return false
+
+  // 仅支持同一行内相邻、且两侧均未跨行的合并 (跨行合并方向复杂, 暂不支持)
+  if ((cell.rowspan || 1) > 1 || (nextCell.rowspan || 1) > 1) return false
+
+  // 水平合并: colspan 累加右侧单元格的 colspan
+  cell.colspan = (cell.colspan || 1) + (nextCell.colspan || 1)
+  // 右侧单元格内容并入当前单元格
+  cell.children = [...cell.children, ...nextCell.children]
+  pool.removeNode(nextCellId)
+  pool.detachChild(rowId, colIdx + 1)
+  return true
+}
+
+/** 合并框选矩形为一个单元格 (colspan×rowspan) */
+export function mergeRange(pool: NodePool, tableId: string, range: CellRange): boolean {
+  const { r0, r1, c0, c1 } = normalizeRange(range)
+  if (r0 === r1 && c0 === c1) return false
+
+  const grid = buildCellGrid(pool, tableId)
+  const boxCells = grid.cells.filter(gc => gc.row >= r0 && gc.row <= r1 && gc.col >= c0 && gc.col <= c1)
+  if (boxCells.length < 2) return false
+
+  // 左上角 cell 作为合并目标
+  const target = boxCells.find(gc => gc.row === r0 && gc.col === c0)
+  if (!target) return false
+  const targetCell = pool.nodes.get(target.cellId) as unknown as TableCell | undefined
+  if (!targetCell) return false
+
+  // 其余 cell 内容并入目标 cell, 并从各自行移除
+  for (const gc of boxCells) {
+    if (gc.cellId === target.cellId) continue
+    const cell = pool.nodes.get(gc.cellId) as unknown as TableCell | undefined
+    if (cell?.children?.length) {
+      targetCell.children = [...targetCell.children, ...cell.children]
+      // 关键: 清空引用, 防止 removeChild 级联删除已并入目标 cell 的段落
+      cell.children = []
+    }
+    const row = pool.nodes.get(grid.rowIds[gc.row]) as unknown as TableRow | undefined
+    const idx = row?.children?.indexOf(gc.cellId)
+    if (row && idx !== undefined && idx >= 0) pool.removeChild(row.id, idx)
+  }
+
+  // 目标 cell span = 矩形宽×高
+  const spanCol = c1 - c0 + 1
+  const spanRow = r1 - r0 + 1
+  setSpan(targetCell, 'colspan', spanCol)
+  setSpan(targetCell, 'rowspan', spanRow)
+  return true
+}
+
+/** 拆分合并的单元格 (支持 colspan 水平拆分 / rowspan 垂直拆分) */
+export function splitCell(pool: NodePool, tableId: string, rowIdx: number, colIdx: number): boolean {
+  const table = pool.nodes.get(tableId) as unknown as Table | undefined
+  if (!table?.children) return false
+  const rowId = table.children[rowIdx]
+  if (!rowId) return false
+  const row = pool.nodes.get(rowId) as unknown as TableRow | undefined
+  if (!row?.children) return false
+  const cellId = row.children[colIdx]
+  if (!cellId) return false
+  const cell = pool.nodes.get(cellId) as unknown as TableCell | undefined
+  if (!cell) return false
+
+  const colspan = cell.colspan || 1
+  const rowspan = cell.rowspan || 1
+  if (colspan <= 1 && rowspan <= 1) return false
+
+  // 新单元格 (含一个空段落)
+  const newCell = makeEmptyCell(pool)
+
+  if (colspan > 1) {
+    // 水平拆分: 原 cell 缩为 colspan=1, 右侧新增 cell (保留剩余 colspan + 相同 rowspan)
+    cell.colspan = 1
+    if (colspan > 2) newCell.colspan = colspan - 1
+    if (rowspan > 1) newCell.rowspan = rowspan
+    pool.insertChild(rowId, newCell.id, colIdx + 1)
+  } else {
+    // 垂直拆分: 原 cell 缩为 rowspan=1, 下一行对应列新增 cell (保留剩余 rowspan)
+    const rowBelowId = table.children[rowIdx + 1]
+    const rowBelow = rowBelowId
+      ? (pool.nodes.get(rowBelowId) as unknown as TableRow | undefined)
+      : undefined
+    if (!rowBelow?.children) { pool.removeNode(newCell.id); return false }
+
+    cell.rowspan = 1
+    if (rowspan > 2) newCell.rowspan = rowspan - 1
+    if (colspan > 1) newCell.colspan = colspan
+
+    // 在下一行中, 找到网格列对应的插入点
+    const gp = getCellGridPosition(pool, tableId, rowIdx, colIdx)
+    const targetCol = gp?.col ?? colIdx
+    const grid = buildCellGrid(pool, tableId)
+    let insertIdx = rowBelow.children.length
+    for (let i = 0; i < rowBelow.children.length; i++) {
+      const gc = grid.byId.get(rowBelow.children[i])
+      if (gc && gc.col > targetCol) { insertIdx = i; break }
+    }
+    pool.insertChild(rowBelowId, newCell.id, insertIdx)
+  }
+  return true
+}
+
+// ============================================================
 // 定位辅助
 // ============================================================
 

@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest'
 import {
   insertRow, deleteRow, insertColumn, deleteColumn,
   buildCellGrid, getCellGridPosition, normalizeRange, cellsInRange,
+  mergeAdjacentCells, mergeRange, splitCell,
 } from '../document/table/TableOps'
 import { buildNodePool } from '../document/core/NodePool'
 import type { NodePool } from '../document/core/NodePool'
@@ -242,5 +243,115 @@ describe('TableOps 行列操作', () => {
     // 框选整表 → M + L + R
     const all = cellsInRange(pool, table.id, { tableId: table.id, startRow: 0, startCol: 0, endRow: 1, endCol: 1 })
     expect(all.sort()).toEqual([M.id, L.id, R.id].sort())
+  })
+})
+
+describe('TableOps 合并/拆分 (契约 §11.2, Drift 1)', () => {
+  // ---- 单格右合并 ----
+
+  it('mergeAdjacentCells: 同行相邻合并 → colspan 累加 + 内容并入 + 右侧 cell 移除', () => {
+    const { pool, table } = makeSimpleTable(2, 2)
+    expect(mergeAdjacentCells(pool, table.id, 0, 0)).toBe(true)
+
+    const row0 = pool.nodes.get(table.children[0]) as unknown as TableRow
+    expect(row0.children.length).toBe(1) // 右侧 cell 已移除
+    const merged = pool.nodes.get(row0.children[0]) as unknown as TableCell
+    expect(cellSpan(pool, merged.id)).toEqual({ colspan: 2, rowspan: 1 })
+    // 内容并入: 两个段落
+    expect(merged.children.length).toBe(2)
+  })
+
+  it('mergeAdjacentCells: 右侧无相邻 cell → 拒绝', () => {
+    const { pool, table } = makeSimpleTable(2, 2)
+    expect(mergeAdjacentCells(pool, table.id, 0, 1)).toBe(false) // colIdx 已是末格
+  })
+
+  it('mergeAdjacentCells: 两侧任一跨行 → 拒绝 (暂不支持跨行合并)', () => {
+    const { pool, table, A } = makeRowspanTable()
+    // A(rowspan=2) 与其右侧 B 合并 → 拒绝
+    expect(mergeAdjacentCells(pool, table.id, 0, 0)).toBe(false)
+    expect(cellSpan(pool, A.id).rowspan).toBe(2) // 未变更
+  })
+
+  // ---- 矩形合并 ----
+
+  it('mergeRange: 2×2 矩形合并 → colspan=2 + rowspan=2, 其余 cell 移除', () => {
+    const { pool, table } = makeSimpleTable(2, 2)
+    const range = { tableId: table.id, startRow: 0, startCol: 0, endRow: 1, endCol: 1 }
+    expect(mergeRange(pool, table.id, range)).toBe(true)
+
+    const grid = gridSummary(pool, table.id)
+    expect(grid.length).toBe(1) // 仅剩目标 cell
+    expect(grid[0]).toEqual(expect.objectContaining({ row: 0, col: 0, colspan: 2, rowspan: 2 }))
+  })
+
+  it('mergeRange: 单格范围 (r0==r1 && c0==c1) → 拒绝', () => {
+    const { pool, table } = makeSimpleTable(2, 2)
+    const range = { tableId: table.id, startRow: 0, startCol: 0, endRow: 0, endCol: 0 }
+    expect(mergeRange(pool, table.id, range)).toBe(false)
+    expect(gridSummary(pool, table.id).length).toBe(4) // 未变更
+  })
+
+  it('mergeRange: 含 rowspan 边框的矩形合并 (合并前已有跨行 cell)', () => {
+    const { pool, table, A } = makeRowspanTable()
+    // 整表合并: A(row0,0 rowspan2) + B(0,1) + D(1,1)
+    const range = { tableId: table.id, startRow: 0, startCol: 0, endRow: 1, endCol: 1 }
+    expect(mergeRange(pool, table.id, range)).toBe(true)
+
+    const grid = gridSummary(pool, table.id)
+    expect(grid.length).toBe(1)
+    expect(grid[0]).toEqual(expect.objectContaining({ row: 0, col: 0, colspan: 2, rowspan: 2 }))
+    // 目标 cell 为 A (左上角), 内容并入 B + D
+    expect(cellSpan(pool, A.id)).toEqual({ colspan: 2, rowspan: 2 })
+  })
+
+  // ---- 拆分 ----
+
+  it('splitCell: colspan=2 水平拆分 → 原 cell colspan=1 + 右侧新增空 cell', () => {
+    const { pool, table, M } = makeColspanTable()
+    expect(splitCell(pool, table.id, 0, 0)).toBe(true)
+
+    expect(cellSpan(pool, M.id).colspan).toBe(1) // 原 cell 缩为 1
+    const row0 = pool.nodes.get(table.children[0]) as unknown as TableRow
+    expect(row0.children.length).toBe(2) // 新增一个 cell
+    // 新增 cell colspan 默认 1 (colspan==2 不保留剩余 span)
+    const newCell = pool.nodes.get(row0.children[1]) as unknown as TableCell
+    expect(cellSpan(pool, newCell.id)).toEqual({ colspan: 1, rowspan: 1 })
+  })
+
+  it('splitCell: colspan=3 水平拆分 → 原 cell colspan=1 + 新增 colspan=2', () => {
+    const { pool, table } = makeSimpleTable(2, 3)
+    // 手动构造: (0,0) colspan=3, 移除 (0,1)(0,2)
+    const row0 = pool.nodes.get(table.children[0]) as unknown as TableRow
+    const c0 = pool.nodes.get(row0.children[0]) as unknown as TableCell
+    c0.colspan = 3
+    const c1 = row0.children[1]; const c2 = row0.children[2]
+    pool.removeNode(c1); pool.removeNode(c2)
+    row0.children = row0.children.slice(0, 1)
+
+    expect(splitCell(pool, table.id, 0, 0)).toBe(true)
+    expect(cellSpan(pool, c0.id).colspan).toBe(1)
+    const row0b = pool.nodes.get(table.children[0]) as unknown as TableRow
+    const newCell = pool.nodes.get(row0b.children[1]) as unknown as TableCell
+    expect(cellSpan(pool, newCell.id)).toEqual({ colspan: 2, rowspan: 1 })
+  })
+
+  it('splitCell: rowspan=2 垂直拆分 → 原 cell rowspan=1 + 下一行对应列新增空 cell', () => {
+    const { pool, table, A, D } = makeRowspanTable()
+    expect(splitCell(pool, table.id, 0, 0)).toBe(true)
+
+    expect(cellSpan(pool, A.id).rowspan).toBe(1) // 原 cell 缩为 1
+    const row1 = pool.nodes.get(table.children[1]) as unknown as TableRow
+    expect(row1.children.length).toBe(2) // D + 新增
+    // 拆分先缩 A.rowspan=1 → D 在网格列 0, 新增 cell 追加在 D 之后 (col 0 无 >0 插入点)
+    expect(row1.children[0]).toBe(D.id)
+    const newCell = pool.nodes.get(row1.children[1]) as unknown as TableCell
+    expect(cellSpan(pool, newCell.id)).toEqual({ colspan: 1, rowspan: 1 })
+  })
+
+  it('splitCell: 未合并单元格 (colspan=1 && rowspan=1) → 拒绝', () => {
+    const { pool, table } = makeSimpleTable(2, 2)
+    expect(splitCell(pool, table.id, 0, 0)).toBe(false)
+    expect(gridSummary(pool, table.id).length).toBe(4) // 未变更
   })
 })
