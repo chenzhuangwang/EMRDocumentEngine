@@ -1063,9 +1063,15 @@ Concretely:
     layout reflow (box position/width come from layout; the affix
     literals are measured and drawn around the box). Their layout
     interaction (wrapping, width contribution) is DEFERRED.
-    tips / deletable / editable are NOT consumed at draw time and
-    remain design-time concerns (tooltip / removal gate / input
-    gate) for a later phase — the renderer never reads them.
+    tips / deletable are NOT consumed at draw time and remain
+    design-time concerns (tooltip / removal gate) for a later
+    phase — the renderer never reads them.
+
+    editable is consumed by the COMMAND layer at find & replace
+    time (not the renderer). A smarttext whose TemplateDefinition
+    .editable === false does not accept user input: ReplaceTextCommand
+    MUST skip it, never overwriting its value (a read-only control
+    stays read-only through find & replace).
 
     single is consumed by the COMMAND layer at paste/insert time
     (not the renderer). A single-valued data element — identified
