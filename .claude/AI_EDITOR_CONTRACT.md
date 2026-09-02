@@ -1097,6 +1097,11 @@ Concretely:
     copy/paste; the guard therefore keys off the EXISTING element's
     single flag, not the pasted node's.
 
+    Design-time library insertion (§12.4) is the second single
+    consumption point: a library entry marked single === true is
+    refused a second insertion into the same document (the INSERT
+    half; paste is the other half).
+
     The template artifact (a document + its TemplateDefinitions +
     its PresentationStyles) is distinct from a filled record (a
     document with SmartTextNode.value set).
@@ -1213,10 +1218,75 @@ Concretely:
         overlay like label/prefix/suffix (§12.1): it does NOT
         participate in layout reflow.
 
-Design mode does not yet support: creating controls in place
-(P2 — field insertion from a library), editing a control's
+Design mode does not yet support: editing a control's
 TemplateDefinition attributes in place, or the shared
 style-reference system (§2.2). Those remain later phases.
+Creating controls from a library is §12.4.
+
+------------------------------------------------------------
+12.4 Design-time control insertion (from library)
+------------------------------------------------------------
+
+Design mode (§12.3) reveals and selects controls; it does not yet
+create them in place. This section defines how a control is
+CREATED in design mode: insertion from a control library.
+
+A "control library entry" is a catalog record describing a medical
+data element — its semantic identity (dataElement code), display
+name, data type, and design-time defaults. It is NOT a node. The
+library is DATA injected by the platform/UI; the engine MUST NOT
+hardcode any medical dictionary. The engine's surface is a single
+insertion API.
+
+Concretely, inserting a library entry produces a SmartTextNode in
+the current paragraph at the cursor, across TWO layers at once
+(a third is deferred):
+
+    semantic      → SmartTextNode.element (ElementMeta: real
+                    code.dataElement, name, format.dataType);
+                    placeholder text [name] (契约 §2.1), no value.
+    design-time   → TemplateDefinitionStore[nodeId] (§12.1):
+                    label / tips / deletable / editable / single.
+    presentation  → DEFERRED (§2.2 shared style-reference). P2
+                    inserts only the semantic + design-time layers;
+                    a PresentationStyle argument is not yet part of
+                    the API.
+
+The insertion MUST be a single Command (InsertControlCommand):
+
+    forward: (a) single-guard; (b) create + register the
+        SmartTextNode and insert it into the paragraph at the
+        cursor; (c) write the TemplateDefinition into the
+        per-editor store (ctx.templateDefinitions — the same store
+        instance carried in the CommandContext).
+    invert:  (a) remove the inserted node; (b) delete the
+        TemplateDefinition entry — so undo leaves no orphan
+        definition and the per-node stores stay consistent with the
+        node set.
+
+This preserves the §12.1 rule that design-time fields never enter
+DocumentModel, while keeping the per-node store synchronized with
+the node set through undo/redo.
+
+single guard at insertion (§12.1): a library entry whose
+TemplateDefinition.single === true may appear at most once in the
+document. InsertControlCommand MUST refuse (forward returns null,
+nothing pushed onto the undo stack) when the document already
+contains a smarttext with the same element identity (code.dataElement,
+falling back to code.internal). Import (§12.2) is exempt, as before.
+
+The engine API:
+
+    Editor.insertControl(
+      element: ElementMeta,                 // semantic identity
+      definition?: TemplateDefinition,      // design-time defaults
+    ): void
+
+Home: the command lives in engine/command/commands/. The library
+catalog TYPE and sample data live in the frontend (platform/data),
+NOT in engine/. The UI (design-mode control palette) reads the
+catalog and calls Editor.insertControl; it never mutates the pool
+or the stores directly.
 
 ============================================================
 13. DOCUMENT SERIALIZATION
