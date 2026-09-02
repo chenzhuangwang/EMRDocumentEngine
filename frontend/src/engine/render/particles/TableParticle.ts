@@ -7,6 +7,7 @@
 
 import type { IParticle, RenderOptions } from './IParticle'
 import type { SLIFItem } from '../../layout/core/SLIF'
+import { particleRegistry } from './ParticleRegistry'
 
 const BORDER_COLOR = '#9CA3AF'
 const HEADER_BG = '#F3F4F6'
@@ -18,7 +19,7 @@ export function createTableParticle(): IParticle {
   return {
     type: 'table',
 
-    render(ctx: CanvasRenderingContext2D, item: SLIFItem, x: number, y: number, _options?: RenderOptions): void {
+    render(ctx: CanvasRenderingContext2D, item: SLIFItem, x: number, y: number, options?: RenderOptions): void {
       const rows = item.rows
       if (!rows || rows.length === 0) return
 
@@ -67,6 +68,17 @@ export function createTableParticle(): IParticle {
             ctx.clip()
 
             for (const ci2 of cell.items) {
+              // 表格 cell 内 smarttext → 委托 ControlParticle (契约 §4)
+              // 否则此处直接 fillText 会丢失控制盒 + 表现层/设计期样式 (§2.2/§12.1)
+              if (ci2.nodeType === 'smarttext') {
+                const cp = particleRegistry.get('smarttext')
+                if (cp) {
+                  const size = ci2.size || 12
+                  const baselineY = cellY + (ci2.y || 0) + (ci2.ascent ?? size * 0.8)
+                  cp.render(ctx, ci2, cellX + CELL_PADDING + (ci2.x || 0), baselineY, options)
+                  continue
+                }
+              }
               if (!ci2.text) continue
               const font = ci2.font || 'SimSun'
               const size = ci2.size || 12

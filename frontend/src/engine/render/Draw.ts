@@ -455,9 +455,14 @@ export class Draw {
               pageIndex: i, totalPages: this.pages.length,
             })
           } else if (item.type === 'table') {
-            // 表格渲染 (R37)
+            // 表格渲染 (R37) — cell 内 smarttext 经 TableParticle 委托 registry (§4)
             const tp = createTableParticle()
-            tp.render(ctx, item, item.x, pageY + item.y)
+            tp.render(ctx, item, item.x, pageY + item.y, {
+              showInvisible: this._showInvisible,
+              pageIndex: i,
+              presentationStyleOf: this.presentationStyleOf,
+              templateDefinitionOf: this.templateDefinitionOf,
+            })
           } else {
             // 文本/域代码/控件 — 通过 ParticleRegistry 调度 (含列表标记)
             const textRenderer = particleRegistry.get(item.nodeType || item.type) || particleRegistry.get('text')
