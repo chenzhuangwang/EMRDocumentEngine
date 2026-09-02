@@ -1218,10 +1218,10 @@ Concretely:
         overlay like label/prefix/suffix (§12.1): it does NOT
         participate in layout reflow.
 
-Design mode does not yet support: editing a control's
-TemplateDefinition attributes in place, or the shared
-style-reference system (§2.2). Those remain later phases.
-Creating controls from a library is §12.4.
+Design mode does not yet support the shared style-reference
+system (§2.2); that remains a later phase. Creating controls
+from a library is §12.4; editing a control's TemplateDefinition
+attributes in place is §12.5.
 
 ------------------------------------------------------------
 12.4 Design-time control insertion (from library)
@@ -1287,6 +1287,92 @@ catalog TYPE and sample data live in the frontend (platform/data),
 NOT in engine/. The UI (design-mode control palette) reads the
 catalog and calls Editor.insertControl; it never mutates the pool
 or the stores directly.
+
+------------------------------------------------------------
+12.5 Design-time control attribute editing (in place)
+------------------------------------------------------------
+
+Design mode (§12.3) reveals and selects controls; §12.4 creates
+them from a library. This section defines how a template author
+EDITS an already-selected control's design-time attributes in
+place.
+
+Editing a control's attributes is a TemplateDefinition-layer
+change ONLY (§12.1). It rewrites the selected node's entry in the
+per-editor store; it does NOT touch SmartTextNode.element / .value,
+does NOT create or remove nodes, and does NOT enter DocumentModel.
+The semantic / runtime-value / presentation layers (§2.1 / §2.2)
+are unchanged by this feature.
+
+It remains design-mode interaction (§12.3): the engine exposes the
+API without a mode check (consistent with selectControl /
+deleteSelectedControl), and the UI exposes the edit surface only in
+design mode.
+
+Editing goes through the command system (RULE 4):
+
+    UpdateControlDefinitionCommand(nodeId, next: TemplateDefinition | undefined)
+
+    forward: snapshot old = store.get(nodeId); then whole-value
+        replace — if next is undefined or has no own enumerable
+        fields, store.delete(nodeId); otherwise store.set(nodeId, next).
+    invert:  if old was undefined, delete the entry; otherwise
+        set(old) — restoring the prior definition exactly.
+
+    Whole-value replace (NOT field-level merge): the command
+    receives the EDITED COMPLETE definition. The UI reads the full
+    definition via Editor.getControlDefinition(nodeId), edits fields
+    locally, and writes the complete definition back — so no field
+    is silently dropped, and "clear a field" is expressed by omitting
+    that key from the written definition. The command itself carries
+    no merge/deletion semantics.
+
+    All seven §12.1 fields are editable (deletable / editable / tips
+    / label / prefix / suffix / single). The edit panel MUST display
+    and write back the COMPLETE definition, never a partial one.
+
+    Guard interaction — an edited flag takes effect immediately at
+    its existing command consumption point:
+        deletable → RemoveControlCommand (§12.1) refuses/permits
+                    removal of the control.
+        editable  → ReplaceTextCommand (§12.1) skips/overwrites the
+                    control's value at find & replace.
+        single    → InsertNodesCommand / InsertControlCommand
+                    (§12.1/§12.4) refuse/allow a second insertion of
+                    the same identity.
+
+    single does NOT retroactively dedupe: flipping a control's
+    single to true affects only FUTURE insertions/pastes, never
+    deletes already-present duplicate instances; flipping it to
+    false likewise only relaxes future guards.
+
+    The nodeId MUST reference an existing smarttext node. forward
+    returns null (no-op, nothing pushed onto the undo stack) when
+    the node is absent or is not a smarttext — so a definition can
+    never be orphaned onto a non-existent/non-control node. A null
+    store (not injected) is likewise a no-op.
+
+    Invalidation: a definition change does not alter document
+    structure or layout reflow (label/prefix/suffix are draw-time
+    overlays per §12.1; the flags are command-layer guards), so the
+    command returns invalidation 'none'. It still flows through the
+    command system so it marks the template dirty and persists via
+    the artifact's templateDefinitions top-level field (§12.1).
+
+The engine API:
+
+    Editor.getControlDefinition(nodeId: string):
+        TemplateDefinition | undefined
+
+    Editor.setControlDefinition(
+        nodeId: string,
+        definition?: TemplateDefinition,
+    ): void
+
+Home: the command lives in engine/command/commands/. The UI
+(design-mode control properties panel) reads getControlDefinition,
+edits the full definition, and writes setControlDefinition; it never
+mutates the store directly.
 
 ============================================================
 13. DOCUMENT SERIALIZATION
