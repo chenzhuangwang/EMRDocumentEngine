@@ -1169,6 +1169,55 @@ Concretely:
                           (revision tracking is a separate concern)
         scripts / valid → not part of the four-layer model
 
+------------------------------------------------------------
+12.3 Design-mode interaction boundary
+------------------------------------------------------------
+
+Design mode (EditorRuntimeState.view.mode === 'design') is an
+INTERACTION mode: entering it changes how the editor routes
+pointer/keyboard input, NOT what document content IS. A control's
+semantic definition, runtime value, template-design attributes,
+and presentation style stay in their existing layers (§2.1 / §2.2
+/ §12.1); design mode only reveals and edits them through the
+command layer.
+
+Design-mode selection and hover are TRANSIENT runtime state —
+the currently-selected control id and the currently-hovered
+control id. They are canonical-owned by the Editor (like
+formatPainterActive / headerFooterEdit, §7.2), keyed by node id,
+never document content, and never serialized. DocumentSerializer
+MUST NOT emit them; DocumentLoader MUST NOT read them.
+
+Concretely:
+
+    selecting — a click on a smarttext control in design mode
+        selects it (sets the selected-control id); clicking empty
+        space clears it. Selection is node-granular (one control
+        at a time), distinct from the character selection used in
+        edit mode.
+
+    hovering  — moving the pointer over a smarttext control in
+        design mode exposes that control's node id to the UI as
+        transient hover state. The UI reads the control's
+        design-time hint through Editor.getTip(nodeId) (§12.1) to
+        render a tooltip. The RENDERER never reads tips.
+
+    deleting  — removing the selected control MUST go through
+        RemoveControlCommand (not a raw pool mutation). The
+        deletable gate (§12.1) applies unchanged: a control whose
+        TemplateDefinition.deletable === false refuses deletion,
+        even when selected.
+
+    highlight — the renderer draws a design-time overlay around the
+        selected control (dashed border). This is a draw-time
+        overlay like label/prefix/suffix (§12.1): it does NOT
+        participate in layout reflow.
+
+Design mode does not yet support: creating controls in place
+(P2 — field insertion from a library), editing a control's
+TemplateDefinition attributes in place, or the shared
+style-reference system (§2.2). Those remain later phases.
+
 ============================================================
 13. DOCUMENT SERIALIZATION
 ============================================================
