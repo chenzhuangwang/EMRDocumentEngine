@@ -16,12 +16,12 @@ import { CommandManager } from './command/CommandManager'
 import { InputComposer } from './interaction/IMEHandler'
 import { KeyboardHandler } from './interaction/KeyboardHandler'
 import { MouseHandler } from './interaction/MouseHandler'
+import { FormatPainter } from './format/FormatPainter'
 import type { ICommand } from './command/ICommand'
 import { generateCommandId } from './command/ICommand'
 import { InsertTextCommand } from './command/commands/InsertTextCommand'
 import { InsertNodesCommand } from './command/commands/InsertNodesCommand'
 import { DeleteRangeCommand } from './command/commands/DeleteRangeCommand'
-import { FormatPainterCommand } from './command/commands/FormatTextCommand'
 import { FormatTextRangeCommand } from './command/commands/FormatTextCommand'
 import { ParagraphStyleCommand } from './command/commands/ParagraphStyleCommand'
 import { SetHeaderFooterConfigCommand } from './command/commands/HeaderFooterConfigCommand'
@@ -72,6 +72,7 @@ export class Editor {
   private inputComposer: InputComposer
   private keyboardHandler: KeyboardHandler
   private mouseHandler: MouseHandler
+  private formatPainter: FormatPainter
   private clipboard: ClipboardManager
   private findReplace: FindReplaceEngine
   private autoSave: AutoSaveManager
@@ -81,7 +82,6 @@ export class Editor {
   private readonly host: EditorHost
   private readonly fontManager: FontManager
   private readonly measurer: TextMeasurer
-  private _formatPainterStyle: Record<string, unknown> | null = null
   // 表格单元格选择
   private _selectedTableId: string | null = null
   private _selectedCellRow = -1
@@ -124,6 +124,7 @@ export class Editor {
     this.inputComposer = new InputComposer(host)
     this.keyboardHandler = new KeyboardHandler(this, host)
     this.mouseHandler = new MouseHandler(this, host, this.measurer)
+    this.formatPainter = new FormatPainter(this, host)
     this.clipboard = new ClipboardManager(host.platform.clipboard)
     this.findReplace = new FindReplaceEngine()
     this.autoSave = new AutoSaveManager(doc.id, doc.title || '未命名文档', () => this.getSerializedDocument(), host.platform.storage)
@@ -253,7 +254,7 @@ export class Editor {
     // 容器事件: click (聚焦+命中) + mouseup (格式刷, 优于 click 因先触发)
     this.detachContainer = this.host.input.attachContainer({
       click: this._clickToFocus,
-      mouseup: this._onMouseUp,
+      mouseup: this.formatPainter.onMouseUp,
     })
 
     // 外部剪贴板同步: 用户切到外部应用复制后回到编辑器,
@@ -361,8 +362,8 @@ export class Editor {
     if (this.draw.isHeaderFooterEditActive()) return
 
     // 格式刷激活时: 点击 = 应用格式到目标段落 (TASK-472)
-    if (this._formatPainterStyle) {
-      this.handleFormatPainterApply(e)
+    if (this.formatPainter.isActive) {
+      this.formatPainter.applyToClickTarget(e)
       return
     }
 
@@ -411,7 +412,7 @@ export class Editor {
   }
 
   /** 在 pool 中查找包含 nodeId 的 Paragraph */
-  private findParagraphContaining(nodeId: string): Paragraph | null {
+  findParagraphContaining(nodeId: string): Paragraph | null {
     for (const [, node] of this.pool.nodes) {
       if (node.type === 'paragraph') {
         const para = node as unknown as Paragraph
@@ -442,16 +443,15 @@ export class Editor {
   }
 
   /**
-   * 将鼠标事件解析为文档命中信息 (handleClick 与格式刷 handleFormatPainterApply 共用)。
+   * 将鼠标事件解析为文档命中信息 (handleClick 与格式刷 FormatPainter.applyToClickTarget 共用)。
    * 返回 null 表示无页面或目标页面缺失, 调用方据此提前返回。
    */
-  private resolveMouseHit(e: MouseEvent): {
+  resolveMouseHit(e: MouseEvent): {
     nodeId: string | null
     docX: number
     docY: number
     page: import('./layout/core/SLIF').SLIFPage
-  } | null {
-    const rect = this.host.viewport.bounds()
+  } | null {    const rect = this.host.viewport.bounds()
     const { scale, scrollY } = this.draw.getCoordinateSystem().transform
 
     // 屏幕坐标 → 文档坐标 (统一通过 TableCoordUtil, v20.35 修复: 之前缺少 /scale)
@@ -476,7 +476,7 @@ export class Editor {
   }
 
   /** 根据文档坐标 X/Y 计算段落内的字符偏移 — Phase 5 使用 page.items 直接过滤 */
-  private computeOffsetAtX(para: Paragraph, docX: number, docY: number, page: import('./layout/core/SLIF').SLIFPage): number {
+  computeOffsetAtX(para: Paragraph, docX: number, docY: number, page: import('./layout/core/SLIF').SLIFPage): number {
     // Phase 5: 使用 page.items 直接过滤 (不再需要 getFlatPageItems 展平)
     const related = page.items
       .filter(it => para.children.includes(it.nodeId) || it.nodeId === para.id)
@@ -535,7 +535,7 @@ export class Editor {
    * 收集选区覆盖的段落区间 (同段/跨段)。每段一个 FormatRange。
    * 空选区 (起止重合) 返回空数组。跨段遍历委托 SelectionCollector (§11.2)。
    */
-  private collectSelectionRanges(selection: SelectionState): FormatRange[] {
+  collectSelectionRanges(selection: SelectionState): FormatRange[] {
     const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
     const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
 
@@ -590,7 +590,7 @@ export class Editor {
    * 将光标定位到指定点并折叠选区 (锚点/焦点跟随该点, active=false)。
    * 供"应用格式后只保留光标"类场景复用, 避免 setCursor + setSelection 组合重复。
    */
-  private collapseSelectionToPoint(paragraphPath: string[], offset: number): void {
+  collapseSelectionToPoint(paragraphPath: string[], offset: number): void {
     this.store.setCursor({ paragraphPath, offset, visible: true })
     this.store.setSelection({
       anchor: { paragraphPath: [...paragraphPath], offset, visible: false },
@@ -1530,127 +1530,22 @@ export class Editor {
     this.commandManager.execute(cmd)
   }
 
-  /** 格式刷: 复制光标处文本样式 (TASK-472), 返回完整的序列化样式对象 */
+  /** 格式刷: 复制光标处文本样式 (TASK-472) — 委托 FormatPainter (§11.2) */
   copyFormatPainterStyle(): Record<string, unknown> | null {
-    const ts = this.getTextStyle()
-    if (!ts) return null
-    // 必须包含所有 TextStyle 字段 (含 undefined/false) —
-    // 格式刷是"替换"而非"合并", 源没有的属性目标也应清除
-    return {
-      font: ts.font, size: ts.size,
-      bold: ts.bold, italic: ts.italic, underline: ts.underline,
-      underlineStyle: ts.underlineStyle, strikeout: ts.strikeout,
-      color: ts.color, highlight: ts.highlight,
-      superscript: ts.superscript, subscript: ts.subscript,
-      letterSpacing: ts.letterSpacing,
-    }
+    return this.formatPainter.copyStyle()
   }
 
-  /** 格式刷: mouseup 事件 — 拖拽选区预览后松手应用格式 (先于 click 触发) */
-  private _onMouseUp = (e: MouseEvent) => {
-    if (!this._formatPainterStyle) return
-
-    const selection = this.store.state.runtime.selection
-    if (selection.active) {
-      // 拖拽选区 → 收集选区内的文本节点并批量应用格式
-      this.applyFormatPainterToSelection(this._formatPainterStyle)
-    } else {
-      // 单击 (无拖拽) → 应用到整个段落 (命中原有 hit-test 逻辑)
-      this.handleFormatPainterApply(e)
-    }
-  }
-
-  /** 格式刷: 将样式应用到当前选区内的所有文本节点 (拖拽松手/批量) */
-  private applyFormatPainterToSelection(style: Record<string, unknown>): void {
-    const selection = this.store.state.runtime.selection
-    const ranges = this.collectSelectionRanges(selection)
-
-    if (ranges.length === 0) {
-      this.setFormatPainterActive(false)
-      return
-    }
-
-    // 移动光标到焦点位置 (拖拽终点) + 清除选区 → 格式应用后只显示光标
-    this.collapseSelectionToPoint([...selection.focus.paragraphPath], selection.focus.offset)
-
-    // 执行格式刷命令 (FormatTextRangeCommand → document:changed → recomputeLayout + render + contentChange)
-    const cmd = new FormatTextRangeCommand(
-      generateCommandId(), Date.now(), 'user',
-      ranges,
-      style as Partial<import('./document/core/DocumentModel').TextStyle>,
-      'replace',
-    )
-    this.commandManager.execute(cmd)
-
-    // 停用格式刷 (同步通知 React 层)
-    this.setFormatPainterActive(false)
-
-    // 最终渲染: 确保光标正确显示 (document:changed 已触发一次 render, 此处为保险)
-    this.draw.render(this.pool, this.store.state.runtime)
-  }
-
-  /** 格式刷: 激活/取消 — 状态同步到 EditorStore (canonical owner, §7.2) */
+  /** 格式刷: 激活/取消 — 委托 FormatPainter, 状态同步到 EditorStore (canonical owner, §7.2) */
   setFormatPainterActive(active: boolean): void {
-    if (active) {
-      const style = this.copyFormatPainterStyle()
-      if (!style) return // 无样式可复制, 不激活
-      this._formatPainterStyle = style
-      this.host.input.setCursor('copy')
-    } else {
-      this._formatPainterStyle = null
-      this.host.input.setCursor('')
-    }
-    this.store.setFormatPainterActive(active)
+    this.formatPainter.setActive(active)
   }
 
   /** 格式刷是否激活 */
-  get isFormatPainterActive(): boolean { return this._formatPainterStyle !== null }
+  get isFormatPainterActive(): boolean { return this.formatPainter.isActive }
 
-  /** 格式刷: 点击目标段落时应用样式 */
-  private handleFormatPainterApply(e: MouseEvent): void {
-    if (!this._formatPainterStyle) return
-
-    const hit = this.resolveMouseHit(e)
-    if (!hit) { this.setFormatPainterActive(false); return }
-    const { nodeId, docX, docY, page } = hit
-
-    if (nodeId) {
-      const para = this.findParagraphContaining(nodeId)
-      if (para) {
-        // 定位光标到目标位置 + 清除旧选区, 确保 document:changed 触发 contentChange 时
-        // getTextStyle() 读到的是目标段落的格式, 而非旧光标位置
-        const cursorOffset = this.computeOffsetAtX(para, docX, docY, page)
-        const paraPath = [this.doc.id, para.id]
-        this.collapseSelectionToPoint(paraPath, cursorOffset)
-        // applyFormatPainter 内部 commandManager.execute → document:changed → recomputeLayout + render
-        // → notifyListeners('contentChange') → 工具栏读取当前光标位置格式 = 目标段落的新格式 ✓
-        this.applyFormatPainter(para.id, this._formatPainterStyle)
-      }
-    }
-
-    // 单次使用后退出: setFormatPainterActive 内部会同步通知 React 层
-    this.setFormatPainterActive(false)
-
-    // 刷新光标位置 (applyFormatPainter 内已通过 document:changed 触发 render, 此处 render 确保光标正确显示)
-    this.draw.render(this.pool, this.store.state.runtime)
-  }
-
-  /** 格式刷: 将样式应用到目标段落的所有文本节点 (TASK-472) */
+  /** 格式刷: 将样式应用到目标段落的所有文本节点 (TASK-472) — 委托 FormatPainter */
   applyFormatPainter(paraId: string, style: Record<string, unknown>): void {
-    const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
-    if (!para?.children) return
-    const nodeIds: string[] = []
-    for (const cid of para.children) {
-      const n = this.pool.nodes.get(cid) as { type?: string } | undefined
-      if (n?.type === 'text') nodeIds.push(cid)
-    }
-    if (nodeIds.length === 0) return
-    const cmd = new FormatPainterCommand(
-      generateCommandId(), Date.now(), 'user',
-      nodeIds,
-      style as Partial<import('./document/core/DocumentModel').TextStyle>,
-    )
-    this.commandManager.execute(cmd)
+    this.formatPainter.applyToParagraph(paraId, style)
   }
 
   /** 设置光标/选区段落的格式 (对齐/缩进/列表) — v20.35 支持跨段落选区 */
