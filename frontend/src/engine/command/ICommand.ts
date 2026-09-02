@@ -8,11 +8,12 @@
 import type { DocumentTree } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import type { CursorState, SelectionState } from '../state/EditorRuntimeState'
+import type { TemplateDefinitionStore } from '../template/TemplateDefinition'
 
 // ---- CommandContext ----
 
 export type CommandContext =
-  | { mode: 'local'; doc: DocumentTree; pool: NodePool }
+  | { mode: 'local'; doc: DocumentTree; pool: NodePool; templateDefinitions?: TemplateDefinitionStore }
   | { mode: 'collab'; ydoc: unknown; origin: string }
 
 // ---- StatePatch ----

@@ -134,6 +134,7 @@ export class Editor {
       this.eventBus,
       () => this.doc,
       () => this.pool,
+      () => this.templateDefinitions ?? undefined,
     )
 
     // 状态变更 → 仅更新 Store, 不渲染

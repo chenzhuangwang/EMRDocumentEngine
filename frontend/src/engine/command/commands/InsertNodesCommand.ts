@@ -15,11 +15,13 @@
 //   - 撤销: detachChild 摘除 + createdLeafIds 精确清理, 不误删原始右半节点
 // ================================================================
 
-import type { Paragraph, TextNode, TextStyle, ElementMeta } from '../../document/core/DocumentModel'
+import type { Paragraph, TextNode, TextStyle, ElementMeta, SmartTextNode } from '../../document/core/DocumentModel'
 import {
   createParagraph, createTextNode, createSmartTextNode, extractStyle,
 } from '../../document/factory/ElementFormatter'
-import { generateId } from '../../document/core/DocumentModel'
+import { generateId, NodeType } from '../../document/core/DocumentModel'
+import type { NodePool } from '../../document/core/NodePool'
+import type { TemplateDefinitionStore } from '../../template/TemplateDefinition'
 import {
   ICommand, CommandContext, StatePatch,
   SerializedCommand, PositionalCommand, generateCommandId,
@@ -33,6 +35,39 @@ const TEXT_STYLE_KEYS = [
   'font', 'size', 'bold', 'italic', 'underline', 'underlineStyle',
   'strikeout', 'color', 'highlight', 'superscript', 'subscript', 'letterSpacing',
 ]
+
+/**
+ * 数据元身份: dataElement 优先, 回退 internal (契约 §12.1 single 守卫)。
+ * 两者皆空 → 无规范身份 → 不参与唯一性约束。
+ */
+export function elementIdentity(element: ElementMeta | undefined | null): string | null {
+  if (!element?.code) return null
+  const de = element.code.dataElement?.trim()
+  if (de) return de
+  const internal = element.code.internal?.trim()
+  return internal || null
+}
+
+/**
+ * 文档中是否已存在该数据元的 single:true 实例 (契约 §12.1 粘贴守卫)。
+ *
+ * 设计期字段按节点 id 存于 store, 不随 copy/paste 迁移; 故守卫以
+ * 「目标文档中已存在的同身份数据元」的 single 标志为准, 而非粘贴节点。
+ */
+export function isSingleValueDuplicate(
+  pool: NodePool,
+  templateDefinitions: TemplateDefinitionStore | undefined,
+  element: ElementMeta | undefined | null,
+): boolean {
+  const identity = elementIdentity(element)
+  if (!identity) return false
+  for (const [nodeId, node] of pool.nodes) {
+    if (node.type !== NodeType.SMART_TEXT) continue
+    if (elementIdentity((node as SmartTextNode).element) !== identity) continue
+    if (templateDefinitions?.get(nodeId)?.single === true) return true
+  }
+  return false
+}
 
 export class InsertNodesCommand extends PositionalCommand {
   readonly type = 'insert-nodes'
@@ -112,7 +147,7 @@ export class InsertNodesCommand extends PositionalCommand {
     // ================================================================
     // Step 2: 反序列化粘贴段落
     // ================================================================
-    const pastedParas = this.nodes.map(sn => this.deserializePara(sn, pool))
+    const pastedParas = this.nodes.map(sn => this.deserializePara(sn, pool, ctx.templateDefinitions))
     const first = pastedParas[0]
     const last = pastedParas[pastedParas.length - 1]
 
@@ -190,7 +225,11 @@ export class InsertNodesCommand extends PositionalCommand {
   //       禁止从序列化数据中恢复旧 ID, 防止池冲突
   // 副作用: 新建叶节点 id 记入 createdLeafIds, 供撤销清理
   // ================================================================
-  private deserializePara(sn: SerializedPara, pool: import('../../document/core/NodePool').NodePool): Paragraph {
+  private deserializePara(
+    sn: SerializedPara,
+    pool: NodePool,
+    templateDefinitions: TemplateDefinitionStore | undefined,
+  ): Paragraph {
     const para = createParagraph()
     // 恢复段落样式 (不含 id/type/children)
     Object.assign(para, sn.style)
@@ -204,6 +243,11 @@ export class InsertNodesCommand extends PositionalCommand {
         for (const k of TEXT_STYLE_KEYS) { if (k in childSn) style[k] = childSn[k] }
         const element = (childSn.element as ElementMeta) ||
           { code: { internal: '', dataElement: '' }, name: '' }
+        // single 唯一性守卫 (契约 §12.1): 目标文档已存在同身份且 single:true
+        // 的数据元时, 丢弃粘贴引入的重复实例 (单值字段不得被复制出第二个)。
+        if (isSingleValueDuplicate(pool, templateDefinitions, element)) {
+          continue
+        }
         const st = createSmartTextNode(
           (childSn.text as string) || '',
           element,

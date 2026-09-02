@@ -15,6 +15,7 @@ import { CommandUndoRedoStack } from './CommandUndoRedoStack'
 import type { EventBus } from '../interaction/EventBus'
 import type { DocumentTree } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
+import type { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import { DirtyTracker } from '../layout/incremental/DirtyTracker'
 
 export class CommandManager {
@@ -23,25 +24,33 @@ export class CommandManager {
   private eventBus: EventBus
   private getDocument: () => DocumentTree
   private getPool: () => NodePool
+  private getTemplateDefinitions: () => TemplateDefinitionStore | undefined
 
   constructor(
     eventBus: EventBus,
     getDocument: () => DocumentTree,
     getPool: () => NodePool,
+    getTemplateDefinitions: () => TemplateDefinitionStore | undefined = () => undefined,
   ) {
     this.eventBus = eventBus
     this.getDocument = getDocument
     this.getPool = getPool
+    this.getTemplateDefinitions = getTemplateDefinitions
     this.undoStack = new CommandUndoRedoStack(100)
     this.dirtyTracker = new DirtyTracker()
   }
 
-  execute(command: ICommand): void {
-    const ctx: CommandContext = {
+  private buildContext(): CommandContext {
+    return {
       mode: 'local',
       doc: this.getDocument(),
       pool: this.getPool(),
+      templateDefinitions: this.getTemplateDefinitions(),
     }
+  }
+
+  execute(command: ICommand): void {
+    const ctx = this.buildContext()
 
     const patch = this.undoStack.execute(command, ctx)
     if (!patch) return
@@ -50,21 +59,13 @@ export class CommandManager {
   }
 
   undo(): void {
-    const ctx: CommandContext = {
-      mode: 'local',
-      doc: this.getDocument(),
-      pool: this.getPool(),
-    }
+    const ctx = this.buildContext()
     const patch = this.undoStack.undo(ctx)
     if (patch) this.emitDocumentChange(patch)
   }
 
   redo(): void {
-    const ctx: CommandContext = {
-      mode: 'local',
-      doc: this.getDocument(),
-      pool: this.getPool(),
-    }
+    const ctx = this.buildContext()
     const patch = this.undoStack.redo(ctx)
     if (patch) this.emitDocumentChange(patch)
   }
