@@ -12,6 +12,7 @@
 // ================================================================
 
 import type { TextNode, SmartTextNode } from '../../document/core/DocumentModel'
+import { NodeType } from '../../document/core/DocumentModel'
 import { smartTextDisplayValue } from '../../document/factory/ElementFormatter'
 import type { NodePool } from '../../document/core/NodePool'
 import type { CursorState } from '../../state/EditorRuntimeState'
@@ -100,7 +101,15 @@ export class ReplaceTextCommand implements ICommand {
     const resolved: ResolvedEdit[] = []
     for (const e of this.edits) {
       const loc = resolveEditLocation(pool, e.paragraphPath, e.startOffset, e.endOffset)
-      if (loc) resolved.push({ ...loc, newText: e.newText })
+      if (!loc) continue
+      // editable 守卫 (契约 §12.1): editable:false 的 smarttext 不接受
+      // find & replace 改写其 value, 视为只读控件, 跳过该替换。
+      const target = pool.nodes.get(loc.nodeId)
+      if (target?.type === NodeType.SMART_TEXT
+        && ctx.templateDefinitions?.get(loc.nodeId)?.editable === false) {
+        continue
+      }
+      resolved.push({ ...loc, newText: e.newText })
     }
     if (resolved.length === 0) return null
 
