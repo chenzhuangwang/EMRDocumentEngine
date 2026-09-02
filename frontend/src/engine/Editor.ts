@@ -687,6 +687,10 @@ export class Editor {
   getDocument(): DocumentTree { return this.doc }
   /** 模板设计期属性 (契约 §12.1) — 编辑约束消费 (P1); 当前承载 */
   getTemplateDefinitions(): TemplateDefinitionStore | null { return this.templateDefinitions }
+  /** 读取控件设计期提示文本 (契约 §12.1 tips) — 供 UI 悬浮提示消费 */
+  getTip(nodeId: string): string | undefined {
+    return this.templateDefinitions?.get(nodeId)?.tips
+  }
   /** 表现层样式 (契约 §2.2) — 渲染消费 */
   getPresentationStyles(): PresentationStyleStore | null { return this.presentationStyles }
   /** 序列化文档为 JSON 字符串 (含全部节点 payload, 供保存/自动保存使用) */
