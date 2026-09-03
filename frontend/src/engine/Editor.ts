@@ -1748,9 +1748,15 @@ export class Editor {
     return { chars, words, paragraphs, selectedChars, selectedWords }
   }
 
-  /** 设置数字水印 (R35) */
+  /** 设置数字水印 (R35) — 先应用渲染器, 再经 command 落盘 doc.pageSetup.watermark (§12.4) */
   setWatermark(config: WatermarkConfig): void {
+    // 先更新渲染器水印状态, 使随后 command 触发的同步 document:changed render 显示新水印
     this.draw.setWatermark(config)
+    // 再经 SetPageSetupCommand 持久化 (undoable + dirty + serialize/load 往返)
+    this.commandManager.execute(new SetPageSetupCommand(
+      generateCommandId(), Date.now(), 'user',
+      { watermark: config },
+    ))
   }
 
   /** 自动更正: IME 输入后检测光标前文本是否需要替换 (R43) */

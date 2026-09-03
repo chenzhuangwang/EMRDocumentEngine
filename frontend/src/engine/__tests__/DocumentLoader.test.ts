@@ -251,6 +251,26 @@ describe('DocumentLoader 往返 (DocumentSerializer ↔ DocumentLoader)', () => 
     expect(p1.id).toBe(p2.id)
     expect(Object.keys(p1.nodes).sort()).toEqual(Object.keys(p2.nodes).sort())
   })
+
+  it('pageSetup.watermark (含 image 字段) 经 serialize → load 往返保持 (契约 §12.4)', () => {
+    const { doc, nodes } = buildRoundTripFixture()
+    doc.pageSetup.watermark = {
+      type: 'image',
+      imageUrl: 'data:image/png;base64,AAAA',
+      imageScale: 0.4,
+      opacity: 0.1,
+      rotation: 0,
+    }
+    const pool = buildNodePool(nodes, { body: doc.id, footer: doc.footer })
+    const r = loadDocument(serializeDocument(doc, pool))
+    expect(r.doc.pageSetup.watermark).toEqual({
+      type: 'image',
+      imageUrl: 'data:image/png;base64,AAAA',
+      imageScale: 0.4,
+      opacity: 0.1,
+      rotation: 0,
+    })
+  })
 })
 
 // ============ 路径: 节点池重建 ============
