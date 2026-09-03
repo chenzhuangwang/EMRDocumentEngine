@@ -1410,6 +1410,36 @@ Home: the command lives in engine/command/commands/. The UI
 edits the full definition, and writes setControlDefinition; it never
 mutates the store directly.
 
+------------------------------------------------------------
+12.4 Watermark ownership boundary
+------------------------------------------------------------
+
+Watermark is DOCUMENT CONTENT: it persists on DocumentTree.pageSetup
+.watermark and must survive round-trip (serialize + load). Its type
+has exactly ONE canonical home, and that home is the document domain.
+
+    WatermarkConfig is defined ONCE, in
+    document/core/DocumentModel.ts, next to PageSetup (which owns the
+    persisted watermark? field). The image-watermark fields — imageUrl
+    and imageScale — are document content too (an image watermark must
+    persist its image reference), so they live on THIS single type, not
+    on a render-local copy.
+
+    The render layer (render/LayeredRenderer, render/Draw) and the
+    public API (engine/index.ts) MUST import WatermarkConfig from the
+    document domain. render depends on document (§19); the reverse
+    (document importing a render type) is forbidden.
+
+    The render layer MUST NOT define its own WatermarkConfig. A second,
+    structurally-divergent WatermarkConfig in render/LayeredRenderer.ts
+    is the drift being reversed here (it was missing imageUrl/imageScale,
+    so an image watermark could render but not persist).
+
+    Editor.ts reads and writes doc.pageSetup.watermark with the document
+    WatermarkConfig type directly — no cast to a render-domain type.
+    engine/index.ts re-exports WatermarkConfig from
+    ./document/core/DocumentModel, never from ./render/LayeredRenderer.
+
 ============================================================
 13. DOCUMENT SERIALIZATION
 ============================================================
