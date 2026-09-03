@@ -1896,6 +1896,19 @@ RULE 10:
     presentation and available actions from the context snapshot.
     Context resolution MUST be side-effect free.
 
+RULE 11:
+
+    ATOMIC COMPOSITE OPERATIONS — A single user-level edit that
+    mutates the document through multiple sub-mutations (e.g.
+    cut = clipboard capture + range delete) MUST collapse to a
+    SINGLE undoable command on the undo stack. It MUST NOT leave
+    multiple independent commands that would each require a
+    separate undo. Composite (macro) commands group sub-commands
+    into one undo unit; CommandManager exposes a transaction
+    (beginMacro/endMacro) to build one. Non-mutating side effects
+    of the operation (e.g. clipboard capture) stay OUTSIDE the
+    command and are NOT undone/redone.
+
 In short:
 
     UI
