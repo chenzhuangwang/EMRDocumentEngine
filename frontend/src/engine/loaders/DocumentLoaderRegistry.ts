@@ -7,6 +7,8 @@
 
 import type { DocumentTree, BaseNode } from '../document/core/DocumentModel'
 import { NodeType, generateId } from '../document/core/DocumentModel'
+import { loadDocument } from '../document/io/DocumentLoader'
+import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/version/DocumentFormatVersion'
 
 // ---- 加载结果 ----
 
@@ -78,19 +80,13 @@ export class DocumentLoaderRegistry {
 
 // ---- 内置加载器 ----
 
-/** JSON 原生格式加载器 */
+/** JSON 原生格式加载器 — 路由到 canonical DocumentLoader (契约 §14), 不绕过 ModelUpgrader */
 const JSONLoader: IDocumentLoader = {
   name: 'JSON',
   extensions: ['.json', '.emr'],
   load(content: string): LoadResult {
-    const doc = JSON.parse(content) as DocumentTree
-    const nodes = new Map<string, BaseNode>()
-    nodes.set(doc.id, doc as unknown as BaseNode)
-    // 注册 body 子节点
-    for (const cid of doc.body.children) {
-      nodes.set(cid, { type: 'paragraph' as NodeType, id: cid, children: [] } as unknown as BaseNode)
-    }
-    return { doc, nodes }
+    const result = loadDocument(content)
+    return { doc: result.doc, nodes: new Map(result.pool.nodes) }
   },
   detect(content: string): boolean {
     const trimmed = content.trim()
@@ -116,6 +112,7 @@ const HTMLLoader: IDocumentLoader = {
       body: { mode: 'flow', children: paraIds },
       header: [], footer: [],
       pageSetup: { width: 794, height: 1123, marginTop: 72, marginBottom: 72, marginLeft: 90, marginRight: 90, orientation: 'portrait' },
+      modelVersion: versionToString(CURRENT_DOCUMENT_VERSION),
     }
     nodes.set(docId, doc as unknown as BaseNode)
 
@@ -153,6 +150,7 @@ const MarkdownLoader: IDocumentLoader = {
       body: { mode: 'flow', children: paraIds },
       header: [], footer: [],
       pageSetup: { width: 794, height: 1123, marginTop: 72, marginBottom: 72, marginLeft: 90, marginRight: 90, orientation: 'portrait' },
+      modelVersion: versionToString(CURRENT_DOCUMENT_VERSION),
     }
     nodes.set(docId, doc as unknown as BaseNode)
 
@@ -189,6 +187,7 @@ const XMLLoader: IDocumentLoader = {
       body: { mode: 'flow', children: [] },
       header: [], footer: [],
       pageSetup: { width: 794, height: 1123, marginTop: 72, marginBottom: 72, marginLeft: 90, marginRight: 90, orientation: 'portrait' },
+      modelVersion: versionToString(CURRENT_DOCUMENT_VERSION),
     }
     return { doc, nodes: new Map([[docId, doc as unknown as BaseNode]]) }
   },

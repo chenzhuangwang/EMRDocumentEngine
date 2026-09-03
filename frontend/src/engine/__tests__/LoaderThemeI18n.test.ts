@@ -4,6 +4,11 @@
 
 import { describe, it, expect } from 'vitest'
 import { documentLoaderRegistry } from '../loaders/DocumentLoaderRegistry'
+import { createDocument, createParagraph, createTextNode } from '../document/factory/ElementFormatter'
+import { buildNodePool } from '../document/core/NodePool'
+import { serializeDocument } from '../document/io/DocumentSerializer'
+import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/version/DocumentFormatVersion'
+import type { BaseNode } from '../document/core/DocumentModel'
 import { EditorTheme } from '../state/EditorTheme'
 import { locale, t } from '../i18n/index'
 import { testHost } from './helpers'
@@ -35,6 +40,45 @@ describe('DocumentLoaderRegistry', () => {
   it('should detect Markdown format', () => {
     const loader = documentLoaderRegistry.detectFormat('# Title\n\nContent here')
     expect(loader).toBeDefined()
+  })
+})
+
+// ---- DocumentLoaderRegistry load 行为 (契约 §14) ----
+
+describe('DocumentLoaderRegistry load 行为 (契约 §14)', () => {
+  it('JSONLoader.load 路由到 canonical DocumentLoader, 旧版本 JSON 自动升级', () => {
+    const doc = createDocument('legacy')
+    const allNodes = new Map<string, BaseNode>()
+    allNodes.set(doc.id, doc as unknown as BaseNode)
+    const text = createTextNode('hi')
+    const para = createParagraph([text.id])
+    allNodes.set(text.id, text as unknown as BaseNode)
+    allNodes.set(para.id, para as unknown as BaseNode)
+    doc.body.children = [para.id]
+    const pool = buildNodePool(allNodes, { body: doc.id })
+
+    // 序列化后强制降版本为 1.0.0, 模拟旧文档
+    const json = JSON.parse(serializeDocument(doc, pool)) as Record<string, unknown>
+    json.modelVersion = '1.0.0'
+
+    const loader = documentLoaderRegistry.findByExtension('test.json')!
+    const result = loader.load(JSON.stringify(json))
+    expect(result.doc.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
+    expect(result.nodes.get(para.id)).toBeDefined()
+  })
+
+  it('HTML/Markdown/XML import loader 生成的 doc 显式写 modelVersion=CURRENT', () => {
+    const html = documentLoaderRegistry.detectFormat('<!DOCTYPE html><html><body>hello</body></html>')!
+    expect(html.load('<!DOCTYPE html><html><body>hello</body></html>').doc.modelVersion)
+      .toBe(versionToString(CURRENT_DOCUMENT_VERSION))
+
+    const md = documentLoaderRegistry.detectFormat('# Title\n\ncontent')!
+    expect(md.load('# Title\n\ncontent').doc.modelVersion)
+      .toBe(versionToString(CURRENT_DOCUMENT_VERSION))
+
+    const xml = documentLoaderRegistry.findByExtension('test.xml')!
+    expect(xml.load('<root></root>').doc.modelVersion)
+      .toBe(versionToString(CURRENT_DOCUMENT_VERSION))
   })
 })
 
