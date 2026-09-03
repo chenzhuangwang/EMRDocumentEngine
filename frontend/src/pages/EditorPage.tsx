@@ -9,6 +9,8 @@ import { ReadingModeOverlay } from '@/components/views/ReadingMode'
 import { DesignControlPalette } from '@/components/views/DesignControlPalette'
 import { DesignControlProperties } from '@/components/views/DesignControlProperties'
 import { EditorProvider, useEditorRef, useEditorReady, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
+import { useEditorContextMenu } from '@/components/editor/useEditorContextMenu'
+import { ContextMenu } from '@/components/editor/ContextMenu'
 import { ExportDialog } from '@/components/dialogs/ExportDialog'
 import { FindReplaceDialog } from '@/components/dialogs/FindReplaceDialog'
 import { PrintDialog } from '@/components/dialogs/PrintDialog'
@@ -103,6 +105,7 @@ function EditorPageInner({
   const editorRef = useEditorRef()
   const ready = useEditorReady()
   const navigate = useNavigate()
+  const contextMenu = useEditorContextMenu()
   const [exportOpen, setExportOpen] = useState(false)
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
   const [printOpen, setPrintOpen] = useState(false)
@@ -873,8 +876,21 @@ function EditorPageInner({
       onTemplateSelect={handleTemplateSelect}
       templates={templates}
     >
-      <div ref={containerRef} className="flex-1 bg-[#E5E7EB] relative overflow-y-auto overflow-x-hidden" style={{ minHeight: '400px' }} />
+      <div
+        ref={containerRef}
+        className="flex-1 bg-[#E5E7EB] relative overflow-y-auto overflow-x-hidden"
+        style={{ minHeight: '400px' }}
+        onContextMenu={contextMenu.onContextMenu}
+      />
       <DesignControlTooltip />
+      <ContextMenu
+        open={contextMenu.open}
+        x={contextMenu.x}
+        y={contextMenu.y}
+        items={contextMenu.items}
+        onClose={contextMenu.close}
+        onAction={contextMenu.runAction}
+      />
       <DesignControlPalette />
       <DesignControlProperties />
       {/* 隐藏的文件选择器 (TASK-447 图片插入) */}

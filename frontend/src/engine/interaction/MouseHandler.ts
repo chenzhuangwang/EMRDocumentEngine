@@ -74,6 +74,9 @@ export class MouseHandler {
   }
 
   private onMouseDown = (e: MouseEvent) => {
+    // 仅处理主键 (左键) — 右键/中键交给 contextmenu 与浏览器默认行为 (P0-1)
+    if (e.button !== 0) return
+
     this.dragging = true
     this.dragMoved = false
     this.cellBoxActive = false

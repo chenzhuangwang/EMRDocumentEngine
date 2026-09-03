@@ -215,6 +215,18 @@ export type {
 } from './Editor'
 export type { EditorListener } from './Editor'
 
+// ---- 右键命中上下文 (契约 RULE 10) ----
+export {
+  buildContextSnapshot,
+  isCoversPoint,
+} from './context/EditorContext'
+export type {
+  EditorContextSnapshot, ContextFacts, TextHit,
+  TextContext, CellContext, TableContext, ImageContext,
+  SeparatorContext, SectionBreakContext, SmartTextContext,
+  HeaderFooterContext, BlankContext,
+} from './context/EditorContext'
+
 // ---- KaTeX ----
 export { renderKaTeXToCanvas, validateKaTeX, measureKaTeX } from './render/KaTeXRenderer'
 export type { KaTeXRenderResult } from './render/KaTeXRenderer'

@@ -1886,6 +1886,16 @@ RULE 9:
     CommandUndoRedoStack. HistoryState is a PURE projection and
     MUST NOT store commands (see §8.1).
 
+RULE 10:
+
+    CONTEXT RESOLUTION BOUNDARY — Engine MAY expose read-only
+    editor context snapshots for UI consumers. The context
+    snapshot MUST describe editor/document facts ONLY. It MUST
+    NOT contain: menu items, UI components, menu actions, React
+    state, or UI-specific commands. UI MAY derive menu
+    presentation and available actions from the context snapshot.
+    Context resolution MUST be side-effect free.
+
 In short:
 
     UI

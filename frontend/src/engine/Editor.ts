@@ -34,8 +34,12 @@ import type { FindOptions, MatchResult } from './FindReplaceEngine'
 import { computeOffsetInItems } from './layout/text/CharWidthHelper'
 import { FontManager } from './layout/text/FontManager'
 import { TextMeasurer } from './layout/text/TextMeasurer'
-import { resolveCellPosition } from './state/CaretScope'
+import { resolveCellPosition, getCaretScope } from './state/CaretScope'
+import type { CellPosition } from './state/CaretScope'
 import { screenToDoc, findPageByDocY, pageCenteringOffset } from './layout/table/TableCoordUtil'
+import { findControlItemAt } from './interaction/ControlHitTest'
+import { buildContextSnapshot } from './context/EditorContext'
+import type { EditorContextSnapshot } from './context/EditorContext'
 import { insertRow, deleteRow, insertColumn, deleteColumn, getCellGridPosition, mergeAdjacentCells, mergeRange, splitCell } from './document/table/TableOps'
 import type { CellRange } from './document/table/TableOps'
 import {
@@ -442,15 +446,17 @@ export class Editor {
   }
 
   /**
-   * 将鼠标事件解析为文档命中信息 (handleClick 与格式刷 FormatPainter.applyToClickTarget 共用)。
-   * 返回 null 表示无页面或目标页面缺失, 调用方据此提前返回。
+   * 将鼠标事件解析为「原始命中」— 页面局部坐标 + 命中 nodeId (Level 1)。
+   * resolveMouseHit 与 resolveContextAt 共用; 返回 null 表示无页面或目标页面缺失。
    */
-  resolveMouseHit(e: MouseEvent): {
+  private resolveRawHit(e: MouseEvent): {
     nodeId: string | null
-    docX: number
-    docY: number
+    pageIndex: number
+    localX: number
+    localY: number
     page: import('./layout/core/SLIF').SLIFPage
-  } | null {    const rect = this.host.viewport.bounds()
+  } | null {
+    const rect = this.host.viewport.bounds()
     const { scale, scrollY } = this.draw.getCoordinateSystem().transform
 
     // 屏幕坐标 → 文档坐标 (统一通过 TableCoordUtil, v20.35 修复: 之前缺少 /scale)
@@ -467,11 +473,111 @@ export class Editor {
 
     const viewportW = this.host.viewport.size().width
     const offsetX = pageCenteringOffset(page.width, viewportW, scale)
-    const docX = docX0 - offsetX / scale
+    const localX = docX0 - offsetX / scale
     // 命中检测 — 可能返回 null (空段落/点击在内容下方)
-    const nodeId = this.draw.getHitTestIndex().hitTest(docX, localY, pageIndex)
+    const nodeId = this.draw.getHitTestIndex().hitTest(localX, localY, pageIndex)
 
-    return { nodeId, docX, docY: localY, page }
+    return { nodeId, pageIndex, localX, localY, page }
+  }
+
+  /**
+   * 将鼠标事件解析为文档命中信息 (handleClick 与格式刷 FormatPainter.applyToClickTarget 共用)。
+   * 返回 null 表示无页面或目标页面缺失, 调用方据此提前返回。
+   * 薄包装: 委托 resolveRawHit, 仅做字段名映射 (保持既有公开签名兼容)。
+   */
+  resolveMouseHit(e: MouseEvent): {
+    nodeId: string | null
+    docX: number
+    docY: number
+    page: import('./layout/core/SLIF').SLIFPage
+  } | null {
+    const hit = this.resolveRawHit(e)
+    if (!hit) return null
+    return { nodeId: hit.nodeId, docX: hit.localX, docY: hit.localY, page: hit.page }
+  }
+
+  /**
+   * 解析右键命中上下文 — 只读编辑器上下文快照 (契约 RULE 10)。
+   *
+   * 只描述文档/编辑器事实, 不含菜单项、动作或 React 状态; 无副作用。
+   * 数据采集: resolveRawHit (坐标变换 + Level 1) → getEntryType / hitTestTable
+   * (Level 2) → findControlItemAt (design) → 页眉页脚区域边界 → 选区投影,
+   * 最终委托纯函数 buildContextSnapshot 判别上下文种类。
+   */
+  resolveContextAt(e: MouseEvent): EditorContextSnapshot {
+    const raw = this.resolveRawHit(e)
+    if (!raw) {
+      return { kind: 'blank', pageIndex: 0, localX: 0, localY: 0 }
+    }
+    const { nodeId, pageIndex, localX, localY, page } = raw
+
+    // 1. 页眉/页脚区域 (优先于其他命中)
+    let headerFooterSection: 'header' | 'footer' | null = null
+    if (localX >= 0 && localX <= page.width) {
+      const headerH = page.headerHeight ?? 42
+      if (localY >= 0 && localY <= headerH) {
+        headerFooterSection = 'header'
+      } else {
+        const footerH = page.footerHeight ?? 42
+        if (localY >= page.height - footerH && localY <= page.height) headerFooterSection = 'footer'
+      }
+    }
+
+    // 2. 设计模式 smarttext 控件命中
+    const mode = this.store.state.runtime.view.mode
+    const controlId = mode === 'design' ? findControlItemAt(page, localX, localY) : null
+
+    // 3. Level 1 命中类型
+    const hitIndex = this.draw.getHitTestIndex()
+    const entryType = nodeId ? hitIndex.getEntryType(pageIndex, nodeId) : null
+
+    // 4. cell / text 命中 (Level 2 或 body 文本)
+    let cellPosition: CellPosition | null = null
+    let textHit: import('./context/EditorContext').TextHit | null = null
+
+    if (entryType === 'table' && nodeId) {
+      const tableItem = hitIndex.getTableItem(pageIndex, nodeId)
+      if (tableItem) {
+        const tableResult = hitIndex.hitTestTable(tableItem, localX, localY, this.pool, this.doc.id)
+        if (tableResult) {
+          const paraId = tableResult.paraPath[tableResult.paraPath.length - 1]
+          cellPosition = resolveCellPosition(paraId, this.pool)
+          if (cellPosition) {
+            textHit = {
+              paragraphId: paraId,
+              paragraphPath: tableResult.paraPath,
+              offset: tableResult.offset,
+              scope: getCaretScope(tableResult.paraPath, this.pool),
+            }
+          }
+        }
+      }
+    } else if (nodeId) {
+      // 正文文本命中 (nodeId 为 text 节点 id → 反查所属段落)
+      const para = this.findParagraphContaining(nodeId)
+      if (para) {
+        const paraPath = [this.doc.id, para.id]
+        textHit = {
+          paragraphId: para.id,
+          paragraphPath: paraPath,
+          offset: this.computeOffsetAtX(para, localX, localY, page),
+          scope: getCaretScope(paraPath, this.pool),
+        }
+      }
+    }
+
+    return buildContextSnapshot({
+      nodeId,
+      entryType,
+      pageIndex,
+      localX,
+      localY,
+      headerFooterSection,
+      controlId,
+      cellPosition,
+      textHit,
+      selection: this.store.state.runtime.selection,
+    })
   }
 
   /** 根据文档坐标 X/Y 计算段落内的字符偏移 — Phase 5 使用 page.items 直接过滤 */
@@ -1202,7 +1308,7 @@ export class Editor {
    * body 内选区: 在 doc.body.children 上操作 (原有逻辑)
    * 跨域选区: 不允许, 直接返回 false
    */
-  private deleteSelectedRange(): boolean {
+  deleteSelectedRange(): boolean {
     const selection = this.store.state.runtime.selection
     if (!selection.active) return false
 
@@ -1960,8 +2066,10 @@ export interface IEditor {
   undo(): void; redo(): void
   canUndo(): boolean; canRedo(): boolean
   copy(): void; paste(): void
+  deleteSelectedRange(): boolean
   toggleFormat(style: Partial<import('./document/core/DocumentModel').TextStyle>): void
   setParagraphStyle(style: Partial<import('./document/core/DocumentModel').ParagraphStyle>): void
+  resolveContextAt(e: MouseEvent): import('./context/EditorContext').EditorContextSnapshot
   getWordCount(): { chars: number; words: number; paragraphs: number; selectedChars?: number; selectedWords?: number }
   on(event: EditorEventType, cb: (...args: unknown[]) => void): void
   off(event: EditorEventType, cb: (...args: unknown[]) => void): void
