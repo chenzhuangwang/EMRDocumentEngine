@@ -2,8 +2,8 @@
 // contextMenuModel 纯函数测试 (P1-a)
 //
 // 验证 buildContextMenuModel 由上下文快照派生菜单条目:
-//   - text/cell: 复制/粘贴/删除 + 文本格式 + 段落样式 + 列表层级,
-//     且删除仅在命中点覆盖选区时可用。
+//   - text/cell: 剪切/复制/粘贴/删除 + 文本格式 + 段落样式 + 列表层级,
+//     且剪切/删除仅在命中点覆盖选区时可用。
 //   - blank: 仅粘贴。
 //   - 其余种类: 空条目 (不弹菜单)。
 // ============================================================
@@ -41,9 +41,10 @@ function cellSnapshot(coversSelection: boolean): EditorContextSnapshot {
 }
 
 describe('buildContextMenuModel 菜单条目 (P1-a)', () => {
-  it('text 命中: 复制/粘贴/删除 + 格式/段落/列表, 覆盖选区时删除可用', () => {
+  it('text 命中: 剪切/复制/粘贴/删除 + 格式/段落/列表, 覆盖选区时剪切/删除可用', () => {
     const snap = textSnapshot(true)
     expect(items(snap)).toEqual([
+      { id: 'cut', enabled: true },
       { id: 'copy', enabled: true },
       { id: 'paste', enabled: true },
       { id: 'delete', enabled: true },
@@ -59,25 +60,26 @@ describe('buildContextMenuModel 菜单条目 (P1-a)', () => {
       { id: 'increaseIndent', enabled: true },
       { id: 'decreaseIndent', enabled: true },
     ])
-    // 分组: 3 项 + sep + 5 项 + sep + 4 项 + sep + 2 项
+    // 分组: 4 项 + sep + 5 项 + sep + 4 项 + sep + 2 项
     expect(entryKinds(snap)).toEqual([
-      'item', 'item', 'item', 'separator',
+      'item', 'item', 'item', 'item', 'separator',
       'item', 'item', 'item', 'item', 'item', 'separator',
       'item', 'item', 'item', 'item', 'separator',
       'item', 'item',
     ])
   })
 
-  it('text 命中但未覆盖选区: 删除不可用, 其余可用', () => {
+  it('text 命中但未覆盖选区: 剪切/删除不可用, 其余可用', () => {
     const list = items(textSnapshot(false))
+    expect(list.find((i) => i.id === 'cut')).toEqual({ id: 'cut', enabled: false })
     expect(list.find((i) => i.id === 'delete')).toEqual({ id: 'delete', enabled: false })
     expect(list.find((i) => i.id === 'copy')?.enabled).toBe(true)
   })
 
-  it('cell 命中: 同样提供格式/段落/列表条目', () => {
+  it('cell 命中: 同样提供剪切/格式/段落/列表条目', () => {
     const list = items(cellSnapshot(false))
     expect(list.map((i) => i.id)).toEqual([
-      'copy', 'paste', 'delete',
+      'cut', 'copy', 'paste', 'delete',
       'bold', 'italic', 'underline', 'strikeout', 'clearFormat',
       'alignLeft', 'alignCenter', 'alignRight', 'alignJustify',
       'increaseIndent', 'decreaseIndent',
@@ -153,7 +155,7 @@ describe('buildContextMenuModel 勾选状态', () => {
     const entries = buildContextMenuModel(textSnapshot(false)).entries
     for (const e of entries) {
       if (e.kind !== 'item') continue
-      if (['copy', 'paste', 'delete', 'clearFormat', 'increaseIndent', 'decreaseIndent'].includes(e.id)) {
+      if (['cut', 'copy', 'paste', 'delete', 'clearFormat', 'increaseIndent', 'decreaseIndent'].includes(e.id)) {
         expect(e.checked).toBeUndefined()
       }
     }

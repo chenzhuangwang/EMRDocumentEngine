@@ -55,6 +55,7 @@ export type {
 export { PositionalCommand, generateCommandId } from './command/ICommand'
 export { InsertTextCommand } from './command/commands/InsertTextCommand'
 export { DeleteRangeCommand } from './command/commands/DeleteRangeCommand'
+export { MacroCommand } from './command/commands/MacroCommand'
 export { InsertImageCommand } from './command/commands/InsertImageCommand'
 export { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
 export type { ReplaceEdit } from './command/commands/ReplaceTextCommand'

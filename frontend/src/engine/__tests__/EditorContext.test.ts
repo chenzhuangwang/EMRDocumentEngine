@@ -2,7 +2,7 @@
 // EditorContext 纯函数测试 (契约 RULE 10)
 //
 // 验证 buildContextSnapshot 的上下文种类判别 (优先级顺序) 与
-// isCoversPoint 的选区覆盖判定 (含跨段落限制)。
+// isCoversPoint 的选区覆盖判定 (含跨段落覆盖, 注入 siblings 顺序)。
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
@@ -147,9 +147,59 @@ describe('isCoversPoint 选区覆盖判定', () => {
     expect(isCoversPoint(sel, point)).toBe(false)
   })
 
-  it('跨段落选区 → false (P0 限制: 仅同段落判定)', () => {
+  it('无兄弟顺序时跨段落选区 → false (保守回退)', () => {
     const sel = makeSelection(true, 0, 8)
     sel.focus.paragraphPath = ['doc', 'p2']
     expect(isCoversPoint(sel, point)).toBe(false)
+  })
+
+  describe('跨段落选区覆盖 (提供 siblings)', () => {
+    const siblings = ['p1', 'p2', 'p3'] as const
+
+    function crossSel(aPara: string, aOff: number, fPara: string, fOff: number): SelectionState {
+      const sel = makeSelection(true, aOff, fOff)
+      sel.anchor.paragraphPath = ['doc', aPara]
+      sel.focus.paragraphPath = ['doc', fPara]
+      return sel
+    }
+
+    it('命中中间段落整段 → true', () => {
+      const sel = crossSel('p1', 2, 'p3', 4)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p2'], offset: 0 }, [...siblings])).toBe(true)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p2'], offset: 99 }, [...siblings])).toBe(true)
+    })
+
+    it('命中 lo 边界段落: offset >= loOff 才覆盖', () => {
+      const sel = crossSel('p1', 3, 'p3', 4)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p1'], offset: 3 }, [...siblings])).toBe(true)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p1'], offset: 5 }, [...siblings])).toBe(true)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p1'], offset: 2 }, [...siblings])).toBe(false)
+    })
+
+    it('命中 hi 边界段落: offset <= hiOff 才覆盖', () => {
+      const sel = crossSel('p1', 3, 'p3', 4)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p3'], offset: 4 }, [...siblings])).toBe(true)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p3'], offset: 0 }, [...siblings])).toBe(true)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p3'], offset: 5 }, [...siblings])).toBe(false)
+    })
+
+    it('反向选区 (focus 在上, anchor 在下) 仍按 lo/hi 归约', () => {
+      // anchor 在 p3, focus 在 p1 → lo=p1(3) hi=p3(4)
+      const sel = crossSel('p3', 4, 'p1', 3)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p2'], offset: 1 }, [...siblings])).toBe(true)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p1'], offset: 3 }, [...siblings])).toBe(true)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p3'], offset: 4 }, [...siblings])).toBe(true)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p1'], offset: 2 }, [...siblings])).toBe(false)
+    })
+
+    it('命中选区范围之外 → false', () => {
+      const sel = crossSel('p1', 3, 'p2', 4)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p3'], offset: 0 }, [...siblings])).toBe(false)
+    })
+
+    it('命中段落不在兄弟域 → false', () => {
+      const sel = crossSel('p1', 3, 'p2', 4)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p9'], offset: 0 }, [...siblings])).toBe(false)
+    })
   })
 })

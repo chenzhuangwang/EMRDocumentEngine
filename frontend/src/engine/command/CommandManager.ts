@@ -11,7 +11,9 @@
 // ================================================================
 
 import type { ICommand, InvalidationScope, CommandContext, StatePatch } from './ICommand'
+import { generateCommandId } from './ICommand'
 import { CommandUndoRedoStack } from './CommandUndoRedoStack'
+import { MacroCommand } from './commands/MacroCommand'
 import type { EventBus } from '../interaction/EventBus'
 import type { DocumentTree } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
@@ -25,6 +27,8 @@ export class CommandManager {
   private getDocument: () => DocumentTree
   private getPool: () => NodePool
   private getTemplateDefinitions: () => TemplateDefinitionStore | undefined
+  /** 事务栈 — beginMacro/endMacro 间收集的子命令 (RULE 11) */
+  private macroStack: ICommand[][] = []
 
   constructor(
     eventBus: EventBus,
@@ -52,10 +56,34 @@ export class CommandManager {
   execute(command: ICommand): void {
     const ctx = this.buildContext()
 
+    const macro = this.macroStack[this.macroStack.length - 1]
+    if (macro) {
+      // 事务内: 立即 forward (mutate + emit), 收集子命令, 不推入 undo 栈 (RULE 11)
+      const patch = command.forward(ctx)
+      if (patch) {
+        macro.push(command)
+        this.emitDocumentChange(patch)
+      }
+      return
+    }
+
     const patch = this.undoStack.execute(command, ctx)
     if (!patch) return
 
     this.emitDocumentChange(patch)
+  }
+
+  /** 开始事务 — 之后 execute 的命令被收集, 直到 endMacro 合并为单个 undo 单元 */
+  beginMacro(): void {
+    this.macroStack.push([])
+  }
+
+  /** 结束事务 — 将收集的子命令打包为 MacroCommand 入栈 (单个 undo 单元) */
+  endMacro(): void {
+    const children = this.macroStack.pop()
+    if (!children || children.length === 0) return
+    const macro = new MacroCommand(generateCommandId(), Date.now(), 'user', children)
+    this.undoStack.push(macro)
   }
 
   undo(): void {

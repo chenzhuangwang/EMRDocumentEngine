@@ -10,14 +10,15 @@
 // P1-a 追加: 文本格式 (加粗/斜体/下划线/删除线/清除格式)、
 //            段落样式 (对齐)、列表层级 (增减缩进)。
 // P1-a 增量: 勾选状态 (checked) — 由样式投影推导, 反映光标处当前格式。
-// 禁止项 (§十): 剪切 (严格原子 cut)、图片复制、完整 deleteNode、
+// P1-b:      剪切 (严格原子 cut, 契约 RULE 11)。
+// 禁止项 (§十): 图片复制、完整 deleteNode、
 // 页眉页脚完整菜单、SmartText 属性面板 — 均不在实现范围。
 // ============================================================
 
 import type { EditorContextSnapshot } from '@/engine'
 
 export type ContextMenuActionId =
-  | 'copy' | 'paste' | 'delete'
+  | 'cut' | 'copy' | 'paste' | 'delete'
   | 'bold' | 'italic' | 'underline' | 'strikeout' | 'clearFormat'
   | 'alignLeft' | 'alignCenter' | 'alignRight' | 'alignJustify'
   | 'increaseIndent' | 'decreaseIndent'
@@ -84,7 +85,7 @@ const NO_STYLE: ContextMenuStyleInfo = { textStyle: null, paragraphStyle: null }
 /**
  * 由上下文快照 + 样式投影派生菜单条目 (纯函数)。
  *
- * - text / cell: 复制、粘贴、删除 (删除仅在命中点覆盖当前选区时可用) +
+ * - text / cell: 剪切、复制、粘贴、删除 (剪切/删除仅在命中点覆盖当前选区时可用) +
  *   文本格式 (含勾选) + 段落样式 (含勾选) + 列表层级。
  * - blank:       粘贴 (光标位置粘贴)。
  * - 其余种类 (table/image/separator/sectionBreak/headerFooterRegion/smartText):
@@ -99,6 +100,7 @@ export function buildContextMenuModel(
     case 'cell':
       return {
         entries: [
+          { kind: 'item', id: 'cut', label: '剪切', enabled: snapshot.coversSelection },
           { kind: 'item', id: 'copy', label: '复制', enabled: true },
           { kind: 'item', id: 'paste', label: '粘贴', enabled: true },
           { kind: 'item', id: 'delete', label: '删除', enabled: snapshot.coversSelection },

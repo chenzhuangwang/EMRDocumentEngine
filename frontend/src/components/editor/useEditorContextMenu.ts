@@ -55,7 +55,8 @@ export function useEditorContextMenu() {
     const editor = editorRef.current
     if (!editor) return
     switch (id) {
-      // 剪贴板/删除 (P0)
+      // 剪贴板/删除 (P0 / P1-b)
+      case 'cut': editor.cut(); break
       case 'copy': editor.copy(); break
       case 'paste': editor.paste(); break
       case 'delete': editor.deleteSelectedRange(); break
@@ -75,6 +76,9 @@ export function useEditorContextMenu() {
       case 'decreaseIndent': editor.adjustListLevel(-1); break
     }
     close()
+    // 恢复焦点到编辑器隐藏 textarea: Radix DropdownMenu 关闭时 onCloseAutoFocus
+    // 被 preventDefault, 焦点会丢失到 body, 导致引擎容器级快捷键 (Ctrl+Z 等) 失效。
+    editor.focus()
   }, [editorRef, close])
 
   return {

@@ -57,6 +57,16 @@ export class CommandUndoRedoStack {
     return patch
   }
 
+  /**
+   * 直接入栈, 不做 forward/merge (供事务提交: 子命令已各自 forward,
+   * 此处仅将 MacroCommand 作为单个 undo 单元登记, 见 RULE 11)。
+   */
+  push(command: ICommand): void {
+    this.undoStack.push(command)
+    if (this.undoStack.length > this.maxDepth) this.undoStack.shift()
+    this.redoStack = []
+  }
+
   canUndo(): boolean { return this.undoStack.length > 0 }
   canRedo(): boolean { return this.redoStack.length > 0 }
   getUndoDepth(): number { return this.undoStack.length }

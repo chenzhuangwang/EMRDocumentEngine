@@ -34,7 +34,7 @@ import type { FindOptions, MatchResult } from './FindReplaceEngine'
 import { computeOffsetInItems } from './layout/text/CharWidthHelper'
 import { FontManager } from './layout/text/FontManager'
 import { TextMeasurer } from './layout/text/TextMeasurer'
-import { resolveCellPosition, getCaretScope } from './state/CaretScope'
+import { resolveCellPosition, getCaretScope, resolveParagraphRegion } from './state/CaretScope'
 import type { CellPosition } from './state/CaretScope'
 import { screenToDoc, findPageByDocY, pageCenteringOffset } from './layout/table/TableCoordUtil'
 import { findControlItemAt } from './interaction/ControlHitTest'
@@ -576,8 +576,22 @@ export class Editor {
       controlId,
       cellPosition,
       textHit,
+      siblings: this.resolveHitSiblings(textHit),
       selection: this.store.state.runtime.selection,
     })
+  }
+
+  /**
+   * 解析命中段落在其作用域内的有序兄弟段落 id (供跨段落选区覆盖判定)。
+   * 仅 body / cell 段落返回兄弟数组 (header/footer 命中走 headerFooterRegion 分支,
+   * 不参与 isCoversPoint 的 text/cell 覆盖判定)。
+   */
+  private resolveHitSiblings(textHit: import('./context/EditorContext').TextHit | null): readonly string[] | undefined {
+    if (!textHit) return undefined
+    const region = resolveParagraphRegion(textHit.paragraphId, this.doc, this.pool)
+    if (!region) return undefined
+    if (region.type === 'body' || region.type === 'cell') return region.siblings
+    return undefined
   }
 
   /** 根据文档坐标 X/Y 计算段落内的字符偏移 — Phase 5 使用 page.items 直接过滤 */
@@ -1301,6 +1315,22 @@ export class Editor {
   }
 
   /** 删除当前选区内容 (跨段落逐段删除 + 合并), 用于粘贴前替换选区 */
+  /**
+   * 剪切: 复制选区到剪贴板 + 原子删除 (契约 RULE 11)。
+   *
+   * 复制是副作用 (不入命令栈, 不被 undo/redo); 删除经 beginMacro/endMacro
+   * 将 deleteSelectedRange 可能发出的多条 DeleteRange/Merge 命令合并为
+   * 单个 undo 单元, 使跨段落剪切也只需一次 undo。
+   */
+  cut(): void {
+    const selection = this.store.state.runtime.selection
+    if (!selection.active) return
+    this.copy()
+    this.commandManager.beginMacro()
+    this.deleteSelectedRange()
+    this.commandManager.endMacro()
+  }
+
   /**
    * 删除选区内容 — v21.0 Phase 4: 区分 body/cell 作用域
    *
@@ -2066,6 +2096,7 @@ export interface IEditor {
   undo(): void; redo(): void
   canUndo(): boolean; canRedo(): boolean
   copy(): void; paste(): void
+  cut(): void
   deleteSelectedRange(): boolean
   toggleFormat(style: Partial<import('./document/core/DocumentModel').TextStyle>): void
   setParagraphStyle(style: Partial<import('./document/core/DocumentModel').ParagraphStyle>): void

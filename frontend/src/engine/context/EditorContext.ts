@@ -128,6 +128,8 @@ export interface ContextFacts {
   cellPosition: CellPosition | null
   /** 段落文本命中 (body 或 cell), 无则 null */
   textHit: TextHit | null
+  /** 命中段落在其作用域内的有序兄弟段落 id (供跨段落选区覆盖判定), 无则 undefined */
+  siblings?: readonly string[]
   /** 当前运行时选区 (用于计算 coversSelection) */
   selection: SelectionState
 }
@@ -137,25 +139,64 @@ export interface ContextFacts {
 /**
  * 判断选区是否覆盖给定文本命中点。
  *
- * P0 限制: 仅在同段落内判定 (anchor/focus 同段落且命中点同段落)。
- * 跨段落选区一律返回 false (保守: 视为「未覆盖」, 交由上层决定)。
+ * - 未提供 `siblings` (作用域内有序兄弟段落 id) 时: 仅同段落内判定
+ *   (anchor/focus/命中点同段落且命中偏移落在选区偏移区间内)。
+ * - 提供 `siblings` 时: 支持跨段落选区覆盖判定 —
+ *   选区覆盖 [lo 段落 loOff..段尾] + 中间段落整段 + [hi 段落段首..hiOff]。
+ *   命中段落落在 lo..hi 之外返回 false; 落在边界段落按偏移判定; 落在中间返回 true。
  */
 export function isCoversPoint(
   selection: SelectionState,
   point: { paragraphPath: string[]; offset: number },
+  siblings?: readonly string[],
 ): boolean {
   if (!selection.active) return false
 
-  const aKey = selection.anchor.paragraphPath.join('.')
-  const fKey = selection.focus.paragraphPath.join('.')
-  const pKey = point.paragraphPath.join('.')
+  const aId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
+  const fId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
+  const pId = point.paragraphPath[point.paragraphPath.length - 1]
 
-  // 跨段落命中: 当前限制 — 仅同段落内判定
-  if (aKey !== fKey || aKey !== pKey) return false
+  // 无兄弟顺序信息 → 仅同段落内判定
+  if (!siblings) {
+    if (aId !== fId || aId !== pId) return false
+    const lo = Math.min(selection.anchor.offset, selection.focus.offset)
+    const hi = Math.max(selection.anchor.offset, selection.focus.offset)
+    return point.offset >= lo && point.offset <= hi
+  }
 
-  const lo = Math.min(selection.anchor.offset, selection.focus.offset)
-  const hi = Math.max(selection.anchor.offset, selection.focus.offset)
-  return point.offset >= lo && point.offset <= hi
+  const ai = siblings.indexOf(aId)
+  const fi = siblings.indexOf(fId)
+  const pi = siblings.indexOf(pId)
+
+  // 选区段落不在同一兄弟域 → 保守回退同段落判定
+  if (ai < 0 || fi < 0) {
+    if (aId !== fId || aId !== pId) return false
+    const lo = Math.min(selection.anchor.offset, selection.focus.offset)
+    const hi = Math.max(selection.anchor.offset, selection.focus.offset)
+    return point.offset >= lo && point.offset <= hi
+  }
+  // 命中段落不在兄弟域 → 视为未覆盖
+  if (pi < 0) return false
+
+  const loIdx = Math.min(ai, fi)
+  const hiIdx = Math.max(ai, fi)
+  const loOff = ai === loIdx ? selection.anchor.offset : selection.focus.offset
+  const hiOff = ai === hiIdx ? selection.anchor.offset : selection.focus.offset
+
+  // 命中段落在选区范围之外
+  if (pi < loIdx || pi > hiIdx) return false
+
+  // 单段落选区
+  if (loIdx === hiIdx) {
+    const lo = Math.min(loOff, hiOff)
+    const hi = Math.max(loOff, hiOff)
+    return point.offset >= lo && point.offset <= hi
+  }
+
+  // 跨段落选区: 边界段落按偏移判定, 中间段落整段覆盖
+  if (pi === loIdx) return point.offset >= loOff
+  if (pi === hiIdx) return point.offset <= hiOff
+  return true
 }
 
 /**
@@ -190,7 +231,7 @@ export function buildContextSnapshot(facts: ContextFacts): EditorContextSnapshot
       paragraphId: facts.textHit.paragraphId,
       paragraphPath: facts.textHit.paragraphPath,
       offset: facts.textHit.offset,
-      coversSelection: isCoversPoint(facts.selection, facts.textHit),
+      coversSelection: isCoversPoint(facts.selection, facts.textHit, facts.siblings),
     }
   }
 
@@ -215,7 +256,7 @@ export function buildContextSnapshot(facts: ContextFacts): EditorContextSnapshot
       paragraphPath: facts.textHit.paragraphPath,
       offset: facts.textHit.offset,
       scope: facts.textHit.scope,
-      coversSelection: isCoversPoint(facts.selection, facts.textHit),
+      coversSelection: isCoversPoint(facts.selection, facts.textHit, facts.siblings),
     }
   }
 
