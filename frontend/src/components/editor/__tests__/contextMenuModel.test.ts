@@ -9,7 +9,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { buildContextMenuModel, type ContextMenuActionId, type ContextMenuEntryItem } from '../contextMenuModel'
+import { buildContextMenuModel, type ContextMenuActionId, type ContextMenuEntryItem, type ContextMenuStyleInfo } from '../contextMenuModel'
 import type { EditorContextSnapshot } from '@/engine'
 
 /** 提取可点击条目 (过滤分隔符) */
@@ -101,6 +101,61 @@ describe('buildContextMenuModel 菜单条目 (P1-a)', () => {
     ]
     for (const snap of others) {
       expect(buildContextMenuModel(snap).entries).toEqual([])
+    }
+  })
+})
+
+// ---- 勾选状态 (P1-a 增量) ----
+
+/** 提取带勾选状态的格式/对齐项 (id → checked) */
+function checkedMap(
+  snapshot: EditorContextSnapshot,
+  style?: ContextMenuStyleInfo,
+): Record<string, boolean | undefined> {
+  const out: Record<string, boolean | undefined> = {}
+  for (const e of buildContextMenuModel(snapshot, style ?? { textStyle: null, paragraphStyle: null }).entries) {
+    if (e.kind === 'item' && e.checked !== undefined) out[e.id] = e.checked
+  }
+  return out
+}
+
+const CHECKED_IDS = ['bold', 'italic', 'underline', 'strikeout', 'alignLeft', 'alignCenter', 'alignRight', 'alignJustify']
+
+describe('buildContextMenuModel 勾选状态', () => {
+  it('无样式投影 (默认): 格式/对齐项均未勾选', () => {
+    const map = checkedMap(textSnapshot(false))
+    expect(CHECKED_IDS.every((id) => map[id] === false)).toBe(true)
+  })
+
+  it('textStyle 投影反映加粗/斜体/下划线/删除线勾选', () => {
+    const map = checkedMap(textSnapshot(false), {
+      textStyle: { bold: true, italic: false, underline: true, strikeout: true },
+      paragraphStyle: null,
+    })
+    expect(map.bold).toBe(true)
+    expect(map.italic).toBe(false)
+    expect(map.underline).toBe(true)
+    expect(map.strikeout).toBe(true)
+  })
+
+  it('paragraphStyle 投影反映对齐勾选 (仅一项为 true)', () => {
+    const map = checkedMap(textSnapshot(false), {
+      textStyle: null,
+      paragraphStyle: { alignment: 'center' },
+    })
+    expect(map.alignCenter).toBe(true)
+    expect(map.alignLeft).toBe(false)
+    expect(map.alignRight).toBe(false)
+    expect(map.alignJustify).toBe(false)
+  })
+
+  it('复制/粘贴/删除/清除格式/缩进 不携带 checked 字段', () => {
+    const entries = buildContextMenuModel(textSnapshot(false)).entries
+    for (const e of entries) {
+      if (e.kind !== 'item') continue
+      if (['copy', 'paste', 'delete', 'clearFormat', 'increaseIndent', 'decreaseIndent'].includes(e.id)) {
+        expect(e.checked).toBeUndefined()
+      }
     }
   })
 })

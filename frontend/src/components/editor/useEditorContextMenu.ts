@@ -11,7 +11,7 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import type { EditorContextSnapshot } from '@/engine'
-import { useEditorRef } from './EditorProvider'
+import { useEditorRef, useEditorStoreSnapshot } from './EditorProvider'
 import { buildContextMenuModel, type ContextMenuActionId, type ContextMenuEntry } from './contextMenuModel'
 
 interface ContextMenuState {
@@ -25,6 +25,9 @@ const CLOSED_STATE: ContextMenuState = { open: false, x: 0, y: 0, snapshot: null
 
 export function useEditorContextMenu() {
   const editorRef = useEditorRef()
+  // 光标处样式投影 (供勾选状态) — 与工具栏共用同一 canonical 投影
+  const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
+  const paragraphStyle = useEditorStoreSnapshot((s) => s.paragraphStyle)
   const [state, setState] = useState<ContextMenuState>(CLOSED_STATE)
 
   const onContextMenu = useCallback((e: React.MouseEvent) => {
@@ -44,8 +47,8 @@ export function useEditorContextMenu() {
   }, [])
 
   const entries: ContextMenuEntry[] = useMemo(
-    () => (state.snapshot ? buildContextMenuModel(state.snapshot).entries : []),
-    [state.snapshot],
+    () => (state.snapshot ? buildContextMenuModel(state.snapshot, { textStyle, paragraphStyle }).entries : []),
+    [state.snapshot, textStyle, paragraphStyle],
   )
 
   const runAction = useCallback((id: ContextMenuActionId) => {

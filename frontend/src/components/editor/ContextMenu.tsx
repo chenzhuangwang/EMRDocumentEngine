@@ -58,6 +58,9 @@ export function ContextMenu({ open, x, y, entries, onClose, onAction }: ContextM
                 disabled={!entry.enabled}
                 onSelect={() => onAction(entry.id)}
               >
+                <span className="w-4 flex-shrink-0 text-center text-blue-600">
+                  {entry.checked ? '✓' : ''}
+                </span>
                 <span>{entry.label}</span>
               </DropdownMenu.Item>
             ),

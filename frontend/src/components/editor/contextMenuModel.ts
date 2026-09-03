@@ -1,13 +1,15 @@
 // ============================================================
 // contextMenuModel — 右键菜单呈现模型 (UI 层, 纯函数)
 //
-// 由 EditorContextSnapshot (引擎只读快照) 派生菜单条目。
-// 条目只描述呈现 (kind / id / label / enabled), 不含编辑器逻辑;
+// 由 EditorContextSnapshot (引擎只读快照) + 光标处样式投影
+// (EditorStoreState.textStyle / paragraphStyle) 派生菜单条目。
+// 条目只描述呈现 (kind / id / label / enabled / checked), 不含编辑器逻辑;
 // 动作通过 ContextMenuActionId 在 useEditorContextMenu 中分派到 Editor API。
 //
 // P0 范围 (§七): 复制 / 粘贴 / 删除。
 // P1-a 追加: 文本格式 (加粗/斜体/下划线/删除线/清除格式)、
 //            段落样式 (对齐)、列表层级 (增减缩进)。
+// P1-a 增量: 勾选状态 (checked) — 由样式投影推导, 反映光标处当前格式。
 // 禁止项 (§十): 剪切 (严格原子 cut)、图片复制、完整 deleteNode、
 // 页眉页脚完整菜单、SmartText 属性面板 — 均不在实现范围。
 // ============================================================
@@ -26,6 +28,8 @@ export interface ContextMenuEntryItem {
   id: ContextMenuActionId
   label: string
   enabled: boolean
+  /** 选中态 (格式/对齐项); 无状态动作 (复制/粘贴/删除/清除格式/缩进) 不设置 */
+  checked?: boolean
 }
 
 /** 分组分隔符 */
@@ -39,24 +43,32 @@ export interface ContextMenuModel {
   entries: ContextMenuEntry[]
 }
 
+/** 样式投影输入 (与 EditorStoreState.textStyle / paragraphStyle 结构兼容) */
+export interface ContextMenuStyleInfo {
+  textStyle: { bold?: boolean; italic?: boolean; underline?: boolean; strikeout?: boolean } | null
+  paragraphStyle: { alignment?: string } | null
+}
+
 const SEP: ContextMenuEntrySeparator = { kind: 'separator' }
 
-function textFormatEntries(): ContextMenuEntry[] {
+function textFormatEntries(style: ContextMenuStyleInfo): ContextMenuEntry[] {
+  const ts = style.textStyle
   return [
-    { kind: 'item', id: 'bold', label: '加粗', enabled: true },
-    { kind: 'item', id: 'italic', label: '斜体', enabled: true },
-    { kind: 'item', id: 'underline', label: '下划线', enabled: true },
-    { kind: 'item', id: 'strikeout', label: '删除线', enabled: true },
+    { kind: 'item', id: 'bold', label: '加粗', enabled: true, checked: ts?.bold === true },
+    { kind: 'item', id: 'italic', label: '斜体', enabled: true, checked: ts?.italic === true },
+    { kind: 'item', id: 'underline', label: '下划线', enabled: true, checked: ts?.underline === true },
+    { kind: 'item', id: 'strikeout', label: '删除线', enabled: true, checked: ts?.strikeout === true },
     { kind: 'item', id: 'clearFormat', label: '清除格式', enabled: true },
   ]
 }
 
-function paragraphStyleEntries(): ContextMenuEntry[] {
+function paragraphStyleEntries(style: ContextMenuStyleInfo): ContextMenuEntry[] {
+  const align = style.paragraphStyle?.alignment
   return [
-    { kind: 'item', id: 'alignLeft', label: '左对齐', enabled: true },
-    { kind: 'item', id: 'alignCenter', label: '居中', enabled: true },
-    { kind: 'item', id: 'alignRight', label: '右对齐', enabled: true },
-    { kind: 'item', id: 'alignJustify', label: '两端对齐', enabled: true },
+    { kind: 'item', id: 'alignLeft', label: '左对齐', enabled: true, checked: align === 'left' },
+    { kind: 'item', id: 'alignCenter', label: '居中', enabled: true, checked: align === 'center' },
+    { kind: 'item', id: 'alignRight', label: '右对齐', enabled: true, checked: align === 'right' },
+    { kind: 'item', id: 'alignJustify', label: '两端对齐', enabled: true, checked: align === 'justify' },
   ]
 }
 
@@ -67,16 +79,21 @@ function listLevelEntries(): ContextMenuEntry[] {
   ]
 }
 
+const NO_STYLE: ContextMenuStyleInfo = { textStyle: null, paragraphStyle: null }
+
 /**
- * 由上下文快照派生菜单条目 (纯函数)。
+ * 由上下文快照 + 样式投影派生菜单条目 (纯函数)。
  *
  * - text / cell: 复制、粘贴、删除 (删除仅在命中点覆盖当前选区时可用) +
- *   文本格式 + 段落样式 + 列表层级。
+ *   文本格式 (含勾选) + 段落样式 (含勾选) + 列表层级。
  * - blank:       粘贴 (光标位置粘贴)。
  * - 其余种类 (table/image/separator/sectionBreak/headerFooterRegion/smartText):
  *   无对应菜单项, 返回空列表 (不弹出菜单)。
  */
-export function buildContextMenuModel(snapshot: EditorContextSnapshot): ContextMenuModel {
+export function buildContextMenuModel(
+  snapshot: EditorContextSnapshot,
+  style: ContextMenuStyleInfo = NO_STYLE,
+): ContextMenuModel {
   switch (snapshot.kind) {
     case 'text':
     case 'cell':
@@ -86,9 +103,9 @@ export function buildContextMenuModel(snapshot: EditorContextSnapshot): ContextM
           { kind: 'item', id: 'paste', label: '粘贴', enabled: true },
           { kind: 'item', id: 'delete', label: '删除', enabled: snapshot.coversSelection },
           SEP,
-          ...textFormatEntries(),
+          ...textFormatEntries(style),
           SEP,
-          ...paragraphStyleEntries(),
+          ...paragraphStyleEntries(style),
           SEP,
           ...listLevelEntries(),
         ],
