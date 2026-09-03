@@ -8,6 +8,7 @@ import {
 } from '../document/version/ModelUpgrader'
 import {
   parseVersion, compareVersions, versionToString, CURRENT_DOCUMENT_VERSION,
+  CURRENT_SLIF_VERSION, type SLIFVersion,
 } from '../document/version/DocumentFormatVersion'
 import { MergeMatrix, buildMergeMatrix } from '../document/table/MergeMatrix'
 import { createDocument } from '../document/factory/ElementFormatter'
@@ -33,6 +34,20 @@ describe('compareVersions', () => {
 describe('versionToString', () => {
   it('should format version to string', () => {
     expect(versionToString({ major: 4, minor: 0, patch: 0 })).toBe('4.0.0')
+  })
+})
+
+describe('SLIFVersion 名义独立版本域 (契约 §26.14)', () => {
+  it('CURRENT_SLIF_VERSION 与 CURRENT_DOCUMENT_VERSION 是不同对象 (不同版本域)', () => {
+    expect(CURRENT_SLIF_VERSION).not.toBe(CURRENT_DOCUMENT_VERSION)
+  })
+
+  it('SLIFVersion 带名义标记, 数值暂与文档格式版本一致但域分离', () => {
+    const v: SLIFVersion = CURRENT_SLIF_VERSION
+    expect(v.__slifVersionDomain).toBe('SLIF')
+    expect(v.major).toBe(CURRENT_DOCUMENT_VERSION.major)
+    expect(v.minor).toBe(CURRENT_DOCUMENT_VERSION.minor)
+    expect(v.patch).toBe(CURRENT_DOCUMENT_VERSION.patch)
   })
 })
 
