@@ -16,22 +16,9 @@
 import type { CoordinateSystem } from '../state/CoordinateSystem'
 import type { SLIFPage } from '../layout/core/SLIF'
 import type { EditorRuntimeState } from '../state/EditorRuntimeState'
+import type { WatermarkConfig } from '../document/core/DocumentModel'
 import { accumulatedHeightTo, getTotalDocHeight } from '../layout/table/TableCoordUtil'
 import type { CanvasSurface, EditorHost } from '../host/EditorHost'
-
-export interface WatermarkConfig {
-  type: 'text' | 'image' | 'tile'
-  text?: string
-  fontSize?: number
-  color?: string
-  opacity?: number
-  rotation?: number
-  spacing?: number
-  /** 图片水印 URL (type='image' 或 'tile-image' 时) */
-  imageUrl?: string
-  /** 图片水印缩放比例 */
-  imageScale?: number
-}
 
 export class LayeredRenderer {
   private layers = {

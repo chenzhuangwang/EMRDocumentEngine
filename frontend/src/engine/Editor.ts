@@ -1,4 +1,4 @@
-import type { DocumentTree, BaseNode, Paragraph, HeaderFooterConfig, ElementMeta } from './document/core/DocumentModel'
+import type { DocumentTree, BaseNode, Paragraph, HeaderFooterConfig, ElementMeta, WatermarkConfig } from './document/core/DocumentModel'
 import { DEFAULT_HEADER_FOOTER_CONFIG } from './document/core/DocumentModel'
 import { createDocument, createParagraph, createTextNode, extractStyle, uniformTextStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent, createSmartTextNode } from './document/factory/ElementFormatter'
 import { NodePool, buildNodePool } from './document/core/NodePool'
@@ -678,10 +678,9 @@ export class Editor {
     this.draw.setDocument(doc, this.pool, this.presentationStyles, this.templateDefinitions)
     this.draw.recomputeLayout(this.pool)
 
-    // 自动应用文档水印 (R70)
-    const ps = doc.pageSetup as { watermark?: import('./render/LayeredRenderer').WatermarkConfig } | undefined
-    if (ps?.watermark) {
-      this.draw.setWatermark(ps.watermark)
+    // 自动应用文档水印 (R70) — 用 document 域类型直接读取, 契约 §12.4
+    if (doc.pageSetup?.watermark) {
+      this.draw.setWatermark(doc.pageSetup.watermark)
     }
 
     const cursorPath = doc.body.children.length > 0
@@ -1750,7 +1749,7 @@ export class Editor {
   }
 
   /** 设置数字水印 (R35) */
-  setWatermark(config: import('./render/LayeredRenderer').WatermarkConfig): void {
+  setWatermark(config: WatermarkConfig): void {
     this.draw.setWatermark(config)
   }
 

@@ -12,6 +12,7 @@
 //   §6.1 NodePool 单一变更咽喉       (.nodes.set/delete + nodes 只读暴露 + children readonly)
 //   §6.2 非结构字段外部直写禁令      (pageSetup/headerFooterConfig/metadata/modelVersion)
 //   §15  EventBus 唯一实现
+//   §12.4 WatermarkConfig 单一 canonical home (document/core/DocumentModel)
 //
 // 这类不变量此前靠人肉审计 + 注释约定; 本测试让回归在 CI 直接暴露。
 // 源码经 import.meta.glob(as:'raw') 在构建期读入, 不引入 node:* 依赖。
@@ -111,6 +112,18 @@ describe('契约不变量可执行验证 (ContractCompliance)', () => {
       while ((m = re.exec(src))) hits.push(`${rel(file)}:${lineOf(src, m.index)}  ${m[1]}`)
     }
     expect(hits, `engine 直接引入 Yjs (契约 §9):\n  ${hits.join('\n  ')}`).toEqual([])
+  })
+
+  it('§12.4: WatermarkConfig 定义唯一, home = document/core/DocumentModel', () => {
+    const re = /interface\s+WatermarkConfig\b/g
+    const hits: string[] = []
+    for (const file of ENGINE_FILES) {
+      const src = stripComments(engineSources[file])
+      re.lastIndex = 0
+      if (re.test(src)) hits.push(rel(file))
+    }
+    expect(hits, `WatermarkConfig 存在多个/错误定义 (契约 §12.4):\n  ${hits.join('\n  ')}`)
+      .toEqual(['document/core/DocumentModel.ts'])
   })
 
   it('§27: engine 不得反向依赖 platform / UI', () => {

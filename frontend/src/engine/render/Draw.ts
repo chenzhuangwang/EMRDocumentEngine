@@ -6,7 +6,7 @@
 //           撤销(→CommandUndoRedoStack), 编辑(→CommandManager)
 // ============================================================
 
-import type { DocumentTree } from '../document/core/DocumentModel'
+import type { DocumentTree, WatermarkConfig } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 import { getFlatPageItems } from '../layout/core/SLIF'
@@ -16,7 +16,7 @@ import type { EditorHost } from '../host/EditorHost'
 import { CoordinateSystem } from '../state/CoordinateSystem'
 import { LayoutEngine } from '../layout/core/LayoutEngine'
 import type { TextMeasurer } from '../layout/text/TextMeasurer'
-import { LayeredRenderer, type WatermarkConfig } from './LayeredRenderer'
+import { LayeredRenderer } from './LayeredRenderer'
 import { HitTestIndex } from './HitTestIndex'
 import { MemoryManager } from '../layout/viewport/MemoryManager'
 import { cumulativeWidthUpTo } from '../layout/text/CharWidthHelper'

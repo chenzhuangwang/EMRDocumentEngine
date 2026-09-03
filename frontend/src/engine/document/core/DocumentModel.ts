@@ -327,6 +327,10 @@ export interface WatermarkConfig {
   opacity?: number
   rotation?: number
   spacing?: number
+  /** 图片水印 URL (type='image' 或 'tile-image' 时) — 文档内容, 契约 §12.4 */
+  imageUrl?: string
+  /** 图片水印缩放比例 — 文档内容, 契约 §12.4 */
+  imageScale?: number
 }
 
 export interface PageSetup {

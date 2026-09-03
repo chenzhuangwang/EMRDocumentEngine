@@ -32,7 +32,6 @@ export { LayoutCache } from './layout/incremental/LayoutCache'
 
 // Render
 export { LayeredRenderer } from './render/LayeredRenderer'
-export type { WatermarkConfig } from './render/LayeredRenderer'
 export { HitTestIndex } from './render/HitTestIndex'
 
 // EditorRuntimeState
@@ -108,7 +107,7 @@ export type {
   SeparatorNode, SectionBreak,
   BlockNode, BodyChild, FlowBody,
   CommentEntry, CommentThread,
-  PageSetup, DocumentTree, HeaderFooterConfig,
+  PageSetup, DocumentTree, HeaderFooterConfig, WatermarkConfig,
 } from './document/core/DocumentModel'
 
 // ModelD — 工具

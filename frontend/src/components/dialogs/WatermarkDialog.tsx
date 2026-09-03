@@ -8,7 +8,7 @@
 import { useState, useEffect } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { X, Type, Palette, RotateCw } from 'lucide-react'
-import type { WatermarkConfig } from '@/engine/render/LayeredRenderer'
+import type { WatermarkConfig } from '@/engine'
 
 interface WatermarkDialogProps {
   open: boolean
