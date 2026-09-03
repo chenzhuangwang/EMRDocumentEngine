@@ -283,7 +283,7 @@ export const CURRENT_SLIF_VERSION: SLIFVersion = CURRENT_DOCUMENT_VERSION
 
 | # | 决策 | 结论 | 理由 |
 |---|---|---|---|
-| 1 | SLIFVersion 独立? | ❌ 派生自 DocumentFormatVersion | SLIF 是中间输出, 不独立演化 |
+| 1 | SLIFVersion 独立? | ❌ 派生自 DocumentFormatVersion | ⚠️ 已废止 — 契约 §26.14 要求 SLIFVersion 为名义独立类型 |
 | 2 | DocumentLoader 类还是函数? | ✅ 纯函数 + 命名参数 | 无状态, 注入轻量 |
 | 3 | validate 范围? | ✅ Loader 只做结构性 | 业务规则会变, Loader 应稳定 |
 | 4 | downgrade 保留? | ❌ 删除 | EMR 场景无需"用旧引擎开新文档" |

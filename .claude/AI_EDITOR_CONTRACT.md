@@ -1455,6 +1455,15 @@ Preferred:
 Do not silently reinterpret old document structures
 inside unrelated document/layout code.
 
+There MUST be exactly one native (.json / .emr) load path:
+document/io/DocumentLoader. Any native loader MUST route through
+it and MUST NOT bypass ModelUpgrader for a supported old document
+version (§26.7).
+
+Multi-format import loaders (HTML / Markdown / XML) construct NEW
+documents and MUST emit modelVersion = CURRENT_DOCUMENT_VERSION
+(§26.4).
+
 ============================================================
 15. EVENT BUS ARCHITECTURE
 ============================================================
@@ -1894,6 +1903,13 @@ These distinctions MUST remain explicit throughout development.
 
 13. SLIF_VERSION MUST NOT be treated as the document
     format version merely because their values currently match.
+
+14. SLIFVersion MUST be a NOMINAL separate type — never
+    `type SLIFVersion = DocumentFormatVersion`.
+    CURRENT_SLIF_VERSION MUST be its own distinct constant —
+    never the same object as CURRENT_DOCUMENT_VERSION.
+    (This supersedes knowledge/document-version-system-design.md
+    decision #1, which endorsed the alias.)
 
 ============================================================
 27. HOST ABSTRACTION BOUNDARY
