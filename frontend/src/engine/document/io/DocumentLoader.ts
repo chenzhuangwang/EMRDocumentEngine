@@ -20,6 +20,7 @@ import { PresentationStyleStore } from '../../render/presentation/PresentationSt
 import type { PresentationStyle } from '../../render/presentation/PresentationStyle'
 import {
   CURRENT_DOCUMENT_VERSION,
+  LEGACY_DOCUMENT_VERSION,
   parseVersion,
   versionToString,
   type DocumentFormatVersion,
@@ -95,7 +96,7 @@ export function loadDocumentFromObject(obj: unknown, options?: DocumentLoadOptio
     throw new LoadError('detect', '文档必须是对象')
   }
   const raw = obj as Record<string, unknown>
-  const sourceVer = parseVersion((raw.modelVersion as string) ?? '1.0.0')
+  const sourceVer = parseVersion((raw.modelVersion as string) ?? LEGACY_DOCUMENT_VERSION)
 
   // ---- [2] checkCompatibility ----
   const compat = upgrader.checkCompatibility(sourceVer)

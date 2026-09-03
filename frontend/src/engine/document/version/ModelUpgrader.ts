@@ -17,6 +17,7 @@
 import type { DocumentTree } from '../core/DocumentModel'
 import {
   CURRENT_DOCUMENT_VERSION,
+  LEGACY_DOCUMENT_VERSION,
   compareVersions,
   parseVersion,
   versionToString,
@@ -61,7 +62,7 @@ export class ModelUpgrader {
    */
   upgrade(doc: DocumentTree, target: DocumentFormatVersion = CURRENT_DOCUMENT_VERSION): DocumentTree {
     let current = doc
-    const docVer = parseVersion(doc.modelVersion ?? '1.0.0')
+    const docVer = parseVersion(doc.modelVersion ?? LEGACY_DOCUMENT_VERSION)
 
     // 拓扑排序: 按 from 版本升序
     const sorted = [...this.upgraders].sort((a, b) => compareVersions(a.from, b.from))
@@ -79,7 +80,7 @@ export class ModelUpgrader {
     }
 
     // 确保目标版本
-    const finalVer = parseVersion(current.modelVersion ?? '1.0.0')
+    const finalVer = parseVersion(current.modelVersion ?? LEGACY_DOCUMENT_VERSION)
     if (compareVersions(finalVer, target) < 0) {
       current.modelVersion = versionToString(target)
     }
