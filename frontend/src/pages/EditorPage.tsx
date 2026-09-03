@@ -887,7 +887,7 @@ function EditorPageInner({
         open={contextMenu.open}
         x={contextMenu.x}
         y={contextMenu.y}
-        items={contextMenu.items}
+        entries={contextMenu.entries}
         onClose={contextMenu.close}
         onAction={contextMenu.runAction}
       />
