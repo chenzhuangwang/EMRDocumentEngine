@@ -13,9 +13,9 @@
 // ============================================================
 
 import { describe, it, expect, expectTypeOf } from 'vitest'
-import { TemplateImporter, isExternalTemplate } from '../TemplateImporter'
-import type { TemplateImportResult } from '../TemplateImporter'
-import type { SmartTextNode, TextNode, Table } from '../../document/core/DocumentModel'
+import { TemplateImporter, isExternalTemplate } from '../import/TemplateImporter'
+import type { TemplateImportResult } from '../import/TemplateImporter'
+import type { SmartTextNode, TextNode, Table } from '../document/core/DocumentModel'
 
 // 真实外部模板经 import.meta.glob(as:'raw') 构建期读入, 不引入 node:* 依赖
 // (与 ContractCompliance.test.ts 同款做法)。
