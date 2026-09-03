@@ -1440,6 +1440,18 @@ has exactly ONE canonical home, and that home is the document domain.
     engine/index.ts re-exports WatermarkConfig from
     ./document/core/DocumentModel, never from ./render/LayeredRenderer.
 
+    Consumption: Editor.setWatermark(config) persists via
+    SetPageSetupCommand (undoable; canonical owner = DocumentTree
+    .pageSetup, §7.3) — it writes doc.pageSetup.watermark through the
+    command system (Command mutation rule), THEN applies the config to
+    the renderer (Draw.setWatermark → LayeredRenderer.prepareWatermark)
+    so the same synchronous document:changed render shows the new
+    watermark. serializeDocument spreads ...doc, so pageSetup.watermark
+    (text AND image fields) is written to JSON; DocumentLoader's
+    buildModel preserves pageSetup and Editor auto-applies it on load
+    (R70). An image watermark therefore round-trips: imageUrl/imageScale
+    survive serialize → load.
+
 ============================================================
 13. DOCUMENT SERIALIZATION
 ============================================================
