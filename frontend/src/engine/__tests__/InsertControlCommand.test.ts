@@ -133,4 +133,23 @@ describe('InsertControlCommand — 控件库插入 (契约 §12.4)', () => {
     expect(smartChildren(h).length).toBe(0)
     expect(h.defs.has(st.id)).toBe(false)
   })
+
+  it('定义保真: controlType/dataType/showType/enums 原样落两层 (不降级)', () => {
+    const element: ElementMeta = {
+      code: { internal: 'CTL_CHECKBOX', dataElement: 'DE99.99.006' },
+      name: '复选框',
+      format: { dataType: 'S1', enums: { multiple: true, data: [] } },
+    }
+    const def: TemplateDefinition = { controlType: 'checkbox', label: '复选框：', deletable: true, editable: true }
+    const h = makeDoc()
+    insert(h, element, def)
+    const st = smartChildren(h)[0]
+
+    // 语义层: dataType + enums 保真
+    expect(st.element.format?.dataType).toBe('S1')
+    expect(st.element.format?.enums?.multiple).toBe(true)
+    // 设计期层: controlType 保真
+    expect(h.defs.get(st.id)?.controlType).toBe('checkbox')
+    expect(h.defs.get(st.id)?.label).toBe('复选框：')
+  })
 })

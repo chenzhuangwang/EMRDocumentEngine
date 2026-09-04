@@ -3,8 +3,8 @@
 //
 // 覆盖:
 //   1. 边界 (type-level + 运行时): SmartTextNode / ElementMeta 不得
-//      携带 7 个模板设计期字段 (deletable/editable/tips/label/
-//      prefix/suffix/single) —— 它们只属于 TemplateDefinition 层。
+//      携带 8 个模板设计期字段 (deletable/editable/tips/label/
+//      prefix/suffix/single/controlType) —— 它们只属于 TemplateDefinition 层。
 //   2. store 读写语义: set/get/has/delete/clear/size/遍历。
 // ============================================================
 
@@ -14,7 +14,7 @@ import type { TemplateDefinition } from '../template/TemplateDefinition'
 import type { SmartTextNode, ElementMeta } from '../document/core/DocumentModel'
 import { createSmartTextNode } from '../document/factory/ElementFormatter'
 
-const DESIGN_FIELDS = ['deletable', 'editable', 'tips', 'label', 'prefix', 'suffix', 'single'] as const
+const DESIGN_FIELDS = ['deletable', 'editable', 'tips', 'label', 'prefix', 'suffix', 'single', 'controlType'] as const
 
 describe('TemplateDefinition 边界 (契约 §12.1)', () => {
   it('type-level: SmartTextNode 不得携带模板设计期字段', () => {
@@ -25,6 +25,7 @@ describe('TemplateDefinition 边界 (契约 §12.1)', () => {
     expectTypeOf<SmartTextNode>().not.toHaveProperty('prefix')
     expectTypeOf<SmartTextNode>().not.toHaveProperty('suffix')
     expectTypeOf<SmartTextNode>().not.toHaveProperty('single')
+    expectTypeOf<SmartTextNode>().not.toHaveProperty('controlType')
   })
 
   it('type-level: ElementMeta 不得携带模板设计期字段', () => {
@@ -35,6 +36,7 @@ describe('TemplateDefinition 边界 (契约 §12.1)', () => {
     expectTypeOf<ElementMeta>().not.toHaveProperty('prefix')
     expectTypeOf<ElementMeta>().not.toHaveProperty('suffix')
     expectTypeOf<ElementMeta>().not.toHaveProperty('single')
+    expectTypeOf<ElementMeta>().not.toHaveProperty('controlType')
   })
 
   it('运行时: createSmartTextNode 结果不含模板设计期字段', () => {

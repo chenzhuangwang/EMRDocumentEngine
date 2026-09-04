@@ -6,7 +6,7 @@
 //           撤销(→CommandUndoRedoStack), 编辑(→CommandManager)
 // ============================================================
 
-import type { DocumentTree, WatermarkConfig } from '../document/core/DocumentModel'
+import type { DocumentTree, WatermarkConfig, SmartTextNode } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 import { getFlatPageItems } from '../layout/core/SLIF'
@@ -64,6 +64,9 @@ export class Draw {
   // 模板设计期属性 (契约 §12.1) — per-editor 实例状态 (§7.6), 随 setDocument 更新
   private templateDefinitions: TemplateDefinitionStore | null = null
   private templateDefinitionOf = (nodeId: string) => this.templateDefinitions?.get(nodeId)
+
+  // 语义元数据 (契约 §2.1) — 控件 dataType 分类 / 隐私脱敏读取源, 随 setDocument 更新
+  private elementOf = (nodeId: string) => (this.pool?.nodes.get(nodeId) as SmartTextNode | undefined)?.element
 
   // 页眉页脚编辑模式 (TASK-470/471 双击激活)
   private hfEditActive = false
@@ -467,6 +470,7 @@ export class Draw {
               pageIndex: i,
               presentationStyleOf: this.presentationStyleOf,
               templateDefinitionOf: this.templateDefinitionOf,
+              elementOf: this.elementOf,
             })
           } else {
             // 文本/域代码/控件 — 通过 ParticleRegistry 调度 (含列表标记)
@@ -477,6 +481,7 @@ export class Draw {
                 pageIndex: i,
                 presentationStyleOf: this.presentationStyleOf,
                 templateDefinitionOf: this.templateDefinitionOf,
+                elementOf: this.elementOf,
               })
             }
           }
@@ -866,6 +871,7 @@ export class Draw {
           pageIndex,
           presentationStyleOf: this.presentationStyleOf,
           templateDefinitionOf: this.templateDefinitionOf,
+          elementOf: this.elementOf,
         })
       }
     }

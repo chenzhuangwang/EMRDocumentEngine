@@ -19,6 +19,7 @@ import { UpdateDocumentPropertiesCommand } from '../command/commands/UpdateDocum
 import { CommandManager } from '../command/CommandManager'
 import { EventBus } from '../interaction/EventBus'
 import { modelUpgrader } from '../document/version/ModelUpgrader'
+import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/version/DocumentFormatVersion'
 import { loadDocumentFromObject } from '../document/io/DocumentLoader'
 
 function makeDoc(): { doc: DocumentTree; pool: NodePool } {
@@ -109,7 +110,7 @@ describe('ModelUpgrader v4.2→v4.3 metadata 白名单迁移', () => {
     } as unknown as DocumentMetadata
 
     const upgraded = modelUpgrader.upgrade(doc)
-    expect(upgraded.modelVersion).toBe('4.3.0')
+    expect(upgraded.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
     expect(upgraded.metadata).toEqual({ creator: '张三', keywords: ['a', 'b'] })
   })
 })

@@ -8,6 +8,7 @@
 import type { SLIFItem } from '../../layout/core/SLIF'
 import type { PresentationStyle } from '../presentation/PresentationStyle'
 import type { TemplateDefinition } from '../../template/TemplateDefinition'
+import type { ElementMeta } from '../../document/core/DocumentModel'
 
 /** 渲染上下文选项 */
 export interface RenderOptions {
@@ -29,6 +30,8 @@ export interface RenderOptions {
   presentationStyleOf?: (nodeId: string) => PresentationStyle | undefined
   /** 模板设计期属性查询 (按 nodeId), draw time 读取 — 契约 §12.1 */
   templateDefinitionOf?: (nodeId: string) => TemplateDefinition | undefined
+  /** 语义元数据查询 (按 nodeId), draw time 读取 — 控件 dataType 分类/隐私脱敏 */
+  elementOf?: (nodeId: string) => ElementMeta | undefined
 }
 
 /** 粒子渲染器接口 */

@@ -1,6 +1,6 @@
 import type { DocumentTree, BaseNode, Paragraph, ImageNode, HeaderFooterConfig, ElementMeta, WatermarkConfig, DocumentMetadata } from './document/core/DocumentModel'
 import { DEFAULT_HEADER_FOOTER_CONFIG } from './document/core/DocumentModel'
-import { createDocument, createParagraph, createTextNode, extractStyle, uniformTextStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent, createSmartTextNode } from './document/factory/ElementFormatter'
+import { createDocument, createParagraph, createTextNode, extractStyle, uniformTextStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent } from './document/factory/ElementFormatter'
 import { NodePool, buildNodePool } from './document/core/NodePool'
 import { serializeDocument } from './document/io/DocumentSerializer'
 import { loadDocumentFromObject } from './document/io/DocumentLoader'
@@ -1248,23 +1248,6 @@ export class Editor {
    */
   setMode(mode: import('./state/EditorRuntimeState').EditorMode): void {
     this.store.setMode(mode)
-  }
-
-  /** 插入 SmartTextNode (医疗结构化文本) */
-  insertSmartText(name: string, format?: 'S1' | 'S2' | 'S3' | 'N' | 'D'): void {
-    const cursor = this.store.state.runtime.cursor
-    if (cursor.paragraphPath.length === 0) return
-
-    const meta: import('./document/core/DocumentModel').ElementMeta = {
-      code: { internal: `CTL_${name.toUpperCase()}`, dataElement: `DE99.99.${name}` },
-      name,
-      format: format ? { dataType: format } : undefined,
-    }
-    this.commandManager.execute(new InsertInlineNodeCommand(
-      generateCommandId(), Date.now(), 'user',
-      cursor.paragraphPath, cursor.offset,
-      () => createSmartTextNode(`[${name}]`, meta),
-    ))
   }
 
   /**

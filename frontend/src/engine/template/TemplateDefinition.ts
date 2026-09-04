@@ -5,11 +5,11 @@
 //   SmartTextNode 的「语义定义」 (element: code/name/labels/format)
 //   与「运行时值」 (value) 已分离 (契约 §2.1)。但外部模板 JSON 还带
 //   一层「模板设计期属性」——deletable / editable / tips / label /
-//   prefix / suffix / single —— 它们描述的是模板作者在设计期如何配置
-//   控件, 既不是「这个字段是什么」(定义), 也不是「患者的记录写了什么」
-//   (值), 而是「控件在模板里长什么样 / 能不能动」。
+//   prefix / suffix / single / controlType —— 它们描述的是模板作者在
+//   设计期如何配置控件, 既不是「这个字段是什么」(定义), 也不是「患者的
+//   记录写了什么」(值), 而是「控件在模板里长什么样 / 能不能动」。
 //
-// 契约 §12.1 强制: 这 7 个字段属于 TemplateDefinition 特征层, 不得
+// 契约 §12.1 强制: 这 8 个字段属于 TemplateDefinition 特征层, 不得
 //   进入 DocumentModel / SmartTextNode / ElementMeta。本模块即该层的
 //   落地 —— 一个按节点 id 关联的独立对象, 与节点语义字段彻底解耦。
 //
@@ -21,6 +21,20 @@
 //   导入器产出本层数据, 序列化以模板 artifact 的顶层结构单独存储,
 //   不混入 DocumentSerializer 的节点 payload。
 // ================================================================
+
+/**
+ * 控件视觉/交互形态 (契约 §12.1)。与 dataType ('S1'|'S2'|'S3'|'N'|'D')
+ * 和 showType ('AN'|'N') 正交 —— dataType 是数据取值类型, showType 是
+ * 展示形态, controlType 是控件 widget 形态。三者各自演化, 互不推导。
+ */
+export type ControlType =
+  | 'input'      // 单行文本输入
+  | 'textarea'   // 多行文本输入
+  | 'number'     // 数字输入
+  | 'select'     // 下拉单选
+  | 'date'       // 日期选择
+  | 'checkbox'   // 复选框 (多选)
+  | 'radio'      // 单选框 (单选)
 
 /** 单个 smarttext 控件的模板设计期属性 (全可选, 按节点 id 关联) */
 export interface TemplateDefinition {
@@ -38,6 +52,8 @@ export interface TemplateDefinition {
   suffix?: string
   /** 该数据元在文档中仅允许出现一次 */
   single?: boolean
+  /** 控件 widget 形态 (插入时写定, 面板不可改; 旧文档缺失保持 undefined) */
+  controlType?: ControlType
 }
 
 /** 节点 id → 设计期属性的只读映射 (外部只读, 变更走 store) */

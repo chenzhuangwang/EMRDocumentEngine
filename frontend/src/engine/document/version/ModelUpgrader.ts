@@ -10,6 +10,7 @@
 //   v4.0.0 → v4.1.0  ElementFormat 新增可选字段 (scale/minRows/enums)
 //   v4.1.0 → v4.2.0  SmartTextNode 新增可选字段 value (运行时值)
 //   v4.2.0 → v4.3.0  DocumentTree.metadata 收紧为 DocumentMetadata (白名单收口)
+//   v4.3.0 → v4.4.0  TemplateDefinition 新增可选字段 controlType (控件 widget 形态)
 //
 // 不实现 downgrade(): EMR 场景下不需要"用旧引擎开新文档"。
 // 详见 knowledge/document-version-system-design.md §4 决策 4。
@@ -194,6 +195,18 @@ modelUpgrader.register({
     if (doc.metadata !== undefined) {
       doc.metadata = normalizeDocumentMetadata(doc.metadata)
     }
+    return doc
+  },
+})
+
+// v4.3→v4.4: TemplateDefinition 新增可选字段 controlType (契约 §12.1)
+// 纯向后兼容: controlType 可选且不在节点 payload 里 (存于 artifact 顶层
+// templateDefinitions), 旧文档缺失时保持 undefined, 绝不猜测/回填。no-op。
+modelUpgrader.register({
+  from: { major: 4, minor: 3, patch: 0 },
+  to: { major: 4, minor: 4, patch: 0 },
+  breaking: false,
+  upgrade(doc: DocumentTree): DocumentTree {
     return doc
   },
 })

@@ -13,10 +13,11 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { createControlParticle } from '../render/particles/ControlParticle'
+import { createControlParticle, classifyControlVisual, CONTROL_COLORS } from '../render/particles/ControlParticle'
 import type { SLIFItem } from '../layout/core/SLIF'
 import type { PresentationStyle } from '../render/presentation/PresentationStyle'
 import type { TemplateDefinition } from '../template/TemplateDefinition'
+import type { ElementMeta } from '../document/core/DocumentModel'
 
 function makeItem(): SLIFItem {
   return {
@@ -36,6 +37,8 @@ function makeRecordingCtx() {
   const strokeRects: RectCall[] = []
   const dashes: number[][] = []
   const texts: TextCall[] = []
+  const fillStyles: string[] = []
+  const strokeStyles: string[] = []
   const ctx = {
     get font() { return state.font },
     set font(v: string) { state.font = v },
@@ -44,21 +47,26 @@ function makeRecordingCtx() {
     measureText(text: string) {
       return { width: text.length * 12 * 0.55 } as TextMetrics
     },
-    fillRect(x: number, y: number, w: number, h: number) { fillRects.push({ x, y, w, h }) },
-    strokeRect(x: number, y: number, w: number, h: number) { strokeRects.push({ x, y, w, h }) },
+    fillRect(x: number, y: number, w: number, h: number) {
+      fillRects.push({ x, y, w, h }); fillStyles.push(ctx.fillStyle as string)
+    },
+    strokeRect(x: number, y: number, w: number, h: number) {
+      strokeRects.push({ x, y, w, h }); strokeStyles.push(ctx.strokeStyle as string)
+    },
     setLineDash(d: number[]) { dashes.push(d) },
     fillText(text: string, x: number, y: number) { texts.push({ text, x, y }) },
     save() {}, restore() {},
   } as unknown as CanvasRenderingContext2D
-  return { ctx, fillRects, strokeRects, dashes, texts }
+  return { ctx, fillRects, strokeRects, dashes, texts, fillStyles, strokeStyles }
 }
 
-function render(style?: PresentationStyle, def?: TemplateDefinition) {
+function render(style?: PresentationStyle, def?: TemplateDefinition, element?: ElementMeta) {
   const rec = makeRecordingCtx()
   const particle = createControlParticle()
   particle.render(rec.ctx, makeItem(), 0, 100, {
     presentationStyleOf: (id) => (id === 'st-1' ? style : undefined),
     templateDefinitionOf: (id) => (id === 'st-1' ? def : undefined),
+    elementOf: (id) => (id === 'st-1' ? element : undefined),
   })
   return rec
 }
@@ -138,5 +146,54 @@ describe('ControlParticle 模板设计期属性 (契约 §12.1)', () => {
   it('无设计期属性 → 不绘制附属字面量', () => {
     const r = render(undefined, undefined)
     expect(r.texts.map((t) => t.text)).toEqual(['[患者姓名]'])
+  })
+})
+
+describe('classifyControlVisual — dataType → 配色纯映射 (契约 §12.1)', () => {
+  it('S2 → S2 配色 (非 S1)', () => {
+    expect(classifyControlVisual('S2')).toEqual(CONTROL_COLORS.S2)
+  })
+
+  it('N → N 配色', () => {
+    expect(classifyControlVisual('N')).toEqual(CONTROL_COLORS.N)
+  })
+
+  it('D → D 配色', () => {
+    expect(classifyControlVisual('D')).toEqual(CONTROL_COLORS.D)
+  })
+
+  it('缺失 dataType → 中性灰 (不假设为 S1)', () => {
+    const c = classifyControlVisual(undefined)
+    expect(c).not.toEqual(CONTROL_COLORS.S1)
+  })
+
+  it('未知 dataType → 中性灰 (不假设为 S1)', () => {
+    expect(classifyControlVisual('X9')).not.toEqual(CONTROL_COLORS.S1)
+  })
+})
+
+describe('ControlParticle dataType 视觉分类 (契约 §12.1, P1)', () => {
+  it('element.format.dataType=S2 → 盒背景/边框用 S2 配色 (不再是固定 S1)', () => {
+    const el: ElementMeta = { code: { internal: 'CTL_X', dataElement: 'DE99.99.002' }, name: 'x', format: { dataType: 'S2' } }
+    const r = render(undefined, undefined, el)
+    expect(r.fillStyles[0]).toBe(CONTROL_COLORS.S2.bg)
+    expect(r.strokeStyles[0]).toBe(CONTROL_COLORS.S2.border)
+  })
+
+  it('无 element (旧文档缺语义) → 中性灰盒, 不再误用 S1', () => {
+    const r = render(undefined, undefined, undefined)
+    expect(r.fillStyles[0]).not.toBe(CONTROL_COLORS.S1.bg)
+    expect(r.strokeStyles[0]).not.toBe(CONTROL_COLORS.S1.border)
+  })
+
+  it('隐私脱敏: element.privacy.enabled → 文本替换为 maskChar, 边框红色', () => {
+    const el: ElementMeta = {
+      code: { internal: 'CTL_X', dataElement: 'DE99.99.001' },
+      name: 'x',
+      privacy: { enabled: true, maskChar: '*', maskRule: 'full' },
+    }
+    const r = render(undefined, undefined, el)
+    expect(r.texts.map((t) => t.text)).toEqual(['******'])
+    expect(r.strokeStyles[0]).toBe('#F87171')
   })
 })

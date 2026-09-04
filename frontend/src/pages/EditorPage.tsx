@@ -18,26 +18,14 @@ import { PageSetupDialog } from '@/components/dialogs/PageSetupDialog'
 import { PasteSpecialDialog, type PasteFormat } from '@/components/dialogs/PasteSpecialDialog'
 import { BookmarkDialog } from '@/components/dialogs/BookmarkDialog'
 import { documentApi, templateApi } from '@/services/api'
-import { generateCommandId } from '@/engine/command/ICommand'
-import { InsertTextCommand } from '@/engine/command/commands/InsertTextCommand'
 import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
 import { templateImporter, isExternalTemplate } from '@/engine'
 import { TOCGenerator } from '@/engine/render/TOCGenerator'
 import { ListParticle } from '@/engine/render/particles/ListParticle'
+import { controlWidgetById } from '@/platform/data/controlLibrary'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
 import type { EditorMode } from '@/engine'
 import type { ListStyle } from '@/engine/document/core/DocumentModel'
-
-const PLACEHOLDER_MAP: Record<string, string> = {
-  'control-input': '[文本输入]',
-  'control-select': '[下拉选择]',
-  'control-date': '[日期选择]',
-  'control-checkbox': '[复选框]',
-  'control-radio': '[单选框]',
-  'control-number': '[数字输入]',
-  'table': '[表格]',
-  'image': '[图片]',
-}
 
 /** 生成列表标记文本 (供 TXT/HTML 导出) */
 function getListMarker(list: ListStyle, orderNum?: number): string {
@@ -838,18 +826,9 @@ function EditorPageInner({
         if (type === 'table') { setTableInsertOpen(true); return }
         // 分节符
         if (type === 'sectionBreak') { ed.insertSectionBreak(); return }
-        // 表单控件 → SmartTextNode 创建
-        if (type === 'input') { ed.insertSmartText('文本输入', 'S1'); return }
-        if (type === 'textarea') { ed.insertSmartText('文本域', 'S2'); return }
-        if (type === 'number') { ed.insertSmartText('数字输入', 'N'); return }
-        if (type === 'date') { ed.insertSmartText('日期选择', 'D'); return }
-        if (type === 'select') { ed.insertSmartText('下拉选择', 'S1'); return }
-        if (type === 'checkbox') { ed.insertSmartText('复选框', 'S1'); return }
-        if (type === 'radio') { ed.insertSmartText('单选框', 'S1'); return }
-        const placeholder = PLACEHOLDER_MAP[type] || `[${type}]`
-        const cursor = ed.getStore().state.runtime.cursor
-        if (cursor.paragraphPath.length === 0) return
-        ed.execCommand(new InsertTextCommand(generateCommandId(), Date.now(), 'user', cursor.paragraphPath, cursor.offset, placeholder))
+        // 表单控件 → SmartTextNode 创建 (统一走 insertControl, 定义来源 = 通用控件目录)
+        const widget = controlWidgetById(type)
+        if (widget) { ed.insertControl(widget.element, widget.definition); return }
       }}
       onExportClick={() => setExportOpen(true)}
       onPrint={() => setPrintOpen(true)}

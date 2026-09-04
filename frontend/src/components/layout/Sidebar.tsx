@@ -10,11 +10,6 @@ import {
   FilePlus,
   ChevronRight,
   Folder,
-  Type,
-  Calendar,
-  CheckSquare,
-  Circle,
-  Hash,
   Table,
   Image,
   ListTree,
@@ -224,12 +219,6 @@ function TemplateList({
 
 function ElementPalette({ onClick }: { onClick?: (type: string) => void }) {
   const elements = [
-    { type: 'control-input', label: '文本输入', icon: <Type size={16} /> },
-    { type: 'control-select', label: '下拉选择', icon: <ChevronRight size={16} /> },
-    { type: 'control-date', label: '日期选择', icon: <Calendar size={16} /> },
-    { type: 'control-checkbox', label: '复选框', icon: <CheckSquare size={16} /> },
-    { type: 'control-radio', label: '单选框', icon: <Circle size={16} /> },
-    { type: 'control-number', label: '数字输入', icon: <Hash size={16} /> },
     { type: 'table', label: '表格', icon: <Table size={16} /> },
     { type: 'image', label: '图片', icon: <Image size={16} /> },
   ]

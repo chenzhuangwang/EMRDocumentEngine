@@ -97,3 +97,75 @@ export const CONTROL_LIBRARY: ControlLibraryEntry[] = [
     definition: { label: '既往史：', tips: '患者既往史', deletable: true, editable: true },
   },
 ]
+
+// ================================================================
+// 通用控件 widget 目录 (契约 §12.4 补充)
+//
+// 与 CONTROL_LIBRARY (医疗数据元) 不同: 这是「通用控件形态」目录 —— 不
+// 绑定真实医疗编码 (synthetic dataElement DE99.99.00X), 只描述控件的
+// widget 形态 (controlType) + 取值类型 (dataType) + 枚举多选语义 (enums)。
+//
+// 关键区分 (契约 §12.1):
+//   - select 与 radio 同为 S1 + 单选枚举, 仅 controlType 不同。
+//   - checkbox 是 S1 + 多选枚举 (enums.multiple === true)。
+//   - number 是 N + showType 'N' (纯数字形态)。
+// dataType/showType/controlType 三者正交, 互不推导。
+// ================================================================
+
+/** 通用控件 widget 目录 — id 即 Toolbar 的 type (catalog key, 非节点 id) */
+export const CONTROL_WIDGETS: ControlLibraryEntry[] = [
+  {
+    id: 'input',
+    name: '单行文本',
+    category: '通用控件',
+    element: { code: { internal: 'CTL_INPUT', dataElement: 'DE99.99.001' }, name: '文本输入', format: { dataType: 'S1' } },
+    definition: { controlType: 'input', label: '文本输入：', tips: '单行文本输入', deletable: true, editable: true },
+  },
+  {
+    id: 'textarea',
+    name: '多行文本',
+    category: '通用控件',
+    element: { code: { internal: 'CTL_TEXTAREA', dataElement: 'DE99.99.002' }, name: '文本域', format: { dataType: 'S2' } },
+    definition: { controlType: 'textarea', label: '文本域：', tips: '多行文本输入', deletable: true, editable: true },
+  },
+  {
+    id: 'number',
+    name: '数字输入',
+    category: '通用控件',
+    element: { code: { internal: 'CTL_NUMBER', dataElement: 'DE99.99.003' }, name: '数字输入', format: { dataType: 'N', showType: 'N' } },
+    definition: { controlType: 'number', label: '数字输入：', tips: '数字输入', deletable: true, editable: true },
+  },
+  {
+    id: 'select',
+    name: '下拉选择',
+    category: '通用控件',
+    element: { code: { internal: 'CTL_SELECT', dataElement: 'DE99.99.004' }, name: '下拉选择', format: { dataType: 'S1', enums: { data: [] } } },
+    definition: { controlType: 'select', label: '下拉选择：', tips: '下拉单选', deletable: true, editable: true },
+  },
+  {
+    id: 'date',
+    name: '日期选择',
+    category: '通用控件',
+    element: { code: { internal: 'CTL_DATE', dataElement: 'DE99.99.005' }, name: '日期选择', format: { dataType: 'D' } },
+    definition: { controlType: 'date', label: '日期选择：', tips: '日期选择', deletable: true, editable: true },
+  },
+  {
+    id: 'checkbox',
+    name: '复选框',
+    category: '通用控件',
+    element: { code: { internal: 'CTL_CHECKBOX', dataElement: 'DE99.99.006' }, name: '复选框', format: { dataType: 'S1', enums: { multiple: true, data: [] } } },
+    definition: { controlType: 'checkbox', label: '复选框：', tips: '复选框 (多选)', deletable: true, editable: true },
+  },
+  {
+    id: 'radio',
+    name: '单选框',
+    category: '通用控件',
+    element: { code: { internal: 'CTL_RADIO', dataElement: 'DE99.99.007' }, name: '单选框', format: { dataType: 'S1', enums: { data: [] } } },
+    definition: { controlType: 'radio', label: '单选框：', tips: '单选框 (单选)', deletable: true, editable: true },
+  },
+]
+
+/** 按 id 查找通用控件 widget 条目 (Toolbar 的 type → 定义来源) */
+export function controlWidgetById(id: string): ControlLibraryEntry | undefined {
+  return CONTROL_WIDGETS.find(w => w.id === id)
+}

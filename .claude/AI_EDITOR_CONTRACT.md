@@ -1153,7 +1153,7 @@ Prefer feature modules/adapters.
 Template authoring metadata MUST NOT become document content.
 
 Template-design attributes of a smarttext control —
-    deletable, editable, tips, label, prefix, suffix, single
+    deletable, editable, tips, label, prefix, suffix, single, controlType
 — describe how a template AUTHOR configures the control at
 design time, not what the document content IS.
 
@@ -1178,11 +1178,30 @@ Concretely:
         prefix     string   — literal text before the control
         suffix     string   — literal text after the control
         single     boolean  — the data element may appear only once
+        controlType string  — the control's widget type
+                              ('input' | 'textarea' | 'number' |
+                               'select' | 'date' | 'checkbox' | 'radio').
+                              This is the UI WIDGET kind, ORTHOGONAL to
+                              ElementFormat.dataType (value data type),
+                              ElementFormat.showType (display format) and
+                              ElementFormat.enums (candidate values) —
+                              four independent axes, never inferred from
+                              one another. It is a design-time property
+                              (fixed at insertion from the library), not
+                              document semantics.
 
-    These seven fields live in a TemplateDefinition feature layer
+    These eight fields live in a TemplateDefinition feature layer
     (engine/template/, §12) as a SEPARATE object associated to a
     node by id. SmartTextNode and ElementMeta MUST NOT grow any of
-    these seven fields — the boundary is type-enforced.
+    these eight fields — the boundary is type-enforced.
+
+    controlType versioning: controlType is OPTIONAL and typed (never a
+    catch-all bag). Documents serialized before controlType existed
+    simply lack the field; the loader/upgrader MUST NOT guess or backfill
+    it — an absent controlType stays undefined. The document format
+    version advances from 4.3.x to 4.4.0 with this field's introduction;
+    the migration is a no-op (no data rewrite), leaving pre-4.4 entries
+    without controlType.
 
     Runtime consumption: at draw time the renderer reads the
     per-node TemplateDefinition by nodeId (SLIFItem.nodeId) and
@@ -1384,7 +1403,8 @@ the current paragraph at the cursor, across TWO layers at once
                     code.dataElement, name, format.dataType);
                     placeholder text [name] (契约 §2.1), no value.
     design-time   → TemplateDefinitionStore[nodeId] (§12.1):
-                    label / tips / deletable / editable / single.
+                    label / tips / deletable / editable / single /
+                    controlType.
     presentation  → DEFERRED (§2.2 shared style-reference). P2
                     inserts only the semantic + design-time layers;
                     a PresentationStyle argument is not yet part of
@@ -1465,9 +1485,13 @@ Editing goes through the command system (RULE 4):
     that key from the written definition. The command itself carries
     no merge/deletion semantics.
 
-    All seven §12.1 fields are editable (deletable / editable / tips
-    / label / prefix / suffix / single). The edit panel MUST display
-    and write back the COMPLETE definition, never a partial one.
+    Seven of the eight §12.1 fields are editable (deletable / editable
+    / tips / label / prefix / suffix / single). controlType is written
+    only at insertion (§12.4) from the library entry; it is NOT one of
+    the panel's editable fields. The edit panel MUST display and write
+    back the COMPLETE definition (all eight fields), never a partial
+    one — so controlType is preserved unchanged through the panel's
+    read-getControlDefinition / write-setControlDefinition round trip.
 
     Guard interaction — an edited flag takes effect immediately at
     its existing command consumption point:

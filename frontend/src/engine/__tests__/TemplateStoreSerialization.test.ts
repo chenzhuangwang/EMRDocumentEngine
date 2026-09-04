@@ -41,6 +41,7 @@ function makeDocWithSmartText(): { doc: DocumentTree; pool: NodePool; stId: stri
 const DEF: TemplateDefinition = {
   deletable: false, editable: false, tips: '请填写患者姓名',
   label: '姓名：', prefix: '（', suffix: '）', single: true,
+  controlType: 'input',
 }
 
 const STYLE: PresentationStyle = {
@@ -114,5 +115,16 @@ describe('TemplateStore 序列化 (契约 §12.1)', () => {
     const loaded = loadDocumentFromObject(JSON.parse(json))
     expect(loaded.templateDefinitions).toBeUndefined()
     expect(loaded.presentationStyles).toBeUndefined()
+  })
+
+  it('旧文档定义缺失 controlType → load 后保持 undefined (不猜测, 契约 §12.1)', () => {
+    const { doc, pool, stId } = makeDocWithSmartText()
+    const tds = new TemplateDefinitionStore()
+    tds.set(stId, { deletable: true, label: '姓名：' }) // 无 controlType (旧 artifact)
+    const json = serializeDocument(doc, pool, { templateDefinitions: tds })
+
+    const loaded = loadDocumentFromObject(JSON.parse(json))
+    expect(loaded.templateDefinitions?.get(stId)?.controlType).toBeUndefined()
+    expect(loaded.templateDefinitions?.get(stId)?.label).toBe('姓名：')
   })
 })

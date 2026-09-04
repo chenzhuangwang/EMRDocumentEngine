@@ -16,6 +16,18 @@ export const CONTROL_COLORS: Record<string, { bg: string; border: string }> = {
   D:  { bg: '#FDF2F8', border: '#F9A8D4' },   // 日期 — 浅粉
 }
 
+/** 缺省配色 (dataType 缺失/未知时) — 中性灰 */
+const DEFAULT_CONTROL_COLORS = { bg: '#F9FAFB', border: '#D1D5DB' }
+
+/**
+ * 纯映射: dataType → 控件视觉配色。缺省/未知 dataType 回退中性灰,
+ * 绝不假设为 S1 (契约 §12.1: dataType/showType/controlType 正交)。
+ */
+export function classifyControlVisual(dataType: string | undefined): { bg: string; border: string } {
+  if (!dataType) return DEFAULT_CONTROL_COLORS
+  return CONTROL_COLORS[dataType] ?? DEFAULT_CONTROL_COLORS
+}
+
 export function createControlParticle(): IParticle {
   return {
     type: 'smarttext',
@@ -46,10 +58,15 @@ export function createControlParticle(): IParticle {
       const prefix = typeof def?.prefix === 'string' ? def.prefix : ''
       const suffix = typeof def?.suffix === 'string' ? def.suffix : ''
 
+      // 语义元数据 (契约 §2.1) — draw time 按 nodeId 查询 dataType 与隐私标记
+      const element = options?.elementOf?.(item.nodeId)
+      const dataType = element?.format?.dataType
+      const colors = classifyControlVisual(dataType)
+
       // 检查隐私脱敏
-      const meta = (item as { elementMeta?: { privacy?: { enabled: boolean; maskChar: string } } }).elementMeta
-      const isMasked = meta?.privacy?.enabled
-      const displayText = isMasked ? (meta!.privacy!.maskChar || '*').repeat(value.length) : value
+      const privacy = element?.privacy
+      const isMasked = privacy?.enabled === true
+      const displayText = isMasked ? (privacy!.maskChar || '*').repeat(value.length) : value
 
       ctx.save()
       ctx.font = `${fontSize}px "${fontFamily}"`
@@ -60,11 +77,11 @@ export function createControlParticle(): IParticle {
 
       if (drawBox) {
         // 背景
-        ctx.fillStyle = CONTROL_COLORS.S1.bg
+        ctx.fillStyle = colors.bg
         ctx.fillRect(x - padding, y - fontSize * 0.8 - padding, boxW, h + padding * 2)
 
         // 边框
-        ctx.strokeStyle = isMasked ? '#F87171' : CONTROL_COLORS.S1.border
+        ctx.strokeStyle = isMasked ? '#F87171' : colors.border
         ctx.lineWidth = 1
         if (!solidBorder) ctx.setLineDash([2, 1])
         ctx.strokeRect(x - padding, y - fontSize * 0.8 - padding, boxW, h + padding * 2)
