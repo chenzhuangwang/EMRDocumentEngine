@@ -13,7 +13,10 @@
 // P1-b:      剪切 (严格原子 cut, 契约 RULE 11)。
 // P1-c:      删除段落 (body 段折叠选区「删除」即删整段) + image 删除
 //            (经 Editor.deleteNode 门面, 设计 v2 §6)。
-// 禁止项 (§十): 图片复制、cell/row/column 删除、header/footer 完整菜单、
+// P2:        表格结构删除 — cell 命中追加「删除行」「删除列」(经
+//            Editor.deleteTableRowAt / deleteTableColumnAt, 复用 TableOps)。
+//            单格删除 (矩形网格下语义歧义) 与整表删除均不在范围。
+// 禁止项 (§十): 图片复制、单格删除、header/footer 完整菜单、
 // SmartText 属性面板 — 均不在实现范围。
 // ============================================================
 
@@ -21,6 +24,7 @@ import type { EditorContextSnapshot } from '@/engine'
 
 export type ContextMenuActionId =
   | 'cut' | 'copy' | 'paste' | 'delete'
+  | 'deleteRow' | 'deleteColumn'
   | 'bold' | 'italic' | 'underline' | 'strikeout' | 'clearFormat'
   | 'alignLeft' | 'alignCenter' | 'alignRight' | 'alignJustify'
   | 'increaseIndent' | 'decreaseIndent'
@@ -90,7 +94,8 @@ const NO_STYLE: ContextMenuStyleInfo = { textStyle: null, paragraphStyle: null }
  * - text (body 段): 剪切、复制、粘贴、删除 + 文本格式 (含勾选) + 段落样式 (含勾选)
  *   + 列表层级。删除始终可用 — 覆盖选区删选区, 折叠选区删整段 (设计 v2 §6)。
  * - cell:          同上, 但剪切/删除仅在命中点覆盖当前选区时可用
- *   (折叠选区不删 cell 段落, P2 再定)。
+ *   (折叠选区不删 cell 段落, P2 再定); 追加「删除行」「删除列」
+ *   (P2 表格结构删除)。
  * - image:         仅「删除」 (经 Editor.deleteNode 门面)。
  * - blank:         粘贴 (光标位置粘贴)。
  * - 其余种类 (table/separator/sectionBreak/headerFooterRegion/smartText):
@@ -123,6 +128,9 @@ export function buildContextMenuModel(
           { kind: 'item', id: 'copy', label: '复制', enabled: true },
           { kind: 'item', id: 'paste', label: '粘贴', enabled: true },
           { kind: 'item', id: 'delete', label: '删除', enabled: snapshot.coversSelection },
+          SEP,
+          { kind: 'item', id: 'deleteRow', label: '删除行', enabled: true },
+          { kind: 'item', id: 'deleteColumn', label: '删除列', enabled: true },
           SEP,
           ...textFormatEntries(style),
           SEP,

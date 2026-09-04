@@ -74,6 +74,17 @@ export function useEditorContextMenu() {
         }
         break
       }
+      // 表格结构删除 (P2): 仅 cell 命中时执行
+      case 'deleteRow': {
+        const snap = state.snapshot
+        if (snap?.kind === 'cell') editor.deleteTableRowAt(snap.tableId, snap.row)
+        break
+      }
+      case 'deleteColumn': {
+        const snap = state.snapshot
+        if (snap?.kind === 'cell') editor.deleteTableColumnAt(snap.tableId, snap.row, snap.col)
+        break
+      }
       // 文本格式 (P1-a)
       case 'bold': editor.toggleFormat({ bold: true }); break
       case 'italic': editor.toggleFormat({ italic: true }); break

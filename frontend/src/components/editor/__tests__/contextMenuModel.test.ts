@@ -4,7 +4,7 @@
 // 验证 buildContextMenuModel 由上下文快照派生菜单条目:
 //   - text: 剪切/复制/粘贴/删除 + 文本格式 + 段落样式 + 列表层级;
 //     删除始终可用 (覆盖选区删选区, 折叠选区删整段), 剪切仅在覆盖选区时可用。
-//   - cell: 同上, 但剪切/删除仅在命中点覆盖选区时可用。
+//   - cell: 同上, 但剪切/删除仅在命中点覆盖选区时可用; 追加删除行/删除列 (P2)。
 //   - image: 仅「删除」。
 //   - blank: 仅粘贴。
 //   - 其余种类: 空条目 (不弹菜单)。
@@ -78,10 +78,11 @@ describe('buildContextMenuModel 菜单条目 (P1-a)', () => {
     expect(list.find((i) => i.id === 'copy')?.enabled).toBe(true)
   })
 
-  it('cell 命中: 同样提供剪切/格式/段落/列表条目', () => {
+  it('cell 命中: 同样提供剪切/格式/段落/列表条目 + 删除行/删除列', () => {
     const list = items(cellSnapshot(false))
     expect(list.map((i) => i.id)).toEqual([
       'cut', 'copy', 'paste', 'delete',
+      'deleteRow', 'deleteColumn',
       'bold', 'italic', 'underline', 'strikeout', 'clearFormat',
       'alignLeft', 'alignCenter', 'alignRight', 'alignJustify',
       'increaseIndent', 'decreaseIndent',

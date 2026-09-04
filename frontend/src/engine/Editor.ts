@@ -1145,11 +1145,14 @@ export class Editor {
   /** 删除选中单元格所在行 */
   deleteTableRow(): void {
     if (!this._selectedTableId || this._selectedCellRow < 0) return
-    const tableId = this._selectedTableId
-    const rowIdx = this._selectedCellRow
+    this.deleteTableRowAt(this._selectedTableId, this._selectedCellRow)
+  }
+
+  /** 删除指定行 (tableId + 行下标) — 右键菜单/工具栏复用 (RULE 4: 经 TableStructureCommand) */
+  deleteTableRowAt(tableId: string, row: number): void {
     this.commandManager.execute(new TableStructureCommand(
       generateCommandId(), Date.now(), 'user', tableId,
-      (pool) => { deleteRow(pool, tableId, rowIdx); return true },
+      (pool) => { deleteRow(pool, tableId, row); return true },
     ))
     this.clearTableSelectionState()
   }
@@ -1171,13 +1174,16 @@ export class Editor {
   /** 删除选中单元格所在列 */
   deleteTableColumn(): void {
     if (!this._selectedTableId || this._selectedCellRow < 0 || this._selectedCellCol < 0) return
-    const gp = getCellGridPosition(this.pool, this._selectedTableId, this._selectedCellRow, this._selectedCellCol)
+    this.deleteTableColumnAt(this._selectedTableId, this._selectedCellRow, this._selectedCellCol)
+  }
+
+  /** 删除指定列 (tableId + 行下标 + 行内 cell 下标 → 网格列) — 右键菜单/工具栏复用 */
+  deleteTableColumnAt(tableId: string, row: number, col: number): void {
+    const gp = getCellGridPosition(this.pool, tableId, row, col)
     if (!gp) return
-    const tableId = this._selectedTableId
-    const colIdx = gp.col
     this.commandManager.execute(new TableStructureCommand(
       generateCommandId(), Date.now(), 'user', tableId,
-      (pool) => { deleteColumn(pool, tableId, colIdx); return true },
+      (pool) => { deleteColumn(pool, tableId, gp.col); return true },
     ))
     this.clearTableSelectionState()
   }
