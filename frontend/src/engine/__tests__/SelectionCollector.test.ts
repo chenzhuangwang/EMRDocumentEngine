@@ -12,11 +12,12 @@
 import { describe, it, expect } from 'vitest'
 import {
   paragraphTextLength, collectTextNodeIds, findFirstTextNodeInRange,
-  collectSelectionSegments,
+  collectSelectionSegments, flattenTextContainers,
 } from '../document/selection/SelectionCollector'
 import { buildNodePool } from '../document/core/NodePool'
 import {
   createDocument, createParagraph, createTextNode, createSmartTextNode,
+  createTable, createTableRow, createTableCell,
 } from '../document/factory/ElementFormatter'
 import type { BaseNode, ElementMeta } from '../document/core/DocumentModel'
 import type { FormatRange } from '../document/selection/SelectionCollector'
@@ -128,5 +129,48 @@ describe('SelectionCollector — 选区投影 (契约 §11.2)', () => {
     expect(segs.map((s) => s.paraId)).toEqual([para1, para2, para3])
     expect(segs[0].start).toBe(1)
     expect(segs[2].end).toBe(2)
+  })
+})
+
+describe('flattenTextContainers — 表格展开为 cell 段落 (阅读顺序)', () => {
+  it('body [para1, table, para2] → [para1, cell 段落..., para2] (行主序/列序)', () => {
+    const doc = createDocument('test')
+    const allNodes = new Map<string, BaseNode>()
+    allNodes.set(doc.id, doc as unknown as BaseNode)
+
+    const mkPara = (t: string): string => {
+      const tn = createTextNode(t)
+      const p = createParagraph([tn.id])
+      allNodes.set(tn.id, tn as unknown as BaseNode)
+      allNodes.set(p.id, p as unknown as BaseNode)
+      return p.id
+    }
+
+    const para1 = mkPara('head')
+    const c00 = mkPara('a')
+    const c01 = mkPara('b')
+    const c10 = mkPara('c')
+    const c11 = mkPara('d')
+    const cell00 = createTableCell([c00])
+    const cell01 = createTableCell([c01])
+    const cell10 = createTableCell([c10])
+    const cell11 = createTableCell([c11])
+    for (const n of [cell00, cell01, cell10, cell11]) allNodes.set(n.id, n as unknown as BaseNode)
+    const row0 = createTableRow([cell00, cell01])
+    const row1 = createTableRow([cell10, cell11])
+    for (const n of [row0, row1]) allNodes.set(n.id, n as unknown as BaseNode)
+    const table = createTable(
+      [{ width: 50, mode: 'percentage' }, { width: 50, mode: 'percentage' }],
+      [row0, row1],
+    )
+    allNodes.set(table.id, table as unknown as BaseNode)
+    const para2 = mkPara('tail')
+
+    doc.body.children = [para1, table.id, para2]
+    const pool = buildNodePool(allNodes, { body: doc.id })
+
+    expect(flattenTextContainers(pool, doc.body.children)).toEqual([
+      para1, c00, c01, c10, c11, para2,
+    ])
   })
 })

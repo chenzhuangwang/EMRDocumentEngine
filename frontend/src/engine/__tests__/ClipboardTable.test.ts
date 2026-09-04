@@ -3,7 +3,9 @@
 //
 // 复现并防止: ClipboardManager.copy 只用 body.children 定位段落,
 // 导致 cell 内选区 indexOf 返回 -1 直接 return, 复制完全失效。
-// 修复后按 scope (body/cell) 选择 siblings, 同 cell 内段落可正常复制。
+// 修复后按展平 spine (body → 表格展开为 cell 段落, SelectionCollector
+// .flattenTextContainers) 定位段落, 同 cell / 跨 cell / body↔cell
+// 均按线性范围逐段克隆 (表格结构不保留, 仅复制 cell 内段落文本)。
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
@@ -75,20 +77,27 @@ describe('ClipboardManager 表格内复制', () => {
     expect(data!.nodes).toHaveLength(2)
   })
 
-  it('跨 cell 复制 (cell00 → cell01) → 不复制', () => {
+  it('跨 cell 复制 (cell00 → cell01) → 展平后按线性范围复制', () => {
     const { doc, pool, p1, p3 } = makeTableDoc()
     const cm = new ClipboardManager(noopClipboard)
     cm.copy([doc.id, p1.id], 0, [doc.id, p3.id], 2, doc, pool)
 
-    expect(cm.paste()).toBeNull()
+    // spine = [body, p1(hello), p2(world), p3(zz)]; p1→p3 覆盖 p1/p2/p3
+    const data = cm.paste()
+    expect(data).not.toBeNull()
+    expect(data!.plainText).toBe('hello\nworld\nzz')
+    expect(data!.nodes).toHaveLength(3)
   })
 
-  it('跨域复制 (body → cell) → 不复制', () => {
+  it('跨域复制 (body → cell) → 展平后按线性范围复制', () => {
     const { doc, pool, bodyPara, p1 } = makeTableDoc()
     const cm = new ClipboardManager(noopClipboard)
     cm.copy([doc.id, bodyPara.id], 0, [doc.id, p1.id], 5, doc, pool)
 
-    expect(cm.paste()).toBeNull()
+    const data = cm.paste()
+    expect(data).not.toBeNull()
+    expect(data!.plainText).toBe('body\nhello')
+    expect(data!.nodes).toHaveLength(2)
   })
 })
 

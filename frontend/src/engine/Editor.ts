@@ -45,6 +45,7 @@ import type { CellRange } from './document/table/TableOps'
 import {
   collectTextNodeIds, collectSelectionSegments,
   paragraphTextLength, findFirstTextNodeInRange,
+  flattenTextContainers,
 } from './document/selection/SelectionCollector'
 import type { FormatRange } from './document/selection/SelectionCollector'
 import {
@@ -644,7 +645,7 @@ export class Editor {
     const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
     const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
     const segments = collectSelectionSegments(
-      this.doc.body.children, anchorParaId, selection.anchor.offset,
+      flattenTextContainers(this.pool, this.doc.body.children), anchorParaId, selection.anchor.offset,
       focusParaId, selection.focus.offset,
     )
     const nodeIds: string[] = []
@@ -672,7 +673,7 @@ export class Editor {
 
     // 跨段: 委托 collectSelectionSegments, 再物化 path (两级) 与 end (段末→实际长度)
     const segments = collectSelectionSegments(
-      this.doc.body.children, anchorParaId, selection.anchor.offset,
+      flattenTextContainers(this.pool, this.doc.body.children), anchorParaId, selection.anchor.offset,
       focusParaId, selection.focus.offset,
     )
     return segments.map((s) => ({
@@ -1924,14 +1925,13 @@ export class Editor {
     return [cursor.paragraphPath[cursor.paragraphPath.length - 1]]
   }
 
-  /** 全选: 选区覆盖整篇文档所有段落 */
+  /** 全选: 选区覆盖整篇文档所有段落 (含表格 cell 内段落) */
   selectAll(): void {
-    const bodyChildren = this.doc.body.children
-    if (bodyChildren.length === 0) return
-    const firstParaId = bodyChildren[0]
-    const lastParaId = bodyChildren[bodyChildren.length - 1]
-    const lastPara = this.pool.nodes.get(lastParaId) as unknown as { children?: readonly string[] } | undefined
-    const totalLen = lastPara ? this.getParagraphTextLength(lastPara as unknown as Paragraph) : 0
+    const spine = flattenTextContainers(this.pool, this.doc.body.children)
+    if (spine.length === 0) return
+    const firstParaId = spine[0]
+    const lastParaId = spine[spine.length - 1]
+    const totalLen = this.getParagraphTextLengthById(lastParaId)
     this.store.setSelection({
       anchor: { paragraphPath: [this.doc.id, firstParaId], offset: 0, visible: false },
       focus: { paragraphPath: [this.doc.id, lastParaId], offset: totalLen, visible: false },

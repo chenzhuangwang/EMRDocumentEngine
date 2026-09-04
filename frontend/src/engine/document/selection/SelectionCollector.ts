@@ -97,6 +97,39 @@ export function findFirstTextNodeInRange(
 }
 
 /**
+ * 展平 body 为「阅读顺序的文本容器序列」— 表格展开为 cell 内段落
+ * (行主序、每行按 cell 顺序), 其余块 (paragraph/image/separator/...) 保留原 id。
+ *
+ * 选区、复制、渲染的线性定位都基于此序列: cell 段落不在 body.children,
+ * 若不展平, body↔table 跨域选区会 indexOf=-1 被整体丢弃
+ * (「全选选不中表格」/ 从正文拖拽选区进表格选不中的根因)。
+ */
+export function flattenTextContainers(
+  pool: NodePool,
+  bodyChildIds: readonly string[],
+): string[] {
+  const out: string[] = []
+  for (const id of bodyChildIds) {
+    const node = pool.nodes.get(id)
+    if (node?.type === NodeType.TABLE) {
+      const rows = (node as { children?: readonly string[] }).children ?? []
+      for (const rowId of rows) {
+        const row = pool.nodes.get(rowId) as { children?: readonly string[] } | undefined
+        for (const cellId of row?.children ?? []) {
+          const cell = pool.nodes.get(cellId) as { children?: readonly string[] } | undefined
+          for (const paraId of cell?.children ?? []) {
+            out.push(paraId)
+          }
+        }
+      }
+    } else {
+      out.push(id)
+    }
+  }
+  return out
+}
+
+/**
  * 选区 → 段内区间片段列表 (同段/跨段)。
  *
  * 不依赖 pool / SelectionState, 只接收已解析的 anchor/focus 段落 id +

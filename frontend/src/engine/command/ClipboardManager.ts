@@ -15,7 +15,7 @@ import type { NodePool } from '../document/core/NodePool'
 import { generateCommandId } from './ICommand'
 import { generateId } from '../document/core/DocumentModel'
 import { smartTextDisplayValue } from '../document/factory/ElementFormatter'
-import { resolveCellPosition } from '../state/CaretScope'
+import { flattenTextContainers } from '../document/selection/SelectionCollector'
 import type { ClipboardHost } from '../host/EditorHost'
 
 // ---- 类型 ----
@@ -66,9 +66,12 @@ export class ClipboardManager {
    * 复制: 遍历选区范围内的段落 → 按 offset 裁剪 → 深度克隆
    *
    * 范围计算: 与 renderSelectionUnified 完全一致
-   *   body 段落顺序 bodyChildren → aIdx/fIdx → lo/hi
+   *   展平 body → spine (表格展开为 cell 段落, §SelectionCollector.flattenTextContainers)
    *   同段落: clipStart=min(anchor,focus), clipEnd=max(anchor,focus)
    *   跨段落: 首段 clipStart=loOff/clipEnd=∞, 末段 clipStart=0/clipEnd=hiOff
+   *
+   * body↔table 跨域选区不再被整体丢弃: cell 段落经展平后参与线性范围,
+   * 逐段克隆 (表格结构不保留, 仅复制 cell 内段落文本 — 与同 cell 复制语义一致)。
    */
   copy(
     anchorPath: string[], anchorOffset: number,
@@ -80,24 +83,9 @@ export class ClipboardManager {
     const aId = anchorPath[anchorPath.length - 1]
     const fId = focusPath[focusPath.length - 1]
 
-    // 检测 scope: body / cell (与 deleteSelectedRange 的选区域判定一致)
-    const aCell = resolveCellPosition(aId, pool)
-    const fCell = resolveCellPosition(fId, pool)
-
-    // 跨域选区禁止复制 (body↔cell, 或不同 cell)
-    if ((aCell && !fCell) || (!aCell && fCell)) return
-    if (aCell && fCell && (aCell.tableId !== fCell.tableId || aCell.row !== fCell.row || aCell.col !== fCell.col)) return
-
-    // 选区段落列表: cell 内用 cell.children, body 用 body.children
-    let siblings: readonly string[]
-    if (aCell) {
-      const tableNode = pool.nodes.get(aCell.tableId) as { children?: readonly string[] } | undefined
-      const rowNode = tableNode ? pool.nodes.get(tableNode.children?.[aCell.row] || '') as { children?: readonly string[] } | undefined : undefined
-      const cellNode = rowNode ? pool.nodes.get(rowNode.children?.[aCell.col] || '') as { children?: readonly string[] } | undefined : undefined
-      siblings = cellNode?.children ?? []
-    } else {
-      siblings = pool.getChildren(pool.rootIds.body)
-    }
+    // 选区段落列表: 展平 body → 阅读顺序 (表格 → cell 段落), body 段落与
+    // cell 段落统一在线性序列中定位, 支撑「全选/拖选覆盖表格」的复制。
+    const siblings = flattenTextContainers(pool, pool.getChildren(pool.rootIds.body))
 
     const aIdx = siblings.indexOf(aId)
     const fIdx = siblings.indexOf(fId)

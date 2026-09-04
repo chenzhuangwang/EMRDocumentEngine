@@ -32,7 +32,7 @@ import { createBarcodeParticle } from './particles/BarcodeParticle'
 import { particleRegistry } from './particles/ParticleRegistry'
 import { textParticle, separatorParticle, listParticle, fieldParticle } from './particles/ParticleAdapters'
 import { buildCellGrid } from '../document/table/TableOps'
-import { resolveCellPosition } from '../state/CaretScope'
+import { flattenTextContainers } from '../document/selection/SelectionCollector'
 
 interface CaretPos { x: number; y: number; h: number }
 
@@ -595,18 +595,12 @@ export class Draw {
     const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1] || ''
     const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1] || ''
 
-    // 表格 cell 内选区 — 段落位于 cell.children (body 索引不含 cell 段落),
-    // 需单独按 cell 坐标渲染, 否则 indexOf 返回 -1 直接跳过。
-    const aCell = resolveCellPosition(anchorParaId, pool)
-    const fCell = resolveCellPosition(focusParaId, pool)
-    if (aCell && fCell && aCell.tableId === fCell.tableId && aCell.row === fCell.row && aCell.col === fCell.col) {
-      this.renderCellTextSelection(pool, selection, aCell, pageVerticalGap, ictx)
-      return
-    }
-
+    // 展平 body → 阅读顺序 (表格展开为 cell 段落)。cell 段落不在 body.children,
+    // 若不展平, body↔table 跨域选区 indexOf=-1 被整体丢弃 (「全选/拖选选不中表格」)。
     const bodyChildren = pool.getChildren(pool.rootIds.body)
-    const aIdx = bodyChildren.indexOf(anchorParaId)
-    const fIdx = bodyChildren.indexOf(focusParaId)
+    const spine = flattenTextContainers(pool, bodyChildren)
+    const aIdx = spine.indexOf(anchorParaId)
+    const fIdx = spine.indexOf(focusParaId)
     if (aIdx < 0 || fIdx < 0) return
 
     const lo = Math.min(aIdx, fIdx)
@@ -627,6 +621,58 @@ export class Draw {
     // 当前文档滚动位置 — 直接读取, 与 computeCaretPos 同源
     const scrollY = this.coordSystem.transform.scrollY
 
+    // 单个文本 run 的裁剪 + 填充: 基于 paraId 在 spine 中的索引与段内累计偏移
+    // 计算是否落入 [lo,hi] 选区范围, 落入则按逐字符像素宽度裁剪后 fillRect。
+    const fillItem = (
+      paraId: string,
+      text: string,
+      x: number, y: number, ascent: number, descent: number,
+      fontCfg: { font: string; size: number; bold?: boolean; italic?: boolean },
+    ): void => {
+      const pi = spine.indexOf(paraId)
+      if (pi < lo || pi > hi) return
+
+      const itemStart = paraOffsets.get(paraId) ?? 0
+      const tLen = text?.length || 0
+      const itemEnd = itemStart + tLen
+
+      // ---- 第一层: item 级筛选 ----
+      let include = true
+      if (samePara) {
+        include = itemEnd > selMin && itemStart < selMax
+      } else if (pi === lo) {
+        include = itemEnd > (aIdx === lo ? anchorOff : focusOff)
+      } else if (pi === hi) {
+        include = itemStart < (aIdx === hi ? anchorOff : focusOff)
+      }
+
+      let localStart = 0
+      let localEnd = tLen || 1  // 空段落占位至少 1 个单位宽度
+      if (samePara) {
+        localStart = Math.max(0, selMin - itemStart)
+        localEnd = Math.min(tLen, selMax - itemStart)
+      } else if (pi === lo) {
+        localStart = Math.max(0, (aIdx === lo ? anchorOff : focusOff) - itemStart)
+        localEnd = tLen || 1
+      } else if (pi === hi) {
+        localStart = 0
+        localEnd = Math.min(tLen || 1, (aIdx === hi ? anchorOff : focusOff) - itemStart)
+      }
+
+      paraOffsets.set(paraId, itemEnd)
+      if (!include) return
+
+      // 逐字符累积宽度: 正确区分半角/全角字符像素宽度
+      const dx = cumulativeWidthUpTo(text || '', localStart, fontCfg, this.measurer)
+      const dw = tLen > 0
+        ? cumulativeWidthUpTo(text || '', localEnd, fontCfg, this.measurer) - dx
+        : ascent + descent  // 空段落用高度作为最小宽度
+
+      ictx.fillRect(x + dx, y, dw, ascent + descent)
+    }
+
+    const CELL_PAD = 6 // 与 TableParticle.CELL_PADDING 一致
+
     // 遍历所有页面 — 选区可能跨越 visible 之外的页面
     for (let i = 0; i < this.pages.length; i++) {
       const sp = this.pages[i]
@@ -634,173 +680,36 @@ export class Draw {
       // 每页 canvas Y = 该页累加文档 Y (含间隙) - 当前 scrollY
       const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
       for (const item of sp.items) {
-        const itemParaId = this.findItemParagraph(item.nodeId, pool)
-        if (!itemParaId) continue
-        const pi = bodyChildren.indexOf(itemParaId)
-        if (pi < lo || pi > hi) continue
-
-        // 该 item 在段落内的字符偏移范围
-        const itemStart = paraOffsets.get(itemParaId) ?? 0
-        const tLen = item.text?.length || 0
-        const itemEnd = itemStart + tLen
-
-        // 获取该 item 的字体配置, 用于精确 char 宽度测量
-        const fontCfg = {
-          font: item.font || 'SimSun',
-          size: item.size || 16,
-          bold: item.bold,
-          italic: item.italic,
-        }
-
-        // ---- 第一层: item 级筛选 ----
-        let include = true
-        if (samePara) {
-          include = itemEnd > selMin && itemStart < selMax
-        } else if (pi === lo) {
-          // 首段: 锚点 offset = (aIdx===lo ? anchorOff : focusOff)
-          const loOff = aIdx === lo ? anchorOff : focusOff
-          include = itemEnd > loOff
-        } else if (pi === hi) {
-          // 末段: 锚点 offset = (aIdx===hi ? anchorOff : focusOff)
-          const hiOff = aIdx === hi ? anchorOff : focusOff
-          include = itemStart < hiOff
-        }
-
-        if (!include) { paraOffsets.set(itemParaId, itemEnd); continue }
-
-        // ---- 第二层: item 内像素裁剪 ----
-        let localStart = 0
-        let localEnd = tLen || 1  // 空段落占位至少 1 个单位宽度
-
-        if (samePara) {
-          localStart = Math.max(0, selMin - itemStart)
-          localEnd = Math.min(tLen, selMax - itemStart)
-        } else if (pi === lo) {
-          const loOff = aIdx === lo ? anchorOff : focusOff
-          localStart = Math.max(0, loOff - itemStart)
-          localEnd = tLen || 1
-        } else if (pi === hi) {
-          const hiOff = aIdx === hi ? anchorOff : focusOff
-          localStart = 0
-          localEnd = Math.min(tLen || 1, hiOff - itemStart)
-        }
-
-        // 逐字符累积宽度: 正确区分半角/全角字符像素宽度
-        const dx = cumulativeWidthUpTo(item.text || '', localStart, fontCfg, this.measurer)
-        const dw = tLen > 0
-          ? cumulativeWidthUpTo(item.text || '', localEnd, fontCfg, this.measurer) - dx
-          : item.ascent + item.descent  // 空段落用高度作为最小宽度
-
-        ictx.fillRect(item.x + dx, spY + item.y, dw, item.ascent + item.descent)
-
-        paraOffsets.set(itemParaId, itemEnd)
-      }
-    }
-  }
-
-  /** 渲染 cell 内文本选区 (锚点/焦点同属一个 cell) — 段落位于 cell.children,
-   *  文本 item 位于 table SLIFItem.rows[*].cells[*].items, 不走 body 顶层 items。
-   *  逐 item 独立底色 + 逐字符累积宽度, 与 renderSelectionUnified 同源算法。
-   */
-  private renderCellTextSelection(
-    pool: NodePool,
-    selection: EditorRuntimeState['selection'],
-    cell: { tableId: string; row: number; col: number },
-    pageVerticalGap: number = 0,
-    ictx: CanvasRenderingContext2D,
-  ): void {
-    const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1] || ''
-    const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1] || ''
-
-    // cell 内段落兄弟列表 (与 ClipboardManager/KeyboardHandler 同源)
-    const tableNode = pool.nodes.get(cell.tableId) as { children?: readonly string[] } | undefined
-    const rowNode = tableNode ? pool.nodes.get(tableNode.children?.[cell.row] || '') as { children?: readonly string[] } | undefined : undefined
-    const cellNode = rowNode ? pool.nodes.get(rowNode.children?.[cell.col] || '') as { children?: readonly string[] } | undefined : undefined
-    const siblings = cellNode?.children ?? []
-    if (siblings.length === 0) return
-
-    const aIdx = siblings.indexOf(anchorParaId)
-    const fIdx = siblings.indexOf(focusParaId)
-    if (aIdx < 0 || fIdx < 0) return
-
-    const lo = Math.min(aIdx, fIdx)
-    const hi = Math.max(aIdx, fIdx)
-    const samePara = lo === hi
-
-    const anchorOff = selection.anchor.offset
-    const focusOff = selection.focus.offset
-    const selMin = Math.min(anchorOff, focusOff)
-    const selMax = Math.max(anchorOff, focusOff)
-
-    const paraOffsets = new Map<string, number>()
-    ictx.fillStyle = 'rgba(59, 130, 246, 0.2)'
-    const scrollY = this.coordSystem.transform.scrollY
-    const CELL_PAD = 6 // 与 TableParticle.CELL_PADDING 一致
-
-    for (let i = 0; i < this.pages.length; i++) {
-      const sp = this.pages[i]
-      if (!sp) continue
-      const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
-      for (const item of sp.items) {
-        if (item.type !== 'table' || item.nodeId !== cell.tableId) continue
-        let rowY = item.y
-        for (const row of item.rows || []) {
-          const rowHeight = Math.max(row.height || 24, 24)
-          for (const c of row.cells) {
-            const cellX = item.x + (c.x || 0)
-            const cellY = spY + rowY
-            for (const ci of c.items || []) {
-              const paraId = this.findItemParagraph(ci.nodeId, pool)
-              if (!paraId) continue
-              const pi = siblings.indexOf(paraId)
-              if (pi < lo || pi > hi) continue
-
-              const itemStart = paraOffsets.get(paraId) ?? 0
-              const tLen = ci.text?.length || 0
-              const itemEnd = itemStart + tLen
-
-              // 第一层: item 级筛选 (同 renderSelectionUnified)
-              let include = true
-              if (samePara) {
-                include = itemEnd > selMin && itemStart < selMax
-              } else if (pi === lo) {
-                include = itemEnd > (aIdx === lo ? anchorOff : focusOff)
-              } else if (pi === hi) {
-                include = itemStart < (aIdx === hi ? anchorOff : focusOff)
+        if (item.type === 'table') {
+          // cell 段落: 遍历 rows/cells/items (cell 局部坐标 → 页面坐标)
+          let rowY = item.y
+          for (const row of item.rows || []) {
+            const rowHeight = Math.max(row.height || 24, 24)
+            for (const c of row.cells) {
+              const cellX = item.x + (c.x || 0)
+              const cellY = spY + rowY
+              for (const ci of c.items || []) {
+                const paraId = this.findItemParagraph(ci.nodeId, pool)
+                if (!paraId) continue
+                fillItem(
+                  paraId, ci.text || '',
+                  cellX + CELL_PAD + (ci.x || 0), cellY + (ci.y || 0),
+                  ci.ascent, ci.descent,
+                  { font: ci.font || 'SimSun', size: ci.size || 16, bold: ci.bold, italic: ci.italic },
+                )
               }
-              if (!include) { paraOffsets.set(paraId, itemEnd); continue }
-
-              // 第二层: item 内像素裁剪
-              let localStart = 0
-              let localEnd = tLen || 1
-              if (samePara) {
-                localStart = Math.max(0, selMin - itemStart)
-                localEnd = Math.min(tLen, selMax - itemStart)
-              } else if (pi === lo) {
-                const loOff = aIdx === lo ? anchorOff : focusOff
-                localStart = Math.max(0, loOff - itemStart)
-                localEnd = tLen || 1
-              } else if (pi === hi) {
-                const hiOff = aIdx === hi ? anchorOff : focusOff
-                localStart = 0
-                localEnd = Math.min(tLen || 1, hiOff - itemStart)
-              }
-
-              const fontCfg = { font: ci.font || 'SimSun', size: ci.size || 16, bold: ci.bold, italic: ci.italic }
-              const dx = cumulativeWidthUpTo(ci.text || '', localStart, fontCfg, this.measurer)
-              const dw = tLen > 0
-                ? cumulativeWidthUpTo(ci.text || '', localEnd, fontCfg, this.measurer) - dx
-                : ci.ascent + ci.descent
-
-              // cell 内文本 item: x 相对 cell 内容区 (扣除 CELL_PAD), y 相对 cell 原点
-              const itemX = cellX + CELL_PAD + (ci.x || 0)
-              const itemY = cellY + (ci.y || 0)
-              ictx.fillRect(itemX + dx, itemY, dw, ci.ascent + ci.descent)
-
-              paraOffsets.set(paraId, itemEnd)
             }
+            rowY += rowHeight + 1
           }
-          rowY += rowHeight + 1
+        } else {
+          // 正文段落: 顶级 item
+          const paraId = this.findItemParagraph(item.nodeId, pool)
+          if (!paraId) continue
+          fillItem(
+            paraId, item.text || '',
+            item.x, spY + item.y, item.ascent, item.descent,
+            { font: item.font || 'SimSun', size: item.size || 16, bold: item.bold, italic: item.italic },
+          )
         }
       }
     }
