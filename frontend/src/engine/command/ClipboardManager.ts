@@ -10,7 +10,7 @@
 // 粘贴: 返回结构化节点数据 → InsertNodesCommand 消费
 // ================================================================
 
-import type { DocumentTree } from '../document/core/DocumentModel'
+import type { DocumentTree, ImageNode } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import { generateCommandId } from './ICommand'
 import { generateId } from '../document/core/DocumentModel'
@@ -23,6 +23,8 @@ import type { ClipboardHost } from '../host/EditorHost'
 export interface ClipboardData {
   nodes: SerializedPara[]
   plainText: string
+  /** 数据种类: text 可由系统剪贴板(纯文本)同步; image 无文本表示, 不可被覆盖 */
+  kind: 'text' | 'image'
 }
 
 export interface SerializedPara {
@@ -53,6 +55,11 @@ export class ClipboardManager {
   /** 内存剪贴板的纯文本表示 (null 表示无数据) — 供外部剪贴板同步对比 */
   getPlainText(): string | null {
     return this.data?.plainText ?? null
+  }
+
+  /** 当前内存剪贴板是否持有图片数据 (非文本, 不可被系统剪贴板纯文本同步覆盖) */
+  isImageData(): boolean {
+    return this.data?.kind === 'image'
   }
 
   /**
@@ -129,7 +136,7 @@ export class ClipboardManager {
     // 仅当有有效段落数据时才写入内存剪贴板
     const plainText = plainParts.join('\n')
     if (nodes.length > 0) {
-      this.data = { nodes, plainText }
+      this.data = { nodes, plainText, kind: 'text' }
       console.debug(`[Clipboard] copy: ${nodes.length} paragraphs, plainText="${plainText.slice(0, 80)}"`)
     } else {
       console.debug('[Clipboard] copy: no nodes selected, memory clipboard NOT set')
@@ -138,6 +145,24 @@ export class ClipboardManager {
     // 系统剪贴板: 使用局部 plainText 而非 this.data.plainText, 防止 null 引用
     // (writeText 最佳努力, 永不 reject — 无剪贴板/非安全上下文静默降级)
     this.clipboard.writeText(plainText)
+  }
+
+  /**
+   * 复制单个图片节点 (P2 图片复制)。
+   *
+   * 图片为非文本节点, 复制为纯副作用 (不入 undo 栈); 此处把图片包装为
+   * 「含一个 image 子节点的合成段落」存入内存剪贴板, 粘贴侧复用
+   * InsertNodesCommand.deserializePara 的通用非文本分支恢复图片。
+   * 图片无文本, plainText 置空, 不写系统剪贴板。
+   */
+  copyImage(image: ImageNode): void {
+    const child: SerializedChild = { type: 'image', id: generateId() }
+    for (const k of Object.keys(image)) {
+      if (k !== 'id' && k !== 'metadata') child[k] = (image as unknown as Record<string, unknown>)[k]
+    }
+    const sp: SerializedPara = { type: 'paragraph', id: generateId(), style: {}, children: [child] }
+    this.data = { nodes: [sp], plainText: '', kind: 'image' }
+    console.debug('[Clipboard] copyImage: image node cloned to memory clipboard')
   }
 
   /**
@@ -308,7 +333,7 @@ export class ClipboardManager {
       type: 'paragraph', id: generateId(), style: {},
       children: [{ type: 'text', id: generateId(), text, font: 'SimSun', size: 16 }],
     }
-    this.data = { nodes: [sp], plainText: text }
+    this.data = { nodes: [sp], plainText: text, kind: 'text' }
   }
 
   clear(): void { this.data = null }

@@ -1,4 +1,4 @@
-import type { DocumentTree, BaseNode, Paragraph, HeaderFooterConfig, ElementMeta, WatermarkConfig } from './document/core/DocumentModel'
+import type { DocumentTree, BaseNode, Paragraph, ImageNode, HeaderFooterConfig, ElementMeta, WatermarkConfig } from './document/core/DocumentModel'
 import { DEFAULT_HEADER_FOOTER_CONFIG } from './document/core/DocumentModel'
 import { createDocument, createParagraph, createTextNode, extractStyle, uniformTextStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent, createSmartTextNode } from './document/factory/ElementFormatter'
 import { NodePool, buildNodePool } from './document/core/NodePool'
@@ -1419,6 +1419,20 @@ export class Editor {
     }
   }
 
+  /**
+   * 复制图片节点 (P2 图片复制) — 纯副作用, 不入命令/undo 栈。
+   *
+   * 由右键菜单 image 命中「复制」分派; 直接按 nodeId 取节点并委托
+   * ClipboardManager.copyImage 包装为合成段落存入内存剪贴板, 粘贴复用
+   * InsertNodesCommand 管线。返回 false 表示 nodeId 非图片节点或不存在。
+   */
+  copyImage(nodeId: string): boolean {
+    const node = this.pool.nodes.get(nodeId) as unknown as ImageNode | undefined
+    if (!node || node.type !== 'image') return false
+    this.clipboard.copyImage(node)
+    return true
+  }
+
   /** 删除当前选区内容 (跨段落逐段删除 + 合并), 用于粘贴前替换选区 */
   /**
    * 剪切: 复制选区到剪贴板 + 原子删除 (契约 RULE 11)。
@@ -1620,6 +1634,9 @@ export class Editor {
     try {
       const clipboard = this.host.platform.clipboard
       if (!clipboard.canRead()) return
+      // 图片数据无纯文本表示, 系统剪贴板(纯文本)不可能带来更「新」的图片内容,
+      // 用系统文本覆盖会丢失已复制的图片 → 跳过同步。
+      if (this.clipboard.isImageData()) return
       clipboard.readText().then((text) => {
         if (text && text !== this.clipboard.getPlainText()) {
           this.clipboard.setPlainText(text)

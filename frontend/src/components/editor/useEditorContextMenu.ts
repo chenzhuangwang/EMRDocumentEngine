@@ -57,7 +57,12 @@ export function useEditorContextMenu() {
     switch (id) {
       // 剪贴板/删除 (P0 / P1-b / P1-c)
       case 'cut': editor.cut(); break
-      case 'copy': editor.copy(); break
+      case 'copy': {
+        const snap = state.snapshot
+        if (snap?.kind === 'image') editor.copyImage(snap.nodeId)
+        else editor.copy()
+        break
+      }
       case 'paste': editor.paste(); break
       case 'delete': {
         const snap = state.snapshot

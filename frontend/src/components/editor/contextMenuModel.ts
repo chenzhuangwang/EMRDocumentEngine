@@ -16,8 +16,10 @@
 // P2:        表格结构删除 — cell 命中追加「删除行」「删除列」(经
 //            Editor.deleteTableRowAt / deleteTableColumnAt, 复用 TableOps)。
 //            单格删除 (矩形网格下语义歧义) 与整表删除均不在范围。
-// 禁止项 (§十): 图片复制、单格删除、header/footer 完整菜单、
-// SmartText 属性面板 — 均不在实现范围。
+// P2:        图片复制 — image 命中追加「复制」(经 Editor.copyImage →
+//            ClipboardManager.copyImage, 复用粘贴管线)。
+// 禁止项 (§十): 单格删除、header/footer 完整菜单、SmartText 属性面板 —
+//            均不在实现范围。
 // ============================================================
 
 import type { EditorContextSnapshot } from '@/engine'
@@ -96,7 +98,8 @@ const NO_STYLE: ContextMenuStyleInfo = { textStyle: null, paragraphStyle: null }
  * - cell:          同上, 但剪切/删除仅在命中点覆盖当前选区时可用
  *   (折叠选区不删 cell 段落, P2 再定); 追加「删除行」「删除列」
  *   (P2 表格结构删除)。
- * - image:         仅「删除」 (经 Editor.deleteNode 门面)。
+ * - image:         复制 + 删除 (复制经 Editor.copyImage, 删除经 Editor.deleteNode
+ *   门面)。
  * - blank:         粘贴 (光标位置粘贴)。
  * - 其余种类 (table/separator/sectionBreak/headerFooterRegion/smartText):
  *   无对应菜单项, 返回空列表 (不弹出菜单)。
@@ -142,6 +145,7 @@ export function buildContextMenuModel(
     case 'image':
       return {
         entries: [
+          { kind: 'item', id: 'copy', label: '复制', enabled: true },
           { kind: 'item', id: 'delete', label: '删除', enabled: true },
         ],
       }

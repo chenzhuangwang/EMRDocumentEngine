@@ -5,7 +5,7 @@
 //   - text: 剪切/复制/粘贴/删除 + 文本格式 + 段落样式 + 列表层级;
 //     删除始终可用 (覆盖选区删选区, 折叠选区删整段), 剪切仅在覆盖选区时可用。
 //   - cell: 同上, 但剪切/删除仅在命中点覆盖选区时可用; 追加删除行/删除列 (P2)。
-//   - image: 仅「删除」。
+//   - image: 复制 + 删除 (P2 图片复制)。
 //   - blank: 仅粘贴。
 //   - 其余种类: 空条目 (不弹菜单)。
 // ============================================================
@@ -108,10 +108,13 @@ describe('buildContextMenuModel 菜单条目 (P1-a)', () => {
     }
   })
 
-  it('image: 仅「删除」', () => {
+  it('image: 复制 + 删除', () => {
     const snap: EditorContextSnapshot = { ...base, kind: 'image', nodeId: 'img1' }
-    expect(items(snap)).toEqual([{ id: 'delete', enabled: true }])
-    expect(entryKinds(snap)).toEqual(['item'])
+    expect(items(snap)).toEqual([
+      { id: 'copy', enabled: true },
+      { id: 'delete', enabled: true },
+    ])
+    expect(entryKinds(snap)).toEqual(['item', 'item'])
   })
 })
 
