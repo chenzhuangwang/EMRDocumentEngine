@@ -201,5 +201,17 @@ describe('isCoversPoint 选区覆盖判定', () => {
       const sel = crossSel('p1', 3, 'p2', 4)
       expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p9'], offset: 0 }, [...siblings])).toBe(false)
     })
+
+    it('单段落选区 + 提供 siblings: 按 anchor/focus 偏移区间覆盖 (回归: 曾退化为仅 anchor 单点)', () => {
+      // anchor/focus 同在 p1, 命中点也在 p1 — 必须按 [2,8] 区间判定, 而非 anchor.offset 单点
+      const sel = makeSelection(true, 2, 8)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p1'], offset: 5 }, [...siblings])).toBe(true)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p1'], offset: 2 }, [...siblings])).toBe(true)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p1'], offset: 8 }, [...siblings])).toBe(true)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p1'], offset: 1 }, [...siblings])).toBe(false)
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p1'], offset: 9 }, [...siblings])).toBe(false)
+      // 命中其他段落 → 不在同段选区
+      expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p2'], offset: 5 }, [...siblings])).toBe(false)
+    })
   })
 })

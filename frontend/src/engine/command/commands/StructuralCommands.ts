@@ -85,6 +85,64 @@ interface NodeRemoval {
   nodeIds: string[]
 }
 
+/** 单个节点移除的恢复快照 (forward 时捕获, 供 invert 恢复) */
+interface RemovalSnapshot {
+  container: Container
+  /** 移除时在父容器中的下标 (-1 表示非直接子节点, 仅 removeSubtree) */
+  index: number
+  rootId: string
+  subtree: Map<string, BaseNode>
+}
+
+/** 解析 header/footer/footnotes 文档级数组 (非 children 数组) */
+function docArrayOf(doc: DocumentTree, container: Container): string[] {
+  switch (container.kind) {
+    case 'header':
+      if (!doc.header) doc.header = []
+      return doc.header
+    case 'footer':
+      if (!doc.footer) doc.footer = []
+      return doc.footer
+    case 'footnotes':
+      if (!doc.footnotes) doc.footnotes = []
+      return doc.footnotes
+    case 'body': case 'paragraph': case 'cell': throw new Error('pool-based container not handled here')
+  }
+}
+
+/** 容器当前子节点数 (供恢复时下标夹取) */
+function containerLengthOf(pool: NodePool, doc: DocumentTree, container: Container): number {
+  switch (container.kind) {
+    case 'paragraph': case 'cell': {
+      const parentId = container.kind === 'paragraph' ? container.paraId : container.cellId
+      return pool.getChildren(parentId).length
+    }
+    case 'body': return doc.body.children.length
+    case 'header': return doc.header?.length ?? 0
+    case 'footer': return doc.footer?.length ?? 0
+    case 'footnotes': return doc.footnotes?.length ?? 0
+  }
+}
+
+/** 将 rootId 插回容器指定下标 */
+function insertIntoContainer(
+  pool: NodePool, doc: DocumentTree, container: Container, index: number, rootId: string,
+): void {
+  switch (container.kind) {
+    case 'paragraph': case 'cell': {
+      const parentId = container.kind === 'paragraph' ? container.paraId : container.cellId
+      pool.insertChild(parentId, rootId, index)
+      break
+    }
+    case 'body':
+      pool.insertChild(doc.id, rootId, index)
+      break
+    case 'header': case 'footer': case 'footnotes':
+      docArrayOf(doc, container).splice(index, 0, rootId)
+      break
+  }
+}
+
 export class RemoveNodesCommand implements ICommand {
   readonly type = 'remove-nodes'
   readonly id: string
@@ -94,6 +152,8 @@ export class RemoveNodesCommand implements ICommand {
   /** 需从 doc.comments 移除的 thread id (createComment undo) */
   private removeThreadIds: string[]
   private restoreCursor?: Partial<CursorState>
+  /** forward 时捕获的子树快照, 供 invert 恢复 (deleteNode 直接入栈需可撤销) */
+  private snapshots: RemovalSnapshot[] = []
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -109,24 +169,30 @@ export class RemoveNodesCommand implements ICommand {
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
     const { pool, doc } = ctx
+    this.snapshots = []
 
     for (const { container, nodeIds } of this.removals) {
       for (const nodeId of nodeIds) {
+        // 移除前捕获子树快照 (undo 恢复用)
+        const subtree = cloneSubtree(pool, nodeId)
+
         if (container.kind === 'paragraph' || container.kind === 'cell') {
           const parentId = container.kind === 'paragraph' ? container.paraId : container.cellId
-          const children = pool.getChildren(parentId)
-          const idx = children.indexOf(nodeId)
+          const idx = pool.getChildren(parentId).indexOf(nodeId)
+          this.snapshots.push({ container, index: idx, rootId: nodeId, subtree })
           if (idx >= 0) pool.removeChild(parentId, idx)
           else removeSubtree(pool, nodeId)
         } else if (container.kind === 'body') {
           // doc.body.children 是 children 数组 (PROBLEM B choke point), 经 NodePool
           const idx = doc.body.children.indexOf(nodeId)
+          this.snapshots.push({ container, index: idx, rootId: nodeId, subtree })
           if (idx >= 0) { pool.detachChild(doc.id, idx); removeSubtree(pool, nodeId) }
           else removeSubtree(pool, nodeId)
         } else {
           // header/footer/footnotes 是文档级 string[] (非 children 数组), 直接 splice
-          const arr = this.docArray(doc, container)
+          const arr = docArrayOf(doc, container)
           const idx = arr.indexOf(nodeId)
+          this.snapshots.push({ container, index: idx, rootId: nodeId, subtree })
           if (idx >= 0) { arr.splice(idx, 1); removeSubtree(pool, nodeId) }
           else removeSubtree(pool, nodeId)
         }
@@ -141,23 +207,53 @@ export class RemoveNodesCommand implements ICommand {
     return { cursor: this.restoreCursor, invalidation: 'flowbody' }
   }
 
-  private docArray(doc: DocumentTree, container: Container): string[] {
-    switch (container.kind) {
-      case 'header':
-        if (!doc.header) doc.header = []
-        return doc.header
-      case 'footer':
-        if (!doc.footer) doc.footer = []
-        return doc.footer
-      case 'footnotes':
-        if (!doc.footnotes) doc.footnotes = []
-        return doc.footnotes
-      case 'body': case 'paragraph': case 'cell': throw new Error('pool-based container not handled here')
-    }
+  invert(_ctx: CommandContext): ICommand | null {
+    if (this.snapshots.length === 0) return null
+    return new RestoreNodesCommand(
+      generateCommandId(), Date.now(), this.author, this.snapshots,
+    )
   }
 
   serialize(): SerializedCommand {
     return { type: 'remove-nodes', id: this.id, timestamp: this.timestamp, author: this.author }
+  }
+}
+
+/**
+ * RestoreNodesCommand — RemoveNodesCommand 的逆操作。
+ * 仅在 undo 时被临时 forward(), 不入栈, 故无需 invert。
+ */
+class RestoreNodesCommand implements ICommand {
+  readonly type = 'restore-nodes'
+  readonly id: string
+  readonly timestamp: number
+  readonly author: string
+  private snapshots: RemovalSnapshot[]
+
+  constructor(id: string, timestamp: number, author: string, snapshots: RemovalSnapshot[]) {
+    this.id = id; this.timestamp = timestamp; this.author = author
+    this.snapshots = snapshots
+  }
+
+  forward(ctx: CommandContext): StatePatch | null {
+    if (ctx.mode !== 'local') return null
+    const { pool, doc } = ctx
+
+    // 逆序恢复 (后删先插), 使同容器多节点按原顺序还原
+    for (let i = this.snapshots.length - 1; i >= 0; i--) {
+      const { container, index, rootId, subtree } = this.snapshots[i]
+      // 1. 重新注册子树节点 (root + 后代, cloneSubtree 已深拷贝)
+      for (const [, node] of subtree) pool.addNode(node)
+      // 2. 插回原位置 (下标夹取到当前长度, 越界 append)
+      const len = containerLengthOf(pool, doc, container)
+      const idx = Math.max(0, Math.min(index, len))
+      insertIntoContainer(pool, doc, container, idx, rootId)
+    }
+    return { invalidation: 'flowbody' }
+  }
+
+  serialize(): SerializedCommand {
+    return { type: 'restore-nodes', id: this.id, timestamp: this.timestamp, author: this.author }
   }
 }
 

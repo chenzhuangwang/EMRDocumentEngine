@@ -55,11 +55,25 @@ export function useEditorContextMenu() {
     const editor = editorRef.current
     if (!editor) return
     switch (id) {
-      // 剪贴板/删除 (P0 / P1-b)
+      // 剪贴板/删除 (P0 / P1-b / P1-c)
       case 'cut': editor.cut(); break
       case 'copy': editor.copy(); break
       case 'paste': editor.paste(); break
-      case 'delete': editor.deleteSelectedRange(); break
+      case 'delete': {
+        const snap = state.snapshot
+        if (snap?.kind === 'image') {
+          // image 右键删除 — 整节点 (设计 v2 §6)
+          editor.deleteNode(snap.nodeId)
+        } else if (snap?.kind === 'text') {
+          // body 段: 覆盖选区删选区, 折叠选区删整段 (P1-c)
+          if (snap.coversSelection) editor.deleteSelection()
+          else editor.deleteNode(snap.paragraphId)
+        } else {
+          // cell / 其余: 仅删选区 (原子, 跨段落选区亦一次 undo)
+          editor.deleteSelection()
+        }
+        break
+      }
       // 文本格式 (P1-a)
       case 'bold': editor.toggleFormat({ bold: true }); break
       case 'italic': editor.toggleFormat({ italic: true }); break
@@ -79,7 +93,7 @@ export function useEditorContextMenu() {
     // 恢复焦点到编辑器隐藏 textarea: Radix DropdownMenu 关闭时 onCloseAutoFocus
     // 被 preventDefault, 焦点会丢失到 body, 导致引擎容器级快捷键 (Ctrl+Z 等) 失效。
     editor.focus()
-  }, [editorRef, close])
+  }, [editorRef, close, state])
 
   return {
     open: state.open,

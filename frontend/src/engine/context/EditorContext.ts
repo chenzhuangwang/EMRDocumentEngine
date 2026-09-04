@@ -186,10 +186,12 @@ export function isCoversPoint(
   // 命中段落在选区范围之外
   if (pi < loIdx || pi > hiIdx) return false
 
-  // 单段落选区
+  // 单段落选区: 此时 ai === fi === loIdx === hiIdx, loOff/hiOff 均被赋成
+  // anchor.offset, 若直接 min/max 会退化成「仅覆盖 anchor 单点」。
+  // 必须取 anchor/focus 两端的偏移归约, 与无 siblings 分支保持一致。
   if (loIdx === hiIdx) {
-    const lo = Math.min(loOff, hiOff)
-    const hi = Math.max(loOff, hiOff)
+    const lo = Math.min(selection.anchor.offset, selection.focus.offset)
+    const hi = Math.max(selection.anchor.offset, selection.focus.offset)
     return point.offset >= lo && point.offset <= hi
   }
 

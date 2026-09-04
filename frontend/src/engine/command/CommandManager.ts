@@ -84,6 +84,10 @@ export class CommandManager {
     if (!children || children.length === 0) return
     const macro = new MacroCommand(generateCommandId(), Date.now(), 'user', children)
     this.undoStack.push(macro)
+    // 补发 state:changed 以同步历史投影 (undoDepth/canUndo): 子命令在事务内已各自
+    // emit document:changed, 但当时 macro 尚未入栈, Editor 的 history 投影会滞后;
+    // 此处补一次信号让 store.history 反映真实栈深 (RULE 9 单一栈 owner)。
+    this.eventBus.emit('state:changed', {})
   }
 
   undo(): void {

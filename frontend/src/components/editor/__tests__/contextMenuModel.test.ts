@@ -1,9 +1,11 @@
 // ============================================================
-// contextMenuModel 纯函数测试 (P1-a)
+// contextMenuModel 纯函数测试 (P1-a / P1-c)
 //
 // 验证 buildContextMenuModel 由上下文快照派生菜单条目:
-//   - text/cell: 剪切/复制/粘贴/删除 + 文本格式 + 段落样式 + 列表层级,
-//     且剪切/删除仅在命中点覆盖选区时可用。
+//   - text: 剪切/复制/粘贴/删除 + 文本格式 + 段落样式 + 列表层级;
+//     删除始终可用 (覆盖选区删选区, 折叠选区删整段), 剪切仅在覆盖选区时可用。
+//   - cell: 同上, 但剪切/删除仅在命中点覆盖选区时可用。
+//   - image: 仅「删除」。
 //   - blank: 仅粘贴。
 //   - 其余种类: 空条目 (不弹菜单)。
 // ============================================================
@@ -69,10 +71,10 @@ describe('buildContextMenuModel 菜单条目 (P1-a)', () => {
     ])
   })
 
-  it('text 命中但未覆盖选区: 剪切/删除不可用, 其余可用', () => {
+  it('text 命中但未覆盖选区: 剪切不可用, 删除始终可用 (折叠选区删整段)', () => {
     const list = items(textSnapshot(false))
     expect(list.find((i) => i.id === 'cut')).toEqual({ id: 'cut', enabled: false })
-    expect(list.find((i) => i.id === 'delete')).toEqual({ id: 'delete', enabled: false })
+    expect(list.find((i) => i.id === 'delete')).toEqual({ id: 'delete', enabled: true })
     expect(list.find((i) => i.id === 'copy')?.enabled).toBe(true)
   })
 
@@ -92,10 +94,9 @@ describe('buildContextMenuModel 菜单条目 (P1-a)', () => {
     expect(entryKinds(snap)).toEqual(['item'])
   })
 
-  it('其余种类 (table/image/separator/sectionBreak/headerFooter/smartText): 空条目', () => {
+  it('其余种类 (table/separator/sectionBreak/headerFooter/smartText): 空条目', () => {
     const others: EditorContextSnapshot[] = [
       { ...base, kind: 'table', tableId: 't1' },
-      { ...base, kind: 'image', nodeId: 'img1' },
       { ...base, kind: 'separator', nodeId: 's1' },
       { ...base, kind: 'sectionBreak', nodeId: 'sb1' },
       { ...base, kind: 'headerFooterRegion', section: 'header' },
@@ -104,6 +105,12 @@ describe('buildContextMenuModel 菜单条目 (P1-a)', () => {
     for (const snap of others) {
       expect(buildContextMenuModel(snap).entries).toEqual([])
     }
+  })
+
+  it('image: 仅「删除」', () => {
+    const snap: EditorContextSnapshot = { ...base, kind: 'image', nodeId: 'img1' }
+    expect(items(snap)).toEqual([{ id: 'delete', enabled: true }])
+    expect(entryKinds(snap)).toEqual(['item'])
   })
 })
 

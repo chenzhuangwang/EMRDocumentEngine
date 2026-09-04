@@ -11,8 +11,10 @@
 //            段落样式 (对齐)、列表层级 (增减缩进)。
 // P1-a 增量: 勾选状态 (checked) — 由样式投影推导, 反映光标处当前格式。
 // P1-b:      剪切 (严格原子 cut, 契约 RULE 11)。
-// 禁止项 (§十): 图片复制、完整 deleteNode、
-// 页眉页脚完整菜单、SmartText 属性面板 — 均不在实现范围。
+// P1-c:      删除段落 (body 段折叠选区「删除」即删整段) + image 删除
+//            (经 Editor.deleteNode 门面, 设计 v2 §6)。
+// 禁止项 (§十): 图片复制、cell/row/column 删除、header/footer 完整菜单、
+// SmartText 属性面板 — 均不在实现范围。
 // ============================================================
 
 import type { EditorContextSnapshot } from '@/engine'
@@ -85,10 +87,13 @@ const NO_STYLE: ContextMenuStyleInfo = { textStyle: null, paragraphStyle: null }
 /**
  * 由上下文快照 + 样式投影派生菜单条目 (纯函数)。
  *
- * - text / cell: 剪切、复制、粘贴、删除 (剪切/删除仅在命中点覆盖当前选区时可用) +
- *   文本格式 (含勾选) + 段落样式 (含勾选) + 列表层级。
- * - blank:       粘贴 (光标位置粘贴)。
- * - 其余种类 (table/image/separator/sectionBreak/headerFooterRegion/smartText):
+ * - text (body 段): 剪切、复制、粘贴、删除 + 文本格式 (含勾选) + 段落样式 (含勾选)
+ *   + 列表层级。删除始终可用 — 覆盖选区删选区, 折叠选区删整段 (设计 v2 §6)。
+ * - cell:          同上, 但剪切/删除仅在命中点覆盖当前选区时可用
+ *   (折叠选区不删 cell 段落, P2 再定)。
+ * - image:         仅「删除」 (经 Editor.deleteNode 门面)。
+ * - blank:         粘贴 (光标位置粘贴)。
+ * - 其余种类 (table/separator/sectionBreak/headerFooterRegion/smartText):
  *   无对应菜单项, 返回空列表 (不弹出菜单)。
  */
 export function buildContextMenuModel(
@@ -97,6 +102,20 @@ export function buildContextMenuModel(
 ): ContextMenuModel {
   switch (snapshot.kind) {
     case 'text':
+      return {
+        entries: [
+          { kind: 'item', id: 'cut', label: '剪切', enabled: snapshot.coversSelection },
+          { kind: 'item', id: 'copy', label: '复制', enabled: true },
+          { kind: 'item', id: 'paste', label: '粘贴', enabled: true },
+          { kind: 'item', id: 'delete', label: '删除', enabled: true },
+          SEP,
+          ...textFormatEntries(style),
+          SEP,
+          ...paragraphStyleEntries(style),
+          SEP,
+          ...listLevelEntries(),
+        ],
+      }
     case 'cell':
       return {
         entries: [
@@ -110,6 +129,12 @@ export function buildContextMenuModel(
           ...paragraphStyleEntries(style),
           SEP,
           ...listLevelEntries(),
+        ],
+      }
+    case 'image':
+      return {
+        entries: [
+          { kind: 'item', id: 'delete', label: '删除', enabled: true },
         ],
       }
     case 'blank':

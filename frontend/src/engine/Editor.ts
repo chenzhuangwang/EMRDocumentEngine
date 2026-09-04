@@ -51,7 +51,7 @@ import {
   InsertInlineNodeCommand, InsertBlockCommand, InsertFootnoteCommand,
   CreateCommentCommand, AddCommentReplyCommand, ResolveCommentCommand,
   SetPageSetupCommand, TableStructureCommand, EnsureHeaderFooterParagraphCommand,
-  EnsureBodyParagraphCommand,
+  EnsureBodyParagraphCommand, RemoveNodesCommand,
 } from './command/commands/StructuralCommands'
 import { InsertImageCommand } from './command/commands/InsertImageCommand'
 import { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
@@ -156,6 +156,10 @@ export class Editor {
       if (patch.cursor) this.store.updateRuntime({ cursor: { ...this.store.state.runtime.cursor, ...patch.cursor, visible: true } })
       if (patch.selection) this.store.updateRuntime({ selection: { ...this.store.state.runtime.selection, ...patch.selection } })
       this.store.setDirty(true)
+      // 同步撤销/重做投影 — 事务 (beginMacro/endMacro) 的 endMacro 会在 macro 入栈后
+      // 补发 state:changed, 因子命令在事务内已各自 emit 而当时 macro 尚未入栈, 导致
+      // history 深度滞后; 此处统一兜底同步, 保证 store.history 反映真实栈深 (RULE 9)。
+      this.syncHistoryState()
     })
 
     // document:changed → 重布局 + 重绘 + 自动保存标记 + 工具栏同步 (唯一渲染入口)
@@ -772,6 +776,101 @@ export class Editor {
     this.selectControl(null)
     return true
   }
+  /**
+   * 节点删除门面 (设计 v2 §6) — 按节点类型路由到既有 Command,
+   * 返回是否实际删除 (拒绝/守卫失败返回 false)。
+   *
+   * 路由:
+   *   - body 级段落: RemoveNodesCommand, body 必须保留 ≥1 段落 (删最后一个拒绝)
+   *   - image: body 级块图直接从 body 摘除; 段落内联图从所属段落 children 摘除
+   *   - body 级 separator/section_break/table: RemoveNodesCommand
+   *   - smarttext: RemoveControlCommand (deletable 守卫 §12.1)
+   *   - cell / row / column / header·footer 内节点: 拒绝 (P2 再定)
+   */
+  deleteNode(nodeId: string): boolean {
+    const node = this.pool.nodes.get(nodeId)
+    if (!node) return false
+
+    switch (node.type) {
+      case 'paragraph': {
+        // 仅 body 级段落可整段删除; cell 内段落由表格结构 API 管理, 拒绝
+        const bodyIdx = this.doc.body.children.indexOf(nodeId)
+        if (bodyIdx < 0) return false
+        // 守卫: body 必须保留 ≥1 段落
+        const bodyParaCount = this.doc.body.children.filter(
+          (id) => this.pool.nodes.get(id)?.type === 'paragraph',
+        ).length
+        if (bodyParaCount <= 1) return false
+        this.execCommand(new RemoveNodesCommand(
+          generateCommandId(), Date.now(), 'user',
+          [{ container: { kind: 'body' }, nodeIds: [nodeId] }],
+          [], this.cursorAfterBlockRemoval(bodyIdx),
+        ))
+        return true
+      }
+      case 'image': {
+        // body 级块级图片: 直接从 body 摘除
+        const bodyIdx = this.doc.body.children.indexOf(nodeId)
+        if (bodyIdx >= 0) {
+          this.execCommand(new RemoveNodesCommand(
+            generateCommandId(), Date.now(), 'user',
+            [{ container: { kind: 'body' }, nodeIds: [nodeId] }],
+            [], this.cursorAfterBlockRemoval(bodyIdx),
+          ))
+          return true
+        }
+        // 段落内联图片 (insertImage 默认): 从所属段落 children 摘除, 光标回落到图片原位
+        const para = this.findParagraphContaining(nodeId)
+        if (para) {
+          const offset = this.pool.getCharOffset(para.id, nodeId, 0)
+          this.execCommand(new RemoveNodesCommand(
+            generateCommandId(), Date.now(), 'user',
+            [{ container: { kind: 'paragraph', paraId: para.id }, nodeIds: [nodeId] }],
+            [], { paragraphPath: [this.doc.id, para.id], offset, visible: true },
+          ))
+          return true
+        }
+        return false
+      }
+      case 'separator':
+      case 'section_break':
+      case 'table': {
+        const bodyIdx = this.doc.body.children.indexOf(nodeId)
+        if (bodyIdx < 0) return false
+        this.execCommand(new RemoveNodesCommand(
+          generateCommandId(), Date.now(), 'user',
+          [{ container: { kind: 'body' }, nodeIds: [nodeId] }],
+          [], this.cursorAfterBlockRemoval(bodyIdx),
+        ))
+        return true
+      }
+      case 'smarttext': {
+        const para = this.findParagraphContaining(nodeId)
+        if (!para) return false
+        this.execCommand(new RemoveControlCommand(
+          generateCommandId(), Date.now(), 'user', [this.doc.id, para.id], nodeId,
+        ))
+        return !this.pool.nodes.has(nodeId)
+      }
+      default:
+        return false
+    }
+  }
+  /** 删除 body 块级节点后, 光标回落到最近段落 (后一个优先, 否则前一个) */
+  private cursorAfterBlockRemoval(bodyIdx: number): Partial<CursorState> | undefined {
+    const children = this.doc.body.children
+    for (let i = bodyIdx + 1; i < children.length; i++) {
+      if (this.pool.nodes.get(children[i])?.type === 'paragraph') {
+        return { paragraphPath: [this.doc.id, children[i]], offset: 0, visible: true }
+      }
+    }
+    for (let i = bodyIdx - 1; i >= 0; i--) {
+      if (this.pool.nodes.get(children[i])?.type === 'paragraph') {
+        return { paragraphPath: [this.doc.id, children[i]], offset: 0, visible: true }
+      }
+    }
+    return undefined
+  }
   /** 表现层样式 (契约 §2.2) — 渲染消费 */
   getPresentationStyles(): PresentationStyleStore | null { return this.presentationStyles }
   /** 序列化文档为 JSON 字符串 (含全部节点 payload, 供保存/自动保存使用) */
@@ -1318,7 +1417,7 @@ export class Editor {
   /**
    * 剪切: 复制选区到剪贴板 + 原子删除 (契约 RULE 11)。
    *
-   * 复制是副作用 (不入命令栈, 不被 undo/redo); 删除经 beginMacro/endMacro
+   * 复制是副作用 (不入命令栈, 不被 undo/redo); 删除经 deleteSelection()
    * 将 deleteSelectedRange 可能发出的多条 DeleteRange/Merge 命令合并为
    * 单个 undo 单元, 使跨段落剪切也只需一次 undo。
    */
@@ -1326,9 +1425,22 @@ export class Editor {
     const selection = this.store.state.runtime.selection
     if (!selection.active) return
     this.copy()
+    this.deleteSelection()
+  }
+
+  /**
+   * 原子删除选区 (契约 RULE 11) — 跨段落选区亦打包为单个 undo 单元。
+   *
+   * deleteSelectedRange 为跨段落选区逐段发出 DeleteRange + MergeParagraph 命令,
+   * 未经事务包装时每条命令各占一个 undo 单元, 一次 Ctrl+Z 只能还原其中一条。
+   * 此处用 beginMacro/endMacro 将整次删除合并为单个 undo 单元 (与 cut 一致),
+   * 使右键「删除」跨段落选区也只需一次 undo。
+   */
+  deleteSelection(): boolean {
     this.commandManager.beginMacro()
-    this.deleteSelectedRange()
+    const result = this.deleteSelectedRange()
     this.commandManager.endMacro()
+    return result
   }
 
   /**
@@ -2098,6 +2210,7 @@ export interface IEditor {
   copy(): void; paste(): void
   cut(): void
   deleteSelectedRange(): boolean
+  deleteNode(nodeId: string): boolean
   toggleFormat(style: Partial<import('./document/core/DocumentModel').TextStyle>): void
   setParagraphStyle(style: Partial<import('./document/core/DocumentModel').ParagraphStyle>): void
   resolveContextAt(e: MouseEvent): import('./context/EditorContext').EditorContextSnapshot
