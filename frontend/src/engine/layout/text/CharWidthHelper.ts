@@ -62,6 +62,8 @@ export function cumulativeWidthUpTo(text: string, offset: number, config: CharWi
 /** 命中检测所需的最小子集 — 与 SLIFItem 结构兼容 (结构性子类型) */
 export interface OffsetHitItem {
   text?: string
+  /** SLIF 项类型 (type='image' 时按原子 1 字符处理, 见 computeOffsetInItems) */
+  type?: string
   x: number
   y: number
   width: number
@@ -92,12 +94,20 @@ export function computeOffsetInItems(
   let accumulated = 0
   for (const item of items) {
     const itemText = item.text || ''
+    // 图片等空文本原子节点占 1 字符 (与 paragraphTextLength 的「非文本计 1」语义一致)。
+    // 命中时按左/右半区分「光标在前/后」, 使拖拽选区能覆盖图片
+    // (「从正文往下拖选不中图片」的根因: 空文本 item 一律解析为 0 偏移)。
+    const isAtomic = itemText.length === 0 && item.type === 'image'
+    const unitLen = isAtomic ? 1 : itemText.length
     const bodyW = item.markerWidth != null ? item.width - item.markerWidth : item.width
     const yHit = docY >= item.y && docY <= item.y + item.ascent + item.descent
     if (yHit) {
       if (docX < item.x) return accumulated
       if (docX <= item.x + bodyW) {
         const relativeX = docX - item.x
+        if (isAtomic) {
+          return accumulated + (relativeX <= bodyW / 2 ? 0 : 1)
+        }
         const cumWidths = cumulativeCharWidths(itemText, {
           font: item.font || 'SimSun', size: item.size || 16,
           bold: item.bold, italic: item.italic,
@@ -107,7 +117,7 @@ export function computeOffsetInItems(
       }
       // 点击落在当前 item 右边界之外 — 继续检查下一 item
     }
-    accumulated += itemText.length
+    accumulated += unitLen
   }
   return Math.max(0, accumulated)
 }

@@ -701,6 +701,34 @@ export class Draw {
             }
             rowY += rowHeight + 1
           }
+        } else if (item.type === 'image') {
+          // 图片 (段落内联或 body 块级): 高亮整幅图片边界, 而非按文本 item 逐字符。
+          // 图片无 text, 旧 fillItem 以 0 长度计算, 只会画出一个 ascent×ascent
+          // 的小方框 (或块级图因 findItemParagraph 返回 null 被整体跳过),
+          // 导致「全选/拖选选不中图片」。
+          const ownerParaId = this.findItemParagraph(item.nodeId, pool)
+          if (ownerParaId) {
+            // 内联图: 归属段落, 按段内 1 字符偏移定位 (与 paragraphTextLength 一致)
+            const pi = spine.indexOf(ownerParaId)
+            if (pi < lo || pi > hi) continue
+            const itemStart = paraOffsets.get(ownerParaId) ?? 0
+            const itemEnd = itemStart + 1
+            let include = true
+            if (samePara) {
+              include = itemEnd > selMin && itemStart < selMax
+            } else if (pi === lo) {
+              include = itemEnd > (aIdx === lo ? anchorOff : focusOff)
+            } else if (pi === hi) {
+              include = itemStart < (aIdx === hi ? anchorOff : focusOff)
+            }
+            paraOffsets.set(ownerParaId, itemEnd)
+            if (!include) continue
+          } else {
+            // 块级图: nodeId 即 body 顶层 child (spine 成员), 按索引直接定位
+            const pi = spine.indexOf(item.nodeId)
+            if (pi < lo || pi > hi) continue
+          }
+          ictx.fillRect(item.x, spY + item.y, item.width, item.height)
         } else {
           // 正文段落: 顶级 item
           const paraId = this.findItemParagraph(item.nodeId, pool)

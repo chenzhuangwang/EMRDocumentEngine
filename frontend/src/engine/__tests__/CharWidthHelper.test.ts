@@ -201,3 +201,30 @@ describe('computeOffsetInItems — 拆分节点后行尾/中段点击', () => {
     expect(computeOffsetInItems(twoLines, x0 + wCD, 20, testMeasurer)).toBe(4)
   })
 })
+
+describe('computeOffsetInItems — 图片原子命中 (拖选覆盖图片)', () => {
+  function imgItem(x: number, width: number): OffsetHitItem {
+    return { type: 'image', x, y: 0, width, ascent: 80, descent: 0 }
+  }
+
+  it('命中图片右半 → 返回 1 (选区覆盖图片)', () => {
+    expect(computeOffsetInItems([imgItem(90, 100)], 90 + 60, 40, testMeasurer)).toBe(1)
+  })
+
+  it('命中图片左半 → 返回 0 (光标在图片前)', () => {
+    expect(computeOffsetInItems([imgItem(90, 100)], 90 + 30, 40, testMeasurer)).toBe(0)
+  })
+
+  it('越过图片右边界 (行尾) → 返回 1', () => {
+    expect(computeOffsetInItems([imgItem(90, 100)], 90 + 100 + 10, 40, testMeasurer)).toBe(1)
+  })
+
+  it('文本 + 图片: 命中图片右半 → 累积文本长度 + 1', () => {
+    const wAB = cumulativeWidthUpTo('AB', 2, FONT_CFG, testMeasurer)
+    const items: OffsetHitItem[] = [
+      { text: 'AB', x: 90, y: 0, width: wAB, ascent: 12, descent: 4, font: 'SimSun', size: 16 },
+      imgItem(90 + wAB, 100),
+    ]
+    expect(computeOffsetInItems(items, 90 + wAB + 60, 40, testMeasurer)).toBe(3)
+  })
+})
