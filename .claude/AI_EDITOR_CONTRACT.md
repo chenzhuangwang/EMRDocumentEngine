@@ -685,6 +685,101 @@ TemplateDefinition or PresentationStyle value has a single owner:
 the corresponding store, keyed by nodeId. Renderers and commands
 READ them and MUST NOT maintain an independent copy.
 
+------------------------------------------------------------
+7.7 DocumentMetadata boundary
+------------------------------------------------------------
+
+Document-level metadata has exactly ONE canonical home:
+DocumentTree.metadata, typed as DocumentMetadata (NOT
+Record<string, unknown>). It describes who a document is, what it
+belongs to, and when it was created/modified — it does NOT
+describe document content or control semantics.
+
+    DocumentMetadata {
+        author?:     string   — 文档作者
+        creator?:    string   — 创建人
+        reviewer?:   string   — 审核人
+        department?: string   — 科室
+        category?:   string   — 分类
+        keywords?:   string[] — 关键词 (数组规范形)
+        externalId?: string   — 外部模板 id (importer)
+        categoryId?: string   — 外部模板分类 id (importer)
+        createdAt?:  string   — 系统创建时间 (ISO 8601)
+        updatedAt?:  string   — 最近修改时间 (ISO 8601)
+    }
+
+title is NOT metadata: it remains the top-level required
+DocumentTree.title field.
+
+createdAt / updatedAt are SYSTEM lifecycle fields, not free-form
+edit fields: they are system-maintained and conventionally
+read-only in the UI. They are ISO 8601 strings; the UTC / offset
+convention is fixed here and MUST NOT be mixed with other date
+formats (e.g. '2026/09/04', timestamps-as-number).
+
+keywords is a string[] in the MODEL. The comma-joined string
+("a, b, c") is a UI INPUT representation only; UI splits/joins.
+The canonical normalization (trim, drop empty, dedupe) lives in
+normalizeDocumentMetadata (document domain) and is applied by
+every writer (importer / UI / loader) BEFORE the value reaches a
+command — never by the command itself.
+
+BaseNode.metadata is a SEPARATE concept (per-node business
+identifier, e.g. table.metadata.code). It stays
+Record<string, unknown> and MUST NOT be constrained by
+DocumentMetadata. Do not unify the two types for convenience.
+
+DocumentMetadata MUST NOT contain TemplateDefinition fields.
+TemplateDefinition MUST NOT contain document-level metadata.
+Both are distinct from Control Runtime Value (SmartTextNode.value,
+§2.1). These three layers (§7.3 / §7.6 / §2.1) never merge.
+
+The canonical field set is the whitelist. An external template
+field with no canonical home MUST be dropped, never smuggled into
+metadata as Record<string, unknown> (see §12.2).
+
+------------------------------------------------------------
+7.8 Property editing boundary
+------------------------------------------------------------
+
+Property UI MUST NOT mutate DocumentModel directly.
+
+Document properties MUST be changed through Commands.
+
+Control Definition MUST be changed through the existing
+control-definition command path (§12.5).
+
+Control Runtime Value MUST be changed through content commands
+(§2.1).
+
+Property UI MUST NOT become the owner of canonical document state.
+
+DocumentMetadata MUST NOT contain TemplateDefinition data.
+TemplateDefinition MUST NOT contain document-level metadata.
+Control Definition MUST be distinguished from Control Runtime Value.
+
+Document metadata is edited via UpdateDocumentPropertiesCommand
+(§7.7): forward snapshots old = doc.metadata and whole-value
+replaces it (next undefined or empty → delete; otherwise
+doc.metadata = next). The command does NOT normalize or validate —
+its input must already be a legal DocumentMetadata. Normalization
+happens at the boundary (UI / importer / loader) via
+normalizeDocumentMetadata.
+
+Forbidden:
+
+    dialog
+        ↓
+    doc.metadata.author = '...'       (bypasses command)
+
+Forbidden:
+
+    selectedNode.metadata.required = true   (metadata ≠ definition)
+
+Forbidden:
+
+    selectedNode.properties = formValues   (invented generic bag)
+
 ============================================================
 8. COMMANDS AND HISTORY
 ============================================================
@@ -1171,12 +1266,19 @@ dispatches each of its fields to the single layer that owns it:
     external runtime value         → SmartTextNode.value
     external template-design flds  → TemplateDefinitionStore (§12.1)
     external presentation flds     → PresentationStyleStore (§2.2)
+    external document metadata     → DocumentTree.metadata (§7.7),
+                                     whitelist-mapped only; unknown
+                                     fields dropped
 
 The importer MUST NOT invent new persistent fields on
 SmartTextNode / ElementMeta / Paragraph to carry what belongs to
 the TemplateDefinition or PresentationStyle layers. An external
 field with no canonical home MUST be dropped or deferred, never
-smuggled into DocumentModel.
+smuggled into DocumentModel. The metadata routing (§7.7) is
+whitelist-only: parseMetadata maps external fields onto the
+DocumentMetadata canonical keys via normalizeDocumentMetadata and
+DROPS every other key (e.g. an external properties.version or
+properties.createTime with no canonical ISO-8601 home).
 
 Concretely:
 

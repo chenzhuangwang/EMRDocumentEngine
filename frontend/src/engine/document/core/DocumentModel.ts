@@ -357,6 +357,93 @@ export const DEFAULT_HEADER_FOOTER_CONFIG: HeaderFooterConfig = {
   differentOddEven: false,
 }
 
+// ================================================================
+// DocumentMetadata — 文档级元数据 (契约 §7.7)
+//
+// 描述「这份文档是谁的、属于什么、何时创建/修改」—— 不是文档内容,
+// 不是控件语义 (TemplateDefinition), 也不是控件运行时值 (SmartTextNode.value)。
+// 唯一 canonical home = DocumentTree.metadata。title 不在此列 (顶级必填)。
+//
+// 与 BaseNode.metadata (Record<string, unknown>, 节点级业务标识如 table.code)
+// 是两个不同概念, 不得混同、不得互相约束。
+// ================================================================
+
+export interface DocumentMetadata {
+  /** 文档作者 */
+  author?: string
+  /** 创建人 */
+  creator?: string
+  /** 审核人 */
+  reviewer?: string
+  /** 科室 */
+  department?: string
+  /** 分类 */
+  category?: string
+  /** 关键词 (数组规范形; 逗号串仅是 UI 输入表示) */
+  keywords?: string[]
+  /** 外部模板 id (importer: root._id) */
+  externalId?: string
+  /** 外部模板分类 id (importer: root.categoryId) */
+  categoryId?: string
+  /** 系统创建时间 (ISO 8601, 系统生命周期字段, UI 只读) */
+  createdAt?: string
+  /** 最近修改时间 (ISO 8601, 系统生命周期字段, UI 只读) */
+  updatedAt?: string
+}
+
+/** DocumentMetadata 的字符串型字段 (keywords 单独走数组规范化) */
+const DOCUMENT_METADATA_STRING_KEYS = [
+  'author', 'creator', 'reviewer', 'department', 'category',
+  'externalId', 'categoryId', 'createdAt', 'updatedAt',
+] as const
+
+/** DocumentMetadata 全部 canonical 键 (契约 §7.7 白名单) */
+export const DOCUMENT_METADATA_KEYS: readonly (keyof DocumentMetadata)[] = [
+  ...DOCUMENT_METADATA_STRING_KEYS, 'keywords',
+]
+
+/**
+ * 规范化任意输入为合法 DocumentMetadata (契约 §7.7)。
+ *
+ * 职责: 白名单收口 + 数据规范化 —— 这是「canonical model 决定字段」,
+ * 不是 importer/UI 的自由裁量。所有写入方 (importer / UI / loader / upgrader)
+ * 在把值交给 UpdateDocumentPropertiesCommand 前必须经此函数。
+ *
+ * 规则:
+ *   - 非对象 / 数组 / null → undefined (视为无 metadata)
+ *   - 字符串字段: 仅保留非空 trim 后的字符串, 其余丢弃
+ *   - keywords: 仅接受数组; trim + 去空 + 去重 (保持顺序)
+ *   - 未知字段一律丢弃 (§12.2)
+ *   - 结果为空 → undefined (整体删除语义)
+ */
+export function normalizeDocumentMetadata(raw: unknown): DocumentMetadata | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const src = raw as Record<string, unknown>
+  const out: DocumentMetadata = {}
+
+  for (const k of DOCUMENT_METADATA_STRING_KEYS) {
+    const v = src[k]
+    if (typeof v === 'string') {
+      const t = v.trim()
+      if (t !== '') out[k] = t
+    }
+  }
+
+  const kw = src['keywords']
+  if (Array.isArray(kw)) {
+    const seen = new Set<string>()
+    const keywords: string[] = []
+    for (const item of kw) {
+      if (typeof item !== 'string') continue
+      const t = item.trim()
+      if (t !== '' && !seen.has(t)) { seen.add(t); keywords.push(t) }
+    }
+    if (keywords.length > 0) out.keywords = keywords
+  }
+
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
 export interface DocumentTree {
   type: typeof NodeType.DOCUMENT
   id: string
@@ -370,7 +457,8 @@ export interface DocumentTree {
   footnotes?: string[]
   endnotes?: string[]
   comments?: CommentThread[]
-  metadata?: Record<string, unknown>
+  /** 文档级元数据 (契约 §7.7) — 权威 shape, 只约束文档级, 不约束 BaseNode.metadata */
+  metadata?: DocumentMetadata
   /**
    * 文档格式版本 (semver 字符串, 例 '4.2.0')
    * 由 DocumentSerializer 写入, DocumentLoader 读取并触发升级链。

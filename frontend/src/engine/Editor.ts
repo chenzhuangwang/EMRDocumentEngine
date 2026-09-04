@@ -1,4 +1,4 @@
-import type { DocumentTree, BaseNode, Paragraph, ImageNode, HeaderFooterConfig, ElementMeta, WatermarkConfig } from './document/core/DocumentModel'
+import type { DocumentTree, BaseNode, Paragraph, ImageNode, HeaderFooterConfig, ElementMeta, WatermarkConfig, DocumentMetadata } from './document/core/DocumentModel'
 import { DEFAULT_HEADER_FOOTER_CONFIG } from './document/core/DocumentModel'
 import { createDocument, createParagraph, createTextNode, extractStyle, uniformTextStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent, createSmartTextNode } from './document/factory/ElementFormatter'
 import { NodePool, buildNodePool } from './document/core/NodePool'
@@ -59,6 +59,7 @@ import { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
 import { RemoveControlCommand } from './command/commands/RemoveControlCommand'
 import { InsertControlCommand } from './command/commands/InsertControlCommand'
 import { UpdateControlDefinitionCommand } from './command/commands/UpdateControlDefinitionCommand'
+import { UpdateDocumentPropertiesCommand } from './command/commands/UpdateDocumentPropertiesCommand'
 import { TemplateDefinitionStore } from './template/TemplateDefinition'
 import type { TemplateDefinition } from './template/TemplateDefinition'
 import type { PresentationStyleStore } from './render/presentation/PresentationStyle'
@@ -111,7 +112,7 @@ export class Editor {
       d.body.children = [para.id]
       doc = d
       const allNodes = new Map<string, BaseNode>()
-      allNodes.set(d.id, d)
+      allNodes.set(d.id, d as unknown as BaseNode)
       allNodes.set(para.id, para)
       this.doc = doc
       this.pool = buildNodePool(allNodes, { body: d.id })
@@ -880,6 +881,20 @@ export class Editor {
       templateDefinitions: this.templateDefinitions ?? undefined,
       presentationStyles: this.presentationStyles ?? undefined,
     })
+  }
+  /** 读取文档级元数据 (契约 §7.7) — 供文档属性对话框展示 */
+  getDocumentMetadata(): DocumentMetadata | undefined {
+    return this.doc.metadata
+  }
+  /**
+   * 设置文档级元数据 (契约 §7.7) — 经 UpdateDocumentPropertiesCommand。
+   * 整体替换语义: 传入「编辑后的完整 DocumentMetadata」, undefined/空对象 → 删除。
+   * 输入必须已是合法 metadata (边界层已 normalize), 命令本身不校验 (§7.8)。
+   */
+  setDocumentMetadata(metadata?: DocumentMetadata): void {
+    this.execCommand(new UpdateDocumentPropertiesCommand(
+      generateCommandId(), Date.now(), 'user', metadata,
+    ))
   }
   setDocument(
     doc: DocumentTree,

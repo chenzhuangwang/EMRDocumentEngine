@@ -7,7 +7,7 @@ import { HeaderBar } from './HeaderBar'
 import { Toolbar } from './Toolbar'
 import { Sidebar } from './Sidebar'
 import { StatusBar } from './StatusBar'
-import { PropertiesPanel } from './PropertiesPanel'
+
 import { useEditorStore, useUIStore } from '@/store'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
 import type { CommentThread } from '@/engine/document/core/DocumentModel'
@@ -146,8 +146,8 @@ export function EditorLayout({
           )}
         </div>
 
-        {/* 属性面板 — 阅读模式下隐藏 */}
-        {!readingMode && <PropertiesPanel />}
+        {/* 属性面板已删除 (契约 §7.7/§7.8): 文档属性走 DocumentPropertiesDialog,
+            控件属性走 DesignControlProperties, 不再保留泛型 PropertiesPanel */}
       </div>
     </div>
   )

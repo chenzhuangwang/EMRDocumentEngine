@@ -176,6 +176,12 @@ function validateDocument(
   if (!doc.body || !Array.isArray(doc.body.children)) {
     throw new LoadError('validate', 'doc.body.children 缺失或非数组')
   }
+  // metadata 若存在必须是普通对象 (契约 §7.7): 升级器已对 <4.3 做白名单收口,
+  // 此处兜底拦截「已 4.3 但 metadata 是字符串/数组」这类脏数据。
+  if (doc.metadata !== undefined &&
+      (typeof doc.metadata !== 'object' || doc.metadata === null || Array.isArray(doc.metadata))) {
+    throw new LoadError('validate', 'doc.metadata 非对象')
+  }
   for (const id of [...doc.body.children, ...(doc.header ?? []), ...(doc.footer ?? [])]) {
     if (typeof id !== 'string') {
       throw new LoadError('validate', `children 包含非字符串引用: ${String(id)}`)
@@ -218,7 +224,9 @@ function buildPoolFromDocument(
   }
 
   // doc 本身必须注册 (buildNodePool Pass 3 校验 body 根存在)
-  flat.set(doc.id, doc)
+  // 注: doc 以根节点身份入池; 其文档级 metadata (DocumentMetadata) 与
+  // 节点级 BaseNode.metadata (Record<string,unknown>) 语义不同, 故显式收窄为 BaseNode。
+  flat.set(doc.id, doc as unknown as BaseNode)
 
   const present = (ids: string[] | undefined): string[] => (ids ?? []).filter(id => flat.has(id))
 

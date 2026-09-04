@@ -16,6 +16,7 @@ import { describe, it, expect, expectTypeOf } from 'vitest'
 import { TemplateImporter, isExternalTemplate } from '../import/TemplateImporter'
 import type { TemplateImportResult } from '../import/TemplateImporter'
 import type { SmartTextNode, TextNode, Table } from '../document/core/DocumentModel'
+import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/version/DocumentFormatVersion'
 
 // 真实外部模板经 import.meta.glob(as:'raw') 构建期读入, 不引入 node:* 依赖
 // (与 ContractCompliance.test.ts 同款做法)。
@@ -123,8 +124,13 @@ describe('TemplateImporter 节点映射', () => {
     expect(r.doc.header).toEqual(['para-h'])
     expect(r.doc.footer).toEqual([])
     expect(r.doc.body.children).toEqual(['para-1', 'para-2', 'para-3', 'tbl-1'])
-    expect(r.doc.modelVersion).toBe('4.2.0')
+    expect(r.doc.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
     expect(r.doc.metadata?.creator).toBe('测试')
+    expect(r.doc.metadata?.externalId).toBe('tpl_001')
+    expect(r.doc.metadata?.categoryId).toBe('test-template')
+    // 白名单收口 (契约 §7.7/§12.2): 无 canonical home 的字段一律 drop
+    expect((r.doc.metadata as unknown as Record<string, unknown>)?.version).toBeUndefined()
+    expect((r.doc.metadata as unknown as Record<string, unknown>)?.createTime).toBeUndefined()
     expect(r.doc.pageSetup.orientation).toBe('portrait')
     expect(r.doc.pageSetup.width).toBe(794)
   })

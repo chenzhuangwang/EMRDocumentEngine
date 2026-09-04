@@ -28,8 +28,9 @@ import type {
   DocumentTree, BaseNode, ElementMeta, ElementFormat,
   TextStyle, Paragraph, TextNode, SmartTextNode,
   Table, TableRow, TableCell, ColumnDefinition, PageSetup,
+  DocumentMetadata,
 } from '../document/core/DocumentModel'
-import { NodeType, generateId } from '../document/core/DocumentModel'
+import { NodeType, generateId, normalizeDocumentMetadata } from '../document/core/DocumentModel'
 import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/version/DocumentFormatVersion'
 import { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import type { TemplateDefinition } from '../template/TemplateDefinition'
@@ -169,9 +170,9 @@ export class TemplateImporter {
       modelVersion: versionToString(CURRENT_DOCUMENT_VERSION),
     }
     const metadata = this.parseMetadata(root)
-    if (Object.keys(metadata).length > 0) doc.metadata = metadata
+    if (metadata) doc.metadata = metadata
 
-    this.nodeMap.set(docId, doc)
+    this.nodeMap.set(docId, doc as unknown as BaseNode)
     return doc
   }
 
@@ -474,15 +475,21 @@ export class TemplateImporter {
       : '导入的模板'
   }
 
-  private parseMetadata(root: Record<string, unknown>): Record<string, unknown> {
-    const meta: Record<string, unknown> = {}
-    if (root._id !== undefined) meta.externalId = root._id
-    if (root.categoryId !== undefined) meta.categoryId = root.categoryId
+  private parseMetadata(root: Record<string, unknown>): DocumentMetadata | undefined {
+    const raw: Record<string, unknown> = {}
+    if (typeof root._id === 'string') raw.externalId = root._id
+    if (typeof root.categoryId === 'string') raw.categoryId = root.categoryId
     const props = (root.properties ?? {}) as Record<string, unknown>
-    for (const [k, v] of Object.entries(props)) {
-      if (v !== undefined && v !== null) meta[k] = v
+    // 白名单映射 (契约 §7.7): 仅映射存在 canonical home 的字段, 交给
+    // normalizeDocumentMetadata 收口; 未知字段 (version/createTime 等) drop (§12.2)。
+    for (const k of [
+      'author', 'creator', 'reviewer', 'department', 'category',
+      'keywords', 'createdAt', 'updatedAt',
+    ] as const) {
+      const v = props[k]
+      if (v !== undefined && v !== null) raw[k] = v
     }
-    return meta
+    return normalizeDocumentMetadata(raw)
   }
 
   private parsePageSetup(layout: unknown): PageSetup {

@@ -1,41 +1,37 @@
 // ============================================================
-// DocumentPropertiesDialog — 文档属性对话框 (R42, v6.0)
+// DocumentPropertiesDialog — 文档属性对话框 (契约 §7.7 / §7.8)
 //
-// 编辑 DocumentTree.metadata: 标题/作者/关键词/科室/日期
+// 编辑 DocumentTree.metadata (DocumentMetadata): 作者/创建人/审核人/
+// 科室/分类/关键词。createdAt/updatedAt 为系统生命周期字段 (只读)。
+//
+// 边界 (§7.8): 本组件只产出「规范化后的合法 DocumentMetadata」交给
+// onApply, 由父组件经 Editor.setDocumentMetadata (UpdateDocumentPropertiesCommand)
+// 写入 —— 对话框绝不直改 DocumentModel。
+//
+// keywords 规范形为 string[]: 输入框用逗号串展示/编辑, 提交时拆分。
 // ============================================================
 
 import { useState, useEffect } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { X, FileText, User, Tag, Building2, Calendar } from 'lucide-react'
-import { cn } from '@/lib/utils'
-
-// ---- 类型 ----
-
-export interface DocumentMeta {
-  title: string
-  author?: string
-  keywords?: string
-  department?: string
-  category?: string
-  createdDate?: string
-  modifiedDate?: string
-}
+import { X, FileText, User, BadgeCheck, Building2, Tag, Calendar } from 'lucide-react'
+import type { DocumentMetadata } from '@/engine/document/core/DocumentModel'
+import { normalizeDocumentMetadata } from '@/engine/document/core/DocumentModel'
 
 interface DocumentPropertiesDialogProps {
   open: boolean
   onClose: () => void
-  initialValues?: Partial<DocumentMeta>
-  onApply?: (values: DocumentMeta) => void
+  initialValues?: DocumentMetadata
+  /** 提交规范化后的完整 DocumentMetadata; undefined 表示清空 metadata */
+  onApply?: (values: DocumentMetadata | undefined) => void
 }
 
-const DEFAULTS: DocumentMeta = {
-  title: '未命名文档',
-  author: '',
-  keywords: '',
-  department: '',
-  category: '',
-  createdDate: new Date().toISOString().split('T')[0],
-  modifiedDate: new Date().toISOString().split('T')[0],
+/** 关键词: 逗号串 → string[] (拆分 + trim + 去空; 去重由 normalizeDocumentMetadata 完成) */
+function splitKeywords(s: string): string[] {
+  return s.split(/[,，]/).map(t => t.trim()).filter(Boolean)
+}
+
+function joinKeywords(kw: string[] | undefined): string {
+  return kw?.join(', ') ?? ''
 }
 
 // ---- 组件 ----
@@ -43,28 +39,45 @@ const DEFAULTS: DocumentMeta = {
 export function DocumentPropertiesDialog({
   open, onClose, initialValues, onApply,
 }: DocumentPropertiesDialogProps) {
-  const [values, setValues] = useState<DocumentMeta>({ ...DEFAULTS, ...initialValues })
+  const [values, setValues] = useState<DocumentMetadata>({ ...initialValues })
+  const [keywordsText, setKeywordsText] = useState(joinKeywords(initialValues?.keywords))
 
   useEffect(() => {
-    if (open) setValues({ ...DEFAULTS, ...initialValues })
+    if (open) {
+      setValues({ ...initialValues })
+      setKeywordsText(joinKeywords(initialValues?.keywords))
+    }
   }, [open, initialValues])
 
-  const update = (patch: Partial<DocumentMeta>) => setValues(v => ({ ...v, ...patch }))
+  const update = (patch: Partial<DocumentMetadata>) => setValues(v => ({ ...v, ...patch }))
 
-  const fields: {
-    key: keyof DocumentMeta
+  const apply = () => {
+    const next = normalizeDocumentMetadata({
+      ...values,
+      keywords: splitKeywords(keywordsText),
+    })
+    onApply?.(next)
+    onClose()
+  }
+
+  // 可编辑字段 (字符串型)
+  const textFields: {
+    key: 'author' | 'creator' | 'reviewer' | 'department' | 'category'
     label: string
     icon: React.ReactNode
     placeholder?: string
-    readOnly?: boolean
   }[] = [
-    { key: 'title', label: '标题', icon: <FileText size={14} />, placeholder: '文档标题' },
     { key: 'author', label: '作者', icon: <User size={14} />, placeholder: '作者姓名' },
-    { key: 'keywords', label: '关键词', icon: <Tag size={14} />, placeholder: '关键词1, 关键词2' },
+    { key: 'creator', label: '创建人', icon: <BadgeCheck size={14} />, placeholder: '创建人' },
+    { key: 'reviewer', label: '审核人', icon: <User size={14} />, placeholder: '审核人' },
     { key: 'department', label: '科室', icon: <Building2 size={14} />, placeholder: '所属科室' },
     { key: 'category', label: '分类', icon: <Tag size={14} />, placeholder: '文档分类' },
-    { key: 'createdDate', label: '创建日期', icon: <Calendar size={14} />, readOnly: true },
-    { key: 'modifiedDate', label: '修改日期', icon: <Calendar size={14} />, readOnly: true },
+  ]
+
+  // 只读字段 (系统生命周期)
+  const readonlyFields: { key: 'createdAt' | 'updatedAt'; label: string }[] = [
+    { key: 'createdAt', label: '创建时间' },
+    { key: 'updatedAt', label: '更新时间' },
   ]
 
   return (
@@ -88,7 +101,7 @@ export function DocumentPropertiesDialog({
 
           {/* 表单 */}
           <div className="px-5 py-4 space-y-3">
-            {fields.map(f => (
+            {textFields.map(f => (
               <div key={f.key}>
                 <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
                   {f.icon}
@@ -98,15 +111,41 @@ export function DocumentPropertiesDialog({
                   type="text"
                   value={values[f.key] || ''}
                   onChange={(e) => update({ [f.key]: e.target.value })}
-                  readOnly={f.readOnly}
                   placeholder={f.placeholder}
-                  className={cn(
-                    'w-full text-sm px-3 py-2 border rounded-md',
-                    'focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100',
-                    f.readOnly
-                      ? 'bg-gray-50 text-gray-500 border-gray-100 cursor-default'
-                      : 'border-gray-200',
-                  )}
+                  className="w-full text-sm px-3 py-2 border border-gray-200 rounded-md
+                             focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                />
+              </div>
+            ))}
+
+            {/* 关键词: 逗号串输入, 提交时拆分为 string[] */}
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
+                <Tag size={14} />
+                关键词
+              </label>
+              <input
+                type="text"
+                value={keywordsText}
+                onChange={(e) => setKeywordsText(e.target.value)}
+                placeholder="关键词1, 关键词2"
+                className="w-full text-sm px-3 py-2 border border-gray-200 rounded-md
+                           focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+              />
+            </div>
+
+            {readonlyFields.map(f => (
+              <div key={f.key}>
+                <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
+                  <Calendar size={14} />
+                  {f.label}
+                </label>
+                <input
+                  type="text"
+                  value={values[f.key] || ''}
+                  readOnly
+                  className="w-full text-sm px-3 py-2 border border-gray-100 rounded-md
+                             bg-gray-50 text-gray-500 cursor-default"
                 />
               </div>
             ))}
@@ -121,7 +160,7 @@ export function DocumentPropertiesDialog({
               取消
             </button>
             <button
-              onClick={() => { onApply?.(values); onClose() }}
+              onClick={apply}
               className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
               应用

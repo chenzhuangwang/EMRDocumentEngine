@@ -42,12 +42,14 @@ describe('SLIFVersion 名义独立版本域 (契约 §26.14)', () => {
     expect(CURRENT_SLIF_VERSION).not.toBe(CURRENT_DOCUMENT_VERSION)
   })
 
-  it('SLIFVersion 带名义标记, 数值暂与文档格式版本一致但域分离', () => {
+  it('SLIFVersion 带名义标记, 数值与文档格式版本域分离 (各自独立演化)', () => {
     const v: SLIFVersion = CURRENT_SLIF_VERSION
     expect(v.__slifVersionDomain).toBe('SLIF')
-    expect(v.major).toBe(CURRENT_DOCUMENT_VERSION.major)
-    expect(v.minor).toBe(CURRENT_DOCUMENT_VERSION.minor)
-    expect(v.patch).toBe(CURRENT_DOCUMENT_VERSION.patch)
+    // SLIF 是独立版本域 (契约 §26.14 规则 13/14): 数值不与文档格式版本耦合,
+    // 二者各自演化 (文档格式 v4.3 收紧 metadata, SLIF 仍是 4.2)。
+    expect(v.major).toBe(4)
+    expect(v.minor).toBe(2)
+    expect(v.patch).toBe(0)
   })
 })
 

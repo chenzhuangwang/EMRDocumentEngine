@@ -37,10 +37,10 @@ export default function ComparePage() {
           setOldDoc(oldTree)
           setNewDoc(newTree)
           const oldMap = new Map<string, import('@/engine/document/core/DocumentModel').BaseNode>()
-          oldMap.set(oldTree.id, oldTree)
+          oldMap.set(oldTree.id, oldTree as unknown as import('@/engine/document/core/DocumentModel').BaseNode)
           setOldPool(buildNodePool(oldMap, { body: oldTree.id }))
           const newMap = new Map<string, import('@/engine/document/core/DocumentModel').BaseNode>()
-          newMap.set(newTree.id, newTree)
+          newMap.set(newTree.id, newTree as unknown as import('@/engine/document/core/DocumentModel').BaseNode)
           setNewPool(buildNodePool(newMap, { body: newTree.id }))
         } catch { setError('文档解析失败') }
       } else {

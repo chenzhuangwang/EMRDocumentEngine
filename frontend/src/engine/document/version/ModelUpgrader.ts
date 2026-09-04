@@ -9,12 +9,14 @@
 //   v3.0.0 → v4.0.0  新增 pageSetup.orientation 默认值
 //   v4.0.0 → v4.1.0  ElementFormat 新增可选字段 (scale/minRows/enums)
 //   v4.1.0 → v4.2.0  SmartTextNode 新增可选字段 value (运行时值)
+//   v4.2.0 → v4.3.0  DocumentTree.metadata 收紧为 DocumentMetadata (白名单收口)
 //
 // 不实现 downgrade(): EMR 场景下不需要"用旧引擎开新文档"。
 // 详见 knowledge/document-version-system-design.md §4 决策 4。
 // ================================================================
 
 import type { DocumentTree } from '../core/DocumentModel'
+import { normalizeDocumentMetadata } from '../core/DocumentModel'
 import {
   CURRENT_DOCUMENT_VERSION,
   LEGACY_DOCUMENT_VERSION,
@@ -176,6 +178,22 @@ modelUpgrader.register({
   to: { major: 4, minor: 2, patch: 0 },
   breaking: false,
   upgrade(doc: DocumentTree): DocumentTree {
+    return doc
+  },
+})
+
+// v4.2→v4.3: DocumentTree.metadata 从 Record<string,unknown> 收紧为 DocumentMetadata
+// (契约 §7.7): 白名单收口 —— 未知键丢弃, keywords 规范化为 string[] (trim/去空/去重)。
+// 历史文档 metadata 里的任意 properties.* (smuggled) 在此被一次性清除, 而不是在
+// 某次编辑时偷偷丢字段。已知键 (creator/author/... 与 externalId/categoryId) 保留。
+modelUpgrader.register({
+  from: { major: 4, minor: 2, patch: 0 },
+  to: { major: 4, minor: 3, patch: 0 },
+  breaking: false,
+  upgrade(doc: DocumentTree): DocumentTree {
+    if (doc.metadata !== undefined) {
+      doc.metadata = normalizeDocumentMetadata(doc.metadata)
+    }
     return doc
   },
 })
