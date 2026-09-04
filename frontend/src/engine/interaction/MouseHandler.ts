@@ -52,6 +52,9 @@ export class MouseHandler {
   // 单元格框选拖拽状态
   private cellBoxActive = false
   private cellBoxTableId = ''
+  // 拖拽起点所在单元格 (网格坐标) — 越过该 cell 边界才切换到框选
+  private cellBoxStartRow = -1
+  private cellBoxStartCol = -1
 
   constructor(editor: Editor, host: EditorHost, measurer: TextMeasurer) {
     this.editor = editor
@@ -276,13 +279,18 @@ export class MouseHandler {
     this.anchorParaPath = [...result.paraPath]
     this.anchorOffset = result.offset
 
-    // 检查是否在表格单元格内 → 启动单元格框选 (拖拽扩展)
+    // 检查是否在表格单元格内 → 记录起始单元格, 拖拽越过 cell 边界才切换到框选
+    this.cellBoxTableId = ''
+    this.cellBoxStartRow = -1
+    this.cellBoxStartCol = -1
     if (!e.shiftKey) {
       const tableInfo = this.findTableAndCell(result.paraPath)
       if (tableInfo) {
+        // 单击选中单元格 (供表格结构操作), 并记录起始 cell 供拖拽判定
         this.editor.selectTableCell(tableInfo.tableId, tableInfo.row, tableInfo.col)
-        this.cellBoxActive = true
         this.cellBoxTableId = tableInfo.tableId
+        const gp = getCellGridPosition(this.editor.getPool(), tableInfo.tableId, tableInfo.row, tableInfo.col)
+        if (gp) { this.cellBoxStartRow = gp.row; this.cellBoxStartCol = gp.col }
         return
       }
     }
@@ -351,6 +359,27 @@ export class MouseHandler {
         }
       }
       return
+    }
+
+    // 起点在单元格内: 首次越过起始 cell 边界才切换到框选, 否则按文本选区处理
+    if (this.cellBoxTableId) {
+      const hit = this.hitTest(e.clientX, e.clientY)
+      if (hit) {
+        const tableInfo = this.findTableAndCell(hit.paraPath)
+        if (tableInfo && tableInfo.tableId === this.cellBoxTableId) {
+          const gp = getCellGridPosition(this.editor.getPool(), tableInfo.tableId, tableInfo.row, tableInfo.col)
+          if (gp && (gp.row !== this.cellBoxStartRow || gp.col !== this.cellBoxStartCol)) {
+            // 越过起始 cell → 切换到单元格框选 (锚定起点 cell, 扩展到当前 cell)
+            this.cellBoxActive = true
+            this.editor.startCellBoxSelection(this.cellBoxTableId, this.cellBoxStartRow, this.cellBoxStartCol)
+            this.editor.extendCellBoxSelection(this.cellBoxTableId, gp.row, gp.col)
+            return
+          }
+        }
+      }
+      // 仍在起始 cell 内 → 转入文本选区, 清除单击产生的单格高亮
+      this.editor.clearTableSelection()
+      this.cellBoxTableId = ''
     }
 
     const result = this.hitTest(e.clientX, e.clientY)
