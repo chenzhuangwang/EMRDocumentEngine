@@ -74,6 +74,12 @@ export class Draw {
   // 图片缓存: URL → CanvasImageSource (容量 50, LRU 淘汰)
   private imageCache = new MemoryManager<string>(50)
 
+  // 图片粒子渲染器 — 绑定到本 Draw 实例 (resolveUrl/onImageLoaded 闭包指向本实例)。
+  // 不得注册进模块级单例 particleRegistry: 单例按 type 去重, 编辑器重挂载
+  // (React StrictMode / 路由切换) 后第二个 Draw 会复用首个 Draw 的陈旧闭包,
+  // 按已销毁的旧 pool 解析 URL → 图片只画灰色占位框而不显示内容。
+  private imageParticle: ReturnType<typeof createImageParticle>
+
   // rAF 合并渲染 (TASK-484): 同一帧多次 render() 调用仅执行最后一次
   private _rafId: number | null = null
 
@@ -115,14 +121,12 @@ export class Draw {
       this.hitTestIndex.rebuild(pages)
     })
 
-    // 注册图片粒子渲染器 (通过 ParticleRegistry 调度)
-    if (!particleRegistry.has('image')) {
-      particleRegistry.register(createImageParticle(
-        (nodeId) => this.resolveImageUrl({ nodeId }),
-        () => { if (this.pool && this._state) this.scheduleRender(this.pool, this._state) },
-        this.host,
-      ))
-    }
+    // 图片粒子渲染器 — 绑定到本 Draw 实例 (见字段声明注释, 不进单例 registry)
+    this.imageParticle = createImageParticle(
+      (nodeId) => this.resolveImageUrl({ nodeId }),
+      () => { if (this.pool && this._state) this.scheduleRender(this.pool, this._state) },
+      this.host,
+    )
     // 注册控件/SmartText 粒子渲染器
     if (!particleRegistry.has('smarttext')) {
       particleRegistry.register(createControlParticle())
@@ -447,10 +451,7 @@ export class Draw {
               sepRenderer.render(ctx, item, item.x, pageY + item.y, { contentWidth })
             }
           } else if (item.type === 'image') {
-            const imageParticle = particleRegistry.get('image')
-            if (imageParticle) {
-              imageParticle.render(ctx, item, item.x, pageY + item.y)
-            }
+            this.imageParticle.render(ctx, item, item.x, pageY + item.y)
           } else if (item.type === 'footnote') {
             // 脚注引用: 上标编号 (R31)
             const fp = createFootnoteParticle()
@@ -989,8 +990,7 @@ export class Draw {
           sepRenderer.render(ctx, item, item.x, item.y, { contentWidth: pageWidth - item.x - 90 })
         }
       } else if (item.type === 'image') {
-        const p = particleRegistry.get('image')
-        if (p) p.render(ctx, item, item.x, item.y)
+        this.imageParticle.render(ctx, item, item.x, item.y)
       } else {
         // 文本/域代码 — 通过 Registry 调度 (含列表标记)
         const textRenderer = particleRegistry.get(item.nodeType || item.type)
