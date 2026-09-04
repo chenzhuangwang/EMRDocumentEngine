@@ -156,4 +156,38 @@ describe('表格内文本选区 (选区选不了表格回归)', () => {
 
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
   })
+
+  it('先在起点格内拖 (文本选区) 再拖到隔壁格 → 仍能切换到框选 (回归: 起点格内拖不再锁死框选)', () => {
+    const { editor, host, container, tableId } = makeEditor()
+    const item = tableItemOf(editor)!
+    const cell = item.rows![0].cells[0]
+
+    // mousedown 在 cell(0,0) 左缘
+    const downX = item.x + (cell.x || 0) + 10
+    const cy = cellCenter(item, 0, 0).y
+    const down = clientPoint(editor, host, downX, cy)
+
+    // 第一次 mousemove 仍在 cell(0,0) 内 (越过 3px 阈值) → 进入文本选区
+    const within = clientPoint(editor, host, item.x + (cell.x || 0) + 40, cy)
+    // 第二次 mousemove 到 cell(0,1) → 应切换到框选
+    const p1 = cellCenter(item, 0, 1)
+    const across = clientPoint(editor, host, p1.x, p1.y)
+
+    container.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true, clientX: down.clientX, clientY: down.clientY }))
+    window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: within.clientX, clientY: within.clientY }))
+    // 起点格内拖拽 → 文本选区, 清除单格高亮 (cellRange 为空)
+    expect(editor.cellRange).toBeNull()
+
+    window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: across.clientX, clientY: across.clientY }))
+    // 越过起点格 → 框选激活, 锚定起点 cell 扩展到 cell(0,1)
+    const range = editor.cellRange
+    expect(range).not.toBeNull()
+    expect(range!.tableId).toBe(tableId)
+    expect(range!.startRow).toBe(0)
+    expect(range!.startCol).toBe(0)
+    expect(range!.endRow).toBe(0)
+    expect(range!.endCol).toBe(1)
+
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+  })
 })

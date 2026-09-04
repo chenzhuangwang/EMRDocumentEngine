@@ -55,6 +55,8 @@ export class MouseHandler {
   // 拖拽起点所在单元格 (网格坐标) — 越过该 cell 边界才切换到框选
   private cellBoxStartRow = -1
   private cellBoxStartCol = -1
+  // 是否已进入文本选区模式 (用于在首次进入文本选区时清除单击产生的单格高亮)
+  private cellBoxTextMode = false
 
   constructor(editor: Editor, host: EditorHost, measurer: TextMeasurer) {
     this.editor = editor
@@ -291,6 +293,7 @@ export class MouseHandler {
         this.cellBoxTableId = tableInfo.tableId
         const gp = getCellGridPosition(this.editor.getPool(), tableInfo.tableId, tableInfo.row, tableInfo.col)
         if (gp) { this.cellBoxStartRow = gp.row; this.cellBoxStartCol = gp.col }
+        this.cellBoxTextMode = false
         return
       }
     }
@@ -348,38 +351,50 @@ export class MouseHandler {
       this.dragMoved = true
     }
 
-    // 单元格框选拖拽 → 扩展框选终点
-    if (this.cellBoxActive) {
-      const result = this.hitTest(e.clientX, e.clientY)
-      if (result) {
-        const tableInfo = this.findTableAndCell(result.paraPath)
-        if (tableInfo && tableInfo.tableId === this.cellBoxTableId) {
-          const gp = getCellGridPosition(this.editor.getPool(), tableInfo.tableId, tableInfo.row, tableInfo.col)
-          if (gp) this.editor.extendCellBoxSelection(tableInfo.tableId, gp.row, gp.col)
-        }
-      }
-      return
-    }
-
-    // 起点在单元格内: 首次越过起始 cell 边界才切换到框选, 否则按文本选区处理
-    if (this.cellBoxTableId) {
+    // 起点在 cell 内: 按当前命中是否越过起点格, 动态切换框选 / 文本选区。
+    // 不清除 cellBoxTableId — 用户可能先在起点格内拖 (文本选区), 再拖到
+    // 隔壁格, 此时必须仍能切换到框选 (否则「拖到隔壁格选格子」会失效)。
+    if (this.cellBoxTableId && !this.cellBoxActive) {
       const hit = this.hitTest(e.clientX, e.clientY)
       if (hit) {
         const tableInfo = this.findTableAndCell(hit.paraPath)
         if (tableInfo && tableInfo.tableId === this.cellBoxTableId) {
           const gp = getCellGridPosition(this.editor.getPool(), tableInfo.tableId, tableInfo.row, tableInfo.col)
           if (gp && (gp.row !== this.cellBoxStartRow || gp.col !== this.cellBoxStartCol)) {
-            // 越过起始 cell → 切换到单元格框选 (锚定起点 cell, 扩展到当前 cell)
+            // 越过起点格 → 激活框选 (锚定起点 cell, 扩展到当前 cell)
+            // 清掉可能已在起点格内建立的文本选区, 避免与框选叠加。
             this.cellBoxActive = true
+            const store = this.editor.getStore()
+            store.setSelection({
+              anchor: { paragraphPath: [...this.anchorParaPath], offset: this.anchorOffset, visible: false },
+              focus: { paragraphPath: [...this.anchorParaPath], offset: this.anchorOffset, visible: false },
+              active: false,
+              granularity: 'character',
+            })
             this.editor.startCellBoxSelection(this.cellBoxTableId, this.cellBoxStartRow, this.cellBoxStartCol)
             this.editor.extendCellBoxSelection(this.cellBoxTableId, gp.row, gp.col)
             return
           }
+          // 未越界 → 首次进入文本选区前, 清除单击产生的单格高亮
+          if (!this.cellBoxTextMode) {
+            this.cellBoxTextMode = true
+            this.editor.clearTableSelection()
+          }
         }
       }
-      // 仍在起始 cell 内 → 转入文本选区, 清除单击产生的单格高亮
-      this.editor.clearTableSelection()
-      this.cellBoxTableId = ''
+    }
+
+    // 已激活框选 → 扩展终点
+    if (this.cellBoxActive) {
+      const hit = this.hitTest(e.clientX, e.clientY)
+      if (hit) {
+        const tableInfo = this.findTableAndCell(hit.paraPath)
+        if (tableInfo && tableInfo.tableId === this.cellBoxTableId) {
+          const gp = getCellGridPosition(this.editor.getPool(), tableInfo.tableId, tableInfo.row, tableInfo.col)
+          if (gp) this.editor.extendCellBoxSelection(this.cellBoxTableId, gp.row, gp.col)
+        }
+      }
+      return
     }
 
     const result = this.hitTest(e.clientX, e.clientY)
