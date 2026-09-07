@@ -143,12 +143,21 @@ export interface TextNode extends BaseNode, TextStyle {
   text: string
 }
 
+/**
+ * SmartTextNode 运行时值的规范类型 (契约 §12.6.1)。
+ * undefined (缺失 value 字段) 是规范的空/未填状态, 不在该联合类型内。
+ * 值类型映射: S1/S2/S3→string; N→number; D→"YYYY-MM-DD" string;
+ * 枚举 multiple===true→string[], 否则→string。
+ * 已落地: value 拓宽为 ControlValue 与 SetControlValueCommand 同步 (契约 §12.6.1)。
+ */
+export type ControlValue = string | number | string[]
+
 export interface SmartTextNode extends BaseNode, TextStyle {
   type: typeof NodeType.SMART_TEXT
   /** 占位符 (未填时的显示形式, 如 '[姓名]') — 契约 §2.1 */
   text: string
-  /** 运行时值 (患者数据, 可选) — 缺失/空串视为未填, 读取方渲染 value 否则渲染 text — 契约 §2.1 */
-  value?: string
+  /** 运行时值 (患者数据, 可选) — 缺失/空串/空数组视为未填, 读取方渲染 value 否则渲染 text — 契约 §2.1/§12.6 */
+  value?: ControlValue
   element: ElementMeta
 }
 

@@ -11,7 +11,7 @@
 // 后者一次提交所有 edit, 使「全部替换」成为单个可撤销操作。
 // ================================================================
 
-import type { TextNode, SmartTextNode } from '../../document/core/DocumentModel'
+import type { TextNode, SmartTextNode, ControlValue } from '../../document/core/DocumentModel'
 import { NodeType } from '../../document/core/DocumentModel'
 import { smartTextDisplayValue } from '../../document/factory/ElementFormatter'
 import type { NodePool } from '../../document/core/NodePool'
@@ -83,7 +83,7 @@ export class ReplaceTextCommand implements ICommand {
   readonly edits: ReplaceEdit[]
 
   /** forward 时快照受影响节点的旧全文, 供 invert 恢复 */
-  private _restore: Array<{ nodeId: string; oldText: string; isSmart: boolean; oldValue?: string }> = []
+  private _restore: Array<{ nodeId: string; oldText: string; isSmart: boolean; oldValue?: ControlValue }> = []
   private _restoreCursor: Partial<CursorState> = {}
 
   constructor(id: string, timestamp: number, author: string, edits: ReplaceEdit[]) {
@@ -182,12 +182,12 @@ class RestoreTextCommand implements ICommand {
   readonly id: string
   readonly timestamp: number
   readonly author: string
-  private readonly restore: Array<{ nodeId: string; oldText: string; isSmart: boolean; oldValue?: string }>
+  private readonly restore: Array<{ nodeId: string; oldText: string; isSmart: boolean; oldValue?: ControlValue }>
   private readonly cursor: Partial<CursorState>
 
   constructor(
     id: string, timestamp: number, author: string,
-    restore: Array<{ nodeId: string; oldText: string; isSmart: boolean; oldValue?: string }>,
+    restore: Array<{ nodeId: string; oldText: string; isSmart: boolean; oldValue?: ControlValue }>,
     cursor: Partial<CursorState>,
   ) {
     this.id = id

@@ -10,6 +10,7 @@ import type {
   SectionBreak, PageSetup, TextStyle, ParagraphStyle,
   ElementMeta, ColumnDefinition, FlowBody,
   FieldNode, FieldType, FootnoteRef, FootnoteContent,
+  ControlValue,
 } from '../core/DocumentModel'
 import { NodeType, generateId, DEFAULT_PAGE_SETUP, DEFAULT_HEADER_FOOTER_CONFIG } from '../core/DocumentModel'
 import { NodePool } from '../core/NodePool'
@@ -40,7 +41,7 @@ export function createTextNode(text: string, style?: TextStyle): TextNode {
   return { type: NodeType.TEXT, id: generateId(), text, ...style }
 }
 
-export function createSmartTextNode(text: string, element: ElementMeta, style?: TextStyle, value?: string): SmartTextNode {
+export function createSmartTextNode(text: string, element: ElementMeta, style?: TextStyle, value?: ControlValue): SmartTextNode {
   const node: SmartTextNode = { type: NodeType.SMART_TEXT, id: generateId(), text, element, ...style }
   if (value !== undefined) node.value = value
   return node
@@ -48,10 +49,15 @@ export function createSmartTextNode(text: string, element: ElementMeta, style?: 
 
 /**
  * SmartTextNode 有效显示文本: 有值时显示值, 否则显示占位符 (契约 §2.1)。
- * value 为 undefined 或空串时视为「未填」, 回退到 text 占位符。
+ * value 为 undefined / '' / [] 时视为「未填」, 回退到 text 占位符。
+ * number → String(n); string[] → 以 '、' 连接 (多选候选展示)。
  */
-export function smartTextDisplayValue(node: { text: string; value?: string }): string {
-  return node.value !== undefined && node.value !== '' ? node.value : node.text
+export function smartTextDisplayValue(node: { text: string; value?: ControlValue }): string {
+  const v = node.value
+  if (v === undefined || v === '') return node.text
+  if (typeof v === 'number') return String(v)
+  if (Array.isArray(v)) return v.length > 0 ? v.join('、') : node.text
+  return v
 }
 
 export function createFieldNode(fieldType: FieldType, format?: string, style?: TextStyle): FieldNode {

@@ -99,7 +99,7 @@ export {
 } from './document/core/DocumentModel'
 export type {
   TextStyle, ParagraphStyle, ListStyle,
-  ElementCode, ElementFormat, ElementEnums, ElementEnumOption, PrivacyConfig, ElementMeta,
+  ElementCode, ElementFormat, ElementEnums, ElementEnumOption, PrivacyConfig, ElementMeta, ControlValue,
   BaseNode, TextNode, SmartTextNode, ImageNode,
   BookmarkNode, CrossReferenceNode, FieldNode, FieldType,
   FootnoteRef, FootnoteContent, CommentMarker,
@@ -119,6 +119,15 @@ export {
   insertAt, removeAt, findById, findByDE, findByInternal,
   takeSnapshot, restoreSnapshot, extractStyle, sameStyle, smartTextDisplayValue,
 } from './document/factory/ElementFormatter'
+
+// ---- Runtime Control Value (契约 §12.6) ----
+export { validateControlValue, isControlValueEmpty } from './document/control/ControlValue'
+export type {
+  ControlValuePermissions,
+  ControlValueRejectReason,
+  ControlValueValidationResult,
+} from './document/control/ControlValue'
+export { SetControlValueCommand } from './command/commands/SetControlValueCommand'
 
 // ---- R30+: Particles ----
 export type { IParticle, RenderOptions } from './render/particles/IParticle'

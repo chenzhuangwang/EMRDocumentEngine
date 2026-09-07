@@ -15,10 +15,11 @@
 //   - 撤销: detachChild 摘除 + createdLeafIds 精确清理, 不误删原始右半节点
 // ================================================================
 
-import type { Paragraph, TextNode, TextStyle, ElementMeta, SmartTextNode } from '../../document/core/DocumentModel'
+import type { Paragraph, TextNode, TextStyle, ElementMeta, SmartTextNode, ControlValue } from '../../document/core/DocumentModel'
 import {
   createParagraph, createTextNode, createSmartTextNode, extractStyle,
 } from '../../document/factory/ElementFormatter'
+import { isControlValueEmpty } from '../../document/control/ControlValue'
 import { generateId, NodeType } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
 import type { TemplateDefinitionStore } from '../../template/TemplateDefinition'
@@ -248,11 +249,12 @@ export class InsertNodesCommand extends PositionalCommand {
         if (isSingleValueDuplicate(pool, templateDefinitions, element)) {
           continue
         }
+        const rawValue = childSn.value as ControlValue | undefined
         const st = createSmartTextNode(
           (childSn.text as string) || '',
           element,
           style as unknown as TextStyle,
-          (childSn.value as string) || undefined,
+          isControlValueEmpty(rawValue) ? undefined : rawValue,
         )
         pool.addNode(st)
         this.createdLeafIds.push(st.id)

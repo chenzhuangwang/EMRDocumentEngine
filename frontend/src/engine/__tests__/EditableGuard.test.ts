@@ -15,7 +15,7 @@ import {
   createDocument, createParagraph, createTextNode, createSmartTextNode,
 } from '../document/factory/ElementFormatter'
 import { TemplateDefinitionStore } from '../template/TemplateDefinition'
-import type { BaseNode, ElementMeta, SmartTextNode } from '../document/core/DocumentModel'
+import type { BaseNode, ElementMeta, SmartTextNode, ControlValue } from '../document/core/DocumentModel'
 import type { CommandContext } from '../command/ICommand'
 
 const ELEMENT: ElementMeta = {
@@ -53,7 +53,7 @@ function replace(
   cmd.forward(ctx)
 }
 
-function valueOf(pool: ReturnType<typeof buildNodePool>, id: string): string | undefined {
+function valueOf(pool: ReturnType<typeof buildNodePool>, id: string): ControlValue | undefined {
   return (pool.nodes.get(id) as SmartTextNode | undefined)?.value
 }
 

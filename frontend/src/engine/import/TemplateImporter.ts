@@ -6,7 +6,8 @@
 //
 //   外部语义字段 (element.code/name/labels + format + required/
 //                 readonly/privacy)  → ElementMeta (DocumentModel)
-//   外部运行时值 (value, 非空字符串) → SmartTextNode.value
+//   外部运行时值 (value: string/number/string[], 空值归一)
+//                                    → SmartTextNode.value (契约 §12.6.1)
 //   外部模板设计期字段 (deletable/editable/tips/label/prefix/
 //                       suffix/single) → TemplateDefinitionStore (§12.1)
 //   外部表现层字段 (borderStyle/contentWrap/contentStyle/minWidth/
@@ -28,9 +29,10 @@ import type {
   DocumentTree, BaseNode, ElementMeta, ElementFormat,
   TextStyle, Paragraph, TextNode, SmartTextNode,
   Table, TableRow, TableCell, ColumnDefinition, PageSetup,
-  DocumentMetadata,
+  DocumentMetadata, ControlValue, ElementEnums, ElementEnumOption,
 } from '../document/core/DocumentModel'
 import { NodeType, generateId, normalizeDocumentMetadata } from '../document/core/DocumentModel'
+import { isControlValueEmpty } from '../document/control/ControlValue'
 import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/version/DocumentFormatVersion'
 import { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import type { TemplateDefinition } from '../template/TemplateDefinition'
@@ -44,6 +46,13 @@ import type { PresentationStyle } from '../render/presentation/PresentationStyle
 interface ExtElementCode { internal?: string; dataElement?: string }
 interface ExtElement { name?: string; code?: ExtElementCode; labels?: string[] }
 interface ExtStyleRef { id?: string; css?: Record<string, unknown> }
+interface ExtEnumOption { name?: string; value?: string; exclusive?: boolean }
+interface ExtEnums {
+  multiple?: boolean
+  editable?: boolean
+  searchable?: boolean
+  data?: ExtEnumOption[]
+}
 interface ExtFormat {
   dataType?: string
   showType?: string
@@ -52,6 +61,7 @@ interface ExtFormat {
   dictionary?: string
   scale?: number
   minRows?: number
+  enums?: ExtEnums
 }
 interface ExtNode {
   type?: string
@@ -265,8 +275,8 @@ export class TemplateImporter {
         element,
         ...this.resolveTextStyle(node),
       }
-      const value = typeof node.value === 'string' ? node.value : ''
-      if (value !== '') st.value = value
+      const value = this.coerceControlValue(node.value)
+      if (!isControlValueEmpty(value)) st.value = value
 
       this.nodeMap.set(id, st)
       this.setTemplateDefinition(id, node)
@@ -397,7 +407,58 @@ export class TemplateImporter {
     if (typeof fmt.dictionary === 'string' && fmt.dictionary !== '') f.dictionary = fmt.dictionary
     if (typeof fmt.scale === 'number') f.scale = fmt.scale
     if (typeof fmt.minRows === 'number') f.minRows = fmt.minRows
+    const enums = this.mapEnums(fmt.enums)
+    if (enums) f.enums = enums
     return f
+  }
+
+  /**
+   * 外部内联枚举 → ElementEnums (契约 §12.6 值域来源)。
+   *
+   * 映射 format.enums 的 multiple/editable/searchable 三态 + data[] 候选
+   * (name/value/exclusive)。防御式收口: 非字符串 name/value 丢弃, 缺 value
+   * 时回退 name, 缺 name 时回退 value (name 与 value 至少保留其一)。
+   *
+   * 注意 (VR-7): format.dictionary 是外部字典引用, 本方法不展开其候选;
+   * dictionary 字段已在 mapFormat 中原文保留, 展开需 canonical
+   * DictionaryProvider (后续)。inline enums 与 dictionary 二者各自独立。
+   */
+  private mapEnums(enums: ExtEnums | undefined): ElementEnums | undefined {
+    if (!enums) return undefined
+    const out: ElementEnums = {}
+    if (typeof enums.multiple === 'boolean') out.multiple = enums.multiple
+    if (typeof enums.editable === 'boolean') out.editable = enums.editable
+    if (typeof enums.searchable === 'boolean') out.searchable = enums.searchable
+
+    if (Array.isArray(enums.data)) {
+      const data: ElementEnumOption[] = []
+      for (const o of enums.data) {
+        if (!o || typeof o !== 'object') continue
+        const name = typeof o.name === 'string' ? o.name : ''
+        const value = typeof o.value === 'string' ? o.value : name
+        if (value === '') continue
+        const opt: ElementEnumOption = { name: name !== '' ? name : value, value }
+        if (o.exclusive === true) opt.exclusive = true
+        data.push(opt)
+      }
+      if (data.length > 0) out.data = data
+    }
+    return out
+  }
+
+  /**
+   * 外部运行时值 → 规范 ControlValue (契约 §12.6.1)。
+   * 仅保留 string / 有限 number / 全 string 数组; 其余 (boolean/null/
+   * 混合数组等) 归为 undefined。空值归一交给调用方 isControlValueEmpty。
+   */
+  private coerceControlValue(raw: unknown): ControlValue | undefined {
+    if (typeof raw === 'string') return raw
+    if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+    if (Array.isArray(raw)) {
+      const arr = raw.filter((v): v is string => typeof v === 'string')
+      return arr.length > 0 ? arr : undefined
+    }
+    return undefined
   }
 
   private coerceDataType(dt: string | undefined): ElementFormat['dataType'] {

@@ -51,6 +51,13 @@ describe('ElementFormatter factories', () => {
     expect(smartTextDisplayValue({ text: '[姓名]', value: undefined })).toBe('[姓名]')
   })
 
+  it('smartTextDisplayValue: number / string[] 显示 (契约 §12.6.1)', () => {
+    expect(smartTextDisplayValue({ text: '[年龄]', value: 42 })).toBe('42')
+    expect(smartTextDisplayValue({ text: '[年龄]', value: 0 })).toBe('0')
+    expect(smartTextDisplayValue({ text: '[诊断]', value: ['高血压', '糖尿病'] })).toBe('高血压、糖尿病')
+    expect(smartTextDisplayValue({ text: '[诊断]', value: [] })).toBe('[诊断]')
+  })
+
   it('should create field node', () => {
     const fn = createFieldNode('page_number')
     expect(fn.type).toBe('field')

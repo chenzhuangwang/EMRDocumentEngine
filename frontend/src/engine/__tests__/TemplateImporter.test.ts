@@ -180,6 +180,72 @@ describe('TemplateImporter 节点映射', () => {
     expect(st.value).toBe('已填值')
   })
 
+  it('inline enums → ElementMeta.format.enums (multiple/data/editable/searchable)', () => {
+    const withEnums = {
+      ...fixture,
+      document: {
+        ...fixture.document,
+        body: { id: 'root-body', type: '$root', children: [
+          { id: 'para-e', type: 'paragraph', children: [
+            { id: 'st-e', type: 'smarttext', code: 'st-e',
+              element: { name: '诊断', code: { internal: 'X', dataElement: 'Y' } },
+              format: { dataType: 'S3', enums: { multiple: true, editable: false, searchable: true, data: [
+                { name: '高血压', value: 'HTN' },
+                { name: '糖尿病', value: 'DM', exclusive: true },
+              ] } } },
+          ] },
+        ] },
+      },
+    }
+    const st = new TemplateImporter().import(withEnums).nodes.get('st-e') as SmartTextNode
+    expect(st.element.format?.enums).toEqual({
+      multiple: true, editable: false, searchable: true,
+      data: [
+        { name: '高血压', value: 'HTN' },
+        { name: '糖尿病', value: 'DM', exclusive: true },
+      ],
+    })
+  })
+
+  it('number / string[] 运行时 value 保留 (契约 §12.6.1)', () => {
+    const mk = (value: unknown) => ({
+      ...fixture,
+      document: {
+        ...fixture.document,
+        body: { id: 'root-body', type: '$root', children: [
+          { id: 'para-n', type: 'paragraph', children: [
+            { id: 'st-n', type: 'smarttext', code: 'st-n',
+              element: { name: '值', code: { internal: 'X', dataElement: 'Y' } }, value },
+          ] },
+        ] },
+      },
+    })
+    expect((new TemplateImporter().import(mk(42)).nodes.get('st-n') as SmartTextNode).value).toBe(42)
+    expect((new TemplateImporter().import(mk(['a', 'b'])).nodes.get('st-n') as SmartTextNode).value).toEqual(['a', 'b'])
+    // 混合数组过滤非字符串; boolean/null 丢弃 → 空
+    expect((new TemplateImporter().import(mk([true, 'a', 1])).nodes.get('st-n') as SmartTextNode).value).toEqual(['a'])
+    expect((new TemplateImporter().import(mk(true)).nodes.get('st-n') as SmartTextNode).value).toBeUndefined()
+  })
+
+  it('format.dictionary 原文保留 (VR-7, 不隐式展开)', () => {
+    const withDict = {
+      ...fixture,
+      document: {
+        ...fixture.document,
+        body: { id: 'root-body', type: '$root', children: [
+          { id: 'para-d', type: 'paragraph', children: [
+            { id: 'st-d', type: 'smarttext', code: 'st-d',
+              element: { name: '值', code: { internal: 'X', dataElement: 'Y' } },
+              format: { dataType: 'S3', dictionary: 'dict-uuid-123' } },
+          ] },
+        ] },
+      },
+    }
+    const st = new TemplateImporter().import(withDict).nodes.get('st-d') as SmartTextNode
+    expect(st.element.format?.dictionary).toBe('dict-uuid-123')
+    expect(st.element.format?.enums).toBeUndefined()
+  })
+
   it('code-only smarttext → TextNode (静态标签)', () => {
     const r = importFixture()
     const lbl = r.nodes.get('lbl-1') as TextNode
