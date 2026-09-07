@@ -60,9 +60,31 @@ import { RemoveControlCommand } from './command/commands/RemoveControlCommand'
 import { InsertControlCommand } from './command/commands/InsertControlCommand'
 import { UpdateControlDefinitionCommand } from './command/commands/UpdateControlDefinitionCommand'
 import { UpdateDocumentPropertiesCommand } from './command/commands/UpdateDocumentPropertiesCommand'
+import { UpdateDocumentTitleCommand } from './command/commands/UpdateDocumentTitleCommand'
 import { TemplateDefinitionStore } from './template/TemplateDefinition'
 import type { TemplateDefinition } from './template/TemplateDefinition'
 import type { PresentationStyleStore } from './render/presentation/PresentationStyle'
+
+/**
+ * 比较两份 DocumentMetadata 是否语义相等 (键序无关; keywords 数组有序)。
+ * 供 applyDocumentProperties 判定「无变化」时跳过命令 (契约 §7.8: 无变化不产生命令)。
+ */
+function metadataEquals(a: DocumentMetadata | undefined, b: DocumentMetadata | undefined): boolean {
+  const ka = a ? Object.keys(a).sort() : []
+  const kb = b ? Object.keys(b).sort() : []
+  if (ka.length !== kb.length) return false
+  for (let i = 0; i < ka.length; i++) {
+    if (ka[i] !== kb[i]) return false
+    const k = ka[i] as keyof DocumentMetadata
+    const av = a?.[k]
+    const bv = b?.[k]
+    if (Array.isArray(av) || Array.isArray(bv)) {
+      if (!Array.isArray(av) || !Array.isArray(bv) || av.length !== bv.length) return false
+      for (let j = 0; j < av.length; j++) if (av[j] !== bv[j]) return false
+    } else if (av !== bv) return false
+  }
+  return true
+}
 
 /** Editor: 引擎编排器 (架构 §3, v20.34) */
 export class Editor {
@@ -895,6 +917,33 @@ export class Editor {
     this.execCommand(new UpdateDocumentPropertiesCommand(
       generateCommandId(), Date.now(), 'user', metadata,
     ))
+  }
+  /** 读取文档标题 (契约 §7.7) — 供文档属性对话框展示 */
+  getDocumentTitle(): string {
+    return this.doc.title
+  }
+  /** 设置文档标题 (契约 §7.7) — 经 UpdateDocumentTitleCommand */
+  setDocumentTitle(title: string): void {
+    this.execCommand(new UpdateDocumentTitleCommand(
+      generateCommandId(), Date.now(), 'user', title,
+    ))
+  }
+  /**
+   * 原子应用文档属性 (标题 + 元数据) — 文档属性对话框「应用」的唯一提交点。
+   *
+   * 标题 → UpdateDocumentTitleCommand, 元数据 → UpdateDocumentPropertiesCommand,
+   * 二者经 beginMacro/endMacro 合并为单个 undo 单元 (RULE 11): 一次「应用」
+   * 对应一次 Ctrl+Z。标题与元数据均无实际变化时 (metadataEquals) 不产生任何命令。
+   * 输入 metadata 必须已是边界层经 normalizeDocumentMetadata 规范化后的合法值。
+   */
+  applyDocumentProperties(title: string, metadata?: DocumentMetadata): void {
+    const titleChanged = title !== this.doc.title
+    const metadataChanged = !metadataEquals(this.doc.metadata, metadata)
+    if (!titleChanged && !metadataChanged) return
+    this.commandManager.beginMacro()
+    if (titleChanged) this.setDocumentTitle(title)
+    if (metadataChanged) this.setDocumentMetadata(metadata)
+    this.commandManager.endMacro()
   }
   setDocument(
     doc: DocumentTree,

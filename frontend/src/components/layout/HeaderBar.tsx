@@ -14,6 +14,7 @@ import {
   FolderOpen,
   PanelLeftClose,
   PanelLeft,
+  Settings,
 } from 'lucide-react'
 import { useEditorStore, useUserStore, useUIStore } from '@/store'
 import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
@@ -25,9 +26,10 @@ interface HeaderBarProps {
   onShare?: () => void
   onImportDocument?: () => void
   onFormat?: (action: string) => void
+  onDocumentProperties?: () => void
 }
 
-export function HeaderBar({ documentTitle, onTitleChange, onSave, onShare, onImportDocument, onFormat }: HeaderBarProps) {
+export function HeaderBar({ documentTitle, onTitleChange, onSave, onShare, onImportDocument, onFormat, onDocumentProperties }: HeaderBarProps) {
   const saveStatus = useEditorStoreSnapshot((s) => s.saveStatus)
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
   const user = useUserStore((s) => s.user)
@@ -101,6 +103,14 @@ export function HeaderBar({ documentTitle, onTitleChange, onSave, onShare, onImp
           title="导入文档/模板 (JSON/HTML/Markdown)"
         >
           <FolderOpen size={16} />
+        </button>
+
+        <button
+          className="toolbar-btn"
+          onClick={onDocumentProperties}
+          title="文档属性"
+        >
+          <Settings size={16} />
         </button>
       </div>
 

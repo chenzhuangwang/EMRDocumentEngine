@@ -110,3 +110,32 @@ HTMLCanvasElement.prototype.getContext = function (
   }
   return null
 } as typeof HTMLCanvasElement.prototype.getContext
+
+// ---- Radix UI 组件测试所需的浏览器 API (jsdom 缺失) ----
+// Dialog/Dropdown 等 Radix 组件在 jsdom 下渲染需要这些 no-op polyfill,
+// 否则 Presence / DismissableLayer / react-remove-scroll 会因缺 API 抛错。
+
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
+}
+
+if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
+  window.matchMedia = (query: string): MediaQueryList => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }) as unknown as MediaQueryList
+}
+
+if (typeof HTMLElement !== 'undefined' && typeof HTMLElement.prototype.scrollIntoView !== 'function') {
+  HTMLElement.prototype.scrollIntoView = () => {}
+}

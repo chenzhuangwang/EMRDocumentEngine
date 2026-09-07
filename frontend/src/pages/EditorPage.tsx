@@ -17,6 +17,7 @@ import { PrintDialog } from '@/components/dialogs/PrintDialog'
 import { PageSetupDialog } from '@/components/dialogs/PageSetupDialog'
 import { PasteSpecialDialog, type PasteFormat } from '@/components/dialogs/PasteSpecialDialog'
 import { BookmarkDialog } from '@/components/dialogs/BookmarkDialog'
+import { DocumentPropertiesDialog } from '@/components/dialogs/DocumentPropertiesDialog'
 import { documentApi, templateApi } from '@/services/api'
 import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
 import { templateImporter, isExternalTemplate } from '@/engine'
@@ -100,6 +101,7 @@ function EditorPageInner({
   const [pageSetupOpen, setPageSetupOpen] = useState(false)
   const [pasteSpecialOpen, setPasteSpecialOpen] = useState(false)
   const [bookmarkOpen, setBookmarkOpen] = useState(false)
+  const [documentPropertiesOpen, setDocumentPropertiesOpen] = useState(false)
   const [tableInsertOpen, setTableInsertOpen] = useState(false)
   const [wordCount, setWordCount] = useState(0)
   const [pageCount, setPageCount] = useState(1)
@@ -805,6 +807,7 @@ function EditorPageInner({
       onTitleChange={onTitleChange}
       onSave={handleSave}
       onImportDocument={() => docFileInputRef.current?.click()}
+      onDocumentProperties={() => setDocumentPropertiesOpen(true)}
       onFormat={handleFormat}
       onInsert={(type: string) => {
         const ed = editorRef.current
@@ -872,6 +875,16 @@ function EditorPageInner({
       />
       <DesignControlPalette />
       <DesignControlProperties />
+      <DocumentPropertiesDialog
+        open={documentPropertiesOpen}
+        onClose={() => setDocumentPropertiesOpen(false)}
+        initialTitle={(() => { const ed = editorRef.current; return ed ? ed.getDocumentTitle() : undefined })()}
+        initialValues={(() => { const ed = editorRef.current; return ed ? ed.getDocumentMetadata() : undefined })()}
+        onApply={({ title, metadata }) => {
+          const ed = editorRef.current
+          if (ed) ed.applyDocumentProperties(title, metadata)
+        }}
+      />
       {/* 隐藏的文件选择器 (TASK-447 图片插入) */}
       <input
         ref={fileInputRef}
