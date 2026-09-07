@@ -73,9 +73,9 @@ export function createTableParticle(): IParticle {
               if (ci2.nodeType === 'smarttext') {
                 const cp = particleRegistry.get('smarttext')
                 if (cp) {
-                  const size = ci2.size || 12
-                  const baselineY = cellY + (ci2.y || 0) + (ci2.ascent ?? size * 0.8)
-                  cp.render(ctx, ci2, cellX + CELL_PADDING + (ci2.x || 0), baselineY, options)
+                  // ControlParticle 现把 y 当「行顶」(line-top), 自行加 ascent 求基线 —
+                  // 与正文/页眉页脚一致 (契约 §4)。旧版在此预加 ascent 会双加, 造成偏移。
+                  cp.render(ctx, ci2, cellX + CELL_PADDING + (ci2.x || 0), cellY + (ci2.y || 0), options)
                   continue
                 }
               }

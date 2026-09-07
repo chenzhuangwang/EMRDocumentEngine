@@ -24,7 +24,7 @@ import { accumulatedHeightTo } from '../layout/table/TableCoordUtil'
 import { createFootnoteParticle } from './particles/FootnoteParticle'
 import { createTableParticle } from './particles/TableParticle'
 import { createImageParticle } from './particles/ImageParticle'
-import { createControlParticle } from './particles/ControlParticle'
+import { createControlParticle, computeControlBox } from './particles/ControlParticle'
 import type { PresentationStyleStore } from './presentation/PresentationStyle'
 import type { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import { createChartParticle } from './particles/ChartParticle'
@@ -824,12 +824,14 @@ export class Draw {
       const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
       for (const item of getFlatPageItems(page)) {
         if (item.nodeId !== nodeId || item.nodeType !== 'smarttext') continue
-        const x = item.x - 2
-        const y = spY + item.y - 2
-        const w = (item.width || 0) + 4
-        const h = (item.height || item.ascent + item.descent) + 4
-        ictx.fillRect(x, y, w, h)
-        ictx.strokeRect(x, y, w, h)
+        // 选中框须与 ControlParticle 的控件视觉盒同源几何 (computeControlBox, 单一事实源) —
+        // 历史 bug: 两处各算各的几何, 且把 item.y (行顶) 当基线, 选中框与控件盒/光标错位。
+        const fontSize = item.size || 16
+        const ascent = item.ascent > 0 ? item.ascent : fontSize * 0.8
+        const descent = item.descent > 0 ? item.descent : fontSize * 0.2
+        const box = computeControlBox(item.x, spY + item.y, item.width || 0, ascent, descent, this.presentationStyleOf(nodeId))
+        ictx.fillRect(box.x, box.y, box.w, box.h)
+        ictx.strokeRect(box.x, box.y, box.w, box.h)
       }
     }
 

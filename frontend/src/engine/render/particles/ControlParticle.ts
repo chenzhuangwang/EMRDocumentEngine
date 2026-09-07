@@ -7,6 +7,7 @@
 
 import type { IParticle, RenderOptions } from './IParticle'
 import type { SLIFItem } from '../../layout/core/SLIF'
+import type { PresentationStyle } from '../presentation/PresentationStyle'
 
 export const CONTROL_COLORS: Record<string, { bg: string; border: string }> = {
   S1: { bg: '#F0F9FF', border: '#7DD3FC' },   // 单行文本 — 浅蓝
@@ -28,6 +29,43 @@ export function classifyControlVisual(dataType: string | undefined): { bg: strin
   return CONTROL_COLORS[dataType] ?? DEFAULT_CONTROL_COLORS
 }
 
+/** 控件视觉盒几何 (单一事实源, 契约 §12.3) — ControlParticle 渲染与 Draw.renderDesignSelection 共用。
+ *
+ * 约定: lineTop 是「行顶」(line-top), 与 TextParticle / caret 同源 — 不是基线。
+ *   - 盒顶   = lineTop - padding
+ *   - 基线   = lineTop + ascent
+ *   - 盒高   = (ascent + descent) + 2*padding  (与行高 + 上下 padding 对齐)
+ *
+ * 历史 bug: ControlParticle 曾把 lineTop (item.y) 当基线, 盒顶 = lineTop - size*0.8 - padding,
+ * 导致控件盒/文本整体上移约 ascent, 与选中框 (renderDesignSelection) 和光标错位。
+ * 现统一由本函数产出几何, 杜绝两处各算各的漂移。
+ */
+export function computeControlBox(
+  lineLeft: number,
+  lineTop: number,
+  textWidth: number,
+  ascent: number,
+  descent: number,
+  style?: PresentationStyle,
+): { x: number; y: number; w: number; h: number; baselineY: number; contentW: number; leftEdge: number; rightEdge: number } {
+  const padding = 3
+  const rawMinW = style?.minWidth
+  const minW = typeof rawMinW === 'number' ? rawMinW : (rawMinW != null ? parseFloat(String(rawMinW)) : 0)
+  const minBoxWidth = Number.isFinite(minW) && minW > 0 ? minW : 0
+  const boxW = Math.max(textWidth, minBoxWidth) + padding * 2
+  const leftEdge = lineLeft - padding
+  return {
+    x: leftEdge,
+    y: lineTop - padding,
+    w: boxW,
+    h: (ascent + descent) + padding * 2,
+    baselineY: lineTop + ascent,
+    contentW: boxW - padding * 2,
+    leftEdge,
+    rightEdge: leftEdge + boxW,
+  }
+}
+
 export function createControlParticle(): IParticle {
   return {
     type: 'smarttext',
@@ -36,8 +74,11 @@ export function createControlParticle(): IParticle {
       const value = item.text || ''
       const fontSize = item.size || 16
       const fontFamily = item.font || 'SimSun'
-      const padding = 3
-      const h = fontSize * 1.2
+
+      // 行级 ascent/descent (item.ascent/descent) 与 TextParticle/caret 同源;
+      // 0 时回退 fontSize 估算。y 是「行顶」(line-top), 不是基线 — 见 computeControlBox。
+      const ascent = item.ascent > 0 ? item.ascent : fontSize * 0.8
+      const descent = item.descent > 0 ? item.descent : fontSize * 0.2
 
       // 表现层样式 (契约 §2.2) — draw time 按 nodeId 查询, 不写入 DocumentModel
       const style = options?.presentationStyleOf?.(item.nodeId)
@@ -45,10 +86,6 @@ export function createControlParticle(): IParticle {
       const drawBox = style?.borderStyle !== 'none'
       // 显式 'solid' 才实线, 否则保持历史虚线
       const solidBorder = style?.borderStyle === 'solid'
-      // minWidth 为 number 或数字字符串 (外部模板混合)
-      const rawMinW = style?.minWidth
-      const minW = typeof rawMinW === 'number' ? rawMinW : (rawMinW != null ? parseFloat(String(rawMinW)) : 0)
-      const minBoxWidth = Number.isFinite(minW) && minW > 0 ? minW : 0
       // textAlign 盒内水平对齐 (契约 §2.2) — 仅当盒宽 > 文本宽时生效
       const align = style?.textAlign
 
@@ -73,38 +110,36 @@ export function createControlParticle(): IParticle {
       ctx.textBaseline = 'alphabetic'
 
       const textW = ctx.measureText(displayText).width
-      const boxW = Math.max(textW, minBoxWidth) + padding * 2
+      const box = computeControlBox(x, y, textW, ascent, descent, style)
 
       if (drawBox) {
         // 背景
         ctx.fillStyle = colors.bg
-        ctx.fillRect(x - padding, y - fontSize * 0.8 - padding, boxW, h + padding * 2)
+        ctx.fillRect(box.x, box.y, box.w, box.h)
 
         // 边框
         ctx.strokeStyle = isMasked ? '#F87171' : colors.border
         ctx.lineWidth = 1
         if (!solidBorder) ctx.setLineDash([2, 1])
-        ctx.strokeRect(x - padding, y - fontSize * 0.8 - padding, boxW, h + padding * 2)
+        ctx.strokeRect(box.x, box.y, box.w, box.h)
         ctx.setLineDash([])
       }
 
       // 盒内文本 — textAlign 只偏移盒内 glyph, 不改布局 (契约 §2.2)
-      const contentW = boxW - padding * 2
       let textX = x
-      if (align === 'center') textX = x + (contentW - textW) / 2
-      else if (align === 'right') textX = x + (contentW - textW)
+      if (align === 'center') textX = x + (box.contentW - textW) / 2
+      else if (align === 'right') textX = x + (box.contentW - textW)
 
       ctx.fillStyle = isMasked ? '#9CA3AF' : (item.color || '#374151')
-      ctx.fillText(displayText, textX, y)
+      ctx.fillText(displayText, textX, box.baselineY)
 
       // 附属字面量 label/prefix/suffix (契约 §12.1) — draw-time overlay, 不参与布局重排
       ctx.fillStyle = isMasked ? '#9CA3AF' : (item.color || '#374151')
-      const leftEdge = x - padding
       const prefixW = prefix ? ctx.measureText(prefix).width : 0
       const labelW = label ? ctx.measureText(label).width : 0
-      if (label) ctx.fillText(label, leftEdge - prefixW - labelW, y)
-      if (prefix) ctx.fillText(prefix, leftEdge - prefixW, y)
-      if (suffix) ctx.fillText(suffix, leftEdge + boxW, y)
+      if (label) ctx.fillText(label, box.leftEdge - prefixW - labelW, box.baselineY)
+      if (prefix) ctx.fillText(prefix, box.leftEdge - prefixW, box.baselineY)
+      if (suffix) ctx.fillText(suffix, box.rightEdge, box.baselineY)
 
       ctx.restore()
     },
