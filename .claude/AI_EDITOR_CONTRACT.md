@@ -1230,10 +1230,12 @@ Concretely:
 
     editable is consumed by the COMMAND layer at find & replace
     time (not the renderer). A smarttext whose TemplateDefinition
-    .editable === false does not accept user input: ReplaceTextCommand
-    MUST skip it, never overwriting its value (a read-only control
-    stays read-only through find & replace). editable === false also
-    locks runtime value writes (§12.6 VR-8), not just find & replace.
+    .editable === false does not accept user input: find-replace of
+    its value routes through SetControlValueCommand, which rejects the
+    write under VR-8 (a read-only control stays read-only through find
+    & replace). editable === false thus locks ALL runtime value writes
+    — direct control writes AND find & replace — via the single
+    SetControlValueCommand path (§12.6 VR-8).
 
     single is consumed by the COMMAND layer at paste/insert time
     (not the renderer). A single-valued data element — identified
@@ -1597,9 +1599,8 @@ must enforce.
 VR-1.  SmartTextNode.value is the canonical runtime value. (MUST)
 VR-2.  undefined is the canonical empty/unfilled state. (MUST)
 VR-3.  Runtime value mutations MUST go through
-       SetControlValueCommand. (LANDED for control writes; the legacy
-       ReplaceTextCommand find-replace writer is the remaining TARGET
-       to fold into this single path, §12.6.3)
+       SetControlValueCommand. (LANDED — direct control writes AND
+       find-replace both route through SetControlValueCommand, §12.6.3)
 VR-4.  controlType defines widget interaction form only. (MUST)
 VR-5.  dataType defines value semantics. (MUST)
 VR-6.  enums defines candidate values and multi-value semantics. (MUST)
@@ -1731,10 +1732,10 @@ independent (§27–§29), and lives in the document domain
 
     SetControlValueCommand is LANDED and routes through
     validateControlValue. The legacy ad-hoc value writer inside
-    ReplaceTextCommand (pool.updateNode(nodeId, { value })) remains the
-    TARGET to fold into this single path (VR-3): find-replace of a
-    control's value must eventually route through SetControlValueCommand
-    too.
+    ReplaceTextCommand is LANDED too: find-replace of a control's
+    value routes through SetControlValueCommand (both forward and undo
+    restore), so VR-3 holds — every SmartTextNode.value mutation goes
+    through the single validated path.
 
 ------------------------------------------------------------
 12.4 Watermark ownership boundary

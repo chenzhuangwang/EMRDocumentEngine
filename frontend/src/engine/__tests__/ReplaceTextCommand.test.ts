@@ -15,8 +15,9 @@ import { ReplaceTextCommand } from '../command/commands/ReplaceTextCommand'
 import { FindReplaceEngine } from '../FindReplaceEngine'
 import { buildNodePool } from '../document/core/NodePool'
 import type { NodePool } from '../document/core/NodePool'
-import { createDocument, createParagraph, createTextNode } from '../document/factory/ElementFormatter'
-import type { BaseNode, DocumentTree } from '../document/core/DocumentModel'
+import { createDocument, createParagraph, createTextNode, createSmartTextNode } from '../document/factory/ElementFormatter'
+import type { BaseNode, DocumentTree, ElementMeta, ElementFormat, ControlValue } from '../document/core/DocumentModel'
+import { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import type { CommandContext } from '../command/ICommand'
 
 // ---- fixtures ----
@@ -178,6 +179,80 @@ describe('ReplaceTextCommand — 非文本节点偏移', () => {
     ])
     cmd.forward(ctxOf(doc, pool))
     expect(textOf(pool, textId)).toBe('Xd')
+  })
+})
+
+describe('ReplaceTextCommand — smarttext 值写入经 SetControlValueCommand (VR-3)', () => {
+  function element(format?: ElementFormat, extra?: Partial<ElementMeta>): ElementMeta {
+    return { code: { internal: 'CTL_X', dataElement: 'DE00.00.000.00' }, name: 'x', format, ...extra }
+  }
+
+  function makeParaWithControl(
+    el: ElementMeta,
+    initialValue?: ControlValue,
+    editable?: boolean,
+  ) {
+    const doc = createDocument('test')
+    const allNodes = new Map<string, BaseNode>()
+    allNodes.set(doc.id, doc as unknown as BaseNode)
+    const st = createSmartTextNode('[字段]', el, undefined, initialValue)
+    const para = createParagraph([st.id])
+    allNodes.set(st.id, st as unknown as BaseNode)
+    allNodes.set(para.id, para as unknown as BaseNode)
+    doc.body.children = [para.id]
+    const pool = buildNodePool(allNodes, { body: doc.id })
+    const defs = new TemplateDefinitionStore()
+    if (editable !== undefined) defs.set(st.id, { editable })
+    return { doc, pool, defs, paraId: para.id, stId: st.id }
+  }
+
+  function valueOf(pool: NodePool, id: string): ControlValue | undefined {
+    return (pool.nodes.get(id) as { value?: ControlValue } | undefined)?.value
+  }
+
+  function ctxOfControl(
+    doc: DocumentTree, pool: NodePool, defs: TemplateDefinitionStore,
+  ): CommandContext {
+    return { mode: 'local', doc, pool, templateDefinitions: defs }
+  }
+
+  it('可编辑 S1 控件 find-replace 写入 value', () => {
+    const { doc, pool, defs, paraId, stId } = makeParaWithControl(element({ dataType: 'S1' }), '张三')
+    const cmd = new ReplaceTextCommand('c1', 1, 'u', [
+      { paragraphPath: [doc.id, paraId], startOffset: 0, endOffset: 2, newText: '李四' },
+    ])
+    const patch = cmd.forward(ctxOfControl(doc, pool, defs))
+    expect(patch).not.toBeNull()
+    expect(valueOf(pool, stId)).toBe('李四')
+  })
+
+  it('editable:false 控件 find-replace 跳过 (值不变, forward 返回 null)', () => {
+    const { doc, pool, defs, paraId, stId } = makeParaWithControl(element({ dataType: 'S1' }), '张三', false)
+    const cmd = new ReplaceTextCommand('c1', 1, 'u', [
+      { paragraphPath: [doc.id, paraId], startOffset: 0, endOffset: 2, newText: '李四' },
+    ])
+    expect(cmd.forward(ctxOfControl(doc, pool, defs))).toBeNull()
+    expect(valueOf(pool, stId)).toBe('张三')
+  })
+
+  it('readonly 控件 find-replace 跳过', () => {
+    const { doc, pool, defs, paraId, stId } = makeParaWithControl(
+      element({ dataType: 'S1' }, { readonly: true }), '张三',
+    )
+    const cmd = new ReplaceTextCommand('c1', 1, 'u', [
+      { paragraphPath: [doc.id, paraId], startOffset: 0, endOffset: 2, newText: '李四' },
+    ])
+    expect(cmd.forward(ctxOfControl(doc, pool, defs))).toBeNull()
+    expect(valueOf(pool, stId)).toBe('张三')
+  })
+
+  it('数字控件 (N) find-replace 产出 string → 类型不符跳过', () => {
+    const { doc, pool, defs, paraId, stId } = makeParaWithControl(element({ dataType: 'N' }), 42)
+    const cmd = new ReplaceTextCommand('c1', 1, 'u', [
+      { paragraphPath: [doc.id, paraId], startOffset: 0, endOffset: 2, newText: '43' },
+    ])
+    expect(cmd.forward(ctxOfControl(doc, pool, defs))).toBeNull()
+    expect(valueOf(pool, stId)).toBe(42)
   })
 })
 

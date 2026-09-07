@@ -11,9 +11,9 @@
 // 后者一次提交所有 edit, 使「全部替换」成为单个可撤销操作。
 // ================================================================
 
-import type { TextNode, SmartTextNode, ControlValue } from '../../document/core/DocumentModel'
-import { NodeType } from '../../document/core/DocumentModel'
+import type { TextNode, ControlValue } from '../../document/core/DocumentModel'
 import { smartTextDisplayValue } from '../../document/factory/ElementFormatter'
+import { SetControlValueCommand } from './SetControlValueCommand'
 import type { NodePool } from '../../document/core/NodePool'
 import type { CursorState } from '../../state/EditorRuntimeState'
 import type { CommandContext, ICommand, SerializedCommand, StatePatch } from '../ICommand'
@@ -102,13 +102,7 @@ export class ReplaceTextCommand implements ICommand {
     for (const e of this.edits) {
       const loc = resolveEditLocation(pool, e.paragraphPath, e.startOffset, e.endOffset)
       if (!loc) continue
-      // editable 守卫 (契约 §12.1): editable:false 的 smarttext 不接受
-      // find & replace 改写其 value, 视为只读控件, 跳过该替换。
-      const target = pool.nodes.get(loc.nodeId)
-      if (target?.type === NodeType.SMART_TEXT
-        && ctx.templateDefinitions?.get(loc.nodeId)?.editable === false) {
-        continue
-      }
+      // 写权限 / 值型校验由 SetControlValueCommand 在写入时统一执行 (VR-3)
       resolved.push({ ...loc, newText: e.newText })
     }
     if (resolved.length === 0) return null
@@ -123,14 +117,13 @@ export class ReplaceTextCommand implements ICommand {
 
     this._restore = []
     for (const [nodeId, rs] of byNode) {
-      const node = pool.nodes.get(nodeId) as { type?: string; text?: string; value?: string } | undefined
+      const node = pool.nodes.get(nodeId) as { type?: string; text?: string; value?: ControlValue } | undefined
       if (!node) continue
       // smarttext 操作运行时值 (value), text 节点操作 text (契约 §2.1)
       const isSmart = node.type === 'smarttext'
       const oldText = isSmart
-        ? smartTextDisplayValue(node as unknown as { text: string; value?: string })
+        ? smartTextDisplayValue(node as unknown as { text: string; value?: ControlValue })
         : (node.text || '')
-      this._restore.push({ nodeId, oldText, isSmart, oldValue: isSmart ? node.value : undefined })
 
       const sorted = rs.slice().sort((a, b) => b.localStart - a.localStart)
       let cur = oldText
@@ -138,11 +131,19 @@ export class ReplaceTextCommand implements ICommand {
         cur = cur.slice(0, r.localStart) + r.newText + cur.slice(r.localEnd)
       }
       if (isSmart) {
-        pool.updateNode(nodeId, { value: cur } as Partial<SmartTextNode>)
+        // VR-3: 运行时值写入唯一路径 → SetControlValueCommand (层 A 值型 + 层 B 写权限)。
+        // 拒绝 (写锁 / 类型不符 / 枚举越界) 时值不变, 该节点不进 _restore。
+        const oldValue = node.value
+        const valueCmd = new SetControlValueCommand(generateCommandId(), Date.now(), this.author, nodeId, cur)
+        if (valueCmd.forward(ctx) !== null) {
+          this._restore.push({ nodeId, oldText, isSmart, oldValue })
+        }
       } else {
+        this._restore.push({ nodeId, oldText, isSmart, oldValue: undefined })
         pool.updateNode(nodeId, { text: cur } as Partial<TextNode>)
       }
     }
+    if (this._restore.length === 0) return null
 
     // Step 3: 光标落到最后一个 edit 之后 (与旧 replace 行为对齐, 用实际替换文本长度)
     const last = this.edits[this.edits.length - 1]
@@ -202,7 +203,8 @@ class RestoreTextCommand implements ICommand {
     const { pool } = ctx
     for (const r of this.restore) {
       if (r.isSmart) {
-        pool.updateNode(r.nodeId, { value: r.oldValue } as Partial<SmartTextNode>)
+        // VR-3: 撤销恢复同样经 SetControlValueCommand 唯一路径
+        new SetControlValueCommand(generateCommandId(), Date.now(), this.author, r.nodeId, r.oldValue).forward(ctx)
       } else {
         pool.updateNode(r.nodeId, { text: r.oldText } as Partial<TextNode>)
       }
