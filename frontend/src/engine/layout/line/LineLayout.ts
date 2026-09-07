@@ -26,7 +26,8 @@ export interface LineElement {
   superscript?: boolean
   subscript?: boolean
   imageData?: { width?: number; height?: number; wrapType?: string }
-  control?: { width?: number }
+  /** 控件布局提示: width 固定宽 / minRows 多行文本域最小行数 */
+  control?: { width?: number; minRows?: number }
   tableBlock?: unknown
   fieldType?: string
 }

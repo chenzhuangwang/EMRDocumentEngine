@@ -98,6 +98,7 @@ export function createControlParticle(): IParticle {
       // 语义元数据 (契约 §2.1) — draw time 按 nodeId 查询 dataType 与隐私标记
       const element = options?.elementOf?.(item.nodeId)
       const dataType = element?.format?.dataType
+      const showType = element?.format?.showType
       const colors = classifyControlVisual(dataType)
 
       // 检查隐私脱敏
@@ -126,9 +127,10 @@ export function createControlParticle(): IParticle {
       }
 
       // 盒内文本 — textAlign 只偏移盒内 glyph, 不改布局 (契约 §2.2)
+      // 显式 textAlign 覆盖 showType 缺省; showType 'N' 仅提供数值右对齐的默认形态 (契约 §12.6.2 layer D)
       let textX = x
       if (align === 'center') textX = x + (box.contentW - textW) / 2
-      else if (align === 'right') textX = x + (box.contentW - textW)
+      else if (align === 'right' || (align === undefined && showType === 'N')) textX = x + (box.contentW - textW)
 
       ctx.fillStyle = isMasked ? '#9CA3AF' : (item.color || '#374151')
       ctx.fillText(displayText, textX, box.baselineY)

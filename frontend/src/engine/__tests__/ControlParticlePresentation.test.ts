@@ -197,3 +197,27 @@ describe('ControlParticle dataType 视觉分类 (契约 §12.1, P1)', () => {
     expect(r.strokeStyles[0]).toBe('#F87171')
   })
 })
+
+describe('ControlParticle showType 数值右对齐 (契约 §12.6.2 layer D)', () => {
+  it('showType "N" → 盒内右对齐 (x 向右偏移)', () => {
+    const el: ElementMeta = { code: { internal: 'CTL_X', dataElement: 'DE99.99.003' }, name: 'x', format: { dataType: 'N', showType: 'N' } }
+    const r = render({ minWidth: 168 }, undefined, el)
+    const t = mainText(r)!
+    expect(t.x).toBeGreaterThan(0)
+    expect(t.x).toBeCloseTo(128.4, 1) // 文本宽 39.6 → 168-39.6 = 128.4
+  })
+
+  it('showType "AN" / 缺省 → 左对齐 (x 不偏移)', () => {
+    const an: ElementMeta = { code: { internal: 'CTL_X', dataElement: 'DE99.99.001' }, name: 'x', format: { dataType: 'S1', showType: 'AN' } }
+    expect(mainText(render({ minWidth: 168 }, undefined, an))!.x).toBe(0)
+    const missing: ElementMeta = { code: { internal: 'CTL_X', dataElement: 'DE99.99.001' }, name: 'x', format: { dataType: 'N' } }
+    expect(mainText(render({ minWidth: 168 }, undefined, missing))!.x).toBe(0)
+  })
+
+  it('显式 textAlign 覆盖 showType 缺省', () => {
+    const el: ElementMeta = { code: { internal: 'CTL_X', dataElement: 'DE99.99.003' }, name: 'x', format: { dataType: 'N', showType: 'N' } }
+    // 显式 left → 覆盖 showType 'N' 的右对齐
+    const r = render({ minWidth: 168, textAlign: 'left' }, undefined, el)
+    expect(mainText(r)!.x).toBe(0)
+  })
+})

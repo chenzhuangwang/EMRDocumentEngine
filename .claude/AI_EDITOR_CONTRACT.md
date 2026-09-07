@@ -1650,18 +1650,21 @@ Field participation (four layers — each field belongs to exactly one):
        pre-print — not at input time. Do NOT fold required into the
        per-write validator.
 
-    D. Deferred Presentation / Lookup / Advanced Semantics  (no value
-       semantics this phase):
-         showType     — display format (render-only); does not decide
-                        value legality.
-         minRows      — textarea height (layout); deferred.
+    D. Presentation / Lookup / Advanced Semantics (no value semantics):
+         showType     — display format (render-only): 'N' → numeric
+                        value right-aligned in the control box;
+                        'AN'/absent → left-aligned (LANDED).
+         minRows      — textarea height (layout): the control box and
+                        its line reserve minRows rows of vertical space;
+                        absent → single line (LANDED).
          dictionary   — external candidate-source REFERENCE (VR-7);
                         preserved verbatim in ElementFormat; resolved
                         candidates are injected at the command boundary
                         via DictionaryProvider (§12.6.4), runtime-only
-                        (not serialized). searchable / exclusive /
-                        minRows remain deferred.
-         searchable   — dropdown lookup UX; not value legality.
+                        (not serialized). searchable / exclusive
+                        remain deferred.
+         searchable   — dropdown lookup UX; deferred (needs async
+                        dictionary fetch).
          exclusive    — imported / preserved / displayed; runtime
                         semantics unknown, do not guess.
 

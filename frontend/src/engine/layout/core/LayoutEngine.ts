@@ -144,6 +144,13 @@ export class LayoutEngine {
             // 标题: 缩放字号 + 加粗
             const baseSize = tn.size || BASE_FONT_SIZE
             const headingSize = isHeading ? Math.round(baseSize * headingScale) : undefined
+            // 多行文本域最小行数 (契约 §12.6.2 layer D): 影响行高, 不决定值语义
+            const minRows = childType === 'smarttext'
+              ? ((child as unknown as { element?: { format?: { minRows?: number } } }).element?.format?.minRows)
+              : undefined
+            const control = (typeof minRows === 'number' && minRows > 0)
+              ? { minRows }
+              : undefined
             elements.push({
               id: tn.id, type: childType, value,
               font: tn.font, size: headingSize ?? tn.size,
@@ -152,6 +159,7 @@ export class LayoutEngine {
               underlineStyle: (tn as { underlineStyle?: string }).underlineStyle,
               strikeout: tn.strikeout, superscript: tn.superscript, subscript: tn.subscript,
               highlight: tn.highlight,
+              control,
             })
           } else if (childType === 'image') {
             const img = child as unknown as Record<string, unknown>

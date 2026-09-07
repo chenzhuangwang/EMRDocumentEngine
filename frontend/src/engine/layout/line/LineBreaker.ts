@@ -135,8 +135,8 @@ export class LineBreaker {
       }
 
       const elWidth = this.getElementWidth(el, options)
-      const ascent = el.size ? el.size * 0.8 : options.defaultSize * 0.8
-      const descent = el.size ? el.size * 0.2 : options.defaultSize * 0.2
+      const ascent = this.getElementAscent(el, options)
+      const descent = this.getElementDescent(el, options)
 
       // Newline character forces a line break (keep it in line for position tracking)
       if (el.type === 'text' && el.value === '\n') {
@@ -177,8 +177,8 @@ export class LineBreaker {
         const head = parts[0]
         currentLineElements.push(head)
         currentLineWidth += this.getElementWidth(head, options)
-        const hAscent = head.size ? head.size * 0.8 : options.defaultSize * 0.8
-        const hDescent = head.size ? head.size * 0.2 : options.defaultSize * 0.2
+        const hAscent = this.getElementAscent(head, options)
+        const hDescent = this.getElementDescent(head, options)
         if (hAscent > maxAscent) maxAscent = hAscent
         if (hDescent > maxDescent) maxDescent = hDescent
 
@@ -190,8 +190,8 @@ export class LineBreaker {
           const part = parts[p]
           currentLineElements = [part]
           currentLineWidth = this.getElementWidth(part, options)
-          maxAscent = part.size ? part.size * 0.8 : options.defaultSize * 0.8
-          maxDescent = part.size ? part.size * 0.2 : options.defaultSize * 0.2
+          maxAscent = this.getElementAscent(part, options)
+          maxDescent = this.getElementDescent(part, options)
           if (p < parts.length - 1) {
             lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
           }
@@ -347,8 +347,8 @@ export class LineBreaker {
       if (el.type === 'page_break' || el.value === '​') continue
       const elWidth = this.getElementWidth(el, options)
       width += elWidth
-      const ascent = el.size ? el.size * 0.8 : options.defaultSize * 0.8
-      const descent = el.size ? el.size * 0.2 : options.defaultSize * 0.2
+      const ascent = this.getElementAscent(el, options)
+      const descent = this.getElementDescent(el, options)
       if (ascent > maxAscent) maxAscent = ascent
       if (descent > maxDescent) maxDescent = descent
     }
@@ -388,6 +388,22 @@ export class LineBreaker {
     }
   }
 
+  /** 元素 ascent (首行基线以上) — 多行控件 minRows 不影响首行 ascent */
+  private getElementAscent(el: LineElement, options: LineBreakOptions): number {
+    return el.size ? el.size * 0.8 : options.defaultSize * 0.8
+  }
+
+  /** 元素 descent — 多行控件 minRows>1 时向下延展 (N-1) 行, 使行高 = minRows * size (契约 §12.6.2 layer D) */
+  private getElementDescent(el: LineElement, options: LineBreakOptions): number {
+    const size = el.size || options.defaultSize
+    const base = size * 0.2
+    const minRows = el.control?.minRows
+    if (typeof minRows === 'number' && minRows > 1) {
+      return base + (minRows - 1) * size
+    }
+    return base
+  }
+
   private getElementFontConfig(el: LineElement, options: LineBreakOptions): FontConfig {
     return {
       font: el.font || options.defaultFont,
@@ -396,7 +412,6 @@ export class LineBreaker {
       italic: el.italic,
     }
   }
-
   private createLine(
     elements: LineElement[],
     width: number,
