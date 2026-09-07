@@ -23,6 +23,8 @@ export interface ParagraphStyleProjection {
 
 export interface EditorStoreState {
   document: DocumentTree | null
+  /** 文档标题投影 (canonical owner = DocumentTree.title, 此处为 UI 读取投影) */
+  documentTitle: string
   runtime: EditorRuntimeState
   isDirty: boolean
   saveStatus: SaveStatus
@@ -55,6 +57,7 @@ export class EditorStore {
   constructor(doc?: DocumentTree) {
     this._state = {
       document: doc ?? null,
+      documentTitle: doc?.title ?? '',
       runtime: createDefaultRuntimeState(),
       isDirty: false,
       saveStatus: 'saved',
@@ -129,6 +132,13 @@ export class EditorStore {
   /** 更新文档引用 */
   setDocument(doc: DocumentTree): void {
     this._state.document = doc
+    this.notify()
+  }
+
+  /** 文档标题投影 — 由 Editor 在 setDocument / 标题命令后同步 (canonical = DocumentTree.title) */
+  setDocumentTitle(title: string): void {
+    if (this._state.documentTitle === title) return
+    this._state.documentTitle = title
     this.notify()
   }
 

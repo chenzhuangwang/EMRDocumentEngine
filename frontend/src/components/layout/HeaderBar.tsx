@@ -2,6 +2,7 @@
 // 顶部导航栏
 // ============================================================
 
+import { useEffect, useRef, useState } from 'react'
 import {
   Save,
   Undo2,
@@ -17,11 +18,9 @@ import {
   Settings,
 } from 'lucide-react'
 import { useEditorStore, useUserStore, useUIStore } from '@/store'
-import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
+import { useEditor, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 
 interface HeaderBarProps {
-  documentTitle: string
-  onTitleChange?: (title: string) => void
   onSave?: () => void
   onShare?: () => void
   onImportDocument?: () => void
@@ -29,7 +28,7 @@ interface HeaderBarProps {
   onDocumentProperties?: () => void
 }
 
-export function HeaderBar({ documentTitle, onTitleChange, onSave, onShare, onImportDocument, onFormat, onDocumentProperties }: HeaderBarProps) {
+export function HeaderBar({ onSave, onShare, onImportDocument, onFormat, onDocumentProperties }: HeaderBarProps) {
   const saveStatus = useEditorStoreSnapshot((s) => s.saveStatus)
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
   const user = useUserStore((s) => s.user)
@@ -57,14 +56,7 @@ export function HeaderBar({ documentTitle, onTitleChange, onSave, onShare, onImp
 
         <div className="h-6 w-px bg-gray-200" />
 
-        <input
-          className="text-sm font-medium text-gray-800 bg-transparent border-none outline-none
-                     hover:bg-gray-50 rounded px-2 py-1 max-w-[240px] truncate
-                     focus:bg-gray-50 focus:ring-1 focus:ring-primary-300"
-          value={documentTitle}
-          onChange={(e) => onTitleChange?.(e.target.value)}
-          placeholder="未命名文档"
-        />
+        <DocumentTitleInput />
 
         {/* 保存状态 */}
         <SaveIndicator status={saveStatus} isDirty={isDirty} />
@@ -151,6 +143,58 @@ export function HeaderBar({ documentTitle, onTitleChange, onSave, onShare, onImp
         )}
       </div>
     </header>
+  )
+}
+
+// ---- 文档标题输入 (P2-C) ----
+
+/**
+ * 文档标题内联输入 — engine `doc.title` 为唯一 canonical (契约 §7.7/§7.8)。
+ *
+ * 本地草稿 + 失焦/回车提交: 编辑过程只改草稿 (不产命令), blur/Enter 时经
+ * Editor.setDocumentTitle (UpdateDocumentTitleCommand) 一次提交, 避免逐键污染
+ * undo 栈 (与 P2-A DesignControlProperties 文本 onBlur 提交约定一致)。Esc 撤销
+ * 草稿回 canonical。外部变更 (文档属性对话框/撤销/加载) 经 store.documentTitle
+ * 投影回同步到草稿。
+ */
+function DocumentTitleInput() {
+  const editor = useEditor()
+  const canonicalTitle = useEditorStoreSnapshot((s) => s.documentTitle)
+  const [draft, setDraft] = useState(canonicalTitle)
+  // 草稿副本供 commit/Esc 同步读取, 避免闭包过期 (Esc 置回 canonical 后 blur 不误提交)
+  const draftRef = useRef(draft)
+
+  // canonical (外部: 对话框/撤销/加载) 变化 → 回同步草稿
+  useEffect(() => {
+    draftRef.current = canonicalTitle
+    setDraft(canonicalTitle)
+  }, [canonicalTitle])
+
+  const commit = () => {
+    const next = draftRef.current
+    if (next !== canonicalTitle) editor?.setDocumentTitle(next)
+  }
+
+  return (
+    <input
+      className="text-sm font-medium text-gray-800 bg-transparent border-none outline-none
+                 hover:bg-gray-50 rounded px-2 py-1 max-w-[240px] truncate
+                 focus:bg-gray-50 focus:ring-1 focus:ring-primary-300"
+      value={draft}
+      onChange={(e) => { const v = e.target.value; draftRef.current = v; setDraft(v) }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.currentTarget.blur()
+        } else if (e.key === 'Escape') {
+          draftRef.current = canonicalTitle
+          setDraft(canonicalTitle)
+          e.currentTarget.blur()
+        }
+      }}
+      placeholder="未命名文档"
+      aria-label="文档标题"
+    />
   )
 }
 

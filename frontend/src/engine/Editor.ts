@@ -350,6 +350,7 @@ export class Editor {
     this.draw.render(this.pool, this.store.state.runtime)
     this.autoSave.markDirty()
     this.syncHistoryState()
+    this.store.setDocumentTitle(this.doc.title)
     this.notifyListeners('contentChange', this.doc)
   }
 
@@ -954,6 +955,7 @@ export class Editor {
     if (!doc.header) doc.header = []
     if (!doc.footer) doc.footer = []
     this.doc = doc
+    this.store.setDocumentTitle(doc.title)
     const loaded = loadDocumentFromObject(doc, { extraNodes: nodes })
     this.pool = loaded.pool
     // 优先级: 显式 stores (外部模板路径) > 加载器从 doc 顶层字段读回 (引擎序列化格式, 契约 §12.1)

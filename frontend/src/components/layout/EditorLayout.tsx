@@ -15,8 +15,6 @@ import type { EditorMode } from '@/engine'
 
 interface EditorLayoutProps {
   children: ReactNode
-  documentTitle: string
-  onTitleChange?: (title: string) => void
   onSave?: () => void
   onImportDocument?: () => void
   onDocumentProperties?: () => void
@@ -55,8 +53,6 @@ interface EditorLayoutProps {
 
 export function EditorLayout({
   children,
-  documentTitle,
-  onTitleChange,
   onSave,
   onImportDocument,
   onDocumentProperties,
@@ -93,8 +89,6 @@ export function EditorLayout({
       {/* 顶部导航栏 — 阅读模式下隐藏 */}
       {!readingMode && (
       <HeaderBar
-        documentTitle={documentTitle}
-        onTitleChange={onTitleChange}
         onSave={onSave}
         onImportDocument={onImportDocument}
         onDocumentProperties={onDocumentProperties}

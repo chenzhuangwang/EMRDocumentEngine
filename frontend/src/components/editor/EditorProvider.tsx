@@ -24,6 +24,7 @@ export const EditorContext = createContext<EditorContextValue | null>(null)
 /** store 尚未就绪时的默认快照 (供 useEditorStoreSnapshot 首帧返回稳定值) */
 const DEFAULT_STORE_STATE: EditorStoreState = {
   document: null,
+  documentTitle: '',
   runtime: createDefaultRuntimeState(),
   isDirty: false,
   saveStatus: 'saved',

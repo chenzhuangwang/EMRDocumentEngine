@@ -45,7 +45,6 @@ function getListMarker(list: ListStyle, orderNum?: number): string {
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>()
   const containerRef = useRef<HTMLDivElement>(null)
-  const [documentTitle, setDocumentTitle] = useState('未命名文档')
   const [loadedDoc, setLoadedDoc] = useState<unknown>(undefined)
   const [loading, setLoading] = useState(false)
   const isNew = !id || id === 'new'
@@ -57,7 +56,6 @@ export default function EditorPage() {
     documentApi.getById(id!).then(res => {
       const detail = res.data.data
       if (detail) {
-        setDocumentTitle(detail.title)
         try { setLoadedDoc(JSON.parse(detail.content)) } catch { /* 忽略解析错误 */ }
       }
     }).catch(err => {
@@ -73,8 +71,6 @@ export default function EditorPage() {
     <EditorProvider containerRef={containerRef} document={loadedDoc as import('@/engine').DocumentTree | undefined}>
       <EditorPageInner
         containerRef={containerRef}
-        documentTitle={documentTitle}
-        onTitleChange={setDocumentTitle}
         isNew={isNew}
         docId={id}
       />
@@ -83,11 +79,9 @@ export default function EditorPage() {
 }
 
 function EditorPageInner({
-  containerRef, documentTitle, onTitleChange, isNew, docId,
+  containerRef, isNew, docId,
 }: {
   containerRef: React.RefObject<HTMLDivElement>
-  documentTitle: string
-  onTitleChange: (t: string) => void
   isNew: boolean
   docId?: string
 }) {
@@ -441,12 +435,12 @@ function EditorPageInner({
       // 序列化含节点 payload 的完整 JSON 字符串 (后端 content 为 String 字段)
       const content = editor.getSerializedDocument()
       if (isNew) {
-        const res = await documentApi.create({ title: documentTitle, content })
+        const res = await documentApi.create({ title: editor.getDocumentTitle(), content })
         const newId = res.data.data?.id
         if (newId) navigate(`/editor/${newId}`, { replace: true })
         console.debug('[EditorPage] created:', newId)
       } else if (docId) {
-        await documentApi.update(docId, { title: documentTitle, content })
+        await documentApi.update(docId, { title: editor.getDocumentTitle(), content })
         console.debug('[EditorPage] updated:', docId)
       }
       store.setSaveStatus('saved')
@@ -455,7 +449,7 @@ function EditorPageInner({
       console.error('保存失败:', err)
       store.setSaveStatus('error')
     }
-  }, [documentTitle, isNew, docId, editorRef])
+  }, [isNew, docId, editorRef])
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -782,12 +776,11 @@ function EditorPageInner({
       if (detail) {
         const doc = JSON.parse(detail.content)
         ed.setDocument(doc)
-        onTitleChange(detail.title || '未命名文档')
       }
     } catch (err) {
       console.error('加载模板失败:', err)
     }
-  }, [editorRef, onTitleChange])
+  }, [editorRef])
 
   // 从后端加载模板列表
   useEffect(() => {
@@ -803,8 +796,6 @@ function EditorPageInner({
       readingMode={readingMode}
       mode={editorMode}
       onModeChange={handleEditorModeChange}
-      documentTitle={documentTitle}
-      onTitleChange={onTitleChange}
       onSave={handleSave}
       onImportDocument={() => docFileInputRef.current?.click()}
       onDocumentProperties={() => setDocumentPropertiesOpen(true)}
