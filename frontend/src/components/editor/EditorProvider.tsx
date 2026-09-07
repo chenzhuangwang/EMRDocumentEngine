@@ -10,7 +10,7 @@ import { createDomEditorHost } from '@/platform/dom'
 // 构造无 DOM 副作用, 模块加载时安全创建; surface 在 Editor 创建前 mount 到容器。
 const domHost = createDomEditorHost()
 
-interface EditorContextValue {
+export interface EditorContextValue {
   editorRef: React.MutableRefObject<Editor | null>
   /** Editor 是否已创建 (editorRef.current 非 null)。子组件 mount effect 依赖它,
    *  避免父级 useEffect 晚于子级 effect 执行导致的 editorRef.current 恒为 null。 */
@@ -19,7 +19,7 @@ interface EditorContextValue {
   store: EditorStore | null
 }
 
-const EditorContext = createContext<EditorContextValue | null>(null)
+export const EditorContext = createContext<EditorContextValue | null>(null)
 
 /** store 尚未就绪时的默认快照 (供 useEditorStoreSnapshot 首帧返回稳定值) */
 const DEFAULT_STORE_STATE: EditorStoreState = {
