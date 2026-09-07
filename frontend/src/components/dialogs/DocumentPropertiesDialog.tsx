@@ -121,11 +121,12 @@ export function DocumentPropertiesDialog({
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/30 z-50" />
         <Dialog.Content
-          className="fixed top-1/4 left-1/2 -translate-x-1/2 z-50
-                     w-[400px] bg-white rounded-lg shadow-xl border border-gray-200"
+          className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50
+                     flex max-h-[85vh] w-[400px] flex-col overflow-hidden
+                     bg-white rounded-lg shadow-xl border border-gray-200"
         >
           {/* 头部 */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+          <div className="flex flex-shrink-0 items-center justify-between px-5 py-3 border-b border-gray-100">
             <div className="flex items-center gap-2">
               <FileText size={16} className="text-gray-500" />
               <Dialog.Title className="text-sm font-medium text-gray-800">文档属性</Dialog.Title>
@@ -135,8 +136,8 @@ export function DocumentPropertiesDialog({
             </button>
           </div>
 
-          {/* 表单 */}
-          <div className="px-5 py-4 space-y-3">
+          {/* 表单 (可滚动, 超出时内部滚动, 不顶出 footer) */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
             {/* 标题 (DocumentTree.title, 可编辑) */}
             <div>
               <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
@@ -204,7 +205,7 @@ export function DocumentPropertiesDialog({
           </div>
 
           {/* 底部 */}
-          <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+          <div className="flex flex-shrink-0 justify-end gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
             <button
               onClick={requestClose}
               className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800"

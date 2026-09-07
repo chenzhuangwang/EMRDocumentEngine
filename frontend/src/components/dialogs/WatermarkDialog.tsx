@@ -41,10 +41,11 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply }: Water
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/30 z-50" />
         <Dialog.Content
-          className="fixed top-1/4 left-1/2 -translate-x-1/2 z-50
-                     w-[380px] bg-white rounded-lg shadow-xl border border-gray-200"
+          className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50
+                     flex max-h-[85vh] w-[380px] flex-col overflow-hidden
+                     bg-white rounded-lg shadow-xl border border-gray-200"
         >
-          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+          <div className="flex flex-shrink-0 items-center justify-between px-5 py-3 border-b border-gray-100">
             <div className="flex items-center gap-2">
               <Type size={16} className="text-gray-500" />
               <Dialog.Title className="text-sm font-medium text-gray-800">水印设置</Dialog.Title>
@@ -54,7 +55,7 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply }: Water
             </button>
           </div>
 
-          <div className="px-5 py-4 space-y-3">
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
             {/* 水印文字 */}
             <Field label="水印文字" icon={<Type size={12} />}>
               <input
@@ -122,7 +123,7 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply }: Water
             </Field>
           </div>
 
-          <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+          <div className="flex flex-shrink-0 justify-end gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
             <button onClick={onClose} className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800">取消</button>
             <button
               onClick={() => { onApply?.(config); onClose() }}

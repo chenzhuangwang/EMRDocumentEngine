@@ -55,11 +55,12 @@ export function PrintDialog({
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/30 z-50" />
         <Dialog.Content
-          className="fixed top-1/4 left-1/2 -translate-x-1/2 z-50
-                     w-[440px] bg-white rounded-lg shadow-xl border border-gray-200"
+          className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50
+                     flex max-h-[85vh] w-[440px] flex-col overflow-hidden
+                     bg-white rounded-lg shadow-xl border border-gray-200"
         >
           {/* 标题栏 */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <div className="flex flex-shrink-0 items-center justify-between px-4 py-3 border-b border-gray-100">
             <Dialog.Title className="text-sm font-semibold text-gray-800 flex items-center gap-2">
               <Printer size={16} className="text-gray-400" />
               打印
@@ -69,7 +70,7 @@ export function PrintDialog({
             </button>
           </div>
 
-          <div className="p-4 space-y-5">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-5">
             {/* 打印机 */}
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-gray-500">打印机</label>
@@ -199,7 +200,7 @@ export function PrintDialog({
           </div>
 
           {/* 底部按钮 */}
-          <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+          <div className="flex flex-shrink-0 items-center justify-end gap-2 px-4 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
             <button
               className="px-4 py-1.5 text-xs text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
               onClick={onClose}
