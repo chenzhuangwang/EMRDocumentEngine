@@ -1605,8 +1605,11 @@ VR-4.  controlType defines widget interaction form only. (MUST)
 VR-5.  dataType defines value semantics. (MUST)
 VR-6.  enums defines candidate values and multi-value semantics. (MUST)
 VR-7.  dictionary is an external dictionary reference and MUST NOT be
-       implicitly expanded without a canonical dictionary provider.
-       (MUST)
+       implicitly expanded without a canonical DictionaryProvider.
+       (LANDED — a synchronous DictionaryProvider/DictionaryStore resolves
+       dictionary → candidates at the command boundary; a control whose
+       candidates resolve is enum-backed (VR-9), unresolved stays free
+       text. §12.6.4)
 VR-8.  TemplateDefinition.editable === false OR ElementMeta.readonly
        === true MUST reject runtime value writes. (MUST — generalizes
        the §12.1 editable guard)
@@ -1651,8 +1654,11 @@ Field participation (four layers — each field belongs to exactly one):
                         value legality.
          minRows      — textarea height (layout); deferred.
          dictionary   — external candidate-source REFERENCE (VR-7);
-                        preserved verbatim, never a validation provider
-                        until a canonical DictionaryProvider exists.
+                        preserved verbatim in ElementFormat; resolved
+                        candidates are injected at the command boundary
+                        via DictionaryProvider (§12.6.4), runtime-only
+                        (not serialized). searchable / exclusive /
+                        minRows remain deferred.
          searchable   — dropdown lookup UX; not value legality.
          exclusive    — imported / preserved / displayed; runtime
                         semantics unknown, do not guess.
@@ -1695,6 +1701,11 @@ independent (§27–§29), and lives in the document domain
                                              // (undefined = clear)
       element: ElementMeta,                  // semantic definition
       permissions?: ControlValuePermissions, // layer B (write permission)
+      dictionaryCandidates?: readonly ElementEnumOption[] | undefined,
+                                             // layer D resolved candidates
+                                             // (VR-7), injected by the
+                                             // command layer; undefined =
+                                             // dictionary not resolved
     ): ControlValueValidationResult
 
     permissions is NARROWED to the single field value validation
@@ -1736,6 +1747,28 @@ independent (§27–§29), and lives in the document domain
     value routes through SetControlValueCommand (both forward and undo
     restore), so VR-3 holds — every SmartTextNode.value mutation goes
     through the single validated path.
+
+------------------------------------------------------------
+12.6.4 DictionaryProvider (design — LANDED)
+------------------------------------------------------------
+
+    dictionary is an EXTERNAL candidate-source reference (VR-7). The
+    engine does NOT fetch it; candidates are pre-resolved by the
+    platform/UI boundary (async, like FontHost.loadFont) and injected
+    as a synchronous provider. The command layer resolves
+    element.format.dictionary → candidates and passes them to
+    validateControlValue as the 4th arg (dictionaryCandidates).
+
+        interface DictionaryProvider {
+          resolve(dictionaryId: string): readonly ElementEnumOption[] | undefined
+        }
+        class DictionaryStore implements DictionaryProvider { /* Map */ }
+
+    resolve → undefined means "not loaded" → the control falls back to
+    free text (no VR-9). Resolved candidates make it enum-backed:
+    single-select string with strict membership. Inline enums take
+    precedence over dictionary when both are present. Candidates are
+    runtime-only and NOT serialized; the reference persists verbatim.
 
 ------------------------------------------------------------
 12.4 Watermark ownership boundary

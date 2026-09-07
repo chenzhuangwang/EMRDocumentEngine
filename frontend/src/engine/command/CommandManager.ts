@@ -18,6 +18,7 @@ import type { EventBus } from '../interaction/EventBus'
 import type { DocumentTree } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import type { TemplateDefinitionStore } from '../template/TemplateDefinition'
+import type { DictionaryProvider } from '../document/control/Dictionary'
 import { DirtyTracker } from '../layout/incremental/DirtyTracker'
 
 export class CommandManager {
@@ -27,6 +28,7 @@ export class CommandManager {
   private getDocument: () => DocumentTree
   private getPool: () => NodePool
   private getTemplateDefinitions: () => TemplateDefinitionStore | undefined
+  private getDictionaries: () => DictionaryProvider | undefined
   /** 事务栈 — beginMacro/endMacro 间收集的子命令 (RULE 11) */
   private macroStack: ICommand[][] = []
 
@@ -35,11 +37,13 @@ export class CommandManager {
     getDocument: () => DocumentTree,
     getPool: () => NodePool,
     getTemplateDefinitions: () => TemplateDefinitionStore | undefined = () => undefined,
+    getDictionaries: () => DictionaryProvider | undefined = () => undefined,
   ) {
     this.eventBus = eventBus
     this.getDocument = getDocument
     this.getPool = getPool
     this.getTemplateDefinitions = getTemplateDefinitions
+    this.getDictionaries = getDictionaries
     this.undoStack = new CommandUndoRedoStack(100)
     this.dirtyTracker = new DirtyTracker()
   }
@@ -50,6 +54,7 @@ export class CommandManager {
       doc: this.getDocument(),
       pool: this.getPool(),
       templateDefinitions: this.getTemplateDefinitions(),
+      dictionaries: this.getDictionaries(),
     }
   }
 

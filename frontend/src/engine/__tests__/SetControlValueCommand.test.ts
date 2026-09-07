@@ -13,6 +13,8 @@ import {
   createDocument, createParagraph, createSmartTextNode,
 } from '../document/factory/ElementFormatter'
 import { TemplateDefinitionStore } from '../template/TemplateDefinition'
+import { DictionaryStore } from '../document/control/Dictionary'
+import type { DictionaryProvider } from '../document/control/Dictionary'
 import type {
   BaseNode, ElementMeta, ElementFormat, SmartTextNode, ControlValue,
 } from '../document/core/DocumentModel'
@@ -51,8 +53,9 @@ function run(
   defs: TemplateDefinitionStore | undefined,
   nodeId: string,
   next: ControlValue | undefined,
+  dictionaries?: DictionaryProvider,
 ) {
-  const ctx: CommandContext = { mode: 'local', doc, pool, templateDefinitions: defs }
+  const ctx: CommandContext = { mode: 'local', doc, pool, templateDefinitions: defs, dictionaries }
   const cmd = new SetControlValueCommand('c1', Date.now(), 'u', nodeId, next)
   const patch = cmd.forward(ctx)
   return { cmd, ctx, patch }
@@ -119,6 +122,55 @@ describe('SetControlValueCommand — 写锁 / 拒绝 (VR-8)', () => {
   it('非 smarttext 节点 → 拒绝', () => {
     const { doc, pool, defs } = makeDoc(element({ dataType: 'S1' }), undefined)
     expect(run(doc, pool, defs, 'nonexistent', 'x').patch).toBeNull()
+  })
+})
+
+describe('SetControlValueCommand — 外部字典 (VR-7)', () => {
+  it('解析出候选 → 单选 string, 候选内接受', () => {
+    const el = element({ dataType: 'S1', dictionary: 'dict-1' })
+    const { doc, pool, defs, stId } = makeDoc(el, undefined)
+    const dicts = new DictionaryStore()
+    dicts.set('dict-1', [{ name: 'a', value: 'a' }, { name: 'b', value: 'b' }])
+    const { patch } = run(doc, pool, defs, stId, 'a', dicts)
+    expect(patch).not.toBeNull()
+    expect(valueOf(pool, stId)).toBe('a')
+  })
+
+  it('解析出候选 → 越界拒绝 (VR-9)', () => {
+    const el = element({ dataType: 'S1', dictionary: 'dict-1' })
+    const { doc, pool, defs, stId } = makeDoc(el, undefined)
+    const dicts = new DictionaryStore()
+    dicts.set('dict-1', [{ name: 'a', value: 'a' }])
+    const { patch } = run(doc, pool, defs, stId, 'z', dicts)
+    expect(patch).toBeNull()
+    expect(valueOf(pool, stId)).toBeUndefined()
+  })
+
+  it('provider 缺失 → 自由文本接受任意 string', () => {
+    const el = element({ dataType: 'S1', dictionary: 'dict-1' })
+    const { doc, pool, defs, stId } = makeDoc(el, undefined)
+    expect(run(doc, pool, defs, stId, '任意自由文本').patch).not.toBeNull()
+    expect(valueOf(pool, stId)).toBe('任意自由文本')
+  })
+
+  it('resolve 返回 undefined → 自由文本接受任意 string', () => {
+    const el = element({ dataType: 'S1', dictionary: 'dict-1' })
+    const { doc, pool, defs, stId } = makeDoc(el, undefined)
+    const dicts = new DictionaryStore() // 空 store: resolve('dict-1') === undefined
+    expect(run(doc, pool, defs, stId, '任意自由文本', dicts).patch).not.toBeNull()
+    expect(valueOf(pool, stId)).toBe('任意自由文本')
+  })
+
+  it('inline enums 优先于 dictionary', () => {
+    const el = element({ dataType: 'S1', dictionary: 'dict-1', enums: { data: [{ name: 'x', value: 'x' }] } })
+    const { doc, pool, defs, stId } = makeDoc(el, undefined)
+    const dicts = new DictionaryStore()
+    dicts.set('dict-1', [{ name: 'a', value: 'a' }])
+    // inline enums 只有 'x'; 候选内接受
+    expect(run(doc, pool, defs, stId, 'x', dicts).patch).not.toBeNull()
+    expect(valueOf(pool, stId)).toBe('x')
+    // 字典候选 'a' 不在 inline enums → 拒绝
+    expect(run(doc, pool, defs, stId, 'a', dicts).patch).toBeNull()
   })
 })
 

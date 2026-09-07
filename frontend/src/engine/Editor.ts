@@ -64,6 +64,7 @@ import { UpdateDocumentTitleCommand } from './command/commands/UpdateDocumentTit
 import { TemplateDefinitionStore } from './template/TemplateDefinition'
 import type { TemplateDefinition } from './template/TemplateDefinition'
 import type { PresentationStyleStore } from './render/presentation/PresentationStyle'
+import type { DictionaryProvider } from './document/control/Dictionary'
 
 /**
  * 比较两份 DocumentMetadata 是否语义相等 (键序无关; keywords 数组有序)。
@@ -119,6 +120,7 @@ export class Editor {
   // 模板设计期属性 (契约 §12.1) + 表现层样式 (契约 §2.2) — per-editor 实例状态 (§7.6)
   private templateDefinitions: TemplateDefinitionStore | null = null
   private presentationStyles: PresentationStyleStore | null = null
+  private dictionaries: DictionaryProvider | null = null
   private _clickToFocus: (e: MouseEvent) => void
   private _onWindowFocus: () => void
   private _onVisibilityChange: () => void
@@ -171,6 +173,7 @@ export class Editor {
       () => this.doc,
       () => this.pool,
       () => this.templateDefinitions ?? undefined,
+      () => this.dictionaries ?? undefined,
     )
 
     // 状态变更 → 仅更新 Store, 不渲染
@@ -949,7 +952,7 @@ export class Editor {
   setDocument(
     doc: DocumentTree,
     nodes?: Map<string, BaseNode>,
-    stores?: { templateDefinitions?: TemplateDefinitionStore; presentationStyles?: PresentationStyleStore },
+    stores?: { templateDefinitions?: TemplateDefinitionStore; presentationStyles?: PresentationStyleStore; dictionaries?: DictionaryProvider },
   ): void {
     // 确保 header/footer 字段存在 (兼容旧版文档数据)
     if (!doc.header) doc.header = []
@@ -961,6 +964,7 @@ export class Editor {
     // 优先级: 显式 stores (外部模板路径) > 加载器从 doc 顶层字段读回 (引擎序列化格式, 契约 §12.1)
     this.templateDefinitions = stores?.templateDefinitions ?? loaded.templateDefinitions ?? null
     this.presentationStyles = stores?.presentationStyles ?? loaded.presentationStyles ?? null
+    this.dictionaries = stores?.dictionaries ?? null
     this.draw.setDocument(doc, this.pool, this.presentationStyles, this.templateDefinitions)
     this.draw.recomputeLayout(this.pool)
 

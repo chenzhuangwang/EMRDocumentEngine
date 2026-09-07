@@ -57,6 +57,7 @@ export function validateControlValue(
   nextValue: unknown,
   element: ElementMeta,
   permissions?: ControlValuePermissions,
+  dictionaryCandidates?: readonly ElementEnumOption[] | undefined,
 ): ControlValueValidationResult {
   // 1. 写锁 (VR-8): 只读控件拒绝任何写入, 含清空
   if (permissions?.editable === false || element.readonly === true) {
@@ -70,10 +71,18 @@ export function validateControlValue(
   const dataType = format?.dataType
   const enums = format?.enums
 
-  // 3. 派生期望类型 (VR-5/VR-6): 枚举控件 iff enums 存在 (data 空/缺失仍是枚举控件)
+  // 3. 派生期望类型 + 候选来源 (VR-5/VR-6/VR-7): 枚举控件 iff inline enums
+  //    存在 OR 已解析字典候选存在; inline 优先。字典控件无 multiple 标志
+  //    → 单选 string; editable 标志缺省 → 严格成员 (VR-9)。
+  const candidates: readonly ElementEnumOption[] | undefined =
+    enums !== undefined ? enums.data : dictionaryCandidates
+  const isEnum = enums !== undefined || dictionaryCandidates !== undefined
+  const enumMultiple = enums?.multiple === true
+  const enumEditable = enums?.editable
+
   let expected: 'number' | 'string' | 'string[]'
-  if (enums !== undefined) {
-    expected = enums.multiple === true ? 'string[]' : 'string'
+  if (isEnum) {
+    expected = enumMultiple ? 'string[]' : 'string'
   } else {
     expected = dataType === 'N' ? 'number' : 'string'
   }
@@ -96,11 +105,11 @@ export function validateControlValue(
     }
     const arr = nextValue as string[]
     // 5. 枚举成员 (VR-9)
-    if (enums !== undefined && enums.editable !== true && !allInCandidates(arr, enums.data)) {
+    if (isEnum && enumEditable !== true && !allInCandidates(arr, candidates)) {
       return { ok: false, reason: 'enum_value_not_allowed' }
     }
-    // 7. checkbox 顺序归一 (VR-12): 按 enums.data 声明顺序
-    return { ok: true, value: enums?.data && enums.data.length > 0 ? sortByDeclaration(arr, enums.data) : arr }
+    // 7. checkbox 顺序归一 (VR-12): 按候选声明顺序
+    return { ok: true, value: candidates && candidates.length > 0 ? sortByDeclaration(arr, candidates) : arr }
   }
 
   // expected === 'string'
@@ -108,7 +117,7 @@ export function validateControlValue(
     return { ok: false, reason: 'type_mismatch' }
   }
   // 5. 枚举成员 (VR-9)
-  if (enums !== undefined && enums.editable !== true && !inCandidates(nextValue, enums.data)) {
+  if (isEnum && enumEditable !== true && !inCandidates(nextValue, candidates)) {
     return { ok: false, reason: 'enum_value_not_allowed' }
   }
   // 6a. 日期格式 (D)

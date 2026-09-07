@@ -127,6 +127,8 @@ export type {
   ControlValueRejectReason,
   ControlValueValidationResult,
 } from './document/control/ControlValue'
+export { DictionaryStore } from './document/control/Dictionary'
+export type { DictionaryProvider } from './document/control/Dictionary'
 export { SetControlValueCommand } from './command/commands/SetControlValueCommand'
 
 // ---- R30+: Particles ----

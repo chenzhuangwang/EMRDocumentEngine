@@ -60,7 +60,13 @@ export class SetControlValueCommand implements ICommand {
       editable: ctx.templateDefinitions?.get(this.nodeId)?.editable,
     }
 
-    const result = validateControlValue(this.nextValue, node.element, permissions)
+    // VR-7: 外部字典引用 → 候选 (同步解析; 未加载 = 不展开 = 自由文本)
+    const dictionaryId = node.element.format?.dictionary
+    const dictionaryCandidates = dictionaryId
+      ? ctx.dictionaries?.resolve(dictionaryId)
+      : undefined
+
+    const result = validateControlValue(this.nextValue, node.element, permissions, dictionaryCandidates)
     if (!result.ok) return null // 非法值: 无突变, 不入 undo 栈
 
     this._oldValue = node.value
