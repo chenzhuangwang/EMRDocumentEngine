@@ -188,6 +188,9 @@ Concretely:
     .value. A missing/empty .value means "not filled"; readers
     render .value when present, otherwise .text.
 
+    The canonical value TYPE and its empty state (undefined, not '')
+    are formalized in §12.6 (Runtime Control Value Contract).
+
 ------------------------------------------------------------
 2.2 Semantic style vs presentation style
 ------------------------------------------------------------
@@ -1229,7 +1232,8 @@ Concretely:
     time (not the renderer). A smarttext whose TemplateDefinition
     .editable === false does not accept user input: ReplaceTextCommand
     MUST skip it, never overwriting its value (a read-only control
-    stays read-only through find & replace).
+    stays read-only through find & replace). editable === false also
+    locks runtime value writes (§12.6 VR-8), not just find & replace.
 
     single is consumed by the COMMAND layer at paste/insert time
     (not the renderer). A single-valued data element — identified
@@ -1535,6 +1539,202 @@ Home: the command lives in engine/command/commands/. The UI
 (design-mode control properties panel) reads getControlDefinition,
 edits the full definition, and writes setControlDefinition; it never
 mutates the store directly.
+
+------------------------------------------------------------
+12.6 Runtime Control Value Contract
+------------------------------------------------------------
+
+This section is the P3 contract baseline for RUNTIME CONTROL VALUE:
+what a SmartTextNode.value may be, how a candidate value is validated,
+and the single mutation path that may write it. It extends §2.1
+(definition vs value) and §12.1 (TemplateDefinition.editable /
+controlType / enums). Rules marked TARGET bind the P3 implementation
+and do not require a refactor before that phase lands (see STATUS,
+top of file).
+
+------------------------------------------------------------
+12.6.1 Canonical value type
+------------------------------------------------------------
+
+    type ControlValue = string | number | string[]
+
+    SmartTextNode.value?: ControlValue
+
+The canonical empty / unfilled state is the ABSENCE of the field
+(value === undefined), NOT '' and NOT []. Empty string and empty
+array are transient INPUT representations normalized to undefined at
+the value boundary (§12.6.3); they MUST NOT be persisted as the empty
+state. (Widening SmartTextNode.value from `string` to `ControlValue` is
+LANDED with the P3 command. The importer preserves string / finite
+number / string[] runtime values and normalizes empty to undefined,
+§12.2.)
+
+Value-type mapping (canonical, MUST):
+
+    S1 / S2 / S3            →  string            single / multi / long text
+    N                       →  number            numeric
+    D                       →  string "YYYY-MM-DD"
+                              Canonical DATE STRING, not a Date object
+                              and not ISO datetime. The importer's DT→D
+                              merge already folds datetime into D, so
+                              storing ISO datetime would smuggle the time
+                              component back. A future datetime need is a
+                              NEW dataType, not this one. This is a
+                              canonical rule adopted THIS phase — it is an
+                              architecture judgment, not a pre-existing
+                              business spec.
+    enums.multiple === true →  string[]          checkbox / multi-select
+    enums.multiple !== true →  string            select / radio
+
+------------------------------------------------------------
+12.6.2 The fifteen rules
+------------------------------------------------------------
+
+These are the frozen P3 baseline (VR-1 … VR-15). VR-8 and VR-10 …
+VR-13 are the write-boundary behaviors the P3 command and validator
+must enforce.
+
+VR-1.  SmartTextNode.value is the canonical runtime value. (MUST)
+VR-2.  undefined is the canonical empty/unfilled state. (MUST)
+VR-3.  Runtime value mutations MUST go through
+       SetControlValueCommand. (LANDED for control writes; the legacy
+       ReplaceTextCommand find-replace writer is the remaining TARGET
+       to fold into this single path, §12.6.3)
+VR-4.  controlType defines widget interaction form only. (MUST)
+VR-5.  dataType defines value semantics. (MUST)
+VR-6.  enums defines candidate values and multi-value semantics. (MUST)
+VR-7.  dictionary is an external dictionary reference and MUST NOT be
+       implicitly expanded without a canonical dictionary provider.
+       (MUST)
+VR-8.  TemplateDefinition.editable === false OR ElementMeta.readonly
+       === true MUST reject runtime value writes. (MUST — generalizes
+       the §12.1 editable guard)
+VR-9.  ElementEnums.editable controls whether enum controls may accept
+       values outside the declared candidate set. (MUST)
+VR-10. Number scale is a validation constraint; values exceeding the
+       allowed precision MUST NOT be silently rounded. (MUST)
+VR-11. String minLength/maxLength are validation constraints; values
+       MUST NOT be silently truncated. (MUST)
+VR-12. Checkbox values are string[] and MUST be normalized into the
+       declaration order of enums.data. (MUST)
+VR-13. Empty checkbox selection is represented by undefined. (MUST)
+VR-14. SmartText remains an atomic document node; runtime interaction
+       MUST NOT turn it into a TextNode or place a text caret inside
+       it. (MUST)
+VR-15. controlType MUST NOT be inferred from dataType or enums. (MUST)
+
+Field participation (four layers — each field belongs to exactly one):
+
+    A. P3 Value Type Validation  (inside validateControlValue, §12.6.3):
+         dataType, enums, enums.multiple, enums.editable,
+         scale, minLength, maxLength
+       These decide "is this value SHAPE legal". (required is NOT here.)
+
+    B. P3 Write Permission       (inside SetControlValueCommand):
+         TemplateDefinition.editable, ElementMeta.readonly
+       These decide "may this control be written at all" (VR-8). They
+       are NOT value-legality and are NOT the same as layer A.
+
+    C. Later Completeness / Business Validation  (NOT in
+       SetControlValueCommand, NOT in validateControlValue):
+         ElementMeta.required
+       required does NOT decide value-type legality; it decides "is an
+       EMPTY value acceptable at completion time". It belongs to a
+       SEPARATE completeness validator (e.g. isControlValueComplete),
+       run at save / submit / QC / pre-print — not at input time. Do
+       NOT fold required into the per-write validator.
+
+    D. Deferred Presentation / Lookup / Advanced Semantics  (no value
+       semantics this phase):
+         showType     — display format (render-only); does not decide
+                        value legality.
+         minRows      — textarea height (layout); deferred.
+         dictionary   — external candidate-source REFERENCE (VR-7);
+                        preserved verbatim, never a validation provider
+                        until a canonical DictionaryProvider exists.
+         searchable   — dropdown lookup UX; not value legality.
+         exclusive    — imported / preserved / displayed; runtime
+                        semantics unknown, do not guess.
+
+    SetControlValueCommand owns ONLY layers A and B. It answers "is
+    this a legal runtime value, and may it be written?" — nothing else.
+    It MUST NOT grow required / dictionary-resolution / business / QC
+    checks (layer C) or presentation concerns (layer D).
+
+------------------------------------------------------------
+12.6.3 validateControlValue (design — LANDED)
+------------------------------------------------------------
+
+The single value boundary. It validates AND normalizes a candidate
+value against an ElementMeta and an injected definition flag. It is
+PURE (no pool access, no host, no React), side-effect free, host
+independent (§27–§29), and lives in the document domain
+(engine/document/control/).
+
+    type ControlValueValidationResult =
+      | { ok: true;  value: ControlValue | undefined }  // undefined = clear
+      | { ok: false; reason: ControlValueRejectReason }
+
+    type ControlValueRejectReason =
+      | 'write_locked'                // VR-8
+      | 'type_mismatch'               // value shape ≠ dataType/enums
+      | 'enum_value_not_allowed'      // VR-9 (not a declared candidate)
+      | 'number_scale_exceeded'       // VR-10
+      | 'string_length_out_of_range'  // VR-11
+      | 'date_format_invalid'         // D not matching YYYY-MM-DD
+
+    interface ControlValuePermissions {
+      editable?: boolean   // TemplateDefinition.editable, injected by
+                           // the command layer — write permission only
+    }
+
+    validateControlValue(
+      nextValue: unknown,                    // arbitrary input; validated
+                                             // and coerced to ControlValue
+                                             // (undefined = clear)
+      element: ElementMeta,                  // semantic definition
+      permissions?: ControlValuePermissions, // layer B (write permission)
+    ): ControlValueValidationResult
+
+    permissions is NARROWED to the single field value validation
+    consumes (editable) so the document domain never imports the
+    template feature layer (§12 / §19). The command layer resolves
+    ctx.templateDefinitions.get(nodeId)?.editable and passes it in.
+    The parameter is named ControlValuePermissions — not
+    TemplateDefinition — to signal that it carries WRITE PERMISSION,
+    not the full design-time definition.
+
+    Pipeline (in order):
+    1. write lock (VR-8): permissions.editable === false OR
+       element.readonly === true → reject 'write_locked'.
+    2. normalize empty (VR-2/VR-13): undefined / '' / [] →
+       { ok: true, value: undefined }. undefined is ALWAYS a legal
+       write (clear / unfilled): it is accepted even when enums.data
+       is empty and enums.editable !== true — an empty control must
+       remain clearable. Enum membership (step 5) applies to NON-empty
+       values only.
+    3. derive expected type: enum control iff element.format.enums is
+       PRESENT (empty or absent data[] is still an enum control with
+       no candidates — empty-options/unavailable, not a fallback
+       free-form field). enums.multiple === true → string[], else
+       string. Otherwise dataType: N → number; S1/S2/S3/D → string.
+    4. type check: mismatched shape → reject 'type_mismatch'. A
+       non-finite number (NaN / ±Infinity) is a type mismatch.
+    5. enum membership (VR-9): if enum control and enums.editable !==
+       true, value(s) MUST ∈ enums.data[].value → else reject
+       'enum_value_not_allowed'. Empty data + non-editable therefore
+       rejects every non-empty value. data absent ≡ data: [].
+    6. constraints: N + scale (VR-10); string minLength/maxLength
+       (VR-11); D YYYY-MM-DD format (regex — calendar validity is a
+       separate later concern).
+    7. normalize checkbox order (VR-12); return { ok, normalized }.
+
+    SetControlValueCommand is LANDED and routes through
+    validateControlValue. The legacy ad-hoc value writer inside
+    ReplaceTextCommand (pool.updateNode(nodeId, { value })) remains the
+    TARGET to fold into this single path (VR-3): find-replace of a
+    control's value must eventually route through SetControlValueCommand
+    too.
 
 ------------------------------------------------------------
 12.4 Watermark ownership boundary
