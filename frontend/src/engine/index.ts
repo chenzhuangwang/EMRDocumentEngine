@@ -121,7 +121,7 @@ export {
 } from './document/factory/ElementFormatter'
 
 // ---- Runtime Control Value (契约 §12.6) ----
-export { validateControlValue, isControlValueEmpty } from './document/control/ControlValue'
+export { validateControlValue, isControlValueEmpty, isControlValueComplete } from './document/control/ControlValue'
 export type {
   ControlValuePermissions,
   ControlValueRejectReason,

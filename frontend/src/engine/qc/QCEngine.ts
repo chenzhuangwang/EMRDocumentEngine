@@ -5,9 +5,10 @@
 // 返回 QCResult[] 供 QCResultPanel 消费
 // ============================================================
 
-import type { DocumentTree, ControlValue } from '../document/core/DocumentModel'
+import type { DocumentTree, SmartTextNode } from '../document/core/DocumentModel'
+import { NodeType } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
-import { isControlValueEmpty } from '../document/control/ControlValue'
+import { isControlValueComplete } from '../document/control/ControlValue'
 
 // ---- 类型 ----
 
@@ -190,9 +191,9 @@ export class QCEngine {
       }
       case 'smarttext_required_not_empty': {
         for (const [, node] of pool.nodes) {
-          const n = node as { type?: string; value?: ControlValue; element?: { required?: boolean } }
-          if (n.type === 'smarttext' && n.element?.required && isControlValueEmpty(n.value)) {
-            return false
+          if (node.type === NodeType.SMART_TEXT) {
+            const st = node as SmartTextNode
+            if (!isControlValueComplete(st.value, st.element)) return false
           }
         }
         return true

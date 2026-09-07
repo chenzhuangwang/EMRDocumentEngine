@@ -48,6 +48,21 @@ export function isControlValueEmpty(value: unknown): boolean {
 }
 
 /**
+ * 完整性判据 (契约 §12.6.2 layer C): required 且空 → 不完整。
+ *
+ * required 不决定值类型合法性 (那是 layer A 的职责, §12.6.3), 只回答
+ * 「完成时是否允许为空」。供 QCEngine / save / submit 等完成时点消费,
+ * 不进入逐写校验 (validateControlValue) —— 输入时允许留空, 完成时再判。
+ */
+export function isControlValueComplete(
+  value: unknown,
+  element: ElementMeta,
+): boolean {
+  if (element.required !== true) return true
+  return !isControlValueEmpty(value)
+}
+
+/**
  * 校验并归一化一个候选运行时值 (契约 §12.6.3)。
  *
  * nextValue 为 unknown: 命令边界不可信调用方静态类型, 由本函数做运行时校验。

@@ -6,7 +6,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { validateControlValue } from '../document/control/ControlValue'
+import { validateControlValue, isControlValueComplete } from '../document/control/ControlValue'
 import type { ElementMeta, ElementEnumOption } from '../document/core/DocumentModel'
 
 function element(format: ElementMeta['format'], extra?: Partial<ElementMeta>): ElementMeta {
@@ -146,5 +146,26 @@ describe('validateControlValue — 空候选集合 (data 空/缺失)', () => {
   it('enums 存在但 data 缺失 → 等同空候选', () => {
     const el = element({ dataType: 'S3', enums: {} })
     expect(validateControlValue('x', el)).toEqual({ ok: false, reason: 'enum_value_not_allowed' })
+  })
+})
+
+describe('isControlValueComplete — 完整性 (layer C, required)', () => {
+  it('required 且空 (undefined/""/[]) → 不完整', () => {
+    const el = element({ dataType: 'S1' }, { required: true })
+    expect(isControlValueComplete(undefined, el)).toBe(false)
+    expect(isControlValueComplete('', el)).toBe(false)
+    expect(isControlValueComplete([], el)).toBe(false)
+  })
+
+  it('required 且有值 → 完整 (含数字 0)', () => {
+    const el = element({ dataType: 'S1' }, { required: true })
+    expect(isControlValueComplete('张三', el)).toBe(true)
+    expect(isControlValueComplete(0, el)).toBe(true)
+  })
+
+  it('非 required → 恒完整 (空也完整)', () => {
+    const el = element({ dataType: 'S1' })
+    expect(isControlValueComplete(undefined, el)).toBe(true)
+    expect(isControlValueComplete('', el)).toBe(true)
   })
 })

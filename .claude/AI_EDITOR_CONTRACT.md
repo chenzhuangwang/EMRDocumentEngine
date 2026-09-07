@@ -1644,9 +1644,11 @@ Field participation (four layers — each field belongs to exactly one):
          ElementMeta.required
        required does NOT decide value-type legality; it decides "is an
        EMPTY value acceptable at completion time". It belongs to a
-       SEPARATE completeness validator (e.g. isControlValueComplete),
-       run at save / submit / QC / pre-print — not at input time. Do
-       NOT fold required into the per-write validator.
+       SEPARATE completeness validator (isControlValueComplete —
+       LANDED in document/control, consumed by QCEngine
+       smarttext_required_not_empty), run at save / submit / QC /
+       pre-print — not at input time. Do NOT fold required into the
+       per-write validator.
 
     D. Deferred Presentation / Lookup / Advanced Semantics  (no value
        semantics this phase):
