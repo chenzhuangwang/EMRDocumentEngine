@@ -14,7 +14,7 @@
 // 末尾」(与 Editor 既有约定一致)。
 // ================================================================
 
-import type { TextNode } from '../core/DocumentModel'
+import type { TextNode, DocumentTree } from '../core/DocumentModel'
 import { NodeType } from '../core/DocumentModel'
 import type { NodePool } from '../core/NodePool'
 
@@ -174,4 +174,45 @@ export function collectSelectionSegments(
     }
   }
   return segments
+}
+
+// ================================================================
+// 选区区域 (body / header / footer) 读序助手
+// ================================================================
+
+export type SelectionSection = 'body' | 'header' | 'footer'
+
+/** 段落所属区 (doc.header/doc.footer 成员判定, 其余=body) */
+export function sectionOf(paraId: string, doc: DocumentTree): SelectionSection {
+  if (doc.header?.includes(paraId)) return 'header'
+  if (doc.footer?.includes(paraId)) return 'footer'
+  return 'body'
+}
+
+/**
+ * 选区读序 spine — anchor/focus 必须同区。
+ *   body   → flattenTextContainers(body) (保留 body↔table 线性语义)
+ *   header → doc.header
+ *   footer → doc.footer
+ * 跨区 (body↔header 等) 返回 null。
+ */
+export function selectionSpine(
+  doc: DocumentTree,
+  pool: NodePool,
+  anchorParaId: string,
+  focusParaId: string,
+): { section: SelectionSection; spine: string[] } | null {
+  const aSec = sectionOf(anchorParaId, doc)
+  const fSec = sectionOf(focusParaId, doc)
+  if (aSec !== fSec) return null
+  if (aSec === 'body') return { section: 'body', spine: flattenTextContainers(pool, doc.body.children) }
+  if (aSec === 'header') return { section: 'header', spine: [...(doc.header ?? [])] }
+  return { section: 'footer', spine: [...(doc.footer ?? [])] }
+}
+
+/** 整区段落数组 (Ctrl+A / 需要整区时) */
+export function regionSpine(doc: DocumentTree, pool: NodePool, section: SelectionSection): string[] {
+  if (section === 'header') return [...(doc.header ?? [])]
+  if (section === 'footer') return [...(doc.footer ?? [])]
+  return flattenTextContainers(pool, doc.body.children)
 }

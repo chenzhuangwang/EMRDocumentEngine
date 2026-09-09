@@ -15,7 +15,7 @@ import type { NodePool } from '../document/core/NodePool'
 import { generateCommandId } from './ICommand'
 import { generateId } from '../document/core/DocumentModel'
 import { smartTextDisplayValue } from '../document/factory/ElementFormatter'
-import { flattenTextContainers } from '../document/selection/SelectionCollector'
+import { selectionSpine } from '../document/selection/SelectionCollector'
 import type { ClipboardHost } from '../host/EditorHost'
 
 // ---- 类型 ----
@@ -76,16 +76,17 @@ export class ClipboardManager {
   copy(
     anchorPath: string[], anchorOffset: number,
     focusPath: string[], focusOffset: number,
-    _doc: DocumentTree, pool: NodePool,
+    doc: DocumentTree, pool: NodePool,
   ): void {
     if (anchorPath.length === 0 || focusPath.length === 0) return
 
     const aId = anchorPath[anchorPath.length - 1]
     const fId = focusPath[focusPath.length - 1]
 
-    // 选区段落列表: 展平 body → 阅读顺序 (表格 → cell 段落), body 段落与
-    // cell 段落统一在线性序列中定位, 支撑「全选/拖选覆盖表格」的复制。
-    const siblings = flattenTextContainers(pool, pool.getChildren(pool.rootIds.body))
+    // 选区段落列表: 区域感知读序 (body 展平 / header / footer), 同区才复制。
+    const sp = selectionSpine(doc, pool, aId, fId)
+    if (!sp) return
+    const siblings = sp.spine
 
     const aIdx = siblings.indexOf(aId)
     const fIdx = siblings.indexOf(fId)

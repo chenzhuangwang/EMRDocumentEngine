@@ -35,7 +35,7 @@ import { createBarcodeParticle } from './particles/BarcodeParticle'
 import { particleRegistry } from './particles/ParticleRegistry'
 import { textParticle, separatorParticle, listParticle, fieldParticle } from './particles/ParticleAdapters'
 import { buildCellGrid } from '../document/table/TableOps'
-import { flattenTextContainers } from '../document/selection/SelectionCollector'
+import { flattenTextContainers, sectionOf, selectionSpine } from '../document/selection/SelectionCollector'
 
 interface CaretPos { x: number; y: number; h: number }
 
@@ -640,6 +640,16 @@ export class Draw {
   ): void {
     const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1] || ''
     const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1] || ''
+    if (!this.document) return
+
+    // 区域: 同 header/footer 的选区 → 专用高亮 (每页独立 offset); 跨区拒绝。
+    const aSec = sectionOf(anchorParaId, this.document)
+    const fSec = sectionOf(focusParaId, this.document)
+    if (aSec !== fSec) return
+    if (aSec === 'header' || aSec === 'footer') {
+      this.fillRegionSelection(pool, selection, aSec, pageVerticalGap, ictx)
+      return
+    }
 
     // 展平 body → 阅读顺序 (表格展开为 cell 段落)。cell 段落不在 body.children,
     // 若不展平, body↔table 跨域选区 indexOf=-1 被整体丢弃 (「全选/拖选选不中表格」)。
@@ -785,6 +795,87 @@ export class Draw {
             { font: item.font || 'SimSun', size: item.size || 16, bold: item.bold, italic: item.italic },
           )
         }
+      }
+    }
+  }
+
+  /** 页眉/页脚区域选区高亮 — 逐页遍历 headerItems/footerItems, 每页独立 offset 累加
+   *  (header/footer 每页整区重排、内容相同, 绝不跨页共享 offset)。 */
+  private fillRegionSelection(
+    pool: NodePool,
+    selection: EditorRuntimeState['selection'],
+    section: 'header' | 'footer',
+    pageVerticalGap: number = 0,
+    ictx: CanvasRenderingContext2D,
+  ): void {
+    const doc = this.document!
+    const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1] || ''
+    const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1] || ''
+    const sp = selectionSpine(doc, pool, anchorParaId, focusParaId)
+    if (!sp) return
+    const spine = sp.spine
+    const aIdx = spine.indexOf(anchorParaId)
+    const fIdx = spine.indexOf(focusParaId)
+    if (aIdx < 0 || fIdx < 0) return
+    const lo = Math.min(aIdx, fIdx)
+    const hi = Math.max(aIdx, fIdx)
+    const samePara = lo === hi
+    const anchorOff = selection.anchor.offset
+    const focusOff = selection.focus.offset
+    const selMin = Math.min(anchorOff, focusOff)
+    const selMax = Math.max(anchorOff, focusOff)
+
+    ictx.fillStyle = 'rgba(59, 130, 246, 0.2)'
+    const scrollY = this.coordSystem.transform.scrollY
+
+    for (let i = 0; i < this.pages.length; i++) {
+      const page = this.pages[i]
+      if (!page) continue
+      const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
+      const items = section === 'header' ? page.headerItems : page.footerItems
+      if (!items || items.length === 0) continue
+      const bandTop = section === 'footer' ? (page.height - (page.footerHeight ?? 42)) : 0
+      const paraOffsets = new Map<string, number>() // 每页独立, 防重复副本叠加
+      for (const item of items) {
+        const paraId = this.findItemParagraph(item.nodeId, pool)
+        if (!paraId) continue
+        const pi = spine.indexOf(paraId)
+        if (pi < lo || pi > hi) continue
+        const text = item.text || ''
+        const tLen = text.length
+        const itemStart = paraOffsets.get(paraId) ?? 0
+        const itemEnd = itemStart + tLen
+
+        let include = true
+        if (samePara) {
+          include = itemEnd > selMin && itemStart < selMax
+        } else if (pi === lo) {
+          include = itemEnd > (aIdx === lo ? anchorOff : focusOff)
+        } else if (pi === hi) {
+          include = itemStart < (aIdx === hi ? anchorOff : focusOff)
+        }
+
+        let localStart = 0
+        let localEnd = tLen || 1
+        if (samePara) {
+          localStart = Math.max(0, selMin - itemStart)
+          localEnd = Math.min(tLen, selMax - itemStart)
+        } else if (pi === lo) {
+          localStart = Math.max(0, (aIdx === lo ? anchorOff : focusOff) - itemStart)
+          localEnd = tLen || 1
+        } else if (pi === hi) {
+          localStart = 0
+          localEnd = Math.min(tLen || 1, (aIdx === hi ? anchorOff : focusOff) - itemStart)
+        }
+        paraOffsets.set(paraId, itemEnd)
+        if (!include) continue
+
+        const fontCfg = { font: item.font || 'SimSun', size: item.size || 12, bold: item.bold, italic: item.italic }
+        const dx = cumulativeWidthUpTo(text || '', localStart, fontCfg, this.measurer)
+        const dw = tLen > 0
+          ? cumulativeWidthUpTo(text || '', localEnd, fontCfg, this.measurer) - dx
+          : item.ascent + item.descent
+        ictx.fillRect(item.x + dx, spY + bandTop + item.y, dw, item.ascent + item.descent)
       }
     }
   }

@@ -13,6 +13,7 @@ import { computeOffsetInItems } from '../layout/text/CharWidthHelper'
 import type { TextMeasurer } from '../layout/text/TextMeasurer'
 import { screenToDoc, findPageByDocY, pageCenteringOffset } from '../layout/table/TableCoordUtil'
 import { getCellGridPosition } from '../document/table/TableOps'
+import { resolveParagraphRegion } from '../state/CaretScope'
 import { findControlItemEntryAt, findRuntimeControlHitAt } from './ControlHitTest'
 import type { RuntimeControlHit } from './ControlHitTest'
 import { controlVisualRecipe, controlVisualType } from '../document/control/ControlBox'
@@ -449,6 +450,43 @@ export class MouseHandler {
         }
       }
       return
+    }
+
+    // 页眉/页脚拖选: 锚点在当前编辑区且指针仍在同带内 → 用页眉/页脚命中扩选;
+    // 离开该带一律 return, 不跨 body↔header 混选。
+    if (this.anchorParaPath.length > 1) {
+      const anchorParaId = this.anchorParaPath[this.anchorParaPath.length - 1]
+      const doc = this.editor.getDocument()
+      const reg = resolveParagraphRegion(anchorParaId, doc, this.editor.getPool())
+      if (reg && (reg.type === 'header' || reg.type === 'footer')
+        && this.editor.isHeaderFooterEditActive() && this.editor.getHeaderFooterEditSection() === reg.type) {
+        if (this.detectHeaderFooterRegion(e.clientX, e.clientY) === reg.type) {
+          const hf = this.hitTestHeaderFooter(e.clientX, e.clientY, reg.type)
+          if (hf) {
+            const store = this.editor.getStore()
+            const samePara = this.anchorParaPath.join('.') === hf.paraPath.join('.')
+            if (samePara) {
+              const start = Math.min(this.anchorOffset, hf.offset)
+              const end = Math.max(this.anchorOffset, hf.offset)
+              store.setSelection({
+                anchor: { paragraphPath: [...this.anchorParaPath], offset: start, visible: false },
+                focus: { paragraphPath: [...hf.paraPath], offset: end, visible: false },
+                active: start !== end, granularity: 'character',
+              })
+              store.setCursor({ paragraphPath: [...hf.paraPath], offset: end, visible: true })
+            } else {
+              store.setSelection({
+                anchor: { paragraphPath: [...this.anchorParaPath], offset: this.anchorOffset, visible: false },
+                focus: { paragraphPath: [...hf.paraPath], offset: hf.offset, visible: false },
+                active: true, granularity: 'character',
+              })
+              store.setCursor({ paragraphPath: [...hf.paraPath], offset: hf.offset, visible: true })
+            }
+            this.editor.getDraw().render(this.editor.getPool(), store.state.runtime)
+          }
+        }
+        return
+      }
     }
 
     const result = this.hitTest(e.clientX, e.clientY)

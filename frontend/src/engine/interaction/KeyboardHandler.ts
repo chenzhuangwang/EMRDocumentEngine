@@ -15,7 +15,7 @@ import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand
 import { EnsureBodyParagraphCommand, EnsureCellParagraphCommand } from '../command/commands/StructuralCommands'
 import { generateCommandId } from '../command/ICommand'
 import type { SLIFPage } from '../layout/core/SLIF'
-import { resolveCellPosition, getCaretScope, getAdjacentCell, resolveParagraphRegion } from '../state/CaretScope'
+import { resolveCellPosition, getCaretScope, getAdjacentCell, resolveParagraphRegion, resolveSiblingRange } from '../state/CaretScope'
 import { buildCellGrid } from '../document/table/TableOps'
 import type { TableGrid, GridCell } from '../document/table/TableOps'
 import type { NodePool } from '../document/core/NodePool'
@@ -245,18 +245,10 @@ export class KeyboardHandler {
     if ((aCell && !fCell) || (!aCell && fCell)) return
     if (aCell && fCell && (aCell.tableId !== fCell.tableId || aCell.row !== fCell.row || aCell.col !== fCell.col)) return
 
-    let siblings: readonly string[]
-    if (aCell) {
-      const tableNode = pool.nodes.get(aCell.tableId) as { children?: readonly string[] } | undefined
-      if (!tableNode?.children) return
-      const rowNode = pool.nodes.get(tableNode.children[aCell.row]) as { children?: readonly string[] } | undefined
-      if (!rowNode?.children) return
-      const cellNode = pool.nodes.get(rowNode.children[aCell.col]) as { children?: readonly string[] } | undefined
-      if (!cellNode?.children) return
-      siblings = cellNode.children
-    } else {
-      siblings = doc.body.children
-    }
+    // 区域感知兄弟 (body / header / footer / 同 cell)
+    const range = resolveSiblingRange(doc, pool, aId, fId)
+    if (!range) return
+    const siblings: readonly string[] = range.siblings
 
     const aIdx = siblings.indexOf(aId)
     const fIdx = siblings.indexOf(fId)
@@ -311,7 +303,7 @@ export class KeyboardHandler {
               const rn = pool.nodes.get(tn?.children?.[aCell.row] || '') as { children?: readonly string[] } | undefined
               return (pool.nodes.get(rn?.children?.[aCell.col] || '') as { children?: readonly string[] } | undefined)?.children || siblings
             })())
-          : doc.body.children
+          : siblings
         const nextParaId = currentSiblings[lo + 1]
         if (!nextParaId) break
         const mergePath = [...sel.anchor.paragraphPath.slice(0, -1), nextParaId]

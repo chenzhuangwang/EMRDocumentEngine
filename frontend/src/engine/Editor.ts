@@ -34,7 +34,7 @@ import type { FindOptions, MatchResult } from './FindReplaceEngine'
 import { computeOffsetInItems } from './layout/text/CharWidthHelper'
 import { FontManager } from './layout/text/FontManager'
 import { TextMeasurer } from './layout/text/TextMeasurer'
-import { resolveCellPosition, getCaretScope, resolveParagraphRegion } from './state/CaretScope'
+import { resolveCellPosition, getCaretScope, resolveParagraphRegion, resolveSiblingRange } from './state/CaretScope'
 import type { CellPosition } from './state/CaretScope'
 import { screenToDoc, findPageByDocY, pageCenteringOffset } from './layout/table/TableCoordUtil'
 import { findControlItemAt } from './interaction/ControlHitTest'
@@ -45,7 +45,7 @@ import type { CellRange } from './document/table/TableOps'
 import {
   collectTextNodeIds, collectSelectionSegments,
   paragraphTextLength, findFirstTextNodeInRange,
-  flattenTextContainers,
+  flattenTextContainers, selectionSpine,
 } from './document/selection/SelectionCollector'
 import type { FormatRange } from './document/selection/SelectionCollector'
 import {
@@ -724,8 +724,10 @@ export class Editor {
   private collectSelectionTextNodeIds(selection: SelectionState): string[] {
     const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
     const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
+    const sp = selectionSpine(this.doc, this.pool, anchorParaId, focusParaId)
+    if (!sp) return []
     const segments = collectSelectionSegments(
-      flattenTextContainers(this.pool, this.doc.body.children), anchorParaId, selection.anchor.offset,
+      sp.spine, anchorParaId, selection.anchor.offset,
       focusParaId, selection.focus.offset,
     )
     const nodeIds: string[] = []
@@ -751,9 +753,11 @@ export class Editor {
       return []
     }
 
-    // 跨段: 委托 collectSelectionSegments, 再物化 path (两级) 与 end (段末→实际长度)
+    // 跨段: 区域感知读序 (body 展平 / header / footer), 委托 collectSelectionSegments
+    const sp = selectionSpine(this.doc, this.pool, anchorParaId, focusParaId)
+    if (!sp) return []
     const segments = collectSelectionSegments(
-      flattenTextContainers(this.pool, this.doc.body.children), anchorParaId, selection.anchor.offset,
+      sp.spine, anchorParaId, selection.anchor.offset,
       focusParaId, selection.focus.offset,
     )
     return segments.map((s) => ({
@@ -1765,26 +1769,14 @@ export class Editor {
     const aCell = resolveCellPosition(aId, this.pool)
     const fCell = resolveCellPosition(fId, this.pool)
 
-    // 跨域选区禁止
+    // 跨域选区禁止 / 不同 cell 暂不支持 (resolveSiblingRange 同语义, 保留早期守卫)
     if ((aCell && !fCell) || (!aCell && fCell)) return false
-    // 不同 cell 的选区暂不支持
     if (aCell && fCell && (aCell.tableId !== fCell.tableId || aCell.row !== fCell.row || aCell.col !== fCell.col)) return false
 
-    let siblings: readonly string[]
-
-    if (aCell) {
-      // 同 cell 内选区: 使用 cell.children
-      const tableNode = this.pool.nodes.get(aCell.tableId) as { children?: readonly string[] } | undefined
-      if (!tableNode?.children) return false
-      const rowNode = this.pool.nodes.get(tableNode.children[aCell.row]) as { children?: readonly string[] } | undefined
-      if (!rowNode?.children) return false
-      const cellNode = this.pool.nodes.get(rowNode.children[aCell.col]) as { children?: readonly string[] } | undefined
-      if (!cellNode?.children) return false
-      siblings = cellNode.children
-    } else {
-      // body 内选区
-      siblings = this.doc.body.children
-    }
+    // 区域感知兄弟 (body / header / footer / 同 cell) — resolveSiblingRange
+    const range = resolveSiblingRange(this.doc, this.pool, aId, fId)
+    if (!range) return false
+    const siblings: readonly string[] = range.siblings
 
     const aIdx = siblings.indexOf(aId)
     const fIdx = siblings.indexOf(fId)
@@ -1835,7 +1827,7 @@ export class Editor {
               const rn = this.pool.nodes.get(tn?.children?.[aCell.row] || '') as { children?: readonly string[] } | undefined
               return (this.pool.nodes.get(rn?.children?.[aCell.col] || '') as { children?: readonly string[] } | undefined)?.children || siblings
             })())
-          : this.doc.body.children
+          : siblings
         const nextParaId = currentSiblings[lo + 1]
         if (!nextParaId) break
         const mergePath = [...selection.anchor.paragraphPath.slice(0, -1), nextParaId]
@@ -2177,15 +2169,17 @@ export class Editor {
       const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1]
       const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1]
       if (anchorParaId && focusParaId && anchorParaId !== focusParaId) {
-        const bodyChildren = this.doc.body.children
-        const aIdx = bodyChildren.indexOf(anchorParaId)
-        const fIdx = bodyChildren.indexOf(focusParaId)
-        if (aIdx >= 0 && fIdx >= 0) {
-          const lo = Math.min(aIdx, fIdx)
-          const hi = Math.max(aIdx, fIdx)
-          const ids: string[] = []
-          for (let i = lo; i <= hi; i++) ids.push(bodyChildren[i])
-          return ids
+        const sp = selectionSpine(this.doc, this.pool, anchorParaId, focusParaId)
+        if (sp) {
+          const aIdx = sp.spine.indexOf(anchorParaId)
+          const fIdx = sp.spine.indexOf(focusParaId)
+          if (aIdx >= 0 && fIdx >= 0) {
+            const lo = Math.min(aIdx, fIdx)
+            const hi = Math.max(aIdx, fIdx)
+            const ids: string[] = []
+            for (let i = lo; i <= hi; i++) ids.push(sp.spine[i])
+            return ids
+          }
         }
       }
     }
@@ -2197,7 +2191,14 @@ export class Editor {
 
   /** 全选: 选区覆盖整篇文档所有段落 (含表格 cell 内段落) */
   selectAll(): void {
-    const spine = flattenTextContainers(this.pool, this.doc.body.children)
+    // 页眉/页脚编辑态 → 选整个页眉/页脚区 (WPS 对齐); 否则正文(含表格 cell)
+    const hf = this.store.state.headerFooterEdit
+    let spine: string[]
+    if (hf.active && (hf.section === 'header' || hf.section === 'footer')) {
+      spine = hf.section === 'header' ? [...(this.doc.header ?? [])] : [...(this.doc.footer ?? [])]
+    } else {
+      spine = flattenTextContainers(this.pool, this.doc.body.children)
+    }
     if (spine.length === 0) return
     const firstParaId = spine[0]
     const lastParaId = spine[spine.length - 1]

@@ -12,15 +12,16 @@
 import { describe, it, expect } from 'vitest'
 import { buildNodePool } from '../document/core/NodePool'
 import {
-  createDocument, createParagraph, createTextNode,
+  createDocument, createParagraph, createTextNode, createSmartTextNode,
 } from '../document/factory/ElementFormatter'
-import type { BaseNode, DocumentTree, Paragraph } from '../document/core/DocumentModel'
+import type { BaseNode, DocumentTree, Paragraph, ElementMeta } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import type { CommandContext } from '../command/ICommand'
 import { SplitParagraphCommand } from '../command/commands/SplitParagraphCommand'
 import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand'
 import { InsertNodesCommand } from '../command/commands/InsertNodesCommand'
-import { resolveParagraphRegion } from '../state/CaretScope'
+import { resolveParagraphRegion, resolveSiblingRange } from '../state/CaretScope'
+import { selectionSpine } from '../document/selection/SelectionCollector'
 import type { SerializedPara } from '../command/ClipboardManager'
 import { LayoutEngine } from '../layout/core/LayoutEngine'
 import { EventBus } from '../interaction/EventBus'
@@ -248,5 +249,73 @@ describe('页眉/页脚多行布局 (WPS 式朝版心扩展)', () => {
     const h2 = pagesB[0].footerHeight ?? 42
     expect(h2).toBeGreaterThan(h1)
     expect(h2).toBeGreaterThan(72) // 超过默认 marginBottom, 证明不再封顶
+  })
+})
+
+describe('页眉/页脚选区读序 helper', () => {
+  function doc3(): { doc: DocumentTree; pool: NodePool; body: string; h1: string; h2: string; f1: string; f2: string } {
+    const doc = createDocument('sel')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const mk = (t: string, childrenOf?: string[]) => {
+      const tn = createTextNode(t)
+      const p = createParagraph(childrenOf ?? [tn.id])
+      all.set(tn.id, tn as unknown as BaseNode)
+      all.set(p.id, p as unknown as BaseNode)
+      return p.id
+    }
+    const body = mk('body')
+    const h1 = mk('H1'); const h2 = mk('H2')
+    const f1 = mk('F1'); const f2 = mk('F2')
+    doc.body.children = [body]
+    doc.header = [h1, h2]
+    doc.footer = [f1, f2]
+    return { doc, pool: buildNodePool(all, { body: doc.id }), body, h1, h2, f1, f2 }
+  }
+
+  it('footer 两段 → resolveSiblingRange 返回 footer 区域与下标', () => {
+    const { doc, pool, f1, f2 } = doc3()
+    const r = resolveSiblingRange(doc, pool, f1, f2)
+    expect(r?.regionType).toBe('footer')
+    expect(r?.aIdx).toBe(0)
+    expect(r?.fIdx).toBe(1)
+    expect(r?.siblings).toEqual(doc.footer)
+  })
+
+  it('body↔header 混选 → resolveSiblingRange / selectionSpine 均 null (区域隔离)', () => {
+    const { doc, pool, body, h1 } = doc3()
+    expect(resolveSiblingRange(doc, pool, body, h1)).toBeNull()
+    expect(selectionSpine(doc, pool, body, h1)).toBeNull()
+  })
+
+  it('header 两段 → selectionSpine 返回 header 读序', () => {
+    const { doc, pool, h1, h2 } = doc3()
+    const sp = selectionSpine(doc, pool, h1, h2)
+    expect(sp?.section).toBe('header')
+    expect(sp?.spine).toEqual(doc.header)
+  })
+})
+
+describe('页眉/页脚含 smarttext 控件布局产物', () => {
+  it('footer 段含 input 控件 → fullLayout footerItems 含该控件 item', () => {
+    const doc = createDocument('hf-ctrl')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const el: ElementMeta = {
+      code: { internal: 'CTL_NAME', dataElement: 'DE99.99.001' }, name: '姓名',
+      format: { dataType: 'S1' },
+    }
+    const st = createSmartTextNode('[姓名]', el)
+    const p = createParagraph([st.id])
+    all.set(st.id, st as unknown as BaseNode)
+    all.set(p.id, p as unknown as BaseNode)
+    doc.body.children = []
+    doc.header = []
+    doc.footer = [p.id]
+    const pool = buildNodePool(all, { body: doc.id })
+    const engine = new LayoutEngine(new EventBus(), testMeasurer)
+    const pages = engine.fullLayout(doc, pool)
+    const found = pages.some(page => (page.footerItems || []).some(it => it.nodeId === st.id))
+    expect(found).toBe(true)
   })
 })

@@ -1020,24 +1020,24 @@ export class LayoutEngine {
 
       if (elements.length === 0) {
         // 空段占位行 (对照正文空段) — Enter 拆出的新空段在此有行可画、光标可落
-        const hEmpty = measurer.getLineHeight({ font: 'SimSun', size: 12 })
+        const hEmpty = measurer.getLineHeight({ font: 'SimSun', size: BASE_FONT_SIZE })
         allLines.push({
           elements: [{ id: para.id, type: 'text', value: '' }],
           width: 0,
           height: hEmpty,
           maxAscent: hEmpty * 0.8,
           maxDescent: hEmpty * 0.2,
-          alignment: para.alignment || 'center',
+          alignment: para.alignment || 'left',
         })
         continue
       }
 
       const lines = lineBreaker.breakLines(elements, {
         maxWidth: contentWidth, wordBreak: 'break-all',
-        defaultFont: 'SimSun', defaultSize: 12,
+        defaultFont: 'SimSun', defaultSize: BASE_FONT_SIZE,
       })
       for (const line of lines) {
-        line.alignment = para.alignment || 'center' // 页眉页脚默认居中
+        line.alignment = para.alignment || 'left' // 页眉页脚默认左对齐 (WPS)
       }
       allLines.push(...lines)
     }
@@ -1079,9 +1079,9 @@ export class LayoutEngine {
       }
       let cursorX = lineStartX
       for (const el of line.elements) {
-        const charHeight = measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || 12 })
+        const charHeight = measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || BASE_FONT_SIZE })
         const elWidth = measurer.measureWidth(el.value || '', {
-          font: el.font || 'SimSun', size: el.size || 12,
+          font: el.font || 'SimSun', size: el.size || BASE_FONT_SIZE,
           bold: el.bold, italic: el.italic,
         })
         const advanceWidth = el.type === 'smarttext' ? elWidth + CONTROL_BOX_PADDING * 2 : elWidth
@@ -1091,7 +1091,7 @@ export class LayoutEngine {
           x: cursorX, y, width: elWidth,
           height: charHeight,
           ascent: line.maxAscent, descent: line.maxDescent,
-          font: el.font || 'SimSun', size: el.size || 12,
+          font: el.font || 'SimSun', size: el.size || BASE_FONT_SIZE,
           bold: el.bold, italic: el.italic,
           color: el.color, underline: el.underline,
           strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,

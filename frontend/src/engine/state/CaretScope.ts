@@ -245,3 +245,37 @@ export function resolveParagraphRegion(
 
   return null
 }
+
+/** 选区两段是否同容器 + 其兄弟/下标 (删除/并段跨段用, region 感知) */
+export interface SiblingRange {
+  regionType: 'body' | 'cell' | 'header' | 'footer'
+  siblings: readonly string[]
+  aIdx: number
+  fIdx: number
+  isCell: boolean
+}
+
+/** anchor/focus 必须落在同一区域容器 (body / header / footer / 同一 cell), 否则 null */
+export function resolveSiblingRange(
+  doc: DocumentTree,
+  pool: NodePool,
+  anchorParaId: string,
+  focusParaId: string,
+): SiblingRange | null {
+  const ra = resolveParagraphRegion(anchorParaId, doc, pool)
+  const rf = resolveParagraphRegion(focusParaId, doc, pool)
+  if (!ra || !rf) return null
+  if (ra.type === 'cell' || rf.type === 'cell') {
+    if (ra.type !== 'cell' || rf.type !== 'cell') return null // body/cell 混选
+    if (ra.containerId !== rf.containerId) return null          // 不同 cell
+  } else if (ra.type !== rf.type) {
+    return null // body↔header / header↔footer 混选
+  }
+  return {
+    regionType: ra.type,
+    siblings: ra.siblings,
+    aIdx: ra.index,
+    fIdx: rf.index,
+    isCell: ra.type === 'cell',
+  }
+}
