@@ -22,6 +22,9 @@ import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand
 import { InsertNodesCommand } from '../command/commands/InsertNodesCommand'
 import { resolveParagraphRegion } from '../state/CaretScope'
 import type { SerializedPara } from '../command/ClipboardManager'
+import { LayoutEngine } from '../layout/core/LayoutEngine'
+import { EventBus } from '../interaction/EventBus'
+import { testMeasurer } from './helpers'
 
 function ctxOf(doc: DocumentTree, pool: NodePool): CommandContext {
   return { mode: 'local', doc, pool }
@@ -197,5 +200,53 @@ describe('页脚多段落粘贴 (InsertNodesCommand)', () => {
     expect(doc.body.children).toHaveLength(0)
     expect(paraText(pool, footer[0])).toBe('Hello')
     expect(paraText(pool, footer[1])).toBe('World')
+  })
+})
+
+// ---- 页眉/页脚布局: 多行 + 朝版心扩展 (WPS 式) ----
+
+/** footer 段数组: string = 有文本(单行), null = 空段 (无 children) */
+function makeHfDoc(footerParas: Array<string | null>): { doc: DocumentTree; pool: NodePool; ids: string[] } {
+  const doc = createDocument('hf-layout')
+  const allNodes = new Map<string, BaseNode>()
+  allNodes.set(doc.id, doc as unknown as BaseNode)
+  const ids: string[] = []
+  for (const t of footerParas) {
+    const tn = t === null ? undefined : createTextNode(t)
+    const para = tn ? createParagraph([tn.id]) : createParagraph([])
+    if (tn) allNodes.set(tn.id, tn as unknown as BaseNode)
+    allNodes.set(para.id, para as unknown as BaseNode)
+    ids.push(para.id)
+  }
+  doc.body.children = []
+  doc.header = []
+  doc.footer = ids
+  const pool = buildNodePool(allNodes, { body: doc.id })
+  return { doc, pool, ids }
+}
+
+function layoutFooter(doc: DocumentTree, pool: NodePool) {
+  const engine = new LayoutEngine(new EventBus(), testMeasurer)
+  return engine.fullLayout(doc, pool)
+}
+
+describe('页眉/页脚多行布局 (WPS 式朝版心扩展)', () => {
+  it('footer 尾随空段 → 该页 footerItems 含空段占位 item (Enter 后光标可落)', () => {
+    const { doc, pool, ids } = makeHfDoc(['Hello', null])
+    const pages = layoutFooter(doc, pool)
+    const emptyParaId = ids[1]
+    const found = pages.some(p => (p.footerItems || []).some(it => it.nodeId === emptyParaId))
+    expect(found).toBe(true)
+  })
+
+  it('footer 行增多 → footerHeight 不封顶随行数增长 (WPS, 正文随后让位)', () => {
+    const a = makeHfDoc(['L'])
+    const b = makeHfDoc(Array.from({ length: 20 }, () => 'L'))
+    const pagesA = layoutFooter(a.doc, a.pool)
+    const pagesB = layoutFooter(b.doc, b.pool)
+    const h1 = pagesA[0].footerHeight ?? 42
+    const h2 = pagesB[0].footerHeight ?? 42
+    expect(h2).toBeGreaterThan(h1)
+    expect(h2).toBeGreaterThan(72) // 超过默认 marginBottom, 证明不再封顶
   })
 })

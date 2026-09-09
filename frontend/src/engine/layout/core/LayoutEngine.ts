@@ -48,6 +48,15 @@ export interface InlineControlInfo {
 const HEADING_SCALE: Record<number, number> = { 1: 2.0, 2: 1.5, 3: 1.25, 4: 1.125, 5: 1.0, 6: 0.875 }
 const BASE_FONT_SIZE = 16
 
+// 页眉/页脚区域 (WPS 式朝版心扩展, 契约 §7 页眉页脚布局)
+const HF_MIN_REGION = 42       // 最小可交互/可见带高
+const HF_HEAD_TOP_PAD = 8      // 页眉距页面顶部
+const HF_HEAD_BOTTOM_PAD = 2
+const HF_FOOT_TOP_PAD = 2
+const HF_FOOT_BOTTOM_PAD = 8   // 页脚距页面底部
+/** 文档含脚注时正文分页预留的脚注 gutter (与 FootnoteLayout 固定 60 一致) */
+const FOOTNOTE_GUTTER = 60
+
 export class LayoutEngine {
   private eventBus: EventBus
   private measurer: TextMeasurer
@@ -294,14 +303,28 @@ export class LayoutEngine {
       }
     }
 
-    // Step 2: PageBreaker 分页
-    const iPages = pageBreaker.breakPages(allLines, [], [], pageSetup)
+    // 页眉/页脚内容布局 (每页一致; y 相对各自带顶, WPS 式锚定朝版心扩展)
+    const headerLines = this.collectHFParagraphLines(doc.header, pool, lineBreaker, measurer, contentWidth)
+    const footerLines = this.collectHFParagraphLines(doc.footer, pool, lineBreaker, measurer, contentWidth)
+    const hfHeader = this.layoutHFRegion('header', headerLines, measurer, contentWidth)
+    const hfFooter = this.layoutHFRegion('footer', footerLines, measurer, contentWidth)
+
+    // 脚注 gutter: 含脚注时正文为脚注区预留
+    const footnoteReserve = this.docContainsFootnotes(pool) ? FOOTNOTE_GUTTER : 0
+
+    // 正文实际可用区 (WPS): 页眉超高 → 正文起点下移; 页脚超高 → 正文终点上移。
+    const bodyTop = Math.max(this.config.marginTop, hfHeader.regionHeight)
+    const bodyBottom = this.config.pageHeight - Math.max(this.config.marginBottom, hfFooter.regionHeight)
+    const bodyArea = Math.max(0, bodyBottom - bodyTop - footnoteReserve)
+
+    // Step 2: PageBreaker 分页 (正文可用高 = bodyArea)
+    const iPages = pageBreaker.breakPages(allLines, [], [], pageSetup, footnoteReserve, bodyArea)
 
     // Step 3: IPage[] → SLIFPage[]
     const slifPages: SLIFPage[] = iPages.map((ip: IPage) => {
-      let y = this.config.marginTop
+      let y = bodyTop
       const items: SLIFItem[] = []
-      const pageContentHeight = pageSetup.height - pageSetup.marginTop - pageSetup.marginBottom
+      const pageContentHeight = bodyArea
       for (const line of ip.lines) {
         const firstEl = line.elements[0]
 
@@ -319,7 +342,7 @@ export class LayoutEngine {
             const label = pageBreak?.continuationLabel || '（续表）'
 
             // 计算剩余页面空间
-            const pageContentBottom = this.config.marginTop + pageContentHeight
+            const pageContentBottom = bodyTop + pageContentHeight
             const remainingSpace = pageContentBottom - y
             const totalTableH = allRows.reduce((h, r) => h + (r.height || 24) + 1, 0)
 
@@ -364,7 +387,7 @@ export class LayoutEngine {
 
                 // 下一页从顶部开始
                 if (rowStart < allRows.length) {
-                  y = this.config.marginTop
+                  y = bodyTop
                 }
               }
             }
@@ -486,15 +509,11 @@ export class LayoutEngine {
         y += line.height
       }
 
-      // 页眉/页脚布局
-      const headerH = this.config.headerHeight ?? 42
-      const footerH = this.config.footerHeight ?? 42
-      const headerItems = this.layoutHeaderFooterContent(doc.header, pool, lineBreaker, measurer, contentWidth, headerH)
-      const footerItems = this.layoutHeaderFooterContent(doc.footer, pool, lineBreaker, measurer, contentWidth, footerH)
-
+      // 页眉/页脚 — 复用预计算的 items/带高 (每页一致)
       return {
         pageIndex: ip.pageIndex, width: this.config.pageWidth, height: this.config.pageHeight, items,
-        headerItems, footerItems, headerHeight: headerH, footerHeight: footerH,
+        headerItems: hfHeader.items, footerItems: hfFooter.items,
+        headerHeight: hfHeader.regionHeight, footerHeight: hfFooter.regionHeight,
       }
     })
 
@@ -955,24 +974,24 @@ export class LayoutEngine {
    * 布局页眉/页脚段落内容 → SLIFItem[]
    * 每个 page 独立布局, y 坐标相对于页眉/页脚区顶部
    */
-  private layoutHeaderFooterContent(
+  /**
+   * 收集页眉/页脚段落 → 折行 ILine[] (WPS 式多行)。
+   * 空段/无可布局子节点 → 推占位行, 使 Enter 拆出的新空段有行、光标可落。
+   */
+  private collectHFParagraphLines(
     blockIds: string[] | undefined,
     pool: NodePool,
     lineBreaker: LineBreaker,
     measurer: TextMeasurer,
     contentWidth: number,
-    regionHeight: number,
-  ): SLIFItem[] {
+  ): ILine[] {
     if (!blockIds || blockIds.length === 0) return []
-
     const allLines: ILine[] = []
 
     for (const blockId of blockIds) {
       const block = pool.nodes.get(blockId)
       if (!block) continue
-      const blockType = (block as unknown as Record<string, unknown>).type as string
-      if (blockType !== 'paragraph') continue
-
+      if ((block as unknown as Record<string, unknown>).type !== 'paragraph') continue
       const para = block as unknown as Paragraph
       const elements: LineElement[] = []
 
@@ -999,28 +1018,59 @@ export class LayoutEngine {
         }
       }
 
-      if (elements.length > 0) {
-        const lines = lineBreaker.breakLines(elements, {
-          maxWidth: contentWidth, wordBreak: 'break-all',
-          defaultFont: 'SimSun', defaultSize: 12,
+      if (elements.length === 0) {
+        // 空段占位行 (对照正文空段) — Enter 拆出的新空段在此有行可画、光标可落
+        const hEmpty = measurer.getLineHeight({ font: 'SimSun', size: 12 })
+        allLines.push({
+          elements: [{ id: para.id, type: 'text', value: '' }],
+          width: 0,
+          height: hEmpty,
+          maxAscent: hEmpty * 0.8,
+          maxDescent: hEmpty * 0.2,
+          alignment: para.alignment || 'center',
         })
-        for (const line of lines) {
-          line.alignment = para.alignment || 'center' // 页眉页脚默认居中
-        }
-        allLines.push(...lines)
+        continue
       }
+
+      const lines = lineBreaker.breakLines(elements, {
+        maxWidth: contentWidth, wordBreak: 'break-all',
+        defaultFont: 'SimSun', defaultSize: 12,
+      })
+      for (const line of lines) {
+        line.alignment = para.alignment || 'center' // 页眉页脚默认居中
+      }
+      allLines.push(...lines)
     }
+    return allLines
+  }
 
-    // 无内容 → 空项
-    if (allLines.length === 0) return []
+  /**
+   * 把页眉/页脚折行布局进上下 margin 带, 返回 items + 使用的带高。
+   * y 相对带顶 (header 带顶=页顶; footer 带顶 = 页高 - footerHeight)。
+   * WPS 式锚定: 页眉内容贴顶部向下扩展; 页脚内容贴带底向上扩展。
+   * 超高 (> margin 带) → 裁掉靠页边一侧的行, 保留靠版心一侧。
+   */
+  private layoutHFRegion(
+    kind: 'header' | 'footer',
+    lines: ILine[],
+    measurer: TextMeasurer,
+    contentWidth: number,
+  ): { items: SLIFItem[]; regionHeight: number } {
+    if (lines.length === 0) return { items: [], regionHeight: HF_MIN_REGION }
 
-    // 计算垂直居中偏移
-    const totalH = allLines.reduce((sum, l) => sum + l.height, 0)
-    let y = Math.max(0, (regionHeight - totalH) / 2)
+    const padTop = kind === 'header' ? HF_HEAD_TOP_PAD : HF_FOOT_TOP_PAD
+    const padBottom = kind === 'header' ? HF_HEAD_BOTTOM_PAD : HF_FOOT_BOTTOM_PAD
+    const totalH = lines.reduce((s, l) => s + l.height, 0)
+
+    // 不封顶 (WPS): 页眉/页脚随行数长高, 正文起点/分页容量按实际带高让位。
+    const regionHeight = Math.max(HF_MIN_REGION, totalH + padTop + padBottom)
+    // 页眉顶部锚定; 页脚底部锚定 (相对带顶; 配合 footerTop 在绝对坐标上靠页底)
+    let y = kind === 'header'
+      ? padTop
+      : Math.max(0, regionHeight - padBottom - totalH)
 
     const items: SLIFItem[] = []
-    for (const line of allLines) {
-      // 行起始 X (对齐后) — 元素级 X 累积基准 (与正文一致: 逐元素累积, 避免拆分节点后选区偏移)
+    for (const line of lines) {
       let lineStartX = this.config.marginLeft + (line.indent ?? 0)
       if (line.alignment === 'center') {
         lineStartX = this.config.marginLeft + (contentWidth - line.width) / 2
@@ -1034,9 +1084,7 @@ export class LayoutEngine {
           font: el.font || 'SimSun', size: el.size || 12,
           bold: el.bold, italic: el.italic,
         })
-        // smarttext 原子控件: advance 取盒宽 (与正文/LineBreaker 同源), 避免盒重叠
         const advanceWidth = el.type === 'smarttext' ? elWidth + CONTROL_BOX_PADDING * 2 : elWidth
-
         items.push({
           nodeId: el.id, nodeType: el.type, type: el.type,
           text: el.value,
@@ -1047,14 +1095,21 @@ export class LayoutEngine {
           bold: el.bold, italic: el.italic,
           color: el.color, underline: el.underline,
           strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,
-            fieldType: (el as { fieldType?: string }).fieldType,
-          })
+          fieldType: (el as { fieldType?: string }).fieldType,
+        })
         cursorX += advanceWidth
       }
       y += line.height
     }
+    return { items, regionHeight }
+  }
 
-    return items
+  /** 文档 (pool) 是否含脚注引用 — 用于正文分页预留脚注 gutter */
+  private docContainsFootnotes(pool: NodePool): boolean {
+    for (const [, node] of pool.nodes) {
+      if ((node as { type?: string }).type === 'footnote_ref') return true
+    }
+    return false
   }
 
   getVisiblePages(scrollY: number, viewportHeight: number): { start: number; end: number } {

@@ -25,20 +25,20 @@ export class PageBreaker {
     lines: ILine[],
     headerLines: ILine[],
     footerLines: ILine[],
-    pageSetup: PageSetup = DEFAULT_PAGE_SETUP
+    pageSetup: PageSetup = DEFAULT_PAGE_SETUP,
+    reserveHeight = 0,
+    /** 实际正文可用高 (页眉/页脚超高时正文让位后) — 缺省按 margin 推算 */
+    pageContentHeightOverride?: number,
   ): IPage[] {
     const pages: IPage[] = []
 
-    // Compute actual header/footer heights from the lines, with configured minimums
-    const actualHeaderH = headerLines.reduce((h, l) => h + l.height, 0) || 50
-    const actualFooterH = footerLines.reduce((h, l) => h + l.height, 0) || 40
-
-    const pageContentHeight =
+    // 页眉/页脚占用页面上/下 margin 带(可超高) — 正文可用区由调用方给定或按 margin 推算。
+    const pageContentHeight = pageContentHeightOverride ?? (
       pageSetup.height -
       pageSetup.marginTop -
       pageSetup.marginBottom -
-      actualHeaderH -
-      actualFooterH
+      reserveHeight
+    )
 
     // Pre-compute paragraph boundary markers.
     // paragraphEnds[i] = true means line i ends a paragraph (its last element is \n).

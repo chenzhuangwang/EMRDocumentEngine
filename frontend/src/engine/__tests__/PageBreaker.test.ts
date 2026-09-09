@@ -62,7 +62,9 @@ describe('PageBreaker', () => {
   })
 
   it('should avoid single orphan line at bottom of page', () => {
-    const fillLines = Array.from({ length: 21 }, (_, i) => line(`f${i}\n`))
+    // 容量已去掉 header/footer 双扣(500-20-20=460): 用 22 行填充使 p1 恰好落在
+    // 页末孤行位置, 验证孤行机制仍把它整段移到下一页。
+    const fillLines = Array.from({ length: 22 }, (_, i) => line(`f${i}\n`))
     const paragraph = [line('p1'), line('p2'), line('p3\n')]
     const pages = breaker.breakPages([...fillLines, ...paragraph], emptyHeaders, emptyFooters, setup)
     for (const page of pages) {
