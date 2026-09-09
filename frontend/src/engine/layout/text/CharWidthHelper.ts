@@ -109,7 +109,14 @@ export function computeOffsetInItems(
       if (docX <= item.x + bodyW) {
         const relativeX = docX - item.x
         if (isAtomic) {
-          return accumulated + (relativeX <= bodyW / 2 ? 0 : 1)
+          if (item.type === 'image') {
+            // 图片: 保留左/右半「前/后」(拖选覆盖图片用)
+            return accumulated + (relativeX <= bodyW / 2 ? 0 : 1)
+          }
+          // 控件(smarttext 等)上没有“内部”光标: 点在其起始 x 之前 → 前;
+          // 点在控件本体上(含首个选项/左半) → 后。避免“点第一个选项跳到
+          // 控件前”(控件区域命中统一按控件之后处理, 便于继续在控件后输入)。
+          return accumulated + (docX < item.x ? 0 : 1)
         }
         const cumWidths = cumulativeCharWidths(itemText, {
           font: item.font || 'SimSun', size: item.size || 16,

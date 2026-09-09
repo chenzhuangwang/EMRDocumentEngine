@@ -15,7 +15,7 @@ import { screenToDoc, findPageByDocY, pageCenteringOffset } from '../layout/tabl
 import { getCellGridPosition } from '../document/table/TableOps'
 import { findControlItemEntryAt, findRuntimeControlHitAt } from './ControlHitTest'
 import type { RuntimeControlHit } from './ControlHitTest'
-import { controlVisualRecipe } from '../document/control/ControlBox'
+import { controlVisualRecipe, controlVisualType } from '../document/control/ControlBox'
 import type { ControlValue, ElementEnumOption } from '../document/core/DocumentModel'
 
 /** 双击时间阈值 (ms) */
@@ -115,8 +115,26 @@ export class MouseHandler {
         if (hit.kind === 'option') {
           // 离散控件内联候选项切换 (不变量 2): 命中几何已上移进 findRuntimeControlHitAt,
           // 此处只做纯值计算并写入 (VR-3 单一路径)。
-          const next = this.toggleOptionValue(hit.option, snap.controlType, snap.value)
+          // 视觉类型: controlType 缺失但 options 存在 → radio/checkbox (仅表现回退)。
+          const visualType = snap.controlType ??
+            (snap.options !== undefined ? (snap.multiple ? 'checkbox' : 'radio') : undefined)
+          const next = this.toggleOptionValue(hit.option, visualType, snap.value)
           if (next !== null) {
+            // 点选后光标应停留在「控件之后」: 写值前先把光标定到控件后
+            // (控件=1 原子字符, getCharOffset localOffset 1 = 后), 避免值渲染
+            // 先画“前”再画“后”造成的闪烁。
+            const para = this.findParagraphContaining(hit.item.nodeId)
+            if (para) {
+              const after = this.editor.getPool()?.getCharOffset(para.id, hit.item.nodeId, 1)
+              if (after !== undefined && after !== null) {
+                const store = this.editor.getStore()
+                store.setCursor({
+                  paragraphPath: [this.editor.getDocument().id, para.id],
+                  offset: after, visible: true,
+                })
+              }
+            }
+            e.preventDefault()
             this.editor.setControlValue(hit.item.nodeId, next)
           }
           return
@@ -597,11 +615,13 @@ export class MouseHandler {
     const resolve = (nodeId: string) => {
       const snap = this.editor.getControlSnapshot(nodeId)
       if (!snap) return undefined
+      const hasEnums = snap.options !== undefined
+      const visualType = snap.controlType ?? controlVisualType(snap.controlType, hasEnums, snap.multiple)
       return {
-        kind: controlVisualRecipe(snap.controlType).kind,
+        kind: controlVisualRecipe(visualType).kind,
         minWidth: this.editor.getPresentationStyles()?.get(nodeId)?.minWidth,
         options: snap.options,
-        controlType: snap.controlType,
+        controlType: visualType,
       }
     }
     return findRuntimeControlHitAt(page, docX, localY, resolve, this.measurer)

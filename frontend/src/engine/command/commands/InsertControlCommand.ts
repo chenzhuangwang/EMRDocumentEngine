@@ -87,7 +87,12 @@ export class InsertControlCommand implements ICommand {
       ctx.templateDefinitions.set(node.id, this.definition)
     }
 
-    return { invalidation: 'paragraph' }
+    // 光标放到控件「之后」(offset+1, 控件=1 原子字符): 插入后可直接在控件
+    // 末尾继续输入, 而不是停在控件前 (契约 §12.6 运行时交互)。
+    return {
+      cursor: { paragraphPath: this.path, offset: this.offset + 1, visible: true },
+      invalidation: 'paragraph',
+    }
   }
 
   /** 文档中是否已存在同身份 (dataElement 优先, 回退 internal) 的 smarttext */

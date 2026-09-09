@@ -25,7 +25,7 @@ import { createFootnoteParticle } from './particles/FootnoteParticle'
 import { createTableParticle } from './particles/TableParticle'
 import { createImageParticle } from './particles/ImageParticle'
 import { createControlParticle } from './particles/ControlParticle'
-import { computeControlBox, stripPlaceholderBrackets } from '../document/control/ControlBox'
+import { computeControlBox, stripPlaceholderBrackets, controlVisualType } from '../document/control/ControlBox'
 import { computeFieldRegion } from '../document/control/ControlFieldGeometry'
 import { isControlValueEmpty } from '../document/control/ControlValue'
 import type { PresentationStyleStore } from './presentation/PresentationStyle'
@@ -125,7 +125,11 @@ export class Draw {
     this.layoutEngine.setControlInfoOf((nodeId) => {
       const def = this.templateDefinitions?.get(nodeId)
       const el = (this.pool?.nodes.get(nodeId) as SmartTextNode | undefined)?.element
-      return { controlType: def?.controlType, options: el?.format?.enums?.data }
+      const hasEnums = el?.format?.enums !== undefined
+      return {
+        controlType: def?.controlType ?? controlVisualType(def?.controlType, hasEnums, el?.format?.enums?.multiple === true),
+        options: el?.format?.enums?.data,
+      }
     })
     this.renderer = new LayeredRenderer(this.host, this.coordSystem)
     this.hitTestIndex = new HitTestIndex(this.measurer)

@@ -13,7 +13,7 @@
 import type { IParticle, RenderOptions } from './IParticle'
 import type { SLIFItem } from '../../layout/core/SLIF'
 import {
-  controlVisualRecipe, computeControlBox,
+  controlVisualRecipe, controlVisualType, computeControlBox,
   CONTROL_BOX_PADDING, AFFORDANCE_WIDTH, stripPlaceholderBrackets,
 } from '../../document/control/ControlBox'
 import { isControlValueEmpty, controlDisplayLength } from '../../document/control/ControlValue'
@@ -103,8 +103,11 @@ export function createControlParticle(): IParticle {
       // 只读 (契约 §12.6.3 layer B) — canvas 已完整表达; 交互在 MouseHandler 拦截
       const isReadonly = def?.editable === false || element?.readonly === true
 
-      // 视觉配方 (不变量 6: 唯一分类决策点)
-      const controlType = def?.controlType
+      // 视觉配方 (不变量 6: 唯一分类决策点)。def.controlType 缺失但 element 带
+      // enums 时, 仅表现回退为 radio/checkbox 选项组 (VR-15: 仅呈现, 绝不写回)。
+      const hasEnums = element?.format?.enums !== undefined
+      const enumsMultiple = element?.format?.enums?.multiple === true
+      const controlType = def?.controlType ?? controlVisualType(def?.controlType, hasEnums, enumsMultiple)
       const recipe = controlVisualRecipe(controlType)
 
       ctx.save()

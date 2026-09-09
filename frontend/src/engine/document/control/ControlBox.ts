@@ -55,6 +55,23 @@ export function controlVisualRecipe(controlType?: string): ControlVisualRecipe {
   }
 }
 
+/**
+ * 「仅表现」的视觉类型 (契约 §12.1/VR-15: 只用于呈现, 绝不写回 controlType)。
+ *
+ * def.controlType 缺失 (遗留文档/未落 controlType) 但 element 带 enums 时,
+ * 视其为枚举候选组: multiple → checkbox; 否则 → radio (列出 ○/☐ 选项)。
+ * 仅当 controlType === undefined 才启用回退; 显式 controlType 恒优先。
+ */
+export function controlVisualType(
+  controlType: string | undefined,
+  hasEnums?: boolean,
+  multiple?: boolean,
+): 'radio' | 'checkbox' | undefined {
+  if (controlType !== undefined) return undefined // 显式类型优先, 交由调用方原样使用
+  if (!hasEnums) return undefined
+  return multiple === true ? 'checkbox' : 'radio'
+}
+
 export interface ControlBoxGeometry {
   x: number
   y: number

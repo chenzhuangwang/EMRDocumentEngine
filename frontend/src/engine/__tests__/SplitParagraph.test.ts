@@ -5,8 +5,8 @@
 
 import { describe, it, expect } from 'vitest'
 import { NodePool, buildNodePool } from '../document/core/NodePool'
-import { createDocument, createParagraph, createTextNode } from '../document/factory/ElementFormatter'
-import type { DocumentTree, BaseNode } from '../document/core/DocumentModel'
+import { createDocument, createParagraph, createTextNode, createSmartTextNode } from '../document/factory/ElementFormatter'
+import type { DocumentTree, BaseNode, ElementMeta } from '../document/core/DocumentModel'
 import { SplitParagraphCommand } from '../command/commands/SplitParagraphCommand'
 import type { CommandContext } from '../command/ICommand'
 
@@ -219,5 +219,39 @@ describe('SplitParagraphCommand', () => {
       paragraphPath: [doc.id, newParaId],
       offset: 0,
     })
+  })
+})
+
+describe('SplitParagraphCommand — 原子控件之后拆段 (修复占位残片)', () => {
+  it('控件为段尾唯一元素, offset=1(控件后)拆段 → 新段为空, 控件占位文本不动', () => {
+    const doc = createDocument('ctrl')
+    const allNodes = new Map<string, BaseNode>()
+    allNodes.set(doc.id, doc as unknown as BaseNode)
+
+    const el: ElementMeta = {
+      code: { internal: 'CTL_CB', dataElement: 'DE99.99.006' }, name: '复选框',
+      format: { dataType: 'S1', enums: { multiple: true, data: [{ name: '高血压', value: 'hy' }] } },
+    }
+    const ctrl = createSmartTextNode('[复选框]', el)
+    allNodes.set(ctrl.id, ctrl as unknown as BaseNode)
+    const para = createParagraph([ctrl.id])
+    allNodes.set(para.id, para as unknown as BaseNode)
+    doc.body.children = [para.id]
+    const pool = buildNodePool(allNodes, { body: doc.id })
+
+    // 光标在控件之后 (原子=1 字符) 拆段
+    const cmd = new SplitParagraphCommand('sp-ctrl', Date.now(), 'test', [doc.id, para.id], 1)
+    const patch = cmd.forward(makeCtx(pool, doc))
+
+    expect(patch).not.toBeNull()
+    const newParaId = patch!.cursor!.paragraphPath![patch!.cursor!.paragraphPath!.length - 1]
+    // 原段保留控件 (children 仍为该控件)
+    expect(getChildren(pool, para.id)).toEqual([ctrl.id])
+    // 控件占位文本原样, 未被拆成 "复选框]"
+    const afterCtrl = pool.nodes.get(ctrl.id) as { type?: string; text?: string }
+    expect(afterCtrl.type).toBe('smarttext')
+    expect(afterCtrl.text).toBe('[复选框]')
+    // 新段为空 (不出现残片文字)
+    expect(getChildren(pool, newParaId)).toEqual([])
   })
 })

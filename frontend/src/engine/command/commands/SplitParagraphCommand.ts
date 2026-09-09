@@ -35,26 +35,37 @@ export class SplitParagraphCommand extends PositionalCommand {
     }
 
     const { textNodeId, localOffset } = resolved
-    const textNode = pool.nodes.get(textNodeId) as TextNode | undefined
-    if (!textNode) return null
+    const targetNode = pool.nodes.get(textNodeId) as TextNode | undefined
+    if (!targetNode) return null
+    const isText = (targetNode as unknown as { type?: string }).type === 'text'
 
-    const beforeText = textNode.text.slice(0, localOffset)
-    const afterText = textNode.text.slice(localOffset)
-
-    // 2. 分裂 children
+    // 段落内 children 相对 index; 分裂点 = splitIdx(+1 若是 text 或 localOffset>=1)
     const splitIdx = para.children.indexOf(textNodeId)
-    const rightChildren = para.children.slice(splitIdx + 1)
-    // 总是截断原始 TextNode (beforeText 可能为空字符串, 必须更新)
-    pool.updateNode(textNode.id, { text: beforeText } as Partial<TextNode>)
-    // 截断原始段落 children: 只保留到 splitIdx (含被截断的 TextNode)
-    if (rightChildren.length > 0) {
-      pool.truncateChildren(para.id, splitIdx + 1)
+    let rightChildren: string[]
+    let afterText: string | null = null
+
+    if (isText) {
+      const textNode = targetNode as TextNode
+      const beforeText = textNode.text.slice(0, localOffset)
+      afterText = textNode.text.slice(localOffset)
+      // 总是截断原始 TextNode (beforeText 可能为空字符串, 必须更新)
+      pool.updateNode(textNode.id, { text: beforeText } as Partial<TextNode>)
+      // 截断原始段落 children: 只保留到 splitIdx (含被截断的 TextNode)
+      rightChildren = para.children.slice(splitIdx + 1)
+      if (rightChildren.length > 0) pool.truncateChildren(para.id, splitIdx + 1)
+    } else {
+      // 非文本内联原子 (控件/图片等, resolveCharOffset localOffset: 0=前, 1=后):
+      // 只按边界切, 绝不切它的占位文本 (修复: 控件后按 Enter 把 `[复选框]`
+      // 的残片拆成新段落文字)。localOffset 1 = 光标在控件后 → 控件留在左段。
+      const keepCount = splitIdx + (localOffset >= 1 ? 1 : 0)
+      rightChildren = para.children.slice(keepCount)
+      if (rightChildren.length > 0) pool.truncateChildren(para.id, keepCount)
     }
 
     // 3. 构造新段落 (继承样式)
     const newPara = createParagraph()
     if (afterText) {
-      const afterNode = createTextNode(afterText, extractStyle(textNode))
+      const afterNode = createTextNode(afterText, extractStyle(targetNode))
       pool.addNode(afterNode)
       newPara.children = [afterNode.id]
     }
