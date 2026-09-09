@@ -79,6 +79,9 @@ export function useEditorContextMenu(options?: UseEditorContextMenuOptions) {
         if (snap?.kind === 'image') {
           // image 右键删除 — 整节点 (设计 v2 §6)
           editor.deleteNode(snap.nodeId)
+        } else if (snap?.kind === 'smartText') {
+          // 控件右键删除 — 走 RemoveControlCommand (deletable 守卫, §12.1)
+          editor.deleteSelectedControl()
         } else if (snap?.kind === 'text') {
           // body 段: 覆盖选区删选区, 折叠选区删整段 (P1-c)
           if (snap.coversSelection) editor.deleteSelection()

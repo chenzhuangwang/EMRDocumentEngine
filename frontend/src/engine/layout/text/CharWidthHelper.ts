@@ -94,10 +94,13 @@ export function computeOffsetInItems(
   let accumulated = 0
   for (const item of items) {
     const itemText = item.text || ''
-    // 图片等空文本原子节点占 1 字符 (与 paragraphTextLength 的「非文本计 1」语义一致)。
-    // 命中时按左/右半区分「光标在前/后」, 使拖拽选区能覆盖图片
-    // (「从正文往下拖选不中图片」的根因: 空文本 item 一律解析为 0 偏移)。
-    const isAtomic = itemText.length === 0 && item.type === 'image'
+    // 非文本内联原子节点 (smarttext/image/field/cross_reference/footnote_ref 等)
+    // 占 1 字符 — 与 NodePool.resolveCharOffset/getCharOffset 的「非 text 计 1」语义
+    // 一致。命中时按左/右半区分「光标在前/后」, 使点击控件右半 = 光标在控件之后
+    // (修复: 控件后点光标/打字跑到控件前 —— 偏移按可见长度计数导致越界)。
+    const isAtomic = item.type === 'smarttext' || item.type === 'image' ||
+      item.type === 'field' || item.type === 'cross_reference' ||
+      item.type === 'footnote_ref' || item.type === 'bookmark'
     const unitLen = isAtomic ? 1 : itemText.length
     const bodyW = item.markerWidth != null ? item.width - item.markerWidth : item.width
     const yHit = docY >= item.y && docY <= item.y + item.ascent + item.descent

@@ -42,6 +42,8 @@ export interface SLIFItem {
   listMarkerX?: number
   /** 列表标记像素宽度 (用于光标 charW 计算扣减) */
   markerWidth?: number
+  /** 多行文本域折行后的物理行 (textarea, 契约 §12.6 多行), 供 ControlParticle 逐行绘制 */
+  controlLines?: string[]
   /** 域类型 (FieldNode.fieldType), 渲染时动态计算值 */
   fieldType?: string
   /** 所属表格 ID (由 getFlatPageItems 自动填充, 非表格项为 undefined) */

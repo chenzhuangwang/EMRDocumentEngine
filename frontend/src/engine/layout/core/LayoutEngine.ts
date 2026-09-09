@@ -26,6 +26,7 @@ import { smartTextDisplayValue } from '../../document/factory/ElementFormatter'
 import { layoutControlOptions, controlOptionsWidth, controlOptionsPlaceholderWidth } from '../../document/control/ControlOptions'
 import { controlVisualRecipe, CONTROL_BOX_PADDING, AFFORDANCE_GAP, AFFORDANCE_WIDTH } from '../../document/control/ControlBox'
 import { isControlValueEmpty } from '../../document/control/ControlValue'
+import { wrapControlText } from '../text/TextWrap'
 import { MergeMatrix } from '../../document/table/MergeMatrix'
 import { FootnoteLayout } from '../footnote/FootnoteLayout'
 import { ListParticle } from '../../render/particles/ListParticle'
@@ -190,8 +191,36 @@ export class LayoutEngine {
                 let width = measure(isEmpty ? textVal : `[${textVal}]`)
                 if (recipe.affordance) width += AFFORDANCE_GAP + AFFORDANCE_WIDTH
                 control = { width }
-              } else if (typeof minRows === 'number' && minRows > 0) {
-                control = { minRows }
+              } else if (recipe.frame === 'box') {
+                // 四边框多行文本域 (textarea): 空态沿用 minRows; 填充态按值折行、
+                // 预留 width+minRows+lines (契约 §12.6 多行, 行距=size)。
+                const raw = (tn as unknown as { value?: unknown }).value
+                const valueEmpty = isControlValueEmpty(raw)
+                if (valueEmpty) {
+                  control = (typeof minRows === 'number' && minRows > 0) ? { minRows } : undefined
+                } else {
+                  const str = typeof textVal === 'string' ? textVal : String(textVal)
+                  const logical = str.split('\n')
+                  const naturalW = logical.map((l) => measure(l))
+                  const needWrap = contentWidth > 0 && naturalW.some((w) => w > contentWidth)
+                  let physical: string[]
+                  let colW: number
+                  if (needWrap) {
+                    physical = wrapControlText(str, contentWidth, measure)
+                    colW = contentWidth
+                  } else {
+                    physical = logical
+                    colW = Math.max(0, ...naturalW)
+                  }
+                  const rowsCount = physical.length
+                  const reserveRows = Math.max(typeof minRows === 'number' && minRows > 0 ? minRows : 1, rowsCount)
+                  control = {
+                    width: colW > 0 ? colW : undefined,
+                    minRows: reserveRows,
+                    lines: physical,
+                    rows: rowsCount,
+                  }
+                }
               } else {
                 control = undefined
               }
@@ -447,6 +476,7 @@ export class LayoutEngine {
             listMarker: itemListMarker,
             listMarkerX: itemListMarker ? markerX : undefined,
             markerWidth: itemMarkerWidth,
+            controlLines: isSmart ? elControl?.lines : undefined,
             fieldType: (el as { fieldType?: string }).fieldType,
           })
 

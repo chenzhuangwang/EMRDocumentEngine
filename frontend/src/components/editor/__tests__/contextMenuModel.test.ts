@@ -107,10 +107,20 @@ describe('buildContextMenuModel 菜单条目 (P1-a)', () => {
     }
   })
 
-  it('smartText (设计模式控件): 仅「属性」, 无分隔符', () => {
+  it('smartText (控件): 完整正文菜单 + 分隔后的「属性」', () => {
     const snap: EditorContextSnapshot = { ...base, kind: 'smartText', controlId: 'c1' }
-    expect(items(snap)).toEqual([{ id: 'properties', enabled: true }])
-    expect(entryKinds(snap)).toEqual(['item'])
+    const list = items(snap)
+    // 完整正文项 (剪切/复制/粘贴/删除 + 格式/对齐/缩进)
+    expect(list[0]).toEqual({ id: 'cut', enabled: true })
+    expect(list.map((i) => i.id)).toEqual([
+      'cut', 'copy', 'paste', 'delete',
+      'bold', 'italic', 'underline', 'strikeout', 'clearFormat',
+      'alignLeft', 'alignCenter', 'alignRight', 'alignJustify',
+      'increaseIndent', 'decreaseIndent',
+      'properties',
+    ])
+    // 分隔线分隔: 正文组之间 + 末尾属性前
+    expect(entryKinds(snap).slice(-2)).toEqual(['separator', 'item'])
   })
 
   it('image: 复制 + 删除', () => {

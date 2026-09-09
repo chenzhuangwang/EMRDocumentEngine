@@ -110,8 +110,15 @@ function EditorPageInner({
   const applyControlEdit = useCallback((r: ControlConfigData) => {
     const ed = editorRef.current
     if (ed) ed.applyControlConfig(controlEdit.nodeId, r.element, r.definition)
+    // 应用后清除选中 (控件高亮/选中态随弹框关闭一并取消)
+    ed?.selectControl(null)
     setControlEdit({ open: false, nodeId: '' })
   }, [editorRef, controlEdit.nodeId])
+  const closeControlEdit = useCallback(() => {
+    // 取消选中态, 再关闭属性弹框 (契约 §12.7 属性为瞬态操作)
+    editorRef.current?.selectControl(null)
+    setControlEdit({ open: false, nodeId: '' })
+  }, [editorRef])
 
   const [exportOpen, setExportOpen] = useState(false)
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
@@ -481,6 +488,13 @@ function EditorPageInner({
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      // 无缝内联编辑: 焦点在控件 overlay 内 → 让原生控件处理 (Tab/退格/方向/
+      // Ctrl+B/I 等不落到正文), 仅保留 Ctrl+S 保存。
+      const target = e.target as HTMLElement | null
+      if (target && target.closest('[data-ctl-overlay]')) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSave() }
+        return
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSave() }
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); setFindReplaceOpen(true) }
       if ((e.ctrlKey || e.metaKey) && e.key === 'h') { e.preventDefault(); setFindReplaceOpen(true) }
@@ -886,7 +900,7 @@ function EditorPageInner({
         onContextMenu={contextMenu.onContextMenu}
       />
       <DesignControlTooltip />
-      <RuntimeControlOverlay />
+      <RuntimeControlOverlay canvasContainerRef={containerRef} />
       <ContextMenu
         open={contextMenu.open}
         x={contextMenu.x}
@@ -924,11 +938,10 @@ function EditorPageInner({
         const definition = ed.getControlDefinition(controlEdit.nodeId)
         const family = controlFamilyOf(node.element, definition)
         const initial = { element: node.element, definition }
-        const close = () => setControlEdit({ open: false, nodeId: '' })
         return family === 'choice' ? (
-          <ControlChoiceDialog open mode="edit" initial={initial} onClose={close} onApply={applyControlEdit} />
+          <ControlChoiceDialog open mode="edit" initial={initial} onClose={closeControlEdit} onApply={applyControlEdit} />
         ) : (
-          <ControlInputDialog open mode="edit" initial={initial} onClose={close} onApply={applyControlEdit} />
+          <ControlInputDialog open mode="edit" initial={initial} onClose={closeControlEdit} onApply={applyControlEdit} />
         )
       })()}
       <DocumentPropertiesDialog

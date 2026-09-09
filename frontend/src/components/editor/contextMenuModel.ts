@@ -61,6 +61,22 @@ export interface ContextMenuStyleInfo {
 
 const SEP: ContextMenuEntrySeparator = { kind: 'separator' }
 
+/** 正文文本菜单分组 (text/smartText 共用) */
+function textBodyEntries(coversSelection: boolean, style: ContextMenuStyleInfo): ContextMenuEntry[] {
+  return [
+    { kind: 'item', id: 'cut', label: '剪切', enabled: coversSelection },
+    { kind: 'item', id: 'copy', label: '复制', enabled: true },
+    { kind: 'item', id: 'paste', label: '粘贴', enabled: true },
+    { kind: 'item', id: 'delete', label: '删除', enabled: true },
+    SEP,
+    ...textFormatEntries(style),
+    SEP,
+    ...paragraphStyleEntries(style),
+    SEP,
+    ...listLevelEntries(),
+  ]
+}
+
 function textFormatEntries(style: ContextMenuStyleInfo): ContextMenuEntry[] {
   const ts = style.textStyle
   return [
@@ -115,20 +131,7 @@ export function buildContextMenuModel(
 ): ContextMenuModel {
   switch (snapshot.kind) {
     case 'text':
-      return {
-        entries: [
-          { kind: 'item', id: 'cut', label: '剪切', enabled: snapshot.coversSelection },
-          { kind: 'item', id: 'copy', label: '复制', enabled: true },
-          { kind: 'item', id: 'paste', label: '粘贴', enabled: true },
-          { kind: 'item', id: 'delete', label: '删除', enabled: true },
-          SEP,
-          ...textFormatEntries(style),
-          SEP,
-          ...paragraphStyleEntries(style),
-          SEP,
-          ...listLevelEntries(),
-        ],
-      }
+      return { entries: textBodyEntries(snapshot.coversSelection, style) }
     case 'cell':
       return {
         entries: [
@@ -161,10 +164,11 @@ export function buildContextMenuModel(
         ],
       }
     case 'smartText':
-      // 控件右键 → 属性 (交互模式 design/edit/form; 通用菜单只发 semantic
-      // action id, 弹框由业务层 EditorPage 映射, 不硬编码进本模型/ContextMenu)
+      // 控件右键 = 完整正文菜单 + 分隔后的「属性」(控件删除走 deleteSelectedControl)
       return {
         entries: [
+          ...textBodyEntries(true, style),
+          SEP,
           { kind: 'item', id: 'properties', label: '属性…', enabled: true },
         ],
       }

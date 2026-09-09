@@ -26,8 +26,9 @@ export interface LineElement {
   superscript?: boolean
   subscript?: boolean
   imageData?: { width?: number; height?: number; wrapType?: string }
-  /** 控件布局提示: width 固定宽 / minRows 多行文本域最小行数 */
-  control?: { width?: number; minRows?: number }
+  /** 控件布局提示: width 固定宽 / minRows 多行文本域最小行数 /
+   *  lines·rows 文本域折行后的物理行 (供 SLIFItem.controlLines 与粒子绘制) */
+  control?: { width?: number; minRows?: number; lines?: string[]; rows?: number }
   tableBlock?: unknown
   fieldType?: string
 }

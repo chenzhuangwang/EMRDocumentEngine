@@ -127,11 +127,15 @@ export function createControlParticle(): IParticle {
       const finalAlign = style?.textAlign ?? recipe.align
 
       if (recipe.kind === 'field') {
+        // 激活编辑 (P5 无缝内联): 该控件正在被 overlay 编辑 → 隐藏静态框/
+        // 值/▼, 由 overlay 作为唯一文本面; label/prefix/suffix 仍画 (box 外)。
+        const activeEditing = options?.activeControlId === item.nodeId && !isReadonly && !isMasked
+
         // 框内文本: 空态剥离占位符外框 (工厂 `[name]`), 填充态用值原样 (值可能合法含 `[ ]`)
         const inner = isMasked ? displayText : (isEmpty ? stripPlaceholderBrackets(displayText) : displayText)
         const innerW = ctx.measureText(inner).width
 
-        if (recipe.frame === 'brackets') {
+        if (!activeEditing && recipe.frame === 'brackets') {
           const frameHidden = style?.borderStyle === 'none'
           const bracketW = ctx.measureText('[').width
           const frameW = frameHidden ? innerW : (bracketW * 2 + innerW)
@@ -146,8 +150,9 @@ export function createControlParticle(): IParticle {
           }
           ctx.fillStyle = textColor
           ctx.fillText(inner, frameLeft + (frameHidden ? 0 : bracketW), box.baselineY)
-        } else {
-          // 四边框 (textarea)
+        } else if (!activeEditing && recipe.frame === 'box') {
+          // 四边框多行文本域 (textarea): 按 item.controlLines 折行逐行绘制,
+          // 行距 = size (与 LayoutEngine 预留行高同 pitch, 契约 §12.6 多行)。
           const solidBorder = style?.borderStyle === 'solid'
           if (style?.borderStyle !== 'none') {
             ctx.strokeStyle = isReadonly ? FRAME_READONLY : frameColor
@@ -156,17 +161,29 @@ export function createControlParticle(): IParticle {
             ctx.strokeRect(box.x, box.y, box.w, box.h)
             ctx.setLineDash([])
           }
-          let textX = box.leftEdge + CONTROL_BOX_PADDING
-          if (finalAlign === 'center') textX = box.leftEdge + (box.contentW - innerW) / 2
-          else if (finalAlign === 'right') textX = box.rightEdge - CONTROL_BOX_PADDING - innerW
+          const lines = isMasked
+            ? [inner]
+            : (item.controlLines && item.controlLines.length > 0
+                ? item.controlLines
+                : (inner.includes('\n') ? inner.split('\n') : [inner]))
           ctx.fillStyle = textColor
-          ctx.fillText(inner, textX, box.baselineY)
+          for (let k = 0; k < lines.length; k++) {
+            const lineText = lines[k]
+            const lw = ctx.measureText(lineText).width
+            let lx = box.leftEdge + CONTROL_BOX_PADDING
+            if (finalAlign === 'center') lx = box.leftEdge + (box.contentW - lw) / 2
+            else if (finalAlign === 'right') lx = box.rightEdge - CONTROL_BOX_PADDING - lw
+            ctx.fillText(lineText, lx, box.y + ascent + k * fontSize)
+          }
         }
 
-        // affordance (select/date) — 严格落在 AFFORDANCE_WIDTH 盒内 (不变量 7)
-        const affordLeft = box.rightEdge - CONTROL_BOX_PADDING - AFFORDANCE_WIDTH
-        if (recipe.affordance === 'dropdown') drawDropdown(ctx, affordLeft, box.y, box.h)
-        else if (recipe.affordance === 'calendar') drawCalendar(ctx, affordLeft, box.y, box.h)
+        // affordance (select/date) — 严格落在 AFFORDANCE_WIDTH 盒内 (不变量 7)。
+        // 激活编辑中隐藏, 由原生浮层承担。
+        if (recipe.affordance && !activeEditing) {
+          const affordLeft = box.rightEdge - CONTROL_BOX_PADDING - AFFORDANCE_WIDTH
+          if (recipe.affordance === 'dropdown') drawDropdown(ctx, affordLeft, box.y, box.h)
+          else if (recipe.affordance === 'calendar') drawCalendar(ctx, affordLeft, box.y, box.h)
+        }
       } else {
         // options 拓扑 (不变量 2): 内联选项组, 无框/无括号/无整体盒。
         // 只要 controlType 是 radio/checkbox 就进 options 拓扑 (不以 enums.data.length 为条件)。

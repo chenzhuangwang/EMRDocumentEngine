@@ -230,7 +230,7 @@ export type {
   EditorEventType,
 } from './Editor'
 export type { EditorListener } from './Editor'
-export type { ControlSnapshot } from './Editor'
+export type { ControlSnapshot, ControlEditTarget } from './Editor'
 
 // ---- 右键命中上下文 (契约 RULE 10) ----
 export {

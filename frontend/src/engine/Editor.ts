@@ -855,6 +855,8 @@ export class Editor {
    */
   activateControl(nodeId: string | null): void {
     this.store.setActiveControlId(nodeId)
+    // 无缝内联编辑: Draw 同步激活字段 → 渲染时隐藏该控件静态 field (框/值/▼)
+    this.draw.activeControlNodeId = nodeId
     this.draw.render(this.pool, this.store.state.runtime)
   }
   /** 取消激活 (契约 §12.6), 清空瞬态 activeControlId 并重绘 */
@@ -926,6 +928,10 @@ export class Editor {
   /** 控件视口 Client 矩形 (契约 §12.6 运行时 overlay 定位) — 委托 Draw 几何 */
   getControlClientRect(nodeId: string): { left: number; top: number; width: number; height: number } | null {
     return this.draw.getControlClientRect(nodeId)
+  }
+  /** 控件无缝内联编辑目标 (契约 §12.6) — 文本内容区几何 + 同 Canvas 字体, 供 overlay 透明无框编辑 */
+  getControlEditTarget(nodeId: string): ControlEditTarget | null {
+    return this.draw.getControlEditTarget(nodeId)
   }
   /**
    * 原子应用控件配置 (契约 §12.7) — 控件配置弹框「应用/确定」的唯一提交点。
@@ -1509,6 +1515,11 @@ export class Editor {
    */
   setMode(mode: import('./state/EditorRuntimeState').EditorMode): void {
     this.store.setMode(mode)
+    // 切出 edit/form (非交互模式) 且有激活控件 → 去激活 (卸载即提交),
+    // 防设计态/只读残留 overlay
+    if ((mode !== 'edit' && mode !== 'form') && this.getActiveControlId() !== null) {
+      this.deactivateControl()
+    }
   }
 
   /**
@@ -2488,6 +2499,36 @@ export class Editor {
 export type EditorEventType = 'ready' | 'contentChange' | 'modeChange' | 'selectionChange' | 'save'
 export interface EditorListener { event: EditorEventType; callback: (...args: unknown[]) => void }
 
+/**
+ * 控件无缝内联编辑目标 (契约 §12.6) — 由 Draw.getControlEditTarget 产出,
+ * 供 RuntimeControlOverlay 做透明无框的同字体编辑对齐。字段为 CSS px。
+ */
+export interface ControlEditTarget {
+  /** 文本编辑内容区 (方括号框=括号内 / textarea=内容区), CSS px */
+  textArea: { left: number; top: number; width: number; height: number; right: number }
+  /** 文本基线相对内容区顶的高度 (ascent*scale), 供 line-height/垂直对齐 */
+  ascentCss: number
+  descentCss: number
+  /** 字体真实行 ascent (CSS px) — overlay 用它抵消 DOM 输入框与 Canvas 的基线差 */
+  lineAscentCss: number
+  fontFamily: string
+  /** overlay 应设的 css font-size = size*scale */
+  fontSizeCss: number
+  bold: boolean
+  italic: boolean
+  align: 'left' | 'center' | 'right'
+  bracketOn: boolean
+  affordance: 'dropdown' | 'calendar' | null
+  color: string
+  caretColor: string
+  /** 空态占位名 (已剥方括号), 作 native placeholder */
+  placeholderText: string
+  empty: boolean
+  writable: boolean
+  masked: boolean
+  minRows?: number
+}
+
 /** IEditor 公共 API (SDK 集成面) */
 export interface IEditor {
   getDocument(): DocumentTree
@@ -2506,6 +2547,7 @@ export interface IEditor {
   getControlValue(nodeId: string): ControlValue | undefined
   getControlSnapshot(nodeId: string): ControlSnapshot | null
   getControlClientRect(nodeId: string): { left: number; top: number; width: number; height: number } | null
+  getControlEditTarget(nodeId: string): ControlEditTarget | null
   applyControlConfig(
     nodeId: string,
     element: ElementMeta,

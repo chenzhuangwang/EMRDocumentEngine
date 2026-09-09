@@ -25,7 +25,9 @@ import { createFootnoteParticle } from './particles/FootnoteParticle'
 import { createTableParticle } from './particles/TableParticle'
 import { createImageParticle } from './particles/ImageParticle'
 import { createControlParticle } from './particles/ControlParticle'
-import { computeControlBox } from '../document/control/ControlBox'
+import { computeControlBox, stripPlaceholderBrackets } from '../document/control/ControlBox'
+import { computeFieldRegion } from '../document/control/ControlFieldGeometry'
+import { isControlValueEmpty } from '../document/control/ControlValue'
 import type { PresentationStyleStore } from './presentation/PresentationStyle'
 import type { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import { createChartParticle } from './particles/ChartParticle'
@@ -99,6 +101,10 @@ export class Draw {
 
   // 设计模式选中的控件节点 id (契约 §12.3, 由 Editor 注入) — 高亮 overlay
   designSelectedControlId: string | null = null
+
+  // 当前激活的控件节点 id (无缝内联编辑, 契约 §12.6 运行时交互, 由 Editor 注入)
+  // — 该控件渲染时隐藏静态 field (框/值/affordance), 由 DOM overlay 承担文本面
+  activeControlNodeId: string | null = null
 
   constructor(
     host: EditorHost,
@@ -245,10 +251,25 @@ export class Draw {
 
       for (const item of searchItems) {
         if (para.children.includes(item.nodeId) || item.nodeId === paraId) {
-          const textLen = item.text?.length || 0
+          const displayLen = item.text?.length || 0
+          // 非文本内联原子 (smarttext/image/field/cross_reference…) 按 1 字符推进,
+          // 与 cursor offset / NodePool.resolveCharOffset 的「非 text 计 1」一致。
+          const isAtomic = item.nodeType === 'smarttext' || item.nodeType === 'image' ||
+            item.nodeType === 'field' || item.nodeType === 'cross_reference' ||
+            item.nodeType === 'footnote_ref' || item.nodeType === 'bookmark'
+          const unitLen = isAtomic ? 1 : displayLen
           // item.x 已偏移过标记宽度, cursor offset 是正文内偏移, 无需调整
-          if (offset <= charCount + textLen) {
+          if (offset <= charCount + unitLen) {
             const localOff = offset - charCount
+            if (isAtomic) {
+              // 原子: 0=前 (item.x), 1=后 (item.x + bodyW)
+              const bodyW = (item.width || 0) - (item.markerWidth || 0)
+              return {
+                x: localOff >= 1 ? item.x + bodyW : item.x,
+                y: pageY + yOffset + item.y,
+                h: item.ascent + item.descent,
+              }
+            }
             // 逐字符累积宽度: 正确区分半角/全角字符, 避免中英文混排光标偏移
             const cumWidth = cumulativeWidthUpTo(item.text || '', localOff, {
               font: item.font || 'SimSun',
@@ -262,7 +283,7 @@ export class Draw {
               h: item.ascent + item.descent,
             }
           }
-          charCount += textLen
+          charCount += unitLen
         }
       }
     }
@@ -484,6 +505,7 @@ export class Draw {
               templateDefinitionOf: this.templateDefinitionOf,
               elementOf: this.elementOf,
               controlValueOf: this.controlValueOf,
+              activeControlId: this.activeControlNodeId,
             })
           } else {
             // 文本/域代码/控件 — 通过 ParticleRegistry 调度 (含列表标记)
@@ -496,6 +518,7 @@ export class Draw {
                 templateDefinitionOf: this.templateDefinitionOf,
                 elementOf: this.elementOf,
                 controlValueOf: this.controlValueOf,
+                activeControlId: this.activeControlNodeId,
               })
             }
           }
@@ -572,9 +595,9 @@ export class Draw {
     // 页面居中: 与 content 层相同偏移
     ictx.translate(offsetX / scale, 0)
 
-    // --- 选区高亮 (文字下方, 统一包围盒) ---
+    // --- 选区高亮 (文字下方, 统一包围盒) — 无缝编辑激活期间隐藏 (消除双光标) ---
     const selection = runtimeState.selection
-    if (selection.active) {
+    if (selection.active && !this.activeControlNodeId) {
       this.renderSelectionUnified(pool, selection, pageVerticalGap, ictx)
     }
 
@@ -588,8 +611,8 @@ export class Draw {
       this.renderDesignSelection(this.designSelectedControlId, pageVerticalGap, ictx)
     }
 
-    // --- 光标 (文字上方, 仅在 visible 时绘制) ---
-    if (cursor.visible) {
+    // --- 光标 (文字上方, 仅在 visible 时绘制; 无缝编辑激活时隐藏, 由 DOM 光标承担) ---
+    if (cursor.visible && !this.activeControlNodeId) {
       const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, pageVerticalGap)
       if (caret) {
         ictx.fillStyle = '#000000'
@@ -889,6 +912,7 @@ export class Draw {
           templateDefinitionOf: this.templateDefinitionOf,
           elementOf: this.elementOf,
           controlValueOf: this.controlValueOf,
+          activeControlId: this.activeControlNodeId,
         })
       }
     }
@@ -976,6 +1000,120 @@ export class Draw {
           top: canvasRect.top + box.y * scale,
           width: box.w * scale,
           height: box.h * scale,
+        }
+      }
+    }
+    return null
+  }
+
+  /**
+   * 获取 smarttext 控件的「无缝内联编辑目标」(契约 §12.6 运行时交互)。
+   *
+   * 与 getControlClientRect 同坐标转换, 但返回的是 **文本编辑内容区**
+   * (方括号框=括号内、textarea=内容区) 而非整盒, 且携带与 Canvas 绘制一致
+   * 的字体/字号(CSS px = size*scale)/基线/颜色/对齐 —— 供 RuntimeControlOverlay
+   * 透明无框地对齐, 不再复制 inset/字体规则。
+   */
+  getControlEditTarget(
+    nodeId: string,
+  ): {
+    textArea: { left: number; top: number; width: number; height: number; right: number }
+    ascentCss: number
+    descentCss: number
+    /** 字体真实行 ascent (fontBoundingBox, CSS px) — overlay 用它抵消 DOM 基线差 */
+    lineAscentCss: number
+    fontFamily: string
+    fontSizeCss: number
+    bold: boolean
+    italic: boolean
+    align: 'left' | 'center' | 'right'
+    bracketOn: boolean
+    affordance: 'dropdown' | 'calendar' | null
+    color: string
+    caretColor: string
+    placeholderText: string
+    empty: boolean
+    writable: boolean
+    masked: boolean
+    minRows?: number
+  } | null {
+    if (this.pages.length === 0) return null
+    const node = this.pool?.nodes.get(nodeId) as SmartTextNode | undefined
+    if (!node || node.type !== 'smarttext') return null
+
+    const viewportW = this.host.viewport.size().width
+    const scale = this.coordSystem.transform.scale
+    const pageWidth = this.pages[0]?.width || 794
+    const visiblePageW = pageWidth * scale
+    const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
+    const pageVerticalGap = this.renderer.getPageVerticalGap()
+    const scrollY = this.coordSystem.transform.scrollY
+
+    for (let i = 0; i < this.pages.length; i++) {
+      const page = this.pages[i]
+      if (!page) continue
+      const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
+      for (const item of getFlatPageItems(page)) {
+        if (item.nodeId !== nodeId || item.nodeType !== 'smarttext') continue
+
+        const fontSize = item.size || 16
+        const fontFamily = item.font || 'SimSun'
+        const ascent = item.ascent > 0 ? item.ascent : fontSize * 0.8
+        const descent = item.descent > 0 ? item.descent : fontSize * 0.2
+        const measure = (t: string) => this.measurer.measureWidth(t, {
+          font: fontFamily, size: fontSize, bold: item.bold, italic: item.italic,
+        })
+        const fm = this.measurer.measure('M', { font: fontFamily, size: fontSize, bold: item.bold, italic: item.italic })
+        const lineAscentCss = (fm.fontBoundingBoxAscent ?? fm.actualBoundingBoxAscent ?? fontSize * 0.8) * scale
+        const style = this.presentationStyleOf?.(nodeId)
+        const def = this.templateDefinitionOf?.(nodeId)
+        const el = node.element
+        const controlValue = node.value
+        const empty = isControlValueEmpty(controlValue)
+        const masked = el?.privacy?.enabled === true
+        const writable = (def?.editable !== false) && el?.readonly !== true
+
+        const region = computeFieldRegion({
+          controlType: def?.controlType,
+          lineLeft: item.x,
+          lineTop: spY + item.y,
+          layoutWidth: (item.width || 0) - (item.markerWidth || 0),
+          ascent,
+          descent,
+          minWidth: style?.minWidth,
+          borderStyle: style?.borderStyle,
+          textAlignOverride: style?.textAlign as 'left' | 'center' | 'right' | undefined,
+          measure,
+        })
+
+        const surface = this.renderer.getInteractSurface()
+        const canvasRect = surface?.getBoundingClientRect() ?? { left: 0, top: 0 }
+        const regionW = (region.textRightX - region.textX) * scale
+        return {
+          textArea: {
+            left: canvasRect.left + region.textX * scale + offsetX,
+            top: canvasRect.top + region.box.y * scale,
+            width: regionW,
+            right: canvasRect.left + region.textRightX * scale + offsetX,
+            height: (ascent + descent) * scale,
+          },
+          ascentCss: ascent * scale,
+          descentCss: descent * scale,
+          lineAscentCss,
+          fontFamily,
+          fontSizeCss: fontSize * scale,
+          bold: !!item.bold,
+          italic: !!item.italic,
+          align: region.align,
+          bracketOn: region.bracketOn,
+          affordance: region.affordance,
+          color: masked ? '#9CA3AF' : (empty ? '#9CA3AF' : (item.color || '#374151')),
+          caretColor: '#374151',
+          placeholderText: stripPlaceholderBrackets(node.text || ''),
+          empty,
+          writable,
+          masked,
+          minRows: el?.format?.minRows,
         }
       }
     }

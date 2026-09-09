@@ -36,6 +36,9 @@ export interface RenderOptions {
    *  供 widget 级 affordance (checkbox 勾选/radio 选中/select 展开态) 读取
    *  原始 ControlValue (区别于 SLIFItem.text 的显示字符串) */
   controlValueOf?: (nodeId: string) => ControlValue | undefined
+  /** 当前激活的控件 nodeId (无缝内联编辑) — 激活时该控件的静态 field
+   *  框/值/affordance 隐藏 (label/prefix/suffix 仍画), 由 DOM overlay 承担 */
+  activeControlId?: string | null
 }
 
 /** 粒子渲染器接口 */

@@ -106,8 +106,12 @@ export class MouseHandler {
       const hit = this.hitTestRuntimeControl(e.clientX, e.clientY)
       if (hit) {
         const snap = this.editor.getControlSnapshot(hit.item.nodeId)
-        // readonly/masked → Canvas-only: 不激活、不内联切换、不挂 DOM (不变量 4/5)
-        if (!snap || snap.masked || !snap.writable) return
+        // readonly/masked → Canvas-only: 不激活、不内联切换、不挂 DOM (不变量 4/5);
+        // 若正有激活控件则取消之 (旧 draft 由 overlay 卸载即提交)。
+        if (!snap || snap.masked || !snap.writable) {
+          if (this.editor.getActiveControlId() !== null) this.editor.deactivateControl()
+          return
+        }
         if (hit.kind === 'option') {
           // 离散控件内联候选项切换 (不变量 2): 命中几何已上移进 findRuntimeControlHitAt,
           // 此处只做纯值计算并写入 (VR-3 单一路径)。
