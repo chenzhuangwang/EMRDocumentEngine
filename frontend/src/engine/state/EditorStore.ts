@@ -42,6 +42,8 @@ export interface EditorStoreState {
   designSelectedControlId: string | null
   /** 设计模式悬停的控件节点 id (canonical owner = Editor, 契约 §12.3) — 供 UI 悬浮提示, 无悬停为 null */
   designHoveredControlId: string | null
+  /** 运行时激活的控件节点 id (canonical owner = Editor, 契约 §12.6 运行时交互) — 瞬态, 不序列化, 无激活为 null */
+  activeControlId: string | null
 }
 
 type Listener = (state: EditorStoreState) => void
@@ -68,6 +70,7 @@ export class EditorStore {
       headerFooterConfig: { ...DEFAULT_HEADER_FOOTER_CONFIG },
       designSelectedControlId: null,
       designHoveredControlId: null,
+      activeControlId: null,
     }
   }
 
@@ -201,6 +204,13 @@ export class EditorStore {
   setDesignHoveredControlId(id: string | null): void {
     if (this._state.designHoveredControlId === id) return
     this._state.designHoveredControlId = id
+    this.notify()
+  }
+
+  /** 运行时激活控件 (契约 §12.6 运行时交互) — 瞬态, 唯一受控写入入口, 同值不重复通知 */
+  setActiveControlId(id: string | null): void {
+    if (this._state.activeControlId === id) return
+    this._state.activeControlId = id
     this.notify()
   }
 

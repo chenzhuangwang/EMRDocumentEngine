@@ -8,6 +8,7 @@
 // ============================================================
 
 import { TextMeasurer } from '../text/TextMeasurer'
+import { CONTROL_BOX_PADDING } from '../../document/control/ControlBox'
 import type { LineElement, FontConfig, LineBreakOptions, ILine } from './LineLayout'
 
 // 重新导出类型 — 保持向后兼容 (外部 import { LineElement } from '../layout/line/LineBreaker' 仍然可用)
@@ -159,7 +160,8 @@ export class LineBreaker {
       // 关键修复: 格式化把单节点拆成多节点后, 中段节点往往「窄于整行但宽于剩余空间」。
       // 若拆分只以「整行宽度」判定, 这类节点会被误判为放不下而整段换行,
       // 导致选区结束位置之后的文本被强制下沉、排版错位。
-      if ((el.type === 'text' || el.type === 'smarttext' || el.type === 'hyperlink') &&
+      // 注意: smarttext 是原子控件, 不参与逐字拆分 — 放不下时整块换行 (见下方非文本分支)。
+      if ((el.type === 'text' || el.type === 'hyperlink') &&
           elWidth > remainingW && (el.value || '').length > 0) {
         // 当前行已满 (剩余宽度 ≤ 0) → 先 flush, 再按整行宽度拆分
         if (remainingW <= 0 && currentLineElements.length > 0) {
@@ -372,6 +374,17 @@ export class LineBreaker {
 
       case 'control': {
         return el.control?.width || 120
+      }
+      case 'smarttext': {
+        // 控件盒宽 = 文本宽 + 2*内边距 (与 computeControlBox 同源, 单一事实源)。
+        // 布局 advance 必须等于盒宽, 否则相邻控件盒重叠、且本应换行处不换行。
+        // 离散控件 (checkbox/radio) 表单模式内联渲染时, LayoutEngine 通过
+        // control.width 预留候选项宽, 优先采用该预留宽, 使内联候选项不与后续文本重叠。
+        const config = this.getElementFontConfig(el, options)
+        if (typeof el.control?.width === 'number' && el.control.width > 0) {
+          return el.control.width + CONTROL_BOX_PADDING * 2
+        }
+        return this.measurer.measureWidth(el.value || '', config) + CONTROL_BOX_PADDING * 2
       }
       case 'image': {
         return el.imageData?.width || 100

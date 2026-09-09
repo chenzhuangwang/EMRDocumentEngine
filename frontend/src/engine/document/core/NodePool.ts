@@ -158,6 +158,24 @@ export class NodePool {
     }
   }
 
+  /**
+   * 删除节点上的一个自有字段 (契约 §12.6.1 规范空态)。
+   *
+   * updateNode 用 Object.assign, 会把 `value: undefined` 写成自有键 (键在值空),
+   * 与「缺失 value 字段 = 未填」的规范空态在内存中不等价。本方法真正 delete 该键,
+   * 供 SetControlValueCommand 清空运行时值时调用。拒绝 id/type (铁律 4)。
+   */
+  deleteNodeField(nodeId: string, field: string): void {
+    if (field === 'id' || field === 'type') {
+      throw new Error('id and type are immutable')
+    }
+    const node = this.nodes.get(nodeId) as Record<string, unknown> | undefined
+    if (node && field in node) {
+      delete node[field]
+      this._nodeVersions.set(nodeId, (this._nodeVersions.get(nodeId) ?? 0) + 1)
+    }
+  }
+
   bumpNodeVersion(nodeId: string): void {
     this._nodeVersions.set(nodeId, (this._nodeVersions.get(nodeId) ?? 0) + 1)
   }

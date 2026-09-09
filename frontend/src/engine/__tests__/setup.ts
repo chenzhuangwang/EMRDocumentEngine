@@ -63,6 +63,7 @@ function createMockCtx(): CanvasRenderingContext2D {
     beginPath() {},
     moveTo() {},
     lineTo() {},
+    closePath() {},
     stroke() {},
     fill() {},
     save() {},

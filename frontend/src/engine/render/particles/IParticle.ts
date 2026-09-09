@@ -8,7 +8,7 @@
 import type { SLIFItem } from '../../layout/core/SLIF'
 import type { PresentationStyle } from '../presentation/PresentationStyle'
 import type { TemplateDefinition } from '../../template/TemplateDefinition'
-import type { ElementMeta } from '../../document/core/DocumentModel'
+import type { ElementMeta, ControlValue } from '../../document/core/DocumentModel'
 
 /** 渲染上下文选项 */
 export interface RenderOptions {
@@ -32,6 +32,10 @@ export interface RenderOptions {
   templateDefinitionOf?: (nodeId: string) => TemplateDefinition | undefined
   /** 语义元数据查询 (按 nodeId), draw time 读取 — 控件 dataType 分类/隐私脱敏 */
   elementOf?: (nodeId: string) => ElementMeta | undefined
+  /** 控件规范运行时值查询 (按 nodeId), draw time 读取 — 契约 §12.6.1,
+   *  供 widget 级 affordance (checkbox 勾选/radio 选中/select 展开态) 读取
+   *  原始 ControlValue (区别于 SLIFItem.text 的显示字符串) */
+  controlValueOf?: (nodeId: string) => ControlValue | undefined
 }
 
 /** 粒子渲染器接口 */

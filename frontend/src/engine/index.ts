@@ -58,7 +58,7 @@ export { DeleteRangeCommand } from './command/commands/DeleteRangeCommand'
 export { MacroCommand } from './command/commands/MacroCommand'
 export { InsertImageCommand } from './command/commands/InsertImageCommand'
 export { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
-export type { ReplaceEdit } from './command/commands/ReplaceTextCommand'
+export type { ReplaceEdit, ReplaceRejection } from './command/commands/ReplaceTextCommand'
 export {
   RemoveNodesCommand,
   InsertInlineNodeCommand,
@@ -121,7 +121,7 @@ export {
 } from './document/factory/ElementFormatter'
 
 // ---- Runtime Control Value (契约 §12.6) ----
-export { validateControlValue, isControlValueEmpty, isControlValueComplete } from './document/control/ControlValue'
+export { validateControlValue, isControlValueEmpty, isControlValueComplete, normalizeCheckboxValue, controlDisplayLength } from './document/control/ControlValue'
 export type {
   ControlValuePermissions,
   ControlValueRejectReason,
@@ -135,6 +135,9 @@ export { SetControlValueCommand } from './command/commands/SetControlValueComman
 export type { IParticle, RenderOptions } from './render/particles/IParticle'
 export { ParticleRegistry, particleRegistry } from './render/particles/ParticleRegistry'
 export { textParticle, separatorParticle, fieldParticle } from './render/particles/ParticleAdapters'
+export { createControlParticle } from './render/particles/ControlParticle'
+export { controlVisualRecipe, computeControlBox, CONTROL_BOX_PADDING, AFFORDANCE_WIDTH, AFFORDANCE_GAP, stripPlaceholderBrackets } from './document/control/ControlBox'
+export type { ControlVisualRecipe } from './document/control/ControlBox'
 export { createFootnoteParticle } from './render/particles/FootnoteParticle'
 export { createImageParticle } from './render/particles/ImageParticle'
 export { createCommentParticle } from './render/particles/CommentParticle'
@@ -157,7 +160,7 @@ export type { QCRule, QCIssue, QCResult, QCSeverity, QCGrade } from './qc/QCEngi
 
 // ---- TemplateDefinition (契约 §12.1) ----
 export { TemplateDefinitionStore } from './template/TemplateDefinition'
-export type { TemplateDefinition, TemplateDefinitionMap } from './template/TemplateDefinition'
+export type { TemplateDefinition, TemplateDefinitionMap, ControlType } from './template/TemplateDefinition'
 
 // ---- PresentationStyle (契约 §2.2) ----
 export { PresentationStyleStore } from './render/presentation/PresentationStyle'
@@ -226,6 +229,7 @@ export type {
   EditorEventType,
 } from './Editor'
 export type { EditorListener } from './Editor'
+export type { ControlSnapshot } from './Editor'
 
 // ---- 右键命中上下文 (契约 RULE 10) ----
 export {

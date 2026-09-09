@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import { LineBreaker } from '../layout/line/LineBreaker'
 import type { LineElement } from '../layout/line/LineLayout'
+import { CONTROL_BOX_PADDING } from '../document/control/ControlBox'
 import { testMeasurer } from './helpers'
 
 const options = {
@@ -56,5 +57,26 @@ describe('LineBreaker — minRows 多行文本域行高', () => {
     // 文本 descent=3.2, 控件 descent=35.2 → 行高由控件主导
     expect(lines[0].height).toBeCloseTo(3 * 16)
     expect(lines[0].maxDescent).toBeCloseTo(16 * 0.2 + 2 * 16)
+  })
+})
+
+describe('LineBreaker — smarttext 盒宽参与换行 (契约 §12.6, 排版不重叠)', () => {
+  it('smarttext 行宽 = 文本宽 + 2*内边距 (盒宽同源)', () => {
+    const lines = breaker().breakLines([el()], options)
+    const textW = testMeasurer.measureWidth('[字段]', { font: 'SimSun', size: 16 })
+    expect(lines[0].width).toBeCloseTo(textW + CONTROL_BOX_PADDING * 2, 0)
+  })
+
+  it('smarttext 是原子控件: 超出剩余宽度整块换行, 不逐字拆分', () => {
+    const boxW = testMeasurer.measureWidth('[字段]', { font: 'SimSun', size: 16 }) + CONTROL_BOX_PADDING * 2
+    // maxWidth 放得下一个控件盒但放不下两个 → 第二块整块下沉到下一行
+    const lines = breaker().breakLines([el(), el()], { ...options, maxWidth: boxW + 1 })
+    expect(lines).toHaveLength(2)
+    // 每行仅一个 smarttext, value 未被拆散
+    for (const line of lines) {
+      const smarts = line.elements.filter(e => e.type === 'smarttext')
+      expect(smarts).toHaveLength(1)
+      expect(smarts[0].value).toBe('[字段]')
+    }
   })
 })

@@ -9,8 +9,9 @@
 // 导出链路可直接消费 SLIFPage[]
 // ================================================================
 
-import type { DocumentTree, Paragraph, TextNode } from '../../document/core/DocumentModel'
+import type { DocumentTree, Paragraph, TextNode, ElementEnumOption } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
+import type { ControlType } from '../../template/TemplateDefinition'
 import type { SLIFPage, SLIFItem, SLIFRow, SLIFCell } from './SLIF'
 import type { EventBus } from '../../interaction/EventBus'
 import type { LayoutConfig } from './LayoutContext'
@@ -22,12 +23,25 @@ import { PageBreaker } from '../page/PageBreaker'
 import type { ILine, IPage } from '../page/PageLayout'
 import { DEFAULT_PAGE_SETUP } from '../../document/core/DocumentModel'
 import { smartTextDisplayValue } from '../../document/factory/ElementFormatter'
+import { layoutControlOptions, controlOptionsWidth, controlOptionsPlaceholderWidth } from '../../document/control/ControlOptions'
+import { controlVisualRecipe, CONTROL_BOX_PADDING, AFFORDANCE_GAP, AFFORDANCE_WIDTH } from '../../document/control/ControlBox'
+import { isControlValueEmpty } from '../../document/control/ControlValue'
 import { MergeMatrix } from '../../document/table/MergeMatrix'
 import { FootnoteLayout } from '../footnote/FootnoteLayout'
 import { ListParticle } from '../../render/particles/ListParticle'
 
 export type { LayoutConfig } from './LayoutContext'
 export type { LayoutResult } from './LayoutResult'
+
+/**
+ * 运行时控件内联渲染预留宽所需的最小信息 (契约 §12.6 表单模式内联渲染)。
+ * 正交读取: controlType 直接来自 TemplateDefinition, options 直接来自 element.format.enums,
+ * 布局只消费、不推导 (绝不从 dataType/enums 反向推断 controlType)。
+ */
+export interface InlineControlInfo {
+  controlType?: ControlType
+  options?: ElementEnumOption[]
+}
 
 /** 标题级别 → 字体缩放倍率 (基于正文默认 16px: H1=32, H2=24, H3=20, H4=18, H5=16, H6=14) */
 const HEADING_SCALE: Record<number, number> = { 1: 2.0, 2: 1.5, 3: 1.25, 4: 1.125, 5: 1.0, 6: 0.875 }
@@ -38,6 +52,10 @@ export class LayoutEngine {
   private measurer: TextMeasurer
   private pages: SLIFPage[] = []
   private config: LayoutConfig
+  // 运行时控件内联渲染预留宽信息源 (契约 §12.6) — 由 Draw 注入 (读取
+  // templateDefinitions.controlType + element.format.enums)。布局不直接持有
+  // templateDefinitions, 只消费回调, 保持布局与设计期层的解耦。
+  private controlInfoOf: ((nodeId: string) => InlineControlInfo | undefined) | null = null
 
   constructor(eventBus: EventBus, measurer: TextMeasurer) {
     this.eventBus = eventBus
@@ -144,13 +162,42 @@ export class LayoutEngine {
             // 标题: 缩放字号 + 加粗
             const baseSize = tn.size || BASE_FONT_SIZE
             const headingSize = isHeading ? Math.round(baseSize * headingScale) : undefined
-            // 多行文本域最小行数 (契约 §12.6.2 layer D): 影响行高, 不决定值语义
-            const minRows = childType === 'smarttext'
-              ? ((child as unknown as { element?: { format?: { minRows?: number } } }).element?.format?.minRows)
-              : undefined
-            const control = (typeof minRows === 'number' && minRows > 0)
-              ? { minRows }
-              : undefined
+            // 控件布局提示 (契约 §12.6):
+            //   - 多行文本域 minRows (layer D): 影响行高, 不决定值语义
+            //   - checkbox/radio 表单模式内联渲染: 预留候选项宽 (control.width),
+            //     使内联候选项不与后续文本重叠 (信息源同 controlInfoOf, 无反向推导)
+            let control: LineElement['control']
+            if (childType === 'smarttext') {
+              const minRows = (child as unknown as { element?: { format?: { minRows?: number } } }).element?.format?.minRows
+              const info = this.controlInfoOf?.(childId)
+              const recipe = controlVisualRecipe(info?.controlType)
+              const opts = info?.options
+              const font = tn.font || 'SimSun'
+              const size = tn.size || BASE_FONT_SIZE
+              const measure = (t: string) =>
+                this.measurer.measureWidth(t, { font, size, bold: tn.bold, italic: tn.italic })
+              if (recipe.kind === 'options') {
+                // 内联候选项预留宽 — 与渲染 (ControlParticle) / 命中 (MouseHandler) 共用
+                // layoutControlOptions 单一事实源; 空候选项 (enums 但 data=[]) 仍 enum 语义,
+                // 预留「无候选项」占位宽而非退化输入框 (不变量 3)。
+                control = opts && opts.length > 0
+                  ? { width: controlOptionsWidth(layoutControlOptions(opts, info!.controlType as 'checkbox' | 'radio', measure)) }
+                  : { width: controlOptionsPlaceholderWidth(measure) }
+              } else if (recipe.frame === 'brackets') {
+                // 方括号框: 空态 textVal 已含 `[ ]` (占位符), 填充态需补画 `[ value ]`。
+                // 预留宽 = 完整可见宽 (框 + 文本 + affordance), 闭环不变量 1。
+                const isEmpty = isControlValueEmpty((tn as unknown as { value?: unknown }).value)
+                let width = measure(isEmpty ? textVal : `[${textVal}]`)
+                if (recipe.affordance) width += AFFORDANCE_GAP + AFFORDANCE_WIDTH
+                control = { width }
+              } else if (typeof minRows === 'number' && minRows > 0) {
+                control = { minRows }
+              } else {
+                control = undefined
+              }
+            } else {
+              control = undefined
+            }
             elements.push({
               id: tn.id, type: childType, value,
               font: tn.font, size: headingSize ?? tn.size,
@@ -367,11 +414,23 @@ export class LayoutEngine {
             itemListMarker = undefined // 非首元素不带标记
           }
 
-          // 元素实际渲染宽度 (与 LineBreaker 同源度量), 供 x 累积 + hit-test 精确命中
-          const itemWidth = measurer.measureWidth(itemText || '', {
-            font: el.font || 'SimSun', size: el.size || 16,
-            bold: el.bold, italic: el.italic,
-          })
+          // 元素实际渲染宽度 (与 LineBreaker 同源度量), 供 x 累积 + hit-test 精确命中。
+          // smarttext 是原子控件: 布局 advance 取「盒宽」= 文本宽 + 2*内边距 (与
+          // LineBreaker.getElementWidth 同源), 否则相邻控件盒重叠、且换行不生效。
+          const isSmart = el.type === 'smarttext'
+          // 离散控件内联渲染: 预留候选项宽 (control.width), 与 LineBreaker 同源。
+          // PageLayout.ILine.elements 是窄化类型 (无 control), 运行时仍保留该字段, 故回 cast。
+          const elControl = (el as LineElement).control
+          const controlWidth = isSmart && typeof elControl?.width === 'number' && elControl.width > 0
+            ? elControl.width
+            : undefined
+          const itemWidth = controlWidth !== undefined
+            ? controlWidth
+            : measurer.measureWidth(itemText || '', {
+                font: el.font || 'SimSun', size: el.size || 16,
+                bold: el.bold, italic: el.italic,
+              })
+          const advanceWidth = itemWidth + (isSmart ? CONTROL_BOX_PADDING * 2 : 0)
 
           items.push({
             nodeId: el.id, nodeType: el.type, type: el.type,
@@ -391,8 +450,8 @@ export class LayoutEngine {
             fieldType: (el as { fieldType?: string }).fieldType,
           })
 
-          // 推进元素级 X 游标 (标记宽度 + 正文宽度)
-          cursorX += (itemMarkerWidth || 0) + itemWidth
+          // 推进元素级 X 游标 (标记宽度 + 正文宽度 [+ 控件盒内边距])
+          cursorX += (itemMarkerWidth || 0) + advanceWidth
         }
         y += line.height
       }
@@ -945,6 +1004,8 @@ export class LayoutEngine {
           font: el.font || 'SimSun', size: el.size || 12,
           bold: el.bold, italic: el.italic,
         })
+        // smarttext 原子控件: advance 取盒宽 (与正文/LineBreaker 同源), 避免盒重叠
+        const advanceWidth = el.type === 'smarttext' ? elWidth + CONTROL_BOX_PADDING * 2 : elWidth
 
         items.push({
           nodeId: el.id, nodeType: el.type, type: el.type,
@@ -958,7 +1019,7 @@ export class LayoutEngine {
           strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,
             fieldType: (el as { fieldType?: string }).fieldType,
           })
-        cursorX += elWidth
+        cursorX += advanceWidth
       }
       y += line.height
     }
@@ -1001,5 +1062,10 @@ export class LayoutEngine {
 
   updateConfig(config: Partial<LayoutConfig>): void {
     Object.assign(this.config, config)
+  }
+
+  /** 注入内联渲染预留宽信息源 (契约 §12.6), null 清除 (缺省行为不变)。 */
+  setControlInfoOf(fn: ((nodeId: string) => InlineControlInfo | undefined) | null): void {
+    this.controlInfoOf = fn
   }
 }

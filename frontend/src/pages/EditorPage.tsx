@@ -9,6 +9,7 @@ import { ReadingModeOverlay } from '@/components/views/ReadingMode'
 import { DesignControlPalette } from '@/components/views/DesignControlPalette'
 import { DesignControlProperties } from '@/components/views/DesignControlProperties'
 import { EditorProvider, useEditorRef, useEditorReady, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
+import { RuntimeControlOverlay } from '@/components/editor/RuntimeControlOverlay'
 import { useEditorContextMenu } from '@/components/editor/useEditorContextMenu'
 import { ContextMenu } from '@/components/editor/ContextMenu'
 import { ExportDialog } from '@/components/dialogs/ExportDialog'
@@ -218,6 +219,10 @@ function EditorPageInner({
       if (newMode === 'readonly' || newMode === 'clean' || newMode === 'print') {
         if (editor.isFormatPainterActive) {
           editor.setFormatPainterActive(false)
+        }
+        // 退出运行时交互: 清除激活控件 (契约 §12.6 瞬态)
+        if (editor.getActiveControlId() !== null) {
+          editor.deactivateControl()
         }
       }
     }
@@ -856,6 +861,7 @@ function EditorPageInner({
         onContextMenu={contextMenu.onContextMenu}
       />
       <DesignControlTooltip />
+      <RuntimeControlOverlay />
       <ContextMenu
         open={contextMenu.open}
         x={contextMenu.x}

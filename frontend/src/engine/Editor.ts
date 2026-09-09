@@ -56,15 +56,21 @@ import {
 } from './command/commands/StructuralCommands'
 import { InsertImageCommand } from './command/commands/InsertImageCommand'
 import { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
+import type { ReplaceRejection } from './command/commands/ReplaceTextCommand'
 import { RemoveControlCommand } from './command/commands/RemoveControlCommand'
 import { InsertControlCommand } from './command/commands/InsertControlCommand'
 import { UpdateControlDefinitionCommand } from './command/commands/UpdateControlDefinitionCommand'
 import { UpdateDocumentPropertiesCommand } from './command/commands/UpdateDocumentPropertiesCommand'
 import { UpdateDocumentTitleCommand } from './command/commands/UpdateDocumentTitleCommand'
 import { TemplateDefinitionStore } from './template/TemplateDefinition'
-import type { TemplateDefinition } from './template/TemplateDefinition'
+import type { TemplateDefinition, ControlType } from './template/TemplateDefinition'
 import type { PresentationStyleStore } from './render/presentation/PresentationStyle'
 import type { DictionaryProvider } from './document/control/Dictionary'
+import { NodeType } from './document/core/DocumentModel'
+import type { ControlValue, ElementEnumOption, SmartTextNode } from './document/core/DocumentModel'
+import { SetControlValueCommand } from './command/commands/SetControlValueCommand'
+import { validateControlValue } from './document/control/ControlValue'
+import type { ControlValueValidationResult, ControlValuePermissions } from './document/control/ControlValue'
 
 /**
  * 比较两份 DocumentMetadata 是否语义相等 (键序无关; keywords 数组有序)。
@@ -85,6 +91,49 @@ function metadataEquals(a: DocumentMetadata | undefined, b: DocumentMetadata | u
     } else if (av !== bv) return false
   }
   return true
+}
+
+/**
+ * 控件运行时快照 (契约 §12.6) — 供 React runtime overlay 一次性读取
+ * 某 smarttext 控件的全部渲染/交互所需投影, 避免 overlay 直接触碰
+ * DocumentModel / NodePool / TemplateDefinition 内部结构 (边界不越界)。
+ *
+ * 投影字段正交 (契约 §12.1): controlType/dataType/showType/enums 各读
+ * 各层, 不做反向推导。controlType 缺失 (旧文档) 时保留 undefined,
+ * 由表现层按 (dataType/enums) 落一个「仅表现」的 fallback —— 不写回语义层。
+ */
+export interface ControlSnapshot {
+  nodeId: string
+  /** 占位符 (未填显示形式, SmartTextNode.text) */
+  placeholder: string
+  /** 运行时值 (undefined = 未填, 规范空态 §12.6.1) */
+  value: ControlValue | undefined
+  /** widget 形态 (TemplateDefinition.controlType, 插入时写定, 旧文档可缺省) */
+  controlType: ControlType | undefined
+  /** 数据取值类型 (ElementFormat.dataType) */
+  dataType: 'S1' | 'S2' | 'S3' | 'N' | 'D' | undefined
+  /** 展示形态 (ElementFormat.showType) */
+  showType: 'AN' | 'N' | undefined
+  /** 解析后的枚举候选 (inline enums 优先, 否则外部字典候选 §12.6 VR-7) */
+  options: readonly ElementEnumOption[] | undefined
+  /** 是否多选 (inline enums.multiple === true; 字典无 multiple 恒为单选) */
+  multiple: boolean
+  /** 枚举是否允许手输自定义值 (inline enums.editable) */
+  enumEditable: boolean | undefined
+  /** 是否可写 (§12.6.3 layer B: TemplateDefinition.editable !== false 且 ElementMeta.readonly !== true) */
+  writable: boolean
+  /** 多行文本最小行数 (format.minRows) */
+  minRows: number | undefined
+  /** 数值精度 (format.scale) */
+  scale: number | undefined
+  /** 字符串长度约束 (format.minLength/maxLength) */
+  minLength: number | undefined
+  maxLength: number | undefined
+  /** 是否隐私脱敏 (Canvas 掩码时 overlay 不得泄露明文 §12.6 隐私) */
+  masked: boolean
+  /** 控件旁标签 / 悬浮提示 (TemplateDefinition) */
+  label: string | undefined
+  tips: string | undefined
 }
 
 /** Editor: 引擎编排器 (架构 §3, v20.34) */
@@ -787,6 +836,94 @@ export class Editor {
   setHoveredControl(nodeId: string | null): void {
     this.store.setDesignHoveredControlId(nodeId)
   }
+  // ================================================================
+  // 运行时控件交互 (契约 §12.6) — activeControlId 瞬态 + 值写入唯一路径
+  // ================================================================
+
+  /** 当前激活的运行时控件 id (瞬态, 不序列化, 无激活为 null) */
+  getActiveControlId(): string | null {
+    return this.store.state.activeControlId
+  }
+  /**
+   * 激活/切换运行时控件 (契约 §12.6 运行时交互)。normal 模式点击 smarttext
+   * → 激活控件 (而非段落 offset → caret)。null 等价于 deactivateControl()。
+   * 激活后同步 Draw 重绘, 使 Canvas 静态 widget 与 React overlay 同帧对齐。
+   */
+  activateControl(nodeId: string | null): void {
+    this.store.setActiveControlId(nodeId)
+    this.draw.render(this.pool, this.store.state.runtime)
+  }
+  /** 取消激活 (契约 §12.6), 清空瞬态 activeControlId 并重绘 */
+  deactivateControl(): void {
+    this.activateControl(null)
+  }
+  /**
+   * 写入控件运行时值 (契约 §12.6, VR-3 唯一路径) — 先经 validateControlValue
+   * 预校验 (与 SetControlValueCommand 同源 permissions/dictionary 候选),
+   * 非法值返回拒绝理由 (不执行命令, 不突变), 合法值经 SetControlValueCommand
+   * 入 undo 栈。返回的 ok 值即归一化后规范值 (undefined = 清空)。
+   */
+  setControlValue(nodeId: string, value: ControlValue | undefined): ControlValueValidationResult {
+    const node = this.pool.nodes.get(nodeId) as SmartTextNode | undefined
+    if (!node || node.type !== NodeType.SMART_TEXT) {
+      return { ok: false, reason: 'type_mismatch' }
+    }
+    const permissions: ControlValuePermissions = {
+      editable: this.templateDefinitions?.get(nodeId)?.editable,
+    }
+    const dictionaryId = node.element.format?.dictionary
+    const dictionaryCandidates = dictionaryId ? this.dictionaries?.resolve(dictionaryId) : undefined
+    const result = validateControlValue(value, node.element, permissions, dictionaryCandidates)
+    if (!result.ok) return result
+    this.execCommand(new SetControlValueCommand(
+      generateCommandId(), Date.now(), 'user', nodeId, result.value,
+    ))
+    return result
+  }
+  /** 读取控件运行时值 (契约 §2.1); 非 smarttext / 缺失返回 undefined */
+  getControlValue(nodeId: string): ControlValue | undefined {
+    const node = this.pool.nodes.get(nodeId) as SmartTextNode | undefined
+    return node && node.type === NodeType.SMART_TEXT ? node.value : undefined
+  }
+  /**
+   * 读取控件运行时快照 (契约 §12.6) — overlay 渲染/交互投影。
+   * 非 smarttext 节点返回 null。字段正交, 无反向推导。
+   */
+  getControlSnapshot(nodeId: string): ControlSnapshot | null {
+    const node = this.pool.nodes.get(nodeId) as SmartTextNode | undefined
+    if (!node || node.type !== NodeType.SMART_TEXT) return null
+    const def = this.templateDefinitions?.get(nodeId)
+    const element = node.element
+    const format = element.format
+    const inlineEnums = format?.enums
+    const dictionaryId = format?.dictionary
+    const dictionaryCandidates = dictionaryId ? this.dictionaries?.resolve(dictionaryId) : undefined
+    const candidates = inlineEnums !== undefined ? inlineEnums.data : dictionaryCandidates
+    return {
+      nodeId,
+      placeholder: node.text,
+      value: node.value,
+      controlType: def?.controlType,
+      dataType: format?.dataType,
+      showType: format?.showType,
+      options: candidates,
+      multiple: inlineEnums?.multiple === true,
+      enumEditable: inlineEnums?.editable,
+      writable: (def?.editable !== false) && (element.readonly !== true),
+      minRows: format?.minRows,
+      scale: format?.scale,
+      minLength: format?.minLength,
+      maxLength: format?.maxLength,
+      masked: element.privacy?.enabled === true,
+      label: def?.label,
+      tips: def?.tips,
+    }
+  }
+  /** 控件视口 Client 矩形 (契约 §12.6 运行时 overlay 定位) — 委托 Draw 几何 */
+  getControlClientRect(nodeId: string): { left: number; top: number; width: number; height: number } | null {
+    return this.draw.getControlClientRect(nodeId)
+  }
+
   /**
    * 删除设计模式选中的控件 (契约 §12.3) — 走 RemoveControlCommand,
    * deletable 守卫 (§12.1) 在命令 forward 内执行。
@@ -2142,9 +2279,9 @@ export class Editor {
     return this.findReplace.findPrevious(query, cursor.paragraphPath, cursor.offset, this.doc, this.pool, options)
   }
 
-  replace(query: string, replacement: string, result: MatchResult, options?: FindOptions): void {
+  replace(query: string, replacement: string, result: MatchResult, options?: FindOptions): ReplaceRejection[] {
     const newText = this.findReplace.computeReplacement(query, result.matchedText, replacement, options)
-    this.commandManager.execute(new ReplaceTextCommand(
+    const cmd = new ReplaceTextCommand(
       generateCommandId(), Date.now(), 'user',
       [{
         paragraphPath: result.paragraphPath,
@@ -2152,12 +2289,16 @@ export class Editor {
         endOffset: result.endOffset,
         newText,
       }],
-    ))
+    )
+    this.commandManager.execute(cmd)
+    // 契约 §26: 返回被拒绝的替换明细 (空 = 替换成功), 供 UI 表达「拒绝 + 理由」
+    return [...cmd.rejected]
   }
 
-  replaceAll(query: string, replacement: string, options?: FindOptions): number {
+  /** 全部替换结果: replaced = 成功替换节点数, rejected = 被拒绝明细 (含理由) */
+  replaceAll(query: string, replacement: string, options?: FindOptions): { replaced: number; rejected: ReplaceRejection[] } {
     const results = this.findReplace.findAll(query, this.doc, this.pool, options)
-    if (results.length === 0) return 0
+    if (results.length === 0) return { replaced: 0, rejected: [] }
 
     const edits = results.map(r => ({
       paragraphPath: r.paragraphPath,
@@ -2165,8 +2306,10 @@ export class Editor {
       endOffset: r.endOffset,
       newText: this.findReplace.computeReplacement(query, r.matchedText, replacement, options),
     }))
-    this.commandManager.execute(new ReplaceTextCommand(generateCommandId(), Date.now(), 'user', edits))
-    return results.length
+    const cmd = new ReplaceTextCommand(generateCommandId(), Date.now(), 'user', edits)
+    this.commandManager.execute(cmd)
+    // 契约 §26: replaced 取实际成功节点数, rejected 携带理由 (非静默失败)
+    return { replaced: cmd.appliedCount, rejected: [...cmd.rejected] }
   }
 
   highlightAll(query: string, options?: FindOptions): MatchResult[] {
@@ -2287,6 +2430,13 @@ export interface IEditor {
   cut(): void
   deleteSelectedRange(): boolean
   deleteNode(nodeId: string): boolean
+  getActiveControlId(): string | null
+  activateControl(nodeId: string | null): void
+  deactivateControl(): void
+  setControlValue(nodeId: string, value: ControlValue | undefined): ControlValueValidationResult
+  getControlValue(nodeId: string): ControlValue | undefined
+  getControlSnapshot(nodeId: string): ControlSnapshot | null
+  getControlClientRect(nodeId: string): { left: number; top: number; width: number; height: number } | null
   toggleFormat(style: Partial<import('./document/core/DocumentModel').TextStyle>): void
   setParagraphStyle(style: Partial<import('./document/core/DocumentModel').ParagraphStyle>): void
   resolveContextAt(e: MouseEvent): import('./context/EditorContext').EditorContextSnapshot

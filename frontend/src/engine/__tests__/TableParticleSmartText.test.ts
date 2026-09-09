@@ -89,14 +89,16 @@ function renderTable(cellItems: SLIFItem[], style?: PresentationStyle, def?: Tem
 }
 
 describe('TableParticle 表格 cell 内 smarttext (契约 §4)', () => {
-  it('cell 内 smarttext → 画盒 (背景 + 边框), 与正文一致', () => {
+  it('cell 内 smarttext → 方括号框 (非盒), 与正文一致', () => {
     const r = renderTable([makeSmartTextCellItem()])
-    // cell 非 header 无背景; smarttext 盒贡献 1 个 fillRect
-    expect(r.fillRects).toHaveLength(1)
-    // cell 边框 + smarttext 盒边框
-    expect(r.strokeRects).toHaveLength(2)
-    // 主文本仍绘制
-    expect(r.texts.some((t) => t.text === '[患者姓名]')).toBe(true)
+    // smarttext 方括号框画 `[ ]` (fillText), 不画 fillRect/strokeRect (非盒)
+    expect(r.fillRects).toHaveLength(0)
+    // 仅 cell 边框
+    expect(r.strokeRects).toHaveLength(1)
+    // 主文本 (占位符剥离外框) + 方括号仍绘制
+    expect(r.texts.some((t) => t.text === '[')).toBe(true)
+    expect(r.texts.some((t) => t.text === ']')).toBe(true)
+    expect(r.texts.some((t) => t.text === '患者姓名')).toBe(true)
   })
 
   it('cell 内 smarttext borderStyle "none" → 不画盒 (仅 cell 边框)', () => {

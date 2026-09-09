@@ -12,8 +12,8 @@
 // MatchResult 包含段落路径 + 偏移, 可直接用于光标定位和选区高亮
 // ================================================================
 
-import type { DocumentTree } from './document/core/DocumentModel'
-import { smartTextDisplayValue } from './document/factory/ElementFormatter'
+import type { DocumentTree, ControlValue } from './document/core/DocumentModel'
+import { smartTextFindReplaceText } from './document/factory/ElementFormatter'
 
 // ---- 类型 ----
 
@@ -209,9 +209,11 @@ export class FindReplaceEngine {
       const child = pool.nodes.get(childId)
       if (!child) continue
       if (child.type === 'text' || child.type === 'smarttext') {
-        parts.push(child.type === 'smarttext'
-          ? smartTextDisplayValue(child as unknown as { text: string; value?: string })
-          : (child.text || ''))
+        // smarttext 经 smartTextFindReplaceText: 占位符/多选集合排除 (null → ''), 字符串/数字值计入 (§26)
+        const t = child.type === 'smarttext'
+          ? (smartTextFindReplaceText(child as unknown as { text: string; value?: ControlValue }) ?? '')
+          : (child.text || '')
+        parts.push(t)
       } else {
         parts.push('') // 非文本节点占位
       }

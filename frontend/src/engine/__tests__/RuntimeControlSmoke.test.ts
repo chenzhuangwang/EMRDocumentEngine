@@ -1,0 +1,298 @@
+// ================================================================
+// RuntimeControlSmoke — 运行时控件端到端冒烟测试 (契约 §12.6)
+//
+// 通过「真实 Editor」驱动完整链路 (不 mock Command/校验/序列化):
+//   插入(工厂同源) → 快照 → 运行时写入 → 规范值 → 校验拒绝 →
+//   undo/redo → 序列化 → 重新加载往返。
+//
+// 覆盖 7 种控件 (input/textarea/number/select/radio/checkbox/date)
+// 与 6 类校验拒绝 (write_locked / type_mismatch / enum_value_not_allowed /
+// number_scale_exceeded / string_length_out_of_range / date_format_invalid)。
+// ================================================================
+
+import { describe, it, expect, afterEach } from 'vitest'
+import { Editor } from '../Editor'
+import { createDomEditorHost, type DomEditorHost } from '../../platform/dom'
+import { loadDocumentFromObject } from '../document/io/DocumentLoader'
+import {
+  createDocument, createParagraph, createSmartTextNode,
+} from '../document/factory/ElementFormatter'
+import { TemplateDefinitionStore } from '../template/TemplateDefinition'
+import type { TemplateDefinition } from '../template/TemplateDefinition'
+import type { BaseNode, DocumentTree, ElementMeta, ControlValue, SmartTextNode } from '../document/core/DocumentModel'
+
+// ---- 7 种控件用例: 语义 element + 设计期 def + 合法值 + (可选) 非法值 ----
+interface Case {
+  key: string
+  element: ElementMeta
+  def: TemplateDefinition
+  legal: ControlValue
+  /** 期望的规范值 (checkbox 归一为枚举声明顺序; 其余与 legal 相同) */
+  canonical: ControlValue
+  illegal?: { value: unknown; reason: string }
+}
+
+const CASES: Case[] = [
+  {
+    key: 'input',
+    element: { code: { internal: 'CTL_INPUT', dataElement: 'DE99.99.001' }, name: '文本输入', format: { dataType: 'S1' } },
+    def: { controlType: 'input', label: '文本输入：', editable: true },
+    legal: '张三', canonical: '张三',
+  },
+  {
+    key: 'textarea',
+    element: { code: { internal: 'CTL_TEXTAREA', dataElement: 'DE99.99.002' }, name: '文本域', format: { dataType: 'S2' } },
+    def: { controlType: 'textarea', label: '文本域：', editable: true },
+    legal: '主诉：咳嗽三日', canonical: '主诉：咳嗽三日',
+  },
+  {
+    key: 'number',
+    element: { code: { internal: 'CTL_NUMBER', dataElement: 'DE99.99.003' }, name: '数字输入', format: { dataType: 'N', showType: 'N', scale: 1 } },
+    def: { controlType: 'number', label: '数字输入：', editable: true },
+    legal: 42, canonical: 42,
+    illegal: { value: '42', reason: 'type_mismatch' },
+  },
+  {
+    key: 'select',
+    element: {
+      code: { internal: 'CTL_SELECT', dataElement: 'DE99.99.004' }, name: '下拉选择',
+      format: { dataType: 'S1', enums: { data: [{ name: '轻度', value: 'mild' }, { name: '中度', value: 'moderate' }, { name: '重度', value: 'severe' }] } },
+    },
+    def: { controlType: 'select', label: '下拉选择：', editable: true },
+    legal: 'mild', canonical: 'mild',
+    illegal: { value: 'xx', reason: 'enum_value_not_allowed' },
+  },
+  {
+    key: 'radio',
+    element: {
+      code: { internal: 'CTL_RADIO', dataElement: 'DE99.99.007' }, name: '单选框',
+      format: { dataType: 'S1', enums: { data: [{ name: '是', value: 'Y' }, { name: '否', value: 'N' }] } },
+    },
+    def: { controlType: 'radio', label: '单选框：', editable: true },
+    legal: 'Y', canonical: 'Y',
+  },
+  {
+    key: 'checkbox',
+    element: {
+      code: { internal: 'CTL_CHECKBOX', dataElement: 'DE99.99.006' }, name: '复选框',
+      format: { dataType: 'S1', enums: { multiple: true, data: [{ name: '发热', value: 'fever' }, { name: '咳嗽', value: 'cough' }, { name: '乏力', value: 'fatigue' }] } },
+    },
+    def: { controlType: 'checkbox', label: '复选框：', editable: true },
+    legal: ['cough', 'fever'], canonical: ['fever', 'cough'], // VR-12: 按枚举声明顺序归一
+    illegal: { value: ['xx'], reason: 'enum_value_not_allowed' }, // 越界成员 (数组形态正确)
+  },
+  {
+    key: 'date',
+    element: { code: { internal: 'CTL_DATE', dataElement: 'DE99.99.005' }, name: '日期选择', format: { dataType: 'D' } },
+    def: { controlType: 'date', label: '日期选择：', editable: true },
+    legal: '2026-09-08', canonical: '2026-09-08',
+    illegal: { value: '2026/09/08', reason: 'date_format_invalid' },
+  },
+]
+
+describe('运行时控件端到端冒烟 (契约 §12.6)', () => {
+  const cleanups: Array<() => void> = []
+
+  /** 构造真实 Editor: 一个段落内含全部 7 个 smarttext + 各自 TemplateDefinition */
+  function makeEditor(cases: Case[]): { editor: Editor; idOf: (key: string) => string } {
+    const doc = createDocument('smoke')
+    const defs = new TemplateDefinitionStore()
+    const allNodes = new Map<string, BaseNode>()
+    allNodes.set(doc.id, doc as unknown as BaseNode)
+
+    const idByKey = new Map<string, string>()
+    const children: string[] = []
+    for (const c of cases) {
+      const st = createSmartTextNode(`[${c.element.name}]`, c.element)
+      idByKey.set(c.key, st.id)
+      children.push(st.id)
+      allNodes.set(st.id, st as unknown as BaseNode)
+      defs.set(st.id, c.def)
+    }
+    const para = createParagraph(children)
+    allNodes.set(para.id, para as unknown as BaseNode)
+    doc.body.children = [para.id]
+
+    // Editor 构造走 loadDocumentFromObject → validate 校验引用不悬空,
+    // 需把节点内嵌到 doc.nodes (与 serializeDocument 产物同构)。
+    const nodes: Record<string, BaseNode> = {}
+    for (const [id, n] of allNodes) nodes[id] = n
+    ;(doc as unknown as DocumentTree & { nodes?: Record<string, BaseNode> }).nodes = nodes
+
+    const host: DomEditorHost = createDomEditorHost()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    host.surface.mount(container)
+    host.input.mount(container)
+    const editor = new Editor(host, doc)
+    // 构造器只经 loadDocumentFromObject 重建 pool, 不回填 templateDefinitions;
+    // 通过公共 setDocument 注入 per-editor 定义 store (与真实加载路径同源)。
+    editor.setDocument(doc, undefined, { templateDefinitions: defs })
+    cleanups.push(() => { editor.destroy(); container.remove() })
+    return { editor, idOf: (key: string) => idByKey.get(key)! }
+  }
+
+  afterEach(() => {
+    while (cleanups.length > 0) cleanups.pop()!()
+  })
+
+  it('快照: 7 控件 controlType/dataType/options/writable/placeholder 正确', () => {
+    const { editor, idOf } = makeEditor(CASES)
+    for (const c of CASES) {
+      const snap = editor.getControlSnapshot(idOf(c.key))!
+      expect(snap, c.key).not.toBeNull()
+      expect(snap.controlType, `${c.key} controlType`).toBe(c.def.controlType)
+      expect(snap.dataType, `${c.key} dataType`).toBe(c.element.format?.dataType)
+      expect(snap.writable, `${c.key} writable`).toBe(true)
+      expect(snap.placeholder, `${c.key} placeholder`).toBe(`[${c.element.name}]`)
+      // 枚举控件暴露候选
+      if (c.element.format?.enums) {
+        expect(snap.options?.map((o) => o.value)).toEqual(c.element.format.enums.data?.map((o) => o.value))
+      }
+      expect(snap.value, `${c.key} 初始值为空`).toBeUndefined()
+    }
+  })
+
+  it('7 控件合法写入 → 规范值落 DocumentModel.value', () => {
+    const { editor, idOf } = makeEditor(CASES)
+    for (const c of CASES) {
+      const r = editor.setControlValue(idOf(c.key), c.legal)
+      expect(r.ok, `${c.key} 写入应成功: ${JSON.stringify(r)}`).toBe(true)
+      expect(editor.getControlValue(idOf(c.key))).toEqual(c.canonical)
+    }
+  })
+
+  it('number 0 是合法值 (不被 falsy 吞掉)', () => {
+    const { editor, idOf } = makeEditor(CASES)
+    const r = editor.setControlValue(idOf('number'), 0)
+    expect(r.ok).toBe(true)
+    expect(editor.getControlValue(idOf('number'))).toBe(0)
+  })
+
+  it('清空 (undefined) → value 归空, 不报错', () => {
+    const { editor, idOf } = makeEditor(CASES)
+    editor.setControlValue(idOf('input'), '张三')
+    expect(editor.getControlValue(idOf('input'))).toBe('张三')
+    const r = editor.setControlValue(idOf('input'), undefined)
+    expect(r.ok).toBe(true)
+    expect(editor.getControlValue(idOf('input'))).toBeUndefined()
+  })
+
+  it('校验拒绝: 6 类非法值均被命令边界拒绝, 值不变', () => {
+    const { editor, idOf } = makeEditor(CASES)
+    // 用例自带非法值 (type_mismatch / enum_value_not_allowed / date_format_invalid)
+    for (const c of CASES.filter((x) => x.illegal)) {
+      const r = editor.setControlValue(idOf(c.key), c.illegal!.value as ControlValue)
+      expect(r.ok, `${c.key} 应被拒绝`).toBe(false)
+      expect((r as { reason?: string }).reason).toBe(c.illegal!.reason)
+      expect(editor.getControlValue(idOf(c.key))).toBeUndefined()
+    }
+
+    // number scale 超限 → 拒绝, 不四舍五入 (VR-10)
+    const scaleR = editor.setControlValue(idOf('number'), 42.55)
+    expect(scaleR.ok).toBe(false)
+    expect((scaleR as { reason?: string }).reason).toBe('number_scale_exceeded')
+
+    // 只读 (element.readonly) → 写锁拒绝 (VR-8)
+    const roCases: Case[] = [{
+      key: 'ro',
+      element: { code: { internal: 'CTL_RO', dataElement: 'DE99.99.099' }, name: '只读', readonly: true, format: { dataType: 'S1' } },
+      def: { controlType: 'input', editable: true } as TemplateDefinition,
+      legal: 'x' as ControlValue, canonical: 'x' as ControlValue,
+    }]
+    const ro = makeEditor(roCases)
+    const roSnap = ro.editor.getControlSnapshot(ro.idOf('ro'))!
+    expect(roSnap.writable).toBe(false)
+    const roR = ro.editor.setControlValue(ro.idOf('ro'), '改')
+    expect(roR.ok).toBe(false)
+    expect((roR as { reason?: string }).reason).toBe('write_locked')
+  })
+
+  it('string maxLength 越界 → 拒绝, 不截断 (VR-11)', () => {
+    const cases: Case[] = [{
+      key: 'limited',
+      element: { code: { internal: 'CTL_LIMIT', dataElement: 'DE99.99.098' }, name: '限长', format: { dataType: 'S1', maxLength: 3 } },
+      def: { controlType: 'input', editable: true } as TemplateDefinition,
+      legal: 'abc' as ControlValue, canonical: 'abc' as ControlValue,
+    }]
+    const { editor, idOf } = makeEditor(cases)
+    expect(editor.setControlValue(idOf('limited'), 'abc').ok).toBe(true)
+    const r = editor.setControlValue(idOf('limited'), 'abcdef')
+    expect(r.ok).toBe(false)
+    expect((r as { reason?: string }).reason).toBe('string_length_out_of_range')
+    expect(editor.getControlValue(idOf('limited'))).toBe('abc')
+  })
+
+  it('undo/redo: 值写入可撤销、可重做', () => {
+    const { editor, idOf } = makeEditor(CASES)
+    // 初始值 (undo 的旧值)
+    editor.setControlValue(idOf('input'), '旧值')
+    expect(editor.getControlValue(idOf('input'))).toBe('旧值')
+
+    editor.setControlValue(idOf('input'), '新值')
+    expect(editor.getControlValue(idOf('input'))).toBe('新值')
+    expect(editor.canUndo()).toBe(true)
+
+    editor.undo()
+    expect(editor.getControlValue(idOf('input'))).toBe('旧值')
+    expect(editor.canRedo()).toBe(true)
+
+    editor.redo()
+    expect(editor.getControlValue(idOf('input'))).toBe('新值')
+  })
+
+  it('激活/取消激活: activeControlId 瞬态正确', () => {
+    const { editor, idOf } = makeEditor(CASES)
+    expect(editor.getActiveControlId()).toBeNull()
+    editor.activateControl(idOf('input'))
+    expect(editor.getActiveControlId()).toBe(idOf('input'))
+    editor.deactivateControl()
+    expect(editor.getActiveControlId()).toBeNull()
+  })
+
+  it('序列化: value + definition 落盘, store 不混入 node payload', () => {
+    const { editor, idOf } = makeEditor(CASES)
+    editor.setControlValue(idOf('input'), '张三')
+    editor.setControlValue(idOf('checkbox'), ['cough', 'fever'])
+
+    const json = editor.getSerializedDocument()
+    const parsed = JSON.parse(json)
+
+    const inputId = idOf('input')
+    const checkId = idOf('checkbox')
+    // 值在 node payload
+    expect(parsed.nodes[inputId].value).toBe('张三')
+    expect(parsed.nodes[checkId].value).toEqual(['fever', 'cough'])
+    // 定义在顶层 templateDefinitions
+    expect(parsed.templateDefinitions[inputId].controlType).toBe('input')
+    // store 字段绝不混入 node payload (契约 §12.1)
+    expect(parsed.nodes[inputId].controlType).toBeUndefined()
+    expect(parsed.nodes[inputId].editable).toBeUndefined()
+  })
+
+  it('序列化 → 重新加载往返: value/definition/controlType 无损', () => {
+    const { editor, idOf } = makeEditor(CASES)
+    editor.setControlValue(idOf('input'), '张三')
+    editor.setControlValue(idOf('number'), 42)
+    editor.setControlValue(idOf('date'), '2026-09-08')
+    editor.setControlValue(idOf('checkbox'), ['cough', 'fever'])
+
+    const loaded = loadDocumentFromObject(JSON.parse(editor.getSerializedDocument()))
+
+    const nodeValue = (id: string): ControlValue | undefined =>
+      (loaded.pool.nodes.get(id) as SmartTextNode | undefined)?.value
+
+    expect(nodeValue(idOf('input'))).toBe('张三')
+    expect(nodeValue(idOf('number'))).toBe(42)
+    expect(nodeValue(idOf('date'))).toBe('2026-09-08')
+    expect(nodeValue(idOf('checkbox'))).toEqual(['fever', 'cough'])
+
+    // definition 往返无损
+    expect(loaded.templateDefinitions?.get(idOf('input'))?.controlType).toBe('input')
+    expect(loaded.templateDefinitions?.get(idOf('checkbox'))?.controlType).toBe('checkbox')
+    // 语义层 dataType/enums 往返无损
+    const selectNode = loaded.pool.nodes.get(idOf('select')) as SmartTextNode
+    expect(selectNode.element.format?.dataType).toBe('S1')
+    expect(selectNode.element.format?.enums?.data?.map((o) => o.value)).toEqual(['mild', 'moderate', 'severe'])
+  })
+})

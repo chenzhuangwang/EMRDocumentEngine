@@ -48,6 +48,21 @@ export function isControlValueEmpty(value: unknown): boolean {
 }
 
 /**
+ * 运行时控件值的展示长度 (契约 §12.6.2 layer D)。masked 掩码长度用它,
+ * 杜绝 union 直接 `.length` (不变量 4):
+ *   undefined → 0
+ *   number    → String(n).length (number 0 → 1, 不漏掩码)
+ *   string[]  → length (候选项个数)
+ *   string    → length
+ */
+export function controlDisplayLength(value: ControlValue | undefined): number {
+  if (value === undefined) return 0
+  if (typeof value === 'number') return String(value).length
+  if (Array.isArray(value)) return value.length
+  return value.length
+}
+
+/**
  * 完整性判据 (契约 §12.6.2 layer C): required 且空 → 不完整。
  *
  * required 不决定值类型合法性 (那是 layer A 的职责, §12.6.3), 只回答
@@ -124,7 +139,7 @@ export function validateControlValue(
       return { ok: false, reason: 'enum_value_not_allowed' }
     }
     // 7. checkbox 顺序归一 (VR-12): 按候选声明顺序
-    return { ok: true, value: candidates && candidates.length > 0 ? sortByDeclaration(arr, candidates) : arr }
+    return { ok: true, value: normalizeCheckboxValue(arr, candidates) }
   }
 
   // expected === 'string'
@@ -160,8 +175,13 @@ function allInCandidates(values: string[], data: readonly ElementEnumOption[] | 
   return values.every(v => set.has(v))
 }
 
-/** 按 enums.data 声明顺序归一 (VR-12)。非候选项 (editable 自定义值) 排到末尾, 保持输入相对顺序 (稳定排序) */
-function sortByDeclaration(values: string[], data: readonly ElementEnumOption[]): string[] {
+/** 按 enums.data 声明顺序归一 checkbox 值 (VR-12)。非候选项 (editable 自定义值) 排到末尾, 保持输入相对顺序 (稳定排序)。
+ *
+ * 导出的纯函数: 供 validateControlValue 与外部 (粘贴重建 / importer / 测试) 共用同一 VR-12 顺序判据,
+ * 避免各写一套 checkbox 排序逻辑。
+ */
+export function normalizeCheckboxValue(values: string[], data: readonly ElementEnumOption[] | undefined): string[] {
+  if (!data || data.length === 0) return values
   const order = new Map<string, number>()
   data.forEach((o, i) => order.set(o.value, i))
   return values.slice().sort((a, b) => {

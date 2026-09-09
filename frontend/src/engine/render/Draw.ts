@@ -24,7 +24,8 @@ import { accumulatedHeightTo } from '../layout/table/TableCoordUtil'
 import { createFootnoteParticle } from './particles/FootnoteParticle'
 import { createTableParticle } from './particles/TableParticle'
 import { createImageParticle } from './particles/ImageParticle'
-import { createControlParticle, computeControlBox } from './particles/ControlParticle'
+import { createControlParticle } from './particles/ControlParticle'
+import { computeControlBox } from '../document/control/ControlBox'
 import type { PresentationStyleStore } from './presentation/PresentationStyle'
 import type { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import { createChartParticle } from './particles/ChartParticle'
@@ -68,6 +69,9 @@ export class Draw {
   // 语义元数据 (契约 §2.1) — 控件 dataType 分类 / 隐私脱敏读取源, 随 setDocument 更新
   private elementOf = (nodeId: string) => (this.pool?.nodes.get(nodeId) as SmartTextNode | undefined)?.element
 
+  // 控件规范运行时值 (契约 §12.6.1) — widget affordance 读取源 (区别于 SLIFItem.text 显示串)
+  private controlValueOf = (nodeId: string) => (this.pool?.nodes.get(nodeId) as SmartTextNode | undefined)?.value
+
   // 页眉页脚编辑模式 (TASK-470/471 双击激活)
   private hfEditActive = false
   private hfEditSection: 'header' | 'footer' = 'header'
@@ -109,6 +113,14 @@ export class Draw {
     const dpr = this.host.surface.devicePixelRatio() || 1
     this.coordSystem = new CoordinateSystem(dpr)
     this.layoutEngine = new LayoutEngine(eventBus, measurer)
+    // 运行时控件内联渲染预留宽信息源 (契约 §12.6 表单模式内联渲染) —
+    // 闭包运行时读取 templateDefinitions/pool (随 setDocument/setRuntimeState 更新),
+    // 供布局为 checkbox/radio 预留候选项宽。正交读取, 无反向推导。
+    this.layoutEngine.setControlInfoOf((nodeId) => {
+      const def = this.templateDefinitions?.get(nodeId)
+      const el = (this.pool?.nodes.get(nodeId) as SmartTextNode | undefined)?.element
+      return { controlType: def?.controlType, options: el?.format?.enums?.data }
+    })
     this.renderer = new LayeredRenderer(this.host, this.coordSystem)
     this.hitTestIndex = new HitTestIndex(this.measurer)
 
@@ -471,6 +483,7 @@ export class Draw {
               presentationStyleOf: this.presentationStyleOf,
               templateDefinitionOf: this.templateDefinitionOf,
               elementOf: this.elementOf,
+              controlValueOf: this.controlValueOf,
             })
           } else {
             // 文本/域代码/控件 — 通过 ParticleRegistry 调度 (含列表标记)
@@ -482,6 +495,7 @@ export class Draw {
                 presentationStyleOf: this.presentationStyleOf,
                 templateDefinitionOf: this.templateDefinitionOf,
                 elementOf: this.elementOf,
+                controlValueOf: this.controlValueOf,
               })
             }
           }
@@ -829,7 +843,7 @@ export class Draw {
         const fontSize = item.size || 16
         const ascent = item.ascent > 0 ? item.ascent : fontSize * 0.8
         const descent = item.descent > 0 ? item.descent : fontSize * 0.2
-        const box = computeControlBox(item.x, spY + item.y, item.width || 0, ascent, descent, this.presentationStyleOf(nodeId))
+        const box = computeControlBox(item.x, spY + item.y, (item.width || 0) - (item.markerWidth || 0), ascent, descent, this.presentationStyleOf(nodeId)?.minWidth)
         ictx.fillRect(box.x, box.y, box.w, box.h)
         ictx.strokeRect(box.x, box.y, box.w, box.h)
       }
@@ -874,6 +888,7 @@ export class Draw {
           presentationStyleOf: this.presentationStyleOf,
           templateDefinitionOf: this.templateDefinitionOf,
           elementOf: this.elementOf,
+          controlValueOf: this.controlValueOf,
         })
       }
     }
@@ -923,6 +938,48 @@ export class Draw {
       width: Math.max(2 * scale, 1),
       height: caret.h * scale,
     }
+  }
+
+  /**
+   * 获取 smarttext 控件在视口中的 Client 矩形 — 供 React runtime overlay 定位
+   * (契约 §12.6)。与 renderDesignSelection 同源几何 (computeControlBox, 单一
+   * 事实源), 复用 getCaretClientRect 的 scale/offsetX/canvasRect 转换, 保证
+   * overlay 与 Canvas 静态 widget 逐像素对齐。
+   */
+  getControlClientRect(
+    nodeId: string,
+  ): { left: number; top: number; width: number; height: number } | null {
+    if (this.pages.length === 0) return null
+
+    const viewportW = this.host.viewport.size().width
+    const scale = this.coordSystem.transform.scale
+    const pageWidth = this.pages[0]?.width || 794
+    const visiblePageW = pageWidth * scale
+    const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
+    const pageVerticalGap = this.renderer.getPageVerticalGap()
+    const scrollY = this.coordSystem.transform.scrollY
+
+    for (let i = 0; i < this.pages.length; i++) {
+      const page = this.pages[i]
+      if (!page) continue
+      const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
+      for (const item of getFlatPageItems(page)) {
+        if (item.nodeId !== nodeId || item.nodeType !== 'smarttext') continue
+        const fontSize = item.size || 16
+        const ascent = item.ascent > 0 ? item.ascent : fontSize * 0.8
+        const descent = item.descent > 0 ? item.descent : fontSize * 0.2
+        const box = computeControlBox(item.x, spY + item.y, (item.width || 0) - (item.markerWidth || 0), ascent, descent, this.presentationStyleOf(nodeId)?.minWidth)
+        const surface = this.renderer.getInteractSurface()
+        const canvasRect = surface?.getBoundingClientRect() ?? { left: 0, top: 0 }
+        return {
+          left: canvasRect.left + box.x * scale + offsetX,
+          top: canvasRect.top + box.y * scale,
+          width: box.w * scale,
+          height: box.h * scale,
+        }
+      }
+    }
+    return null
   }
 
   setScale(scale: number): void {

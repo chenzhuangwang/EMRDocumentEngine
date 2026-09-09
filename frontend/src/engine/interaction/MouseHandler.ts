@@ -8,12 +8,15 @@
 import type { Editor } from '../Editor'
 import type { EditorHost } from '../host/EditorHost'
 import type { Paragraph } from '../document/core/DocumentModel'
-import type { SLIFPage } from '../layout/core/SLIF'
+import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 import { computeOffsetInItems } from '../layout/text/CharWidthHelper'
 import type { TextMeasurer } from '../layout/text/TextMeasurer'
 import { screenToDoc, findPageByDocY, pageCenteringOffset } from '../layout/table/TableCoordUtil'
 import { getCellGridPosition } from '../document/table/TableOps'
-import { findControlItemAt } from './ControlHitTest'
+import { findControlItemEntryAt, findRuntimeControlHitAt } from './ControlHitTest'
+import type { RuntimeControlHit } from './ControlHitTest'
+import { controlVisualRecipe } from '../document/control/ControlBox'
+import type { ControlValue, ElementEnumOption } from '../document/core/DocumentModel'
 
 /** 双击时间阈值 (ms) */
 const DOUBLE_CLICK_THRESHOLD = 400
@@ -93,6 +96,35 @@ export class MouseHandler {
       const controlId = this.hitTestControl(e.clientX, e.clientY)
       this.editor.selectControl(controlId)
       return
+    }
+
+    // --- 运行时控件激活 (契约 §12.6): normal 模式 (edit/form) 点击 smarttext
+    //     激活运行时控件 overlay, 而非段落 offset → caret (禁止 caret 落在
+    //     SmartText 内, 契约 §12.6 运行时交互) ---
+    const mode = this.editor.getStore().state.runtime.view.mode
+    if (mode === 'edit' || mode === 'form') {
+      const hit = this.hitTestRuntimeControl(e.clientX, e.clientY)
+      if (hit) {
+        const snap = this.editor.getControlSnapshot(hit.item.nodeId)
+        // readonly/masked → Canvas-only: 不激活、不内联切换、不挂 DOM (不变量 4/5)
+        if (!snap || snap.masked || !snap.writable) return
+        if (hit.kind === 'option') {
+          // 离散控件内联候选项切换 (不变量 2): 命中几何已上移进 findRuntimeControlHitAt,
+          // 此处只做纯值计算并写入 (VR-3 单一路径)。
+          const next = this.toggleOptionValue(hit.option, snap.controlType, snap.value)
+          if (next !== null) {
+            this.editor.setControlValue(hit.item.nodeId, next)
+          }
+          return
+        }
+        // field (input/textarea/number/select/date) → 激活 DOM overlay (仅在此建立)
+        this.editor.activateControl(hit.item.nodeId)
+        return
+      }
+      // 点击非控件区域 → 取消激活 (回到 caret 文本编辑)
+      if (this.editor.getActiveControlId() !== null) {
+        this.editor.deactivateControl()
+      }
     }
 
     // 先检查是否在页眉/页脚区域
@@ -506,11 +538,12 @@ export class MouseHandler {
     return null
   }
 
-  /** 设计模式控件命中检测 (契约 §12.3) — 屏幕坐标 → smarttext 控件 nodeId
+  /** 运行时/设计控件命中 (契约 §12.3/§12.6) — 屏幕坐标 → { SLIFItem, docX }
    *  复用 hitTest 的坐标变换 (screenToDoc + findPageByDocY + pageCenteringOffset),
    *  在 getFlatPageItems 展平项中查找 nodeType==='smarttext' 且包围盒含点的控件。
+   *  docX 为页面局部 X (扣除居中偏移), 与 item.x 同口径, 供内联候选项命中。
    */
-  private hitTestControl(clientX: number, clientY: number): string | null {
+  private hitTestControlEntry(clientX: number, clientY: number): { item: SLIFItem; docX: number } | null {
     const rect = this.host.viewport.bounds()
     const coord = this.editor.getDraw().getCoordinateSystem()
     const { scale, scrollY } = coord.transform
@@ -528,7 +561,66 @@ export class MouseHandler {
     const offsetX = pageCenteringOffset(page.width, this.host.viewport.size().width, scale)
     const docX = docX0 - offsetX / scale
 
-    return findControlItemAt(page, docX, localY)
+    const item = findControlItemEntryAt(page, docX, localY)
+    return item ? { item, docX } : null
+  }
+
+  /** 设计模式控件命中检测 (契约 §12.3) — 屏幕坐标 → smarttext 控件 nodeId */
+  private hitTestControl(clientX: number, clientY: number): string | null {
+    return this.hitTestControlEntry(clientX, clientY)?.item.nodeId ?? null
+  }
+
+  /** 运行时控件命中 (契约 §12.6) — 拓扑分离: field/options。几何与 Render 同源
+   *  (computeControlBox / layoutControlOptions), 复用 hitTestControlEntry 的坐标变换。 */
+  private hitTestRuntimeControl(clientX: number, clientY: number): RuntimeControlHit | null {
+    const rect = this.host.viewport.bounds()
+    const coord = this.editor.getDraw().getCoordinateSystem()
+    const { scale, scrollY } = coord.transform
+
+    const { x: docX0, y: docY0 } = screenToDoc(clientX, clientY, scale, scrollY, rect)
+
+    const pages = this.editor.getDraw().getPages()
+    if (pages.length === 0) return null
+
+    const gap = this.editor.getDraw().getPageVerticalGap()
+    const { pageIndex, localY } = findPageByDocY(docY0, pages, gap)
+    const page = pages[pageIndex]
+    if (!page) return null
+
+    const offsetX = pageCenteringOffset(page.width, this.host.viewport.size().width, scale)
+    const docX = docX0 - offsetX / scale
+
+    const resolve = (nodeId: string) => {
+      const snap = this.editor.getControlSnapshot(nodeId)
+      if (!snap) return undefined
+      return {
+        kind: controlVisualRecipe(snap.controlType).kind,
+        minWidth: this.editor.getPresentationStyles()?.get(nodeId)?.minWidth,
+        options: snap.options,
+        controlType: snap.controlType,
+      }
+    }
+    return findRuntimeControlHitAt(page, docX, localY, resolve, this.measurer)
+  }
+
+  /**
+   * checkbox/radio 内联候选项切换 (契约 §12.6) — 纯值计算, 几何命中已上移进
+   * findRuntimeControlHitAt (命中几何与渲染/布局共用 layoutControlOptions)。
+   * 返回值经 Editor.setControlValue → SetControlValueCommand 写入 (VR-3)。
+   *   - radio:    直接设为所点候选项 value
+   *   - checkbox: 已选则剔除, 未选则追加; 空集合 → undefined (VR-13)
+   */
+  private toggleOptionValue(
+    option: ElementEnumOption,
+    controlType: string | undefined,
+    currentValue: ControlValue | undefined,
+  ): ControlValue | undefined | null {
+    if (controlType === 'radio') return option.value
+    const selected = Array.isArray(currentValue) ? currentValue : []
+    const next = selected.includes(option.value)
+      ? selected.filter((v) => v !== option.value)
+      : [...selected, option.value]
+    return next.length === 0 ? undefined : next
   }
 
   /** 查找 nodeId 所属段落, 无则返回 null */

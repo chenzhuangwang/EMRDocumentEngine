@@ -60,6 +60,27 @@ export function smartTextDisplayValue(node: { text: string; value?: ControlValue
   return v
 }
 
+/**
+ * SmartTextNode 在查找替换中的参与文本 (契约 §26), 与 smartTextDisplayValue 分离:
+ *
+ *   - value === undefined   → null (占位符非用户内容, 排除出查找替换)
+ *   - value 为 string        → 该字符串 (S1/S2/S3 自由文本 / D 日期 / 单选枚举值)
+ *   - value 为 number        → String(n) (数字值的显示形式, 可查找; 替换经 number 归并)
+ *   - value 为 string[]      → join('、') (多选显示形式, 可查找; 替换在命令层拒绝并报理由)
+ *
+ * 返回 null 表示该控件不参与查找替换 (仅占位符/未填态)。已填值一律可查找,
+ * 能否替换由 ReplaceTextCommand 按值语义归并/拒绝 (§26)。
+ * FindReplaceEngine.getParagraphText 与 ReplaceTextCommand.resolveEditLocation 共用
+ * 本函数, 保证查找命中偏移与替换落点偏移一致。
+ */
+export function smartTextFindReplaceText(node: { text: string; value?: ControlValue }): string | null {
+  const v = node.value
+  if (v === undefined) return null
+  if (typeof v === 'string') return v === '' ? null : v
+  if (typeof v === 'number') return String(v)
+  return v.length > 0 ? v.join('、') : null
+}
+
 export function createFieldNode(fieldType: FieldType, format?: string, style?: TextStyle): FieldNode {
   const labels: Record<string, string> = {
     page_number: '[页码]', total_pages: '[总页数]',

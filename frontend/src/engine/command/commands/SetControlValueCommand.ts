@@ -72,9 +72,14 @@ export class SetControlValueCommand implements ICommand {
     this._oldValue = node.value
     const normalized = result.value
 
-    // 清空 (undefined) 与有值统一经 updateNode; Object.assign 保留 value: undefined
-    // 键, 但 JSON.stringify 会丢弃它, 与「缺失 value 字段」的规范空态等价。
-    pool.updateNode(this.nodeId, { value: normalized } as Partial<SmartTextNode>)
+    // 清空 (undefined) 与有值统一经 updateNode/deleteNodeField。
+    // 规范空态 (契约 §12.6.1): undefined = 字段缺失。deleteNodeField 真正删除
+    // value 键 (区别于 updateNode 的 Object.assign 会留下 value: undefined 自有键)。
+    if (normalized === undefined) {
+      pool.deleteNodeField(this.nodeId, 'value')
+    } else {
+      pool.updateNode(this.nodeId, { value: normalized } as Partial<SmartTextNode>)
+    }
 
     return { invalidation: 'flowbody' }
   }

@@ -44,14 +44,15 @@ function textOf(pool: NodePool, textId: string): string {
   return (pool.nodes.get(textId) as { text?: string } | undefined)?.text ?? ''
 }
 
-/** 段落 = [smarttext("AB"), text(text)] — 验证 smarttext 按全文计入偏移 */
+/** 段落 = [smarttext(value "AB"), text(text)] — 验证「已填值」smarttext 按全文计入偏移
+ *  (契约 §12.6.3: 占位符 value===undefined 的 smarttext 排除出查找替换, 不占偏移)。 */
 function makeParaWithSmartText(text: string): {
   doc: DocumentTree; pool: NodePool; paraId: string; textId: string
 } {
   const doc = createDocument('test')
   const allNodes = new Map<string, BaseNode>()
   allNodes.set(doc.id, doc as unknown as BaseNode)
-  const smart = { type: 'smarttext' as const, id: 'smart1', text: 'AB', font: 'SimSun', size: 16 } as unknown as BaseNode
+  const smart = { type: 'smarttext' as const, id: 'smart1', text: '[字段]', value: 'AB', font: 'SimSun', size: 16 } as unknown as BaseNode
   const tn = createTextNode(text)
   const para = createParagraph([smart.id, tn.id])
   allNodes.set(smart.id, smart)
@@ -246,13 +247,25 @@ describe('ReplaceTextCommand — smarttext 值写入经 SetControlValueCommand (
     expect(valueOf(pool, stId)).toBe('张三')
   })
 
-  it('数字控件 (N) find-replace 产出 string → 类型不符跳过', () => {
+  it('数字控件 (N) find-replace 文本→number 归并写入 (契约 §12.6.3 非静默)', () => {
     const { doc, pool, defs, paraId, stId } = makeParaWithControl(element({ dataType: 'N' }), 42)
     const cmd = new ReplaceTextCommand('c1', 1, 'u', [
       { paragraphPath: [doc.id, paraId], startOffset: 0, endOffset: 2, newText: '43' },
     ])
+    expect(cmd.forward(ctxOfControl(doc, pool, defs))).not.toBeNull()
+    expect(valueOf(pool, stId)).toBe(43)
+  })
+
+  it('数字控件 (N) find-replace 非数字文本 → 拒绝并记录理由 (非静默)', () => {
+    const { doc, pool, defs, paraId, stId } = makeParaWithControl(element({ dataType: 'N' }), 42)
+    const cmd = new ReplaceTextCommand('c1', 1, 'u', [
+      { paragraphPath: [doc.id, paraId], startOffset: 0, endOffset: 2, newText: 'abc' },
+    ])
     expect(cmd.forward(ctxOfControl(doc, pool, defs))).toBeNull()
     expect(valueOf(pool, stId)).toBe(42)
+    expect(cmd.rejected).toEqual([
+      { paragraphPath: [doc.id, paraId], matchedText: '42', reason: 'replacement_not_a_number' },
+    ])
   })
 })
 

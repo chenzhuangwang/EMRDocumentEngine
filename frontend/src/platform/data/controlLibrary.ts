@@ -139,7 +139,11 @@ export const CONTROL_WIDGETS: ControlLibraryEntry[] = [
     id: 'select',
     name: '下拉选择',
     category: '通用控件',
-    element: { code: { internal: 'CTL_SELECT', dataElement: 'DE99.99.004' }, name: '下拉选择', format: { dataType: 'S1', enums: { data: [] } } },
+    element: { code: { internal: 'CTL_SELECT', dataElement: 'DE99.99.004' }, name: '下拉选择', format: { dataType: 'S1', enums: { data: [
+      { name: '轻度', value: 'mild' },
+      { name: '中度', value: 'moderate' },
+      { name: '重度', value: 'severe' },
+    ] } } },
     definition: { controlType: 'select', label: '下拉选择：', tips: '下拉单选', deletable: true, editable: true },
   },
   {
@@ -153,14 +157,21 @@ export const CONTROL_WIDGETS: ControlLibraryEntry[] = [
     id: 'checkbox',
     name: '复选框',
     category: '通用控件',
-    element: { code: { internal: 'CTL_CHECKBOX', dataElement: 'DE99.99.006' }, name: '复选框', format: { dataType: 'S1', enums: { multiple: true, data: [] } } },
+    element: { code: { internal: 'CTL_CHECKBOX', dataElement: 'DE99.99.006' }, name: '复选框', format: { dataType: 'S1', enums: { multiple: true, data: [
+      { name: '发热', value: 'fever' },
+      { name: '咳嗽', value: 'cough' },
+      { name: '乏力', value: 'fatigue' },
+    ] } } },
     definition: { controlType: 'checkbox', label: '复选框：', tips: '复选框 (多选)', deletable: true, editable: true },
   },
   {
     id: 'radio',
     name: '单选框',
     category: '通用控件',
-    element: { code: { internal: 'CTL_RADIO', dataElement: 'DE99.99.007' }, name: '单选框', format: { dataType: 'S1', enums: { data: [] } } },
+    element: { code: { internal: 'CTL_RADIO', dataElement: 'DE99.99.007' }, name: '单选框', format: { dataType: 'S1', enums: { data: [
+      { name: '是', value: 'Y' },
+      { name: '否', value: 'N' },
+    ] } } },
     definition: { controlType: 'radio', label: '单选框：', tips: '单选框 (单选)', deletable: true, editable: true },
   },
 ]
