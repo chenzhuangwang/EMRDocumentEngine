@@ -5,8 +5,10 @@
 // TemplateDefinition (§12.1) 完整定义, 就地编辑 7 个可编辑字段
 // (label/tips/prefix/suffix 文本; deletable/editable/single 布尔),
 // 经 Editor.setControlDefinition 整体回写。controlType (§12.1 第 8 字段)
-// 与语义身份 (ElementMeta) 为只读展示 (见 controlDisplay.ts), 渲染 /
-// 初始化路径不产生任何 setControlDefinition 回写。
+// 与语义身份 (ElementMeta) 为只读展示 (见 controlDisplay.ts); 完整语义层 /
+// controlType 配置走右键「属性」→ Control Config Dialog (契约 §12.7,
+// Editor.applyControlConfig)。本面板 round-trip 保持 controlType 不变 (§12.5)。
+// 渲染 / 初始化路径不产生任何 setControlDefinition 回写。
 //
 // 只消费引擎公共 API (getControlDefinition / setControlDefinition),
 // 不直接改 pool / store (§12.5)。文本字段 onBlur 提交、布尔字段即时

@@ -19,14 +19,17 @@ import { PageSetupDialog } from '@/components/dialogs/PageSetupDialog'
 import { PasteSpecialDialog, type PasteFormat } from '@/components/dialogs/PasteSpecialDialog'
 import { BookmarkDialog } from '@/components/dialogs/BookmarkDialog'
 import { DocumentPropertiesDialog } from '@/components/dialogs/DocumentPropertiesDialog'
+import { ControlInputDialog } from '@/components/dialogs/ControlInputDialog'
+import { ControlChoiceDialog } from '@/components/dialogs/ControlChoiceDialog'
+import { initialConfigForCreate, controlFamilyOf } from '@/components/dialogs/controlConfigShared'
+import type { ControlConfigData } from '@/components/dialogs/controlConfigShared'
 import { documentApi, templateApi } from '@/services/api'
 import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
 import { templateImporter, isExternalTemplate } from '@/engine'
 import { TOCGenerator } from '@/engine/render/TOCGenerator'
 import { ListParticle } from '@/engine/render/particles/ListParticle'
-import { controlWidgetById } from '@/platform/data/controlLibrary'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
-import type { EditorMode } from '@/engine'
+import type { EditorMode, ElementMeta } from '@/engine'
 import type { ListStyle } from '@/engine/document/core/DocumentModel'
 
 /** 生成列表标记文本 (供 TXT/HTML 导出) */
@@ -89,7 +92,27 @@ function EditorPageInner({
   const editorRef = useEditorRef()
   const ready = useEditorReady()
   const navigate = useNavigate()
-  const contextMenu = useEditorContextMenu()
+
+  // ---- 控件配置弹框 (契约 §12.7): 向导 (create) + 右键属性 (edit) ----
+  type WizardKind = 'textInput' | 'radio' | 'checkbox'
+  const [controlWizard, setControlWizard] = useState<{ open: boolean; kind: WizardKind }>({ open: false, kind: 'textInput' })
+  const [controlEdit, setControlEdit] = useState<{ open: boolean; nodeId: string }>({ open: false, nodeId: '' })
+  const openControlEdit = useCallback((controlId: string) => setControlEdit({ open: true, nodeId: controlId }), [])
+  // 通用菜单只发 'properties' id; 弹框映射在设计态业务层这里完成 (契约 §12.7)。
+  const contextMenu = useEditorContextMenu({ onProperty: openControlEdit })
+
+  // 向导确定 → 插到当前光标 (create); 属性确定 → 经 applyControlConfig 原子提交 (edit)
+  const applyWizardResult = useCallback((r: ControlConfigData) => {
+    const ed = editorRef.current
+    if (ed) ed.insertControl(r.element, r.definition)
+    setControlWizard((s) => ({ ...s, open: false }))
+  }, [editorRef])
+  const applyControlEdit = useCallback((r: ControlConfigData) => {
+    const ed = editorRef.current
+    if (ed) ed.applyControlConfig(controlEdit.nodeId, r.element, r.definition)
+    setControlEdit({ open: false, nodeId: '' })
+  }, [editorRef, controlEdit.nodeId])
+
   const [exportOpen, setExportOpen] = useState(false)
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
   const [printOpen, setPrintOpen] = useState(false)
@@ -825,9 +848,11 @@ function EditorPageInner({
         if (type === 'table') { setTableInsertOpen(true); return }
         // 分节符
         if (type === 'sectionBreak') { ed.insertSectionBreak(); return }
-        // 表单控件 → SmartTextNode 创建 (统一走 insertControl, 定义来源 = 通用控件目录)
-        const widget = controlWidgetById(type)
-        if (widget) { ed.insertControl(widget.element, widget.definition); return }
+        // 表单控件 3 类向导 (契约 §12.7): 打开对应配置弹框, 确定后再插到光标
+        if (type === 'textInput' || type === 'radio' || type === 'checkbox') {
+          setControlWizard({ open: true, kind: type })
+          return
+        }
       }}
       onExportClick={() => setExportOpen(true)}
       onPrint={() => setPrintOpen(true)}
@@ -872,6 +897,40 @@ function EditorPageInner({
       />
       <DesignControlPalette />
       <DesignControlProperties />
+      {/* 通用控件向导 (工具栏 3 类, create) — 契约 §12.7 */}
+      {controlWizard.open && controlWizard.kind === 'textInput' ? (
+        <ControlInputDialog
+          open
+          mode="create"
+          initial={initialConfigForCreate('textInput')}
+          onClose={() => setControlWizard({ open: false, kind: controlWizard.kind })}
+          onApply={applyWizardResult}
+        />
+      ) : controlWizard.open ? (
+        <ControlChoiceDialog
+          open
+          mode="create"
+          initial={initialConfigForCreate(controlWizard.kind)}
+          onClose={() => setControlWizard({ open: false, kind: controlWizard.kind })}
+          onApply={applyWizardResult}
+        />
+      ) : null}
+      {/* 设计模式右键「属性」(edit) — 以命中控件为目标, 按家族开弹框 */}
+      {controlEdit.open && (() => {
+        const ed = editorRef.current
+        if (!ed) return null
+        const node = ed.getPool()?.nodes.get(controlEdit.nodeId) as { type?: string; element?: ElementMeta } | undefined
+        if (!node || node.type !== 'smarttext' || !node.element) return null
+        const definition = ed.getControlDefinition(controlEdit.nodeId)
+        const family = controlFamilyOf(node.element, definition)
+        const initial = { element: node.element, definition }
+        const close = () => setControlEdit({ open: false, nodeId: '' })
+        return family === 'choice' ? (
+          <ControlChoiceDialog open mode="edit" initial={initial} onClose={close} onApply={applyControlEdit} />
+        ) : (
+          <ControlInputDialog open mode="edit" initial={initial} onClose={close} onApply={applyControlEdit} />
+        )
+      })()}
       <DocumentPropertiesDialog
         open={documentPropertiesOpen}
         onClose={() => setDocumentPropertiesOpen(false)}

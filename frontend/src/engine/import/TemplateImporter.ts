@@ -46,7 +46,7 @@ import type { PresentationStyle } from '../render/presentation/PresentationStyle
 interface ExtElementCode { internal?: string; dataElement?: string }
 interface ExtElement { name?: string; code?: ExtElementCode; labels?: string[] }
 interface ExtStyleRef { id?: string; css?: Record<string, unknown> }
-interface ExtEnumOption { name?: string; value?: string; exclusive?: boolean }
+interface ExtEnumOption { name?: string; value?: string; exclusive?: boolean; numericValue?: number }
 interface ExtEnums {
   multiple?: boolean
   editable?: boolean
@@ -439,6 +439,7 @@ export class TemplateImporter {
         if (value === '') continue
         const opt: ElementEnumOption = { name: name !== '' ? name : value, value }
         if (o.exclusive === true) opt.exclusive = true
+        if (typeof o.numericValue === 'number' && Number.isFinite(o.numericValue)) opt.numericValue = o.numericValue
         data.push(opt)
       }
       if (data.length > 0) out.data = data

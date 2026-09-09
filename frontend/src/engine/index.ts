@@ -161,6 +161,7 @@ export type { QCRule, QCIssue, QCResult, QCSeverity, QCGrade } from './qc/QCEngi
 // ---- TemplateDefinition (契约 §12.1) ----
 export { TemplateDefinitionStore } from './template/TemplateDefinition'
 export type { TemplateDefinition, TemplateDefinitionMap, ControlType } from './template/TemplateDefinition'
+export { controlTypeForDataType, controlTypeForMultiple } from './template/ControlTypeMapping'
 
 // ---- PresentationStyle (契约 §2.2) ----
 export { PresentationStyleStore } from './render/presentation/PresentationStyle'

@@ -18,8 +18,8 @@
 //            单格删除 (矩形网格下语义歧义) 与整表删除均不在范围。
 // P2:        图片复制 — image 命中追加「复制」(经 Editor.copyImage →
 //            ClipboardManager.copyImage, 复用粘贴管线)。
-// 禁止项 (§十): 单格删除、header/footer 完整菜单、SmartText 属性面板 —
-//            均不在实现范围。
+// P3:        smartText 设计模式右键「属性」(Control Config Dialog, 契约 §12.7)。
+// 禁止项 (§十): 单格删除、header/footer 完整菜单 — 均不在实现范围。
 // ============================================================
 
 import type { EditorContextSnapshot } from '@/engine'
@@ -30,6 +30,7 @@ export type ContextMenuActionId =
   | 'bold' | 'italic' | 'underline' | 'strikeout' | 'clearFormat'
   | 'alignLeft' | 'alignCenter' | 'alignRight' | 'alignJustify'
   | 'increaseIndent' | 'decreaseIndent'
+  | 'properties'
 
 /** 可点击的菜单项 */
 export interface ContextMenuEntryItem {
@@ -101,7 +102,11 @@ const NO_STYLE: ContextMenuStyleInfo = { textStyle: null, paragraphStyle: null }
  * - image:         复制 + 删除 (复制经 Editor.copyImage, 删除经 Editor.deleteNode
  *   门面)。
  * - blank:         粘贴 (光标位置粘贴)。
- * - 其余种类 (table/separator/sectionBreak/headerFooterRegion/smartText):
+ * - smartText:     交互模式 (design/edit/form) 控件右键 → 「属性」(设计态业务
+ *   动作, 经 ContextMenuActionId 'properties' 由 EditorPage 映射到 Control
+ *   Config Dialog)。resolveContextAt 只在上述模式上报控件命中, 故属性项
+ *   天然不出现在只读/打印模式的正文右键里。
+ * - 其余种类 (table/separator/sectionBreak/headerFooterRegion):
  *   无对应菜单项, 返回空列表 (不弹出菜单)。
  */
 export function buildContextMenuModel(
@@ -153,6 +158,14 @@ export function buildContextMenuModel(
       return {
         entries: [
           { kind: 'item', id: 'paste', label: '粘贴', enabled: true },
+        ],
+      }
+    case 'smartText':
+      // 控件右键 → 属性 (交互模式 design/edit/form; 通用菜单只发 semantic
+      // action id, 弹框由业务层 EditorPage 映射, 不硬编码进本模型/ContextMenu)
+      return {
+        entries: [
+          { kind: 'item', id: 'properties', label: '属性…', enabled: true },
         ],
       }
     default:

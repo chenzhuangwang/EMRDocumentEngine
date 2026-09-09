@@ -52,7 +52,8 @@ export interface TemplateDefinition {
   suffix?: string
   /** 该数据元在文档中仅允许出现一次 */
   single?: boolean
-  /** 控件 widget 形态 (插入时写定, 面板不可改; 旧文档缺失保持 undefined) */
+  /** 控件 widget 形态 (插入时由库条目或配置弹框写定, 契约 §12.5/§12.7;
+   *  轻量属性面板 round-trip 保持; 旧文档缺失保持 undefined, 编辑提交时才显式写入) */
   controlType?: ControlType
 }
 

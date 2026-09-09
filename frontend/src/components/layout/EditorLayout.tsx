@@ -143,8 +143,9 @@ export function EditorLayout({
           )}
         </div>
 
-        {/* 属性面板已删除 (契约 §7.7/§7.8): 文档属性走 DocumentPropertiesDialog,
-            控件属性走 DesignControlProperties, 不再保留泛型 PropertiesPanel */}
+        {/* 属性面板 (契约 §7.7/§7.8): 文档属性走 DocumentPropertiesDialog;
+            控件属性走 DesignControlProperties (轻量就地) 与右键「属性」→
+            Control Config Dialog (完整语义层, 契约 §12.7, Editor.applyControlConfig) */}
       </div>
     </div>
   )

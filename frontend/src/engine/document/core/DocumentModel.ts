@@ -108,6 +108,8 @@ export interface ElementEnumOption {
   value: string
   /** 选中后互斥 (排除其他选项) */
   exclusive?: boolean
+  /** 选项携带的数值 (如评分/权重, 契约 §12.7) — 可选用; 旧文档/旧数据缺失保持 undefined, 向后兼容 */
+  numericValue?: number
 }
 
 export interface PrivacyConfig {

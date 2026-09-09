@@ -1493,11 +1493,16 @@ Editing goes through the command system (RULE 4):
 
     Seven of the eight §12.1 fields are editable (deletable / editable
     / tips / label / prefix / suffix / single). controlType is written
-    only at insertion (§12.4) from the library entry; it is NOT one of
-    the panel's editable fields. The edit panel MUST display and write
-    back the COMPLETE definition (all eight fields), never a partial
-    one — so controlType is preserved unchanged through the panel's
+    at insertion (§12.4) from the library entry OR by the Control
+    Config Dialog (application wizard / Editor.applyControlConfig,
+    §12.7). The lightweight properties panel keeps the previous
+    behavior — it reads/writes the COMPLETE definition and MUST
+    preserve controlType unchanged through its own
     read-getControlDefinition / write-setControlDefinition round trip.
+    controlType is NEVER inferred from dataType/enums (VR-15); the
+    Control Config Dialog MAY offer a default dataType suggestion when
+    controlType changes, but MUST persist controlType explicitly and
+    MUST NOT silently overwrite an explicitly configured dataType.
 
     Guard interaction — an edited flag takes effect immediately at
     its existing command consumption point:
@@ -1816,6 +1821,45 @@ has exactly ONE canonical home, and that home is the document domain.
     buildModel preserves pageSetup and Editor auto-applies it on load
     (R70). An image watermark therefore round-trips: imageUrl/imageScale
     survive serialize → load.
+
+------------------------------------------------------------
+12.7 Control Config Editing Boundary
+------------------------------------------------------------
+
+Control property editing is a UI interaction initiated by an
+explicit property action (interactive modes — design / edit / form —
+right-click a control → context menu → "properties"). Property
+presentation and the context menu entry belong to the UI layer; the
+Engine contributes ONLY the RULE 10 read-only context snapshot (a
+smartText hit carries controlId in design/edit/form; readonly/print
+right-click on a control resolves to ordinary text) — it does not
+know the menu, the "properties" item, or the config dialog.
+
+    Control configuration is represented by the EXISTING ElementMeta
+    + TemplateDefinition model. UI config dialogs MUST NOT introduce
+    a second persistent source of truth for control semantics; a
+    dialog draft is transient UI editing state that is converted back
+    to ElementMeta / TemplateDefinition on Apply.
+
+    Opening or editing a config dialog MUST NOT mutate the document.
+    Applying MUST go through the Editor facade; document mutations
+    MUST be Commands, one layer per command:
+        UpdateControlElementCommand    → SmartTextNode.element
+        UpdateControlDefinitionCommand → TemplateDefinition
+        SetControlValueCommand         → SmartTextNode.value
+    No single command mixes two layers ("one mutable fact = one
+    owner" applies to control configuration too).
+
+    A single property Apply that changes element + definition +
+    (optional) value MUST collapse to ONE undo unit via
+    beginMacro/endMacro (RULE 11).
+
+    Value semantics: when an Apply changes value semantics, any
+    existing runtime value that fails re-validation under the NEW
+    element MUST be cleared to undefined — unless the re-validation
+    fails for write_locked (readonly / editable:false), in which case
+    the value is preserved. Clearing MUST go through
+    SetControlValueCommand (VR-3).
 
 ============================================================
 13. DOCUMENT SERIALIZATION
@@ -2259,7 +2303,9 @@ RULE 10:
     NOT contain: menu items, UI components, menu actions, React
     state, or UI-specific commands. UI MAY derive menu
     presentation and available actions from the context snapshot.
-    Context resolution MUST be side-effect free.
+    Context resolution MUST be side-effect free. Context menu
+    PRESENTATION belongs to the UI layer; the Engine MUST NOT know
+    context menu components, labels, hierarchy, or UI menu state.
 
 RULE 11:
 

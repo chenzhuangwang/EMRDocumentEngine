@@ -70,7 +70,7 @@ export interface SectionBreakContext extends ContextBase {
   nodeId: string
 }
 
-/** 设计模式 smarttext 控件命中 */
+/** 交互模式 (design/edit/form) smarttext 控件命中 */
 export interface SmartTextContext extends ContextBase {
   kind: 'smartText'
   controlId: string

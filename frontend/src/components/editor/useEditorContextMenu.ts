@@ -23,7 +23,13 @@ interface ContextMenuState {
 
 const CLOSED_STATE: ContextMenuState = { open: false, x: 0, y: 0, snapshot: null }
 
-export function useEditorContextMenu() {
+export interface UseEditorContextMenuOptions {
+  /** 设计模式控件「属性」业务回调 (菜单只发 id, 由业务层映射到 Control Config Dialog) */
+  onProperty?: (controlId: string) => void
+}
+
+export function useEditorContextMenu(options?: UseEditorContextMenuOptions) {
+  const { onProperty } = options ?? {}
   const editorRef = useEditorRef()
   // 光标处样式投影 (供勾选状态) — 与工具栏共用同一 canonical 投影
   const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
@@ -38,6 +44,10 @@ export function useEditorContextMenu() {
     // 右键在选区外 → 折叠选区并把光标移到命中点, 使格式/段落动作作用于点击位置。
     if ((snapshot.kind === 'text' || snapshot.kind === 'cell') && !snapshot.coversSelection) {
       editor.collapseSelectionToPoint(snapshot.paragraphPath, snapshot.offset)
+    }
+    // 设计模式右键控件: Word 式「命中即选中」— 右键 B 时 B 成为属性目标 (契约 §12.7)。
+    if (snapshot.kind === 'smartText') {
+      editor.selectControl(snapshot.controlId)
     }
     setState({ open: true, x: e.clientX, y: e.clientY, snapshot })
   }, [editorRef])
@@ -104,12 +114,18 @@ export function useEditorContextMenu() {
       // 列表层级 (P1-a): Tab / Shift+Tab 语义
       case 'increaseIndent': editor.adjustListLevel(1); break
       case 'decreaseIndent': editor.adjustListLevel(-1); break
+      // 控件属性 (P3, 设计模式 smartText): 菜单只发 id, 弹框由业务层映射
+      case 'properties': {
+        const snap = state.snapshot
+        if (snap?.kind === 'smartText') onProperty?.(snap.controlId)
+        break
+      }
     }
     close()
     // 恢复焦点到编辑器隐藏 textarea: Radix DropdownMenu 关闭时 onCloseAutoFocus
     // 被 preventDefault, 焦点会丢失到 body, 导致引擎容器级快捷键 (Ctrl+Z 等) 失效。
     editor.focus()
-  }, [editorRef, close, state])
+  }, [editorRef, close, state, onProperty])
 
   return {
     open: state.open,

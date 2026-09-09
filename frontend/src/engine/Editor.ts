@@ -60,6 +60,7 @@ import type { ReplaceRejection } from './command/commands/ReplaceTextCommand'
 import { RemoveControlCommand } from './command/commands/RemoveControlCommand'
 import { InsertControlCommand } from './command/commands/InsertControlCommand'
 import { UpdateControlDefinitionCommand } from './command/commands/UpdateControlDefinitionCommand'
+import { UpdateControlElementCommand, elementEquals, definitionEquals } from './command/commands/UpdateControlElementCommand'
 import { UpdateDocumentPropertiesCommand } from './command/commands/UpdateDocumentPropertiesCommand'
 import { UpdateDocumentTitleCommand } from './command/commands/UpdateDocumentTitleCommand'
 import { TemplateDefinitionStore } from './template/TemplateDefinition'
@@ -69,7 +70,7 @@ import type { DictionaryProvider } from './document/control/Dictionary'
 import { NodeType } from './document/core/DocumentModel'
 import type { ControlValue, ElementEnumOption, SmartTextNode } from './document/core/DocumentModel'
 import { SetControlValueCommand } from './command/commands/SetControlValueCommand'
-import { validateControlValue } from './document/control/ControlValue'
+import { validateControlValue, isControlValueEmpty } from './document/control/ControlValue'
 import type { ControlValueValidationResult, ControlValuePermissions } from './document/control/ControlValue'
 
 /**
@@ -108,7 +109,7 @@ export interface ControlSnapshot {
   placeholder: string
   /** 运行时值 (undefined = 未填, 规范空态 §12.6.1) */
   value: ControlValue | undefined
-  /** widget 形态 (TemplateDefinition.controlType, 插入时写定, 旧文档可缺省) */
+  /** widget 形态 (TemplateDefinition.controlType, 插入或配置弹框写定, 旧文档可缺省) */
   controlType: ControlType | undefined
   /** 数据取值类型 (ElementFormat.dataType) */
   dataType: 'S1' | 'S2' | 'S3' | 'N' | 'D' | undefined
@@ -582,8 +583,8 @@ export class Editor {
    *
    * 只描述文档/编辑器事实, 不含菜单项、动作或 React 状态; 无副作用。
    * 数据采集: resolveRawHit (坐标变换 + Level 1) → getEntryType / hitTestTable
-   * (Level 2) → findControlItemAt (design) → 页眉页脚区域边界 → 选区投影,
-   * 最终委托纯函数 buildContextSnapshot 判别上下文种类。
+   * (Level 2) → findControlItemAt (design/edit/form) → 页眉页脚区域边界 →
+   * 选区投影, 最终委托纯函数 buildContextSnapshot 判别上下文种类。
    */
   resolveContextAt(e: MouseEvent): EditorContextSnapshot {
     const raw = this.resolveRawHit(e)
@@ -604,9 +605,12 @@ export class Editor {
       }
     }
 
-    // 2. 设计模式 smarttext 控件命中
+    // 2. 交互模式 (design/edit/form) smarttext 控件命中 — 供右键菜单派生
+    //    「属性」动作 (契约 §12.7; 编辑/表单同样可对控件开属性配置)。
     const mode = this.store.state.runtime.view.mode
-    const controlId = mode === 'design' ? findControlItemAt(page, localX, localY) : null
+    const controlId = (mode === 'design' || mode === 'edit' || mode === 'form')
+      ? findControlItemAt(page, localX, localY)
+      : null
 
     // 3. Level 1 命中类型
     const hitIndex = this.draw.getHitTestIndex()
@@ -922,6 +926,71 @@ export class Editor {
   /** 控件视口 Client 矩形 (契约 §12.6 运行时 overlay 定位) — 委托 Draw 几何 */
   getControlClientRect(nodeId: string): { left: number; top: number; width: number; height: number } | null {
     return this.draw.getControlClientRect(nodeId)
+  }
+  /**
+   * 原子应用控件配置 (契约 §12.7) — 控件配置弹框「应用/确定」的唯一提交点。
+   *
+   * 一层一命令: element → UpdateControlElementCommand; definition →
+   * UpdateControlDefinitionCommand (整体替换); 值语义不兼容时清空 →
+   * SetControlValueCommand。三者经 beginMacro/endMacro 合并为单个 undo 单元
+   * (RULE 11)。element 与 definition 均无实质变化时不产生任何命令 (§7.8)。
+   *
+   * 值复校验 (契约 §12.7): 用 新 element + 新 def 的 permissions/字典 对旧
+   * value 复校验, 除 write_locked 外的任何拒绝 → 清空 undefined
+   * (write_locked 保留旧记录值)。
+   *
+   * 占位符同步: 值空 且 text 恰等于 `[oldName]` 时同步为 `[newName]` (不覆盖
+   * 作者自定义占位符, 不改已填值)。
+   */
+  applyControlConfig(
+    nodeId: string,
+    element: ElementMeta,
+    definition?: TemplateDefinition,
+    opts?: { clearValueIfIncompatible?: boolean },
+  ): void {
+    const node = this.pool.nodes.get(nodeId) as SmartTextNode | undefined
+    if (!node || node.type !== NodeType.SMART_TEXT) return
+    const curDef = this.templateDefinitions?.get(nodeId)
+    const elementChanged = !elementEquals(node.element, element)
+    const defChanged = !definitionEquals(curDef, definition)
+    if (!elementChanged && !defChanged) return
+
+    // 占位符同步 (见上方 JSDoc 规则)
+    let nextText: string | undefined
+    if (elementChanged) {
+      const oldName = node.element.name
+      if (oldName !== element.name && node.text === `[${oldName}]` && isControlValueEmpty(node.value)) {
+        nextText = `[${element.name}]`
+      }
+    }
+
+    // 值语义复校验决策 (宏外预判, 纯计算; 用新 element / 新 def 的权限与字典)
+    let planClear = false
+    if (opts?.clearValueIfIncompatible !== false) {
+      const permissions: ControlValuePermissions = { editable: definition?.editable }
+      const dictId = element.format?.dictionary
+      const dictCandidates = dictId ? this.dictionaries?.resolve(dictId) : undefined
+      const check = validateControlValue(node.value, element, permissions, dictCandidates)
+      planClear = !check.ok && check.reason !== 'write_locked'
+    }
+
+    this.commandManager.beginMacro()
+    // 执行顺序 = 宏 undo 逆序的逆序: 值先清 (旧 element 仍可写), def 再改,
+    // element 最后换 —— 保证 undo 时先还原 element 再还原 value (值还原需在
+    // 旧语义下通过 validateControlValue)。值语义复校验决策基于「新」语义,
+    // 但清空命令只校验 undefined (旧 element 非写锁即合法), 两层各自正确。
+    if (planClear) {
+      this.execCommand(new SetControlValueCommand(
+        generateCommandId(), Date.now(), 'user', nodeId, undefined,
+      ))
+    }
+    if (defChanged) this.setControlDefinition(nodeId, definition)
+    if (elementChanged) {
+      this.execCommand(new UpdateControlElementCommand(
+        generateCommandId(), Date.now(), 'user', nodeId, element, nextText,
+      ))
+    }
+    this.commandManager.endMacro()
   }
 
   /**
@@ -2437,6 +2506,12 @@ export interface IEditor {
   getControlValue(nodeId: string): ControlValue | undefined
   getControlSnapshot(nodeId: string): ControlSnapshot | null
   getControlClientRect(nodeId: string): { left: number; top: number; width: number; height: number } | null
+  applyControlConfig(
+    nodeId: string,
+    element: ElementMeta,
+    definition?: TemplateDefinition,
+    opts?: { clearValueIfIncompatible?: boolean },
+  ): void
   toggleFormat(style: Partial<import('./document/core/DocumentModel').TextStyle>): void
   setParagraphStyle(style: Partial<import('./document/core/DocumentModel').ParagraphStyle>): void
   resolveContextAt(e: MouseEvent): import('./context/EditorContext').EditorContextSnapshot

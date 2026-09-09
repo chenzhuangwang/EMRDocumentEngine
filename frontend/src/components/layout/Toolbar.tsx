@@ -7,8 +7,8 @@ import {
   Superscript, Subscript, Palette, Table, Image, Download,
   Printer, ChevronDown, AlignLeft, AlignCenter, AlignRight,
   AlignJustify, List, ListOrdered, Indent, Outdent,
-  ChevronsUpDown, Type, ListFilter, Calendar, CheckSquare,
-  Circle, Hash, RectangleEllipsis, FileText, Heading,
+  ChevronsUpDown, Type, Calendar, CheckSquare,
+  Circle, Hash, FileText, Heading,
   PanelTop, Eraser, Settings, Paintbrush, Minus, WrapText,
   Clock, User, Highlighter, Bookmark,
   Combine, Ungroup,
@@ -48,14 +48,12 @@ const COLORS = [
   '#7C3AED', '#DB2777', '#0891B2', '#4F46E5',
 ]
 
+// 通用控件插入向导 (契约 §12.7): 收拢为 3 类工具, 点选后开对应配置弹框
+// (EditorPage 路由), 不再直接插默认控件。
 const CONTROLS: ControlItem[] = [
-  { type: 'input',    label: '文本输入', description: '单行文本输入框',     icon: <Type size={16} /> },
-  { type: 'textarea', label: '文本域',   description: '多行文本输入区域',   icon: <RectangleEllipsis size={16} /> },
-  { type: 'number',   label: '数字输入', description: '数值型输入框',       icon: <Hash size={16} /> },
-  { type: 'select',   label: '下拉选择', description: '下拉列表选择器',     icon: <ListFilter size={16} /> },
-  { type: 'date',     label: '日期选择', description: '日期选择器',         icon: <Calendar size={16} /> },
-  { type: 'checkbox', label: '复选框',   description: '多选勾选框',         icon: <CheckSquare size={16} /> },
-  { type: 'radio',    label: '单选框',   description: '单选按钮',           icon: <Circle size={16} /> },
+  { type: 'textInput', label: '文本输入域', description: '单行/多行/数字/日期', icon: <Type size={16} /> },
+  { type: 'radio',     label: '单选框',    description: '单选候选',           icon: <Circle size={16} /> },
+  { type: 'checkbox',  label: '复选框',    description: '多选候选',           icon: <CheckSquare size={16} /> },
 ]
 
 interface ControlItem {

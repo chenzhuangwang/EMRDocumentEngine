@@ -95,17 +95,22 @@ describe('buildContextMenuModel 菜单条目 (P1-a)', () => {
     expect(entryKinds(snap)).toEqual(['item'])
   })
 
-  it('其余种类 (table/separator/sectionBreak/headerFooter/smartText): 空条目', () => {
+  it('其余种类 (table/separator/sectionBreak/headerFooter): 空条目', () => {
     const others: EditorContextSnapshot[] = [
       { ...base, kind: 'table', tableId: 't1' },
       { ...base, kind: 'separator', nodeId: 's1' },
       { ...base, kind: 'sectionBreak', nodeId: 'sb1' },
       { ...base, kind: 'headerFooterRegion', section: 'header' },
-      { ...base, kind: 'smartText', controlId: 'c1' },
     ]
     for (const snap of others) {
       expect(buildContextMenuModel(snap).entries).toEqual([])
     }
+  })
+
+  it('smartText (设计模式控件): 仅「属性」, 无分隔符', () => {
+    const snap: EditorContextSnapshot = { ...base, kind: 'smartText', controlId: 'c1' }
+    expect(items(snap)).toEqual([{ id: 'properties', enabled: true }])
+    expect(entryKinds(snap)).toEqual(['item'])
   })
 
   it('image: 复制 + 删除', () => {
