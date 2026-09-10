@@ -16,6 +16,10 @@ export interface LoadResult {
   doc: DocumentTree
   /** 所有节点的映射 (用于构建 NodePool) */
   nodes: Map<string, BaseNode>
+  /** 模板设计期属性 (契约 §12.1) — artifact 顶层读回, 缺失 → undefined */
+  templateDefinitions?: import('../template/TemplateDefinition').TemplateDefinitionStore
+  /** 表现层样式 store (契约 §2.2) — artifact 顶层读回, 缺失 → undefined */
+  presentationStyles?: import('../render/presentation/PresentationStyle').PresentationStyleStore
 }
 
 // ---- 加载器接口 ----
@@ -86,7 +90,12 @@ const JSONLoader: IDocumentLoader = {
   extensions: ['.json', '.emr'],
   load(content: string): LoadResult {
     const result = loadDocument(content)
-    return { doc: result.doc, nodes: new Map(result.pool.nodes) }
+    return {
+      doc: result.doc,
+      nodes: new Map(result.pool.nodes),
+      templateDefinitions: result.templateDefinitions,
+      presentationStyles: result.presentationStyles,
+    }
   },
   detect(content: string): boolean {
     const trimmed = content.trim()

@@ -390,8 +390,12 @@ function EditorPageInner({
 
       const result = documentLoaderRegistry.load(text, file.name)
       if (result?.doc) {
-        // 传入加载器展开的节点映射, setDocument 据此重建 NodePool
-        ed.setDocument(result.doc, result.nodes)
+        // 传入加载器展开的节点映射 + 设计期/表现层 store, 据此重建 NodePool
+        // (契约 §12.1: templateDefinitions 必须随导入恢复, 否则控件丢失 controlType)
+        ed.setDocument(result.doc, result.nodes, {
+          templateDefinitions: result.templateDefinitions,
+          presentationStyles: result.presentationStyles,
+        })
       }
     }
     reader.readAsText(file)

@@ -4,11 +4,12 @@
 
 import { describe, it, expect } from 'vitest'
 import { documentLoaderRegistry } from '../loaders/DocumentLoaderRegistry'
-import { createDocument, createParagraph, createTextNode } from '../document/factory/ElementFormatter'
+import { createDocument, createParagraph, createTextNode, createSmartTextNode } from '../document/factory/ElementFormatter'
 import { buildNodePool } from '../document/core/NodePool'
 import { serializeDocument } from '../document/io/DocumentSerializer'
 import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/version/DocumentFormatVersion'
-import type { BaseNode } from '../document/core/DocumentModel'
+import type { BaseNode, ElementMeta } from '../document/core/DocumentModel'
+import { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import { EditorTheme } from '../state/EditorTheme'
 import { locale, t } from '../i18n/index'
 import { testHost } from './helpers'
@@ -137,5 +138,31 @@ describe('i18n', () => {
     locale.extend({ 'common.save': '存储' })
     expect(t('common.save')).toBe('存储')
     locale.setLocale('zh-CN') // reset
+  })
+})
+
+describe('JSONLoader 导入保留 templateDefinitions (控件 controlType 不丢)', () => {
+  it('序列化含控件文档 → registry JSON 加载后 controlType 仍在', () => {
+    // 构造: 段落含 checkbox 控件 + TemplateDefinition
+    const doc = createDocument('imp')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const el: ElementMeta = {
+      code: { internal: 'CTL_CB', dataElement: 'DE99.99.006' }, name: '症状',
+      format: { dataType: 'S1', enums: { multiple: true, data: [{ name: '发热', value: 'fever' }] } },
+    }
+    const st = createSmartTextNode('[症状]', el)
+    const para = createParagraph([st.id])
+    all.set(st.id, st as unknown as BaseNode)
+    all.set(para.id, para as unknown as BaseNode)
+    doc.body.children = [para.id]
+    const pool = buildNodePool(all, { body: doc.id })
+    const defs = new TemplateDefinitionStore()
+    defs.set(st.id, { controlType: 'checkbox', label: '症状：', editable: true })
+
+    const json = serializeDocument(doc, pool, { templateDefinitions: defs })
+    const res = documentLoaderRegistry.load(json, 'x.json')!
+    expect(res.templateDefinitions?.get(st.id)?.controlType).toBe('checkbox')
+    expect(res.templateDefinitions?.get(st.id)?.label).toBe('症状：')
   })
 })
