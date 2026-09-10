@@ -158,7 +158,7 @@ export function ControlChoiceDialog({
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose() }}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/30 z-50" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex max-h-[85vh] w-[620px] flex-col overflow-hidden bg-white rounded-lg shadow-xl border border-gray-200">
+        <Dialog.Content onCloseAutoFocus={(e) => e.preventDefault()} className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex max-h-[85vh] w-[620px] flex-col overflow-hidden bg-white rounded-lg shadow-xl border border-gray-200">
           <div className="flex flex-shrink-0 items-center justify-between px-4 py-3 border-b border-gray-100">
             <Dialog.Title className="text-sm font-semibold text-gray-800">
               {mode === 'create' ? '新建单选/复选' : `控件配置 · ${initial.element.name || '单选复选'}`}

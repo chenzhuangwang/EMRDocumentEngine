@@ -101,31 +101,32 @@ function EditorPageInner({
   // 通用菜单只发 'properties' id; 弹框映射在设计态业务层这里完成 (契约 §12.7)。
   const contextMenu = useEditorContextMenu({ onProperty: openControlEdit })
 
+  // 弹框关闭后 Radix 会把焦点回弹到触发器/做焦点陷阱, 故延后一帧再交回编辑器
+  const refocusEditor = useCallback(() => {
+    requestAnimationFrame(() => editorRef.current?.focus())
+  }, [editorRef])
+
   // 向导确定 → 插到当前光标 (create); 属性确定 → 经 applyControlConfig 原子提交 (edit)
   const applyWizardResult = useCallback((r: ControlConfigData) => {
     const ed = editorRef.current
-    if (ed) {
-      ed.insertControl(r.element, r.definition)
-      ed.focus() // 焦点交回编辑器, 插入后可直接在控件后打字 (无需再点画布)
-    }
+    if (ed) ed.insertControl(r.element, r.definition)
     setControlWizard((s) => ({ ...s, open: false }))
-  }, [editorRef])
+    refocusEditor()
+  }, [editorRef, refocusEditor])
   const applyControlEdit = useCallback((r: ControlConfigData) => {
     const ed = editorRef.current
-    if (ed) {
-      ed.applyControlConfig(controlEdit.nodeId, r.element, r.definition)
-      ed.focus()
-    }
+    if (ed) ed.applyControlConfig(controlEdit.nodeId, r.element, r.definition)
     // 应用后清除选中 (控件高亮/选中态随弹框关闭一并取消)
     ed?.selectControl(null)
     setControlEdit({ open: false, nodeId: '' })
-  }, [editorRef, controlEdit.nodeId])
+    refocusEditor()
+  }, [editorRef, controlEdit.nodeId, refocusEditor])
   const closeControlEdit = useCallback(() => {
     // 取消选中态, 再关闭属性弹框 (契约 §12.7 属性为瞬态操作)
     editorRef.current?.selectControl(null)
-    editorRef.current?.focus()
     setControlEdit({ open: false, nodeId: '' })
-  }, [editorRef])
+    refocusEditor()
+  }, [editorRef, refocusEditor])
 
   const [exportOpen, setExportOpen] = useState(false)
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
