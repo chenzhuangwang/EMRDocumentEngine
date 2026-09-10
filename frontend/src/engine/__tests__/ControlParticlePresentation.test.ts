@@ -333,6 +333,12 @@ describe('ControlParticle — select 无方括号 (冒泡 §12.6)', () => {
     // 内容为剥括号后的占位名
     expect(r.texts.find((t) => t.text === '状态')).toBeTruthy()
   })
+  it('date → 不画 [ ] (只画内容 + 日历)', () => {
+    const r = render({ def: { controlType: 'date' }, text: '[生日]' })
+    expect(r.texts.find((t) => t.text === '[')).toBeUndefined()
+    expect(r.texts.find((t) => t.text === ']')).toBeUndefined()
+    expect(r.texts.find((t) => t.text === '生日')).toBeTruthy()
+  })
   it('input → 仍画 [ ] (对照)', () => {
     const r = render({ def: { controlType: 'input' }, text: '[状态]' })
     expect(r.texts.find((t) => t.text === '[')).toBeTruthy()

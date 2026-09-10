@@ -147,8 +147,8 @@ export function createControlParticle(): IParticle {
         const innerW = ctx.measureText(inner).width
 
         if (!activeEditing && recipe.frame === 'brackets') {
-          // select (affordance 'dropdown') 不画方括号, 只画内容 + ▼
-          const frameHidden = style?.borderStyle === 'none' || recipe.affordance === 'dropdown'
+          // select(▼)/date(日历) 不画方括号, 只画内容 + affordance
+          const frameHidden = style?.borderStyle === 'none' || recipe.affordance != null
           const bracketW = ctx.measureText('[').width
           const frameW = frameHidden ? innerW : (bracketW * 2 + innerW)
           let frameLeft = box.leftEdge + CONTROL_BOX_PADDING

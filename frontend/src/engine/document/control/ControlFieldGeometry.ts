@@ -73,8 +73,8 @@ export function computeFieldRegion(input: FieldRegionInput): FieldRegion {
     input.ascent, input.descent, input.minWidth,
   )
   const align = input.textAlignOverride ?? recipe.align
-  // select (affordance 'dropdown') 视为无括号: 下拉不画 [ ], 只画内容 + ▼
-  const frameHidden = input.borderStyle === 'none' || recipe.affordance === 'dropdown'
+  // select(▼)/date(日历) 视为无括号: 不画 [ ], 只画内容 + affordance
+  const frameHidden = input.borderStyle === 'none' || recipe.affordance != null
   const bracketOn = frame === 'brackets' && !frameHidden
   const bracketW = frame === 'brackets' && !frameHidden ? input.measure('[') : 0
 

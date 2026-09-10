@@ -434,7 +434,7 @@ function DateField({ snap, target, editor, onReject }: { snap: ControlSnapshot; 
   const { draft, error, change, submit, done } = useFieldText(snap, editor, false, onReject)
   const ref = useAutoFocus<HTMLInputElement>()
   const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
-  const w = Math.max(target.textArea.width, textWidth(draft || 'YYYY-MM-DD', font) + 16)
+  const w = Math.max(target.textArea.width, textWidth(draft || 'YYYY-MM-DD', font) + 32, 150)
   const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
   return (
     <>

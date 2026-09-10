@@ -202,7 +202,7 @@ export class LayoutEngine {
                 // 预留宽 = 完整可见宽 (框 + 文本 + affordance), 闭环不变量 1。
                 // select (affordance dropdown) 不画括号 → 预留宽不含方括号。
                 const isEmpty = isControlValueEmpty((tn as unknown as { value?: unknown }).value)
-                const bracketsOn = recipe.affordance !== 'dropdown'
+                const bracketsOn = recipe.affordance == null
                 const shown = isEmpty
                   ? (bracketsOn ? textVal : stripPlaceholderBrackets(textVal))
                   : (bracketsOn ? `[${textVal}]` : textVal)
@@ -848,7 +848,7 @@ export class LayoutEngine {
                 : controlOptionsPlaceholderWidth(measure)
             } else if (recipe.frame === 'brackets') {
               const isEmpty = isControlValueEmpty(child.value)
-              const bracketsOn = recipe.affordance !== 'dropdown'
+              const bracketsOn = recipe.affordance == null
               const shown = isEmpty
                 ? (bracketsOn ? display : stripPlaceholderBrackets(display))
                 : (bracketsOn ? `[${display}]` : display)
@@ -1100,7 +1100,7 @@ export class LayoutEngine {
                 : { width: controlOptionsPlaceholderWidth(measure) }
             } else if (recipe.frame === 'brackets') {
               const isEmpty = isControlValueEmpty((child as { value?: unknown }).value)
-              const bracketsOn = recipe.affordance !== 'dropdown'
+              const bracketsOn = recipe.affordance == null
               const shown = isEmpty
                 ? (bracketsOn ? display : stripPlaceholderBrackets(display))
                 : (bracketsOn ? `[${display}]` : display)
