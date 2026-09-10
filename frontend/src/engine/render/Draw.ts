@@ -679,18 +679,21 @@ export class Draw {
 
     // 单个文本 run 的裁剪 + 填充: 基于 paraId 在 spine 中的索引与段内累计偏移
     // 计算是否落入 [lo,hi] 选区范围, 落入则按逐字符像素宽度裁剪后 fillRect。
+    // 原子内联节点 (控件/图片/域等) 按「1 字符」计偏移 (与光标/命中同源), 并按整宽填充。
     const fillItem = (
       paraId: string,
       text: string,
       x: number, y: number, ascent: number, descent: number,
       fontCfg: { font: string; size: number; bold?: boolean; italic?: boolean },
+      atomic = false, atomicW?: number,
     ): void => {
       const pi = spine.indexOf(paraId)
       if (pi < lo || pi > hi) return
 
       const itemStart = paraOffsets.get(paraId) ?? 0
       const tLen = text?.length || 0
-      const itemEnd = itemStart + tLen
+      const unitLen = atomic ? 1 : tLen
+      const itemEnd = itemStart + unitLen
 
       // ---- 第一层: item 级筛选 ----
       let include = true
@@ -703,20 +706,26 @@ export class Draw {
       }
 
       let localStart = 0
-      let localEnd = tLen || 1  // 空段落占位至少 1 个单位宽度
+      let localEnd = unitLen || 1  // 空段落占位至少 1 个单位宽度
       if (samePara) {
         localStart = Math.max(0, selMin - itemStart)
-        localEnd = Math.min(tLen, selMax - itemStart)
+        localEnd = Math.min(unitLen, selMax - itemStart)
       } else if (pi === lo) {
         localStart = Math.max(0, (aIdx === lo ? anchorOff : focusOff) - itemStart)
-        localEnd = tLen || 1
+        localEnd = unitLen || 1
       } else if (pi === hi) {
         localStart = 0
-        localEnd = Math.min(tLen || 1, (aIdx === hi ? anchorOff : focusOff) - itemStart)
+        localEnd = Math.min(unitLen || 1, (aIdx === hi ? anchorOff : focusOff) - itemStart)
       }
 
       paraOffsets.set(paraId, itemEnd)
       if (!include) return
+
+      if (atomic) {
+        // 原子节点: 部分覆盖即整块高亮 (与「非文本计 1」一致)
+        if (localStart < localEnd) ictx.fillRect(x, y, atomicW ?? (ascent + descent), ascent + descent)
+        return
+      }
 
       // 逐字符累积宽度: 正确区分半角/全角字符像素宽度
       const dx = cumulativeWidthUpTo(text || '', localStart, fontCfg, this.measurer)
@@ -747,11 +756,14 @@ export class Draw {
               for (const ci of c.items || []) {
                 const paraId = this.findItemParagraph(ci.nodeId, pool)
                 if (!paraId) continue
+                const ciAtomic = ci.type === 'smarttext' || ci.type === 'image' ||
+                  ci.type === 'field' || ci.type === 'cross_reference' || ci.type === 'footnote_ref'
                 fillItem(
                   paraId, ci.text || '',
                   cellX + CELL_PAD + (ci.x || 0), cellY + (ci.y || 0),
                   ci.ascent, ci.descent,
                   { font: ci.font || 'SimSun', size: ci.size || 16, bold: ci.bold, italic: ci.italic },
+                  ciAtomic, ci.width,
                 )
               }
             }
@@ -786,13 +798,16 @@ export class Draw {
           }
           ictx.fillRect(item.x, spY + item.y, item.width, item.height)
         } else {
-          // 正文段落: 顶级 item
+          // 正文段落: 顶级 item (smarttext 等原子节点按 1 字符计偏移, 整宽高亮)
           const paraId = this.findItemParagraph(item.nodeId, pool)
           if (!paraId) continue
+          const atomic = item.type === 'smarttext' || item.type === 'field' ||
+            item.type === 'cross_reference' || item.type === 'footnote_ref'
           fillItem(
             paraId, item.text || '',
             item.x, spY + item.y, item.ascent, item.descent,
             { font: item.font || 'SimSun', size: item.size || 16, bold: item.bold, italic: item.italic },
+            atomic, item.width,
           )
         }
       }
@@ -842,7 +857,9 @@ export class Draw {
         const pi = spine.indexOf(paraId)
         if (pi < lo || pi > hi) continue
         const text = item.text || ''
-        const tLen = text.length
+        const isAtomic = item.type === 'smarttext' || item.type === 'image' ||
+          item.type === 'field' || item.type === 'cross_reference' || item.type === 'footnote_ref'
+        const tLen = isAtomic ? 1 : text.length
         const itemStart = paraOffsets.get(paraId) ?? 0
         const itemEnd = itemStart + tLen
 
@@ -870,6 +887,10 @@ export class Draw {
         paraOffsets.set(paraId, itemEnd)
         if (!include) continue
 
+        if (isAtomic) {
+          if (localStart < localEnd) ictx.fillRect(item.x, spY + bandTop + item.y, item.width, item.ascent + item.descent)
+          continue
+        }
         const fontCfg = { font: item.font || 'SimSun', size: item.size || 12, bold: item.bold, italic: item.italic }
         const dx = cumulativeWidthUpTo(text || '', localStart, fontCfg, this.measurer)
         const dw = tLen > 0
