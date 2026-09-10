@@ -32,6 +32,7 @@ export class ParagraphStyleCommand implements ICommand, MergeableCommand {
       this.oldStyles.set(paraId, {
         alignment: para.alignment,
         indent: para.indent,
+        firstLineIndent: para.firstLineIndent,
         lineHeight: para.lineHeight,
         list: para.list,
         outlineLevel: para.outlineLevel,

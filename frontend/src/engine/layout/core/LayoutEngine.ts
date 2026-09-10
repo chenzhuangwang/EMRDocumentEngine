@@ -291,6 +291,7 @@ export class LayoutEngine {
             maxDescent: emptySize * 0.2,
             alignment: para.alignment,
             indent: para.indent,
+            firstLineIndent: para.firstLineIndent,
             listMarker: savedListMarker || undefined,
           })
         } else {
@@ -299,13 +300,14 @@ export class LayoutEngine {
             defaultFont: 'SimSun', defaultSize: 16,
             lineHeight: para.lineHeight,
           })
-          // 标记每行的段落对齐/缩进
+          // 标记每行的段落对齐/缩进; 首行缩进仅首行
           let isFirstLine = true
           for (const line of lines) {
             line.alignment = para.alignment
             line.indent = para.indent
-            if (isFirstLine && savedListMarker) {
-              line.listMarker = savedListMarker
+            if (isFirstLine) {
+              line.firstLineIndent = para.firstLineIndent
+              if (savedListMarker) line.listMarker = savedListMarker
               isFirstLine = false
             }
           }
@@ -418,9 +420,10 @@ export class LayoutEngine {
           continue
         }
         // 行起始 X (对齐/缩进后) — 元素级 X 累积基准 (修复拆分节点后多 item 重叠/选区偏移)
-        let lineStartX = this.config.marginLeft + (line.indent ?? 0)
+        // 块缩进 indent 每行生效; 首行缩进 firstLineIndent 仅首行 (LineBreaker 已只给首行赋值)。
+        let lineStartX = this.config.marginLeft + (line.indent ?? 0) + (line.firstLineIndent ?? 0)
         if (line.alignment === 'center') {
-          lineStartX = this.config.marginLeft + (contentWidth - line.width) / 2 + (line.indent ?? 0)
+          lineStartX = this.config.marginLeft + (contentWidth - line.width) / 2 + (line.indent ?? 0) + (line.firstLineIndent ?? 0)
         } else if (line.alignment === 'right') {
           lineStartX = this.config.marginLeft + contentWidth - line.width
         }
@@ -1133,8 +1136,10 @@ export class LayoutEngine {
         defaultFont: 'SimSun', defaultSize: BASE_FONT_SIZE,
         lineHeight: (para as Paragraph).lineHeight,
       })
+      let isFirst = true
       for (const line of lines) {
         line.alignment = para.alignment || 'left' // 页眉页脚默认左对齐 (WPS)
+        if (isFirst) { line.firstLineIndent = (para as Paragraph).firstLineIndent; isFirst = false }
       }
       allLines.push(...lines)
     }
@@ -1168,7 +1173,7 @@ export class LayoutEngine {
 
     const items: SLIFItem[] = []
     for (const line of lines) {
-      let lineStartX = this.config.marginLeft + (line.indent ?? 0)
+      let lineStartX = this.config.marginLeft + (line.indent ?? 0) + (line.firstLineIndent ?? 0)
       if (line.alignment === 'center') {
         lineStartX = this.config.marginLeft + (contentWidth - line.width) / 2
       } else if (line.alignment === 'right') {

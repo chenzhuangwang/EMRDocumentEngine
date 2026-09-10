@@ -61,6 +61,8 @@ export interface ILine {
   maxDescent: number
   alignment?: 'left' | 'center' | 'right' | 'justify'
   indent?: number
+  /** 首行缩进 (仅首行) */
+  firstLineIndent?: number
   /** 列表标记文本 (首行), 由 Draw.ts 通过 ListParticle 渲染 */
   listMarker?: string
 }

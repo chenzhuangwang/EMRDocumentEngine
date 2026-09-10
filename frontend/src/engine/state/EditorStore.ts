@@ -20,6 +20,7 @@ export interface ParagraphStyleProjection {
   indent?: number
   outlineLevel?: number
   lineHeight?: number
+  firstLineIndent?: number
 }
 
 export interface EditorStoreState {

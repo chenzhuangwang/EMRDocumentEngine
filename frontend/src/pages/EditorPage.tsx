@@ -625,8 +625,15 @@ function EditorPageInner({
           // 列表段落: 减少嵌套层级 (level<1 时取消列表)
           ed.adjustListLevel(-1)
         } else {
-          ed.adjustIndent(-24)
+          // 非列表: 清空段落块缩进 (首行缩进由「首行缩进」按钮单独清)
+          ed.setParagraphStyle({ indent: 0 })
         }
+        break
+      }
+      case 'firstLineIndent': {
+        const ps = ed.getParagraphStyle()
+        // 单按钮切换: 有首行缩进 → 清空; 无 → 设 2 字符(32px)
+        ed.setParagraphStyle({ firstLineIndent: (ps?.firstLineIndent ?? 0) > 0 ? undefined : 32 })
         break
       }
       case 'lineHeight': ed.setParagraphStyle({ lineHeight: Number(_value ?? 1.5) }); break

@@ -216,11 +216,14 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
             <WrapText size={16} />
           </ToolbarButton>
         )}
-        <ToolbarButton title="减少缩进" onClick={() => onFormat?.('outdent')}>
+        <ToolbarButton title="清空缩进" onClick={() => onFormat?.('outdent')}>
           <Outdent size={16} />
         </ToolbarButton>
         <ToolbarButton title="增加缩进" onClick={() => onFormat?.('indent')}>
           <Indent size={16} />
+        </ToolbarButton>
+        <ToolbarButton title="首行缩进" active={(paraStyle?.firstLineIndent ?? 0) > 0} onClick={() => onFormat?.('firstLineIndent')}>
+          <span className="text-sm">首行</span>
         </ToolbarButton>
       </ToolbarGroup>
 

@@ -179,7 +179,7 @@ export class ClipboardManager {
     }
 
     // 段落样式全量复制
-    for (const k of ['alignment', 'indent', 'lineHeight', 'list', 'outlineLevel',
+    for (const k of ['alignment', 'indent', 'firstLineIndent', 'lineHeight', 'list', 'outlineLevel',
       'spaceBefore', 'spaceAfter']) {
       if (k in para) sp.style[k] = para[k]
     }

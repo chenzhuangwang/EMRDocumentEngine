@@ -71,6 +71,7 @@ export class SplitParagraphCommand extends PositionalCommand {
     }
     Object.assign(newPara, {
       alignment: para.alignment, indent: para.indent,
+      firstLineIndent: para.firstLineIndent,
       lineHeight: para.lineHeight, list: para.list,
       outlineLevel: para.outlineLevel,
     })
@@ -95,6 +96,7 @@ export class SplitParagraphCommand extends PositionalCommand {
     const newPara = createParagraph()
     Object.assign(newPara, {
       alignment: para.alignment, indent: para.indent,
+      firstLineIndent: para.firstLineIndent,
       lineHeight: para.lineHeight, list: para.list,
       outlineLevel: para.outlineLevel,
     })

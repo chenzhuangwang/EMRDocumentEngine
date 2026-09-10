@@ -50,6 +50,8 @@ export interface TextStyle {
 export interface ParagraphStyle {
   alignment?: 'left' | 'center' | 'right' | 'justify'
   indent?: number
+  /** 首行缩进 (仅首行右移, 后续行顶格; 像素) */
+  firstLineIndent?: number
   lineHeight?: number
   spaceBefore?: number
   spaceAfter?: number

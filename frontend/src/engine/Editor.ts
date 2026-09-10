@@ -2157,7 +2157,7 @@ export class Editor {
   }
 
   /** 单段落格式投影 (alignment 缺省视为 left) */
-  private paragraphStyleProjectionOf(paraId: string): { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; continueNumbering?: boolean; indent?: number; outlineLevel?: number; lineHeight?: number } {
+  private paragraphStyleProjectionOf(paraId: string): { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; continueNumbering?: boolean; indent?: number; outlineLevel?: number; lineHeight?: number; firstLineIndent?: number } {
     const para = this.pool.nodes.get(paraId) as Record<string, unknown> | undefined
     const list = para?.list as { type?: string; level?: number; numberStyle?: string; continueNumbering?: boolean } | undefined
     return {
@@ -2169,17 +2169,18 @@ export class Editor {
       indent: para?.indent as number | undefined,
       outlineLevel: para?.outlineLevel as number | undefined,
       lineHeight: para?.lineHeight as number | undefined,
+      firstLineIndent: para?.firstLineIndent as number | undefined,
     }
   }
 
   /** 获取光标/选区段落格式 (供 Toolbar active 状态) — 多段落统一→值, 混合→undefined */
-  getParagraphStyle(): { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; continueNumbering?: boolean; indent?: number; outlineLevel?: number; lineHeight?: number } | null {
+  getParagraphStyle(): { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; continueNumbering?: boolean; indent?: number; outlineLevel?: number; lineHeight?: number; firstLineIndent?: number } | null {
     const paraIds = this.getSelectedParagraphIds()
     if (paraIds.length === 0) return null
 
     const projections = paraIds.map(id => this.paragraphStyleProjectionOf(id))
-    const KEYS = ['alignment', 'listType', 'listLevel', 'numberStyle', 'continueNumbering', 'indent', 'outlineLevel', 'lineHeight'] as const
-    const merged: { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; continueNumbering?: boolean; indent?: number; outlineLevel?: number; lineHeight?: number } = {}
+    const KEYS = ['alignment', 'listType', 'listLevel', 'numberStyle', 'continueNumbering', 'indent', 'outlineLevel', 'lineHeight', 'firstLineIndent'] as const
+    const merged: { alignment?: string; listType?: string; listLevel?: number; numberStyle?: string; continueNumbering?: boolean; indent?: number; outlineLevel?: number; lineHeight?: number; firstLineIndent?: number } = {}
     const first = projections[0]
     for (const k of KEYS) (merged as Record<string, unknown>)[k] = (first as Record<string, unknown>)[k]
     for (let i = 1; i < projections.length; i++) {
