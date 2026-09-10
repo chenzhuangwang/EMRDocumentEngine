@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useEditorRef, useEditorStoreSnapshot } from './EditorProvider'
+import { controlRejectMessage } from './controlMessages'
 import type { ControlEditTarget, ControlSnapshot, ControlType, Editor } from '@/engine'
 
 const PLACEHOLDER_COLOR = '#9CA3AF'
@@ -157,34 +158,61 @@ export function RuntimeControlOverlay({ canvasContainerRef }: RuntimeControlOver
   )
 }
 
-/** 统一文本字段状态: onChange 本地草稿; 卸载即提交; discard/done 防重复 */
+/** 统一文本字段状态: onChange 本地草稿; 卸载即提交; 非法值就地提示 */
 function useFieldText(snap: ControlSnapshot, editor: Editor) {
   const [draft, setDraft] = useState(() => valueToText(snap.value))
+  const [error, setError] = useState<string | null>(null)
   const draftRef = useRef(draft)
   draftRef.current = draft
   const settledRef = useRef(false)
   const changedRef = useRef(false)
 
-  useEffect(() => { setDraft(valueToText(snap.value)) }, [snap.value])
+  useEffect(() => { setDraft(valueToText(snap.value)); setError(null) }, [snap.value, snap.nodeId])
 
-  // 幂等提交 (字符串语义; number 控件用自己的数值提交后调 done())
-  const submit = useCallback(() => {
-    if (settledRef.current || !changedRef.current) return
+  // 幂等提交; 返回是否提交成功 (ok 或无需提交)。非法 → 记 error + 回退, 且置 settled 防静默重试。
+  const submit = useCallback((): boolean => {
+    if (settledRef.current) return true
+    if (!changedRef.current) { settledRef.current = true; return true }
+    settledRef.current = true
     const cur = draftRef.current
     const canon = valueToText(snap.value)
-    if (cur === canon) { settledRef.current = true; return }
+    if (cur === canon) return true
     const r = editor.setControlValue(snap.nodeId, cur === '' ? undefined : cur)
-    if (r.ok) settledRef.current = true
-    else setDraft(canon)
+    if (r.ok) return true
+    setError(controlRejectMessage(r.reason))
+    setDraft(canon)
+    return false
   }, [editor, snap.nodeId, snap.value])
   const submitRef = useRef(submit)
   submitRef.current = submit
-  // 卸载即提交
-  useEffect(() => () => submitRef.current(), [])
+  // 卸载即提交 (切换/点空白/失焦/模式切)
+  useEffect(() => () => { submitRef.current() }, [])
   const done = useCallback(() => { settledRef.current = true }, [])
-  const discard = useCallback(() => { settledRef.current = true }, [])
-  const change = useCallback((v: string) => { changedRef.current = true; setDraft(v) }, [])
-  return { draft, change, submit, done, discard }
+  const change = useCallback((v: string) => { changedRef.current = true; setError(null); setDraft(v) }, [])
+  return { draft, error, change, submit, done }
+}
+
+/** 区域内在控件间跳转 (dir +1/-1); 无相邻则退出编辑 */
+function goAdjacent(editor: Editor, nodeId: string, dir: 1 | -1): void {
+  const next = editor.getAdjacentControlId(nodeId, dir)
+  if (next && next !== nodeId) editor.activateControl(next)
+  else editor.deactivateControl()
+}
+
+/** 校验失败提示 (控件下方小红字) */
+function FieldHint({ msg }: { msg: string | null }) {
+  if (!msg) return null
+  return (
+    <div
+      style={{
+        position: 'absolute', left: 0, top: '100%', marginTop: 2,
+        color: '#DC2626', fontSize: 12, lineHeight: '14px', whiteSpace: 'nowrap',
+        pointerEvents: 'none', zIndex: 50,
+      }}
+    >
+      {msg}
+    </div>
+  )
 }
 
 function useAutoFocus<T extends HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>() {
@@ -223,124 +251,158 @@ function baseInputStyle(target: ControlEditTarget): React.CSSProperties {
 }
 
 function TextField({ snap, target, editor }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor }) {
-  const { draft, change, submit, done } = useFieldText(snap, editor)
+  const { draft, error, change, submit, done } = useFieldText(snap, editor)
   const inputRef = useAutoFocus<HTMLInputElement>()
   const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
   const w = Math.max(target.textArea.width, textWidth(draft || ' ', font) + 2)
   const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
   return (
-    <input
-      ref={inputRef}
-      data-ctl-overlay
-      type="text"
-      value={draft}
-      placeholder={target.placeholderText}
-      style={{ ...baseInputStyle(target), textAlign: 'left', width: w, height: target.textArea.height, position: 'absolute', left: 0, top: topOff }}
-      onChange={(e) => change(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') { e.preventDefault(); submit(); editor.deactivateControl() }
-        else if (e.key === 'Escape') { e.preventDefault(); done(); editor.deactivateControl() }
-      }}
-    />
+    <>
+      <input
+        ref={inputRef}
+        data-ctl-overlay
+        type="text"
+        value={draft}
+        placeholder={target.placeholderText}
+        style={{ ...baseInputStyle(target), textAlign: 'left', width: w, height: target.textArea.height, position: 'absolute', left: 0, top: topOff }}
+        onChange={(e) => change(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); if (submit()) goAdjacent(editor, snap.nodeId, 1) }
+          else if (e.key === 'Tab') { e.preventDefault(); submit(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
+          else if (e.key === 'Escape') { e.preventDefault(); done(); editor.deactivateControl() }
+        }}
+      />
+      <FieldHint msg={error} />
+    </>
   )
 }
 
 function NumberField({ snap, target, editor }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor }) {
-  const { draft, change, done } = useFieldText(snap, editor)
+  const { draft, change } = useFieldText(snap, editor)
+  const [error, setError] = useState<string | null>(null)
   const inputRef = useAutoFocus<HTMLInputElement>()
   const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
   const w = Math.max(target.textArea.width, textWidth(draft || ' ', font) + 2)
   const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
-  const commitNumber = () => {
+  // 数值提交: 空 → 清空; 非数字/精度超限 → 就地提示, 不提交
+  const commitNumber = (): boolean => {
     const t = draft.trim()
-    if (t === '') {
-      editor.setControlValue(snap.nodeId, undefined)
-      done(); editor.deactivateControl(); return
-    }
+    if (t === '') { editor.setControlValue(snap.nodeId, undefined); return true }
     const n = Number(t)
-    if (!Number.isFinite(n)) return // 非法数字不提交 (等 Escape/离开丢弃)
+    if (!Number.isFinite(n)) { setError('请输入数字'); return false }
     const r = editor.setControlValue(snap.nodeId, n)
-    if (r.ok) { done(); editor.deactivateControl() }
+    if (r.ok) return true
+    setError(controlRejectMessage(r.reason)); return false
   }
+  const changeClear = (v: string) => { setError(null); change(v) }
   return (
-    <input
-      ref={inputRef}
-      data-ctl-overlay
-      type="text" inputMode="decimal"
-      value={draft}
-      placeholder={target.placeholderText}
-      style={{
-        ...baseInputStyle(target), textAlign: 'right',
-        width: w, height: target.textArea.height,
-        position: 'absolute', left: Math.min(0, target.textArea.width - w), top: topOff,
-      }}
-      onChange={(e) => change(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') { e.preventDefault(); commitNumber() }
-        else if (e.key === 'Escape') { e.preventDefault(); done(); editor.deactivateControl() }
-      }}
-    />
+    <>
+      <input
+        ref={inputRef}
+        data-ctl-overlay
+        type="text" inputMode="decimal"
+        value={draft}
+        placeholder={target.placeholderText}
+        style={{
+          ...baseInputStyle(target), textAlign: 'right',
+          width: w, height: target.textArea.height,
+          position: 'absolute', left: Math.min(0, target.textArea.width - w), top: topOff,
+        }}
+        onChange={(e) => changeClear(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); if (commitNumber()) goAdjacent(editor, snap.nodeId, 1) }
+          else if (e.key === 'Tab') { e.preventDefault(); commitNumber(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
+          else if (e.key === 'Escape') { e.preventDefault(); editor.deactivateControl() }
+        }}
+      />
+      <FieldHint msg={error} />
+    </>
   )
 }
 
 function TextareaField({ snap, target, editor }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor }) {
-  const { draft, change, done } = useFieldText(snap, editor)
+  const { draft, error, change, submit, done } = useFieldText(snap, editor)
   const ref = useAutoFocus<HTMLTextAreaElement>()
   const lineCount = Math.max(1, (draft.match(/\n/g)?.length ?? 0) + 1, target.minRows ?? 1)
   const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
   return (
-    <textarea
-      ref={ref}
-      data-ctl-overlay
-      rows={Math.min(lineCount, 12)}
-      value={draft}
-      placeholder={target.placeholderText}
-      style={{
-        ...baseInputStyle(target), textAlign: 'left',
-        resize: 'none', whiteSpace: 'pre-wrap', overflowY: 'auto',
-        width: '100%', height: '100%', position: 'absolute', left: 0, top: topOff,
-      }}
-      onChange={(e) => change(e.target.value)}
-      onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); done(); editor.deactivateControl() } }}
-    />
+    <>
+      <textarea
+        ref={ref}
+        data-ctl-overlay
+        rows={Math.min(lineCount, 12)}
+        value={draft}
+        placeholder={target.placeholderText}
+        style={{
+          ...baseInputStyle(target), textAlign: 'left',
+          resize: 'none', whiteSpace: 'pre-wrap', overflowY: 'auto',
+          width: '100%', height: '100%', position: 'absolute', left: 0, top: topOff,
+        }}
+        onChange={(e) => change(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Tab') { e.preventDefault(); submit(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
+          else if (e.key === 'Escape') { e.preventDefault(); done(); editor.deactivateControl() }
+        }}
+      />
+      <FieldHint msg={error} />
+    </>
   )
 }
 
 function SelectField({ snap, target, editor }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor }) {
+  const [error, setError] = useState<string | null>(null)
   const current = typeof snap.value === 'string' ? snap.value : ''
   const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
   const w = Math.max(target.textArea.width, textWidth(current || target.placeholderText, font) + 24)
   const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
   return (
-    <select
-      data-ctl-overlay
-      autoFocus
-      value={current}
-      style={{ ...baseInputStyle(target), width: w, height: target.textArea.height, cursor: 'pointer', position: 'absolute', left: 0, top: topOff }}
-      onChange={(e) => editor.setControlValue(snap.nodeId, e.target.value === '' ? undefined : e.target.value)}
-    >
-      <option value="">{target.placeholderText || '请选择'}</option>
-      {(snap.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.name}</option>)}
-    </select>
+    <>
+      <select
+        data-ctl-overlay
+        autoFocus
+        value={current}
+        style={{ ...baseInputStyle(target), width: w, height: target.textArea.height, cursor: 'pointer', position: 'absolute', left: 0, top: topOff }}
+        onChange={(e) => {
+          setError(null)
+          const r = editor.setControlValue(snap.nodeId, e.target.value === '' ? undefined : e.target.value)
+          if (!r.ok) setError(controlRejectMessage(r.reason))
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Tab') { e.preventDefault(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
+          else if (e.key === 'Escape') { e.preventDefault(); editor.deactivateControl() }
+        }}
+      >
+        <option value="">{target.placeholderText || '请选择'}</option>
+        {(snap.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.name}</option>)}
+      </select>
+      <FieldHint msg={error} />
+    </>
   )
 }
 
 function DateField({ snap, target, editor }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor }) {
-  const { draft, change, submit, done } = useFieldText(snap, editor)
+  const { draft, error, change, submit, done } = useFieldText(snap, editor)
   const ref = useAutoFocus<HTMLInputElement>()
   const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
   const w = Math.max(target.textArea.width, textWidth(draft || 'YYYY-MM-DD', font) + 16)
   const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
   return (
-    <input
-      ref={ref}
-      data-ctl-overlay
-      type="date"
-      value={draft}
-      style={{ ...baseInputStyle(target), width: w, height: target.textArea.height, position: 'absolute', left: 0, top: topOff }}
-      onChange={(e) => change(e.target.value)}
-      onBlur={() => { submit() }}
-      onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); done(); editor.deactivateControl() } }}
-    />
+    <>
+      <input
+        ref={ref}
+        data-ctl-overlay
+        type="date"
+        value={draft}
+        style={{ ...baseInputStyle(target), width: w, height: target.textArea.height, position: 'absolute', left: 0, top: topOff }}
+        onChange={(e) => change(e.target.value)}
+        onBlur={() => { submit() }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); if (submit()) goAdjacent(editor, snap.nodeId, 1) }
+          else if (e.key === 'Tab') { e.preventDefault(); submit(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
+          else if (e.key === 'Escape') { e.preventDefault(); done(); editor.deactivateControl() }
+        }}
+      />
+      <FieldHint msg={error} />
+    </>
   )
 }

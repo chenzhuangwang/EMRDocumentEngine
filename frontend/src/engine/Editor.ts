@@ -45,7 +45,7 @@ import type { CellRange } from './document/table/TableOps'
 import {
   collectTextNodeIds, collectSelectionSegments,
   paragraphTextLength, findFirstTextNodeInRange,
-  flattenTextContainers, selectionSpine,
+  flattenTextContainers, selectionSpine, sectionOf, regionSpine,
 } from './document/selection/SelectionCollector'
 import type { FormatRange } from './document/selection/SelectionCollector'
 import {
@@ -936,6 +936,35 @@ export class Editor {
   /** 控件无缝内联编辑目标 (契约 §12.6) — 文本内容区几何 + 同 Canvas 字体, 供 overlay 透明无框编辑 */
   getControlEditTarget(nodeId: string): ControlEditTarget | null {
     return this.draw.getControlEditTarget(nodeId)
+  }
+  /**
+   * 运行时填表导航 (契约 §12.6) — 返回 anchor 所属区域内 (页眉 / 正文 / 页脚)
+   * 按阅读顺序排列的「可填控件」nodeId 列表: 仅含 smarttext 且可写非脱敏
+   * (与 MouseHandler 激活谓词一致)。用于 Tab/回车在区域内跳转。
+   */
+  getRegionControlIds(anchorNodeId: string): string[] {
+    const section = sectionOf(anchorNodeId, this.doc)
+    const spine = regionSpine(this.doc, this.pool, section)
+    const ids: string[] = []
+    for (const paraId of spine) {
+      const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
+      if (!para?.children) continue
+      for (const cid of para.children) {
+        const n = this.pool.nodes.get(cid) as { type?: string } | undefined
+        if (n?.type !== NodeType.SMART_TEXT) continue
+        const snap = this.getControlSnapshot(cid)
+        if (snap && !snap.masked && snap.writable) ids.push(cid)
+      }
+    }
+    return ids
+  }
+  /** 相邻可填控件 (dir +1 下一个 / -1 上一个), 区域内环绕; 无则 null */
+  getAdjacentControlId(nodeId: string, dir: 1 | -1): string | null {
+    const ids = this.getRegionControlIds(nodeId)
+    if (ids.length === 0) return null
+    const i = ids.indexOf(nodeId)
+    if (i < 0) return ids[0]
+    return ids[(i + dir + ids.length) % ids.length]
   }
   /**
    * 原子应用控件配置 (契约 §12.7) — 控件配置弹框「应用/确定」的唯一提交点。
@@ -2549,6 +2578,8 @@ export interface IEditor {
   getControlSnapshot(nodeId: string): ControlSnapshot | null
   getControlClientRect(nodeId: string): { left: number; top: number; width: number; height: number } | null
   getControlEditTarget(nodeId: string): ControlEditTarget | null
+  getRegionControlIds(anchorNodeId: string): string[]
+  getAdjacentControlId(nodeId: string, dir: 1 | -1): string | null
   applyControlConfig(
     nodeId: string,
     element: ElementMeta,

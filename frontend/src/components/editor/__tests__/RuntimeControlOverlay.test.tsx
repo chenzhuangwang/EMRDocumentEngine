@@ -55,23 +55,27 @@ function makeSnap(over?: Partial<ControlSnapshot>): ControlSnapshot {
   } as ControlSnapshot
 }
 
-function buildEnv(over?: { snap?: Partial<ControlSnapshot>; target?: Partial<ControlEditTarget> }) {
+function buildEnv(over?: { snap?: Partial<ControlSnapshot>; target?: Partial<ControlEditTarget>; setResult?: { ok: boolean; reason?: string }; adjacent?: string | null }) {
   const store = new EditorStore()
   store.setMode('edit')
   store.setActiveControlId('n1')
   const snap = makeSnap(over?.snap)
   const target = makeTarget(over?.target)
-  const setControlValue = vi.fn(() => ({ ok: true }))
+  const setControlValue = vi.fn(((_id: string, _v: unknown) => over?.setResult ?? { ok: true }) as never)
   const deactivateControl = vi.fn(() => store.setActiveControlId(null))
+  const activateControl = vi.fn((id: string | null) => store.setActiveControlId(id))
+  const getAdjacentControlId = vi.fn(() => over?.adjacent ?? null)
   const editor = {
     getControlEditTarget: vi.fn(() => target),
     getControlSnapshot: vi.fn(() => snap),
     setControlValue,
     deactivateControl,
+    activateControl,
+    getAdjacentControlId,
     getActiveControlId: () => store.state.activeControlId,
   } as unknown as Editor
   const ctx: EditorContextValue = { editorRef: { current: editor }, ready: true, store }
-  return { editor, store, snap, target, setControlValue, deactivateControl, ctx }
+  return { editor, store, snap, target, setControlValue, deactivateControl, activateControl, getAdjacentControlId, ctx }
 }
 
 function renderOverlay(ctx: EditorContextValue, canvasContainer: HTMLElement | null = null) {
@@ -124,5 +128,46 @@ describe('RuntimeControlOverlay 无缝内联 (契约 §12.6)', () => {
     renderOverlay(ctx)
     await waitFor(() => expect(screen.getByText('张三')).toBeTruthy())
     expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  it('Tab → 提交当前并激活相邻控件', async () => {
+    const { ctx, setControlValue, getAdjacentControlId, activateControl } = buildEnv({ adjacent: 'n2' })
+    renderOverlay(ctx)
+    const input = await screen.findByRole('textbox')
+    fireEvent.change(input, { target: { value: '张三' } })
+    fireEvent.keyDown(input, { key: 'Tab' })
+    await waitFor(() => expect(activateControl).toHaveBeenCalledWith('n2'))
+    expect(getAdjacentControlId).toHaveBeenCalledWith('n1', 1)
+    expect(setControlValue).toHaveBeenCalledWith('n1', '张三')
+  })
+
+  it('Shift+Tab → 激活上一个控件 (dir -1)', async () => {
+    const { ctx, activateControl, getAdjacentControlId } = buildEnv({ adjacent: 'n0' })
+    renderOverlay(ctx)
+    const input = await screen.findByRole('textbox')
+    fireEvent.keyDown(input, { key: 'Tab', shiftKey: true })
+    await waitFor(() => expect(activateControl).toHaveBeenCalledWith('n0'))
+    expect(getAdjacentControlId).toHaveBeenCalledWith('n1', -1)
+  })
+
+  it('非法值提交 → 控件旁小红字提示, 且不提交该值', async () => {
+    const { ctx, setControlValue } = buildEnv({ setResult: { ok: false, reason: 'number_scale_exceeded' } })
+    renderOverlay(ctx)
+    const input = await screen.findByRole('textbox')
+    fireEvent.change(input, { target: { value: '超长值' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(screen.getByText('数值精度超出限制')).toBeTruthy())
+    // 提交被拒绝一次; 不因卸载静默重试
+    expect(setControlValue.mock.calls.length).toBe(1)
+  })
+
+  it('Enter(合法) → 提交并跳到下一个控件', async () => {
+    const { ctx, setControlValue, activateControl } = buildEnv({ adjacent: 'n2' })
+    renderOverlay(ctx)
+    const input = await screen.findByRole('textbox')
+    fireEvent.change(input, { target: { value: '张三' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(activateControl).toHaveBeenCalledWith('n2'))
+    expect(setControlValue).toHaveBeenCalledWith('n1', '张三')
   })
 })

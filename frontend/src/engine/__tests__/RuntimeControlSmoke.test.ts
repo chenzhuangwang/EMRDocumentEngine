@@ -296,3 +296,66 @@ describe('运行时控件端到端冒烟 (契约 §12.6)', () => {
     expect(selectNode.element.format?.enums?.data?.map((o) => o.value)).toEqual(['mild', 'moderate', 'severe'])
   })
 })
+
+describe('控件填表导航 (区域内顺序 + 相邻环绕)', () => {
+  const cleanups: Array<() => void> = []
+  afterEach(() => { while (cleanups.length > 0) cleanups.pop()!() })
+  // 复用同一 makeEditor 逻辑不方便跨 describe; 这里构造精简版 (单段多控件)
+  function navEditor(els: Array<{ key: string; element: ElementMeta; def: TemplateDefinition; readonly?: boolean }>) {
+    const doc = createDocument('nav')
+    const defs = new TemplateDefinitionStore()
+    const allNodes = new Map<string, BaseNode>()
+    allNodes.set(doc.id, doc as unknown as BaseNode)
+    const idByKey = new Map<string, string>()
+    const children: string[] = []
+    for (const c of els) {
+      const st = createSmartTextNode(`[${c.element.name}]`, c.element)
+      idByKey.set(c.key, st.id)
+      children.push(st.id)
+      allNodes.set(st.id, st as unknown as BaseNode)
+      defs.set(st.id, c.def)
+    }
+    const para = createParagraph(children)
+    allNodes.set(para.id, para as unknown as BaseNode)
+    doc.body.children = [para.id]
+    const nodes: Record<string, BaseNode> = {}
+    for (const [id, n] of allNodes) nodes[id] = n
+    ;(doc as unknown as DocumentTree & { nodes?: Record<string, BaseNode> }).nodes = nodes
+    const host = createDomEditorHost()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    host.surface.mount(container); host.input.mount(container)
+    const editor = new Editor(host, doc)
+    editor.setDocument(doc, undefined, { templateDefinitions: defs })
+    cleanups.push(() => { editor.destroy(); container.remove() })
+    return { editor, idOf: (k: string) => idByKey.get(k)! }
+  }
+  const ai: ElementMeta = { code: { internal: 'C1', dataElement: 'D1' }, name: 'A', format: { dataType: 'S1' } }
+  const def1: TemplateDefinition = { controlType: 'input', editable: true }
+  const roEl: ElementMeta = { code: { internal: 'C2', dataElement: 'D2' }, name: 'B', readonly: true, format: { dataType: 'S1' } }
+
+  it('getRegionControlIds 按文档顺序返回可填控件, 跳过只读', () => {
+    const { editor, idOf } = navEditor([
+      { key: 'a', element: ai, def: def1 },
+      { key: 'ro', element: roEl, def: def1 },
+      { key: 'b', element: { ...ai, code: { internal: 'C3', dataElement: 'D3' }, name: 'C' }, def: def1 },
+    ])
+    expect(editor.getRegionControlIds(idOf('a'))).toEqual([idOf('a'), idOf('b')])
+  })
+
+  it('getAdjacentControlId 区域内环绕', () => {
+    const { editor, idOf } = navEditor([
+      { key: 'a', element: ai, def: def1 },
+      { key: 'b', element: { ...ai, code: { internal: 'C3', dataElement: 'D3' }, name: 'C' }, def: def1 },
+    ])
+    expect(editor.getAdjacentControlId(idOf('a'), 1)).toBe(idOf('b'))
+    expect(editor.getAdjacentControlId(idOf('b'), 1)).toBe(idOf('a'))  // 环绕
+    expect(editor.getAdjacentControlId(idOf('a'), -1)).toBe(idOf('b')) // 反向环绕
+  })
+
+  it('仅一个只读控件 → 无相邻可填控件 (null)', () => {
+    const { editor, idOf } = navEditor([{ key: 'ro', element: roEl, def: def1 }])
+    expect(editor.getRegionControlIds(idOf('ro'))).toEqual([])
+    expect(editor.getAdjacentControlId(idOf('ro'), 1)).toBeNull()
+  })
+})
