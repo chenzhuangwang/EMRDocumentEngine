@@ -15,7 +15,7 @@ import { Editor } from '../Editor'
 import { createDomEditorHost, type DomEditorHost } from '../../platform/dom'
 import { loadDocumentFromObject } from '../document/io/DocumentLoader'
 import {
-  createDocument, createParagraph, createSmartTextNode,
+  createDocument, createParagraph, createSmartTextNode, createTextNode,
 } from '../document/factory/ElementFormatter'
 import { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import type { TemplateDefinition } from '../template/TemplateDefinition'
@@ -432,6 +432,44 @@ describe('区域导航: 页眉控件不跳到正文', () => {
     expect(editor.getRegionControlIds(h1)).toEqual([h1, h2])   // 仅页眉
     expect(editor.getAdjacentControlId(h1, 1)).toBe(h2)
     expect(editor.getAdjacentControlId(h2, 1)).toBe(h1)         // 页眉内环绕, 不跳 b1
+    editor.destroy(); container.remove()
+  })
+})
+
+describe('空文档惰性 templateDefinitions 同步到 Draw (select 不再回退 radio)', () => {
+  it('insertControl(select) 后布局为 field 下拉宽 (非候选组 radio 宽)', () => {
+    const doc = createDocument('fresh')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const tn = createTextNode('')
+    const para = createParagraph([tn.id])
+    all.set(tn.id, tn as unknown as BaseNode)
+    all.set(para.id, para as unknown as BaseNode)
+    doc.body.children = [para.id]
+    const nodes: Record<string, BaseNode> = {}
+    for (const [id, n] of all) nodes[id] = n
+    ;(doc as unknown as DocumentTree & { nodes?: Record<string, BaseNode> }).nodes = nodes
+    const host = createDomEditorHost()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    host.surface.mount(container); host.input.mount(container)
+    const editor = new Editor(host, doc)  // templateDefinitions 为 null
+    editor.setDocument(doc)
+    editor.getStore().setCursor({ paragraphPath: [doc.id, para.id], offset: 0, visible: true })
+
+    const el: ElementMeta = {
+      code: { internal: 'SEL', dataElement: 'DE' }, name: '症状',
+      format: { dataType: 'S1', enums: { data: [{ name: '发热', value: 'f' }, { name: '咳嗽', value: 'k' }] } },
+    }
+    editor.insertControl(el, { controlType: 'select', editable: true })
+
+    const p = editor.getPool().nodes.get(para.id) as unknown as { children: readonly string[] }
+    const cid = p.children.find(c => (editor.getPool().nodes.get(c) as { type?: string })?.type === 'smarttext')!
+    const item = editor.getDraw().getPages().flatMap(pg => pg.items).find(it => it.nodeId === cid)
+    expect(item).toBeTruthy()
+    // select → field/brackets 预留宽 = '[症状]' + affordance, 远小于候选组总宽
+    expect((item as { width: number }).width).toBeLessThan(80)
+    expect(editor.getControlSnapshot(cid)?.controlType).toBe('select')
     editor.destroy(); container.remove()
   })
 })

@@ -825,7 +825,10 @@ export class Editor {
    * store 为 per-editor 实例 (§7.6), 惰性建立以支撑空白文档设计态。
    */
   setControlDefinition(nodeId: string, definition?: TemplateDefinition): void {
-    if (!this.templateDefinitions) this.templateDefinitions = new TemplateDefinitionStore()
+    if (!this.templateDefinitions) {
+      this.templateDefinitions = new TemplateDefinitionStore()
+      this.draw.setDocument(this.doc, this.pool, this.presentationStyles, this.templateDefinitions)
+    }
     this.execCommand(new UpdateControlDefinitionCommand(
       generateCommandId(), Date.now(), 'user', nodeId, definition,
     ))
@@ -1567,7 +1570,12 @@ export class Editor {
   insertControl(element: ElementMeta, definition?: TemplateDefinition): void {
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return
-    if (!this.templateDefinitions) this.templateDefinitions = new TemplateDefinitionStore()
+    if (!this.templateDefinitions) {
+      this.templateDefinitions = new TemplateDefinitionStore()
+      // 同步给 Draw, 否则渲染层读到的 store 仍为 null → 控件 controlType 丢失,
+      // 带 enums 的 select 会在 Canvas 回退成 radio 选项 (与 overlay 下拉叠加)。
+      this.draw.setDocument(this.doc, this.pool, this.presentationStyles, this.templateDefinitions)
+    }
     this.commandManager.execute(new InsertControlCommand(
       generateCommandId(), Date.now(), 'user',
       cursor.paragraphPath, cursor.offset,
