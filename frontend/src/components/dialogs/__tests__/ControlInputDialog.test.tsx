@@ -64,3 +64,43 @@ describe('ControlInputDialog', () => {
     expect(onApply).not.toHaveBeenCalled()
   })
 })
+
+describe('ControlInputDialog — 格式形态 (纯文本/数字/日期/下拉)', () => {
+  it('格式 tab 只含 纯文本/数字/日期/下拉 (无 多行文本/长文本)', () => {
+    renderDialog()
+    expect(screen.getByText('纯文本', { selector: 'button' })).toBeTruthy()
+    expect(screen.getByText('数字', { selector: 'button' })).toBeTruthy()
+    expect(screen.getByText('日期', { selector: 'button' })).toBeTruthy()
+    expect(screen.getByText('下拉', { selector: 'button' })).toBeTruthy()
+    expect(screen.queryByText('多行文本', { selector: 'button' })).toBeNull()
+    expect(screen.queryByText('长文本', { selector: 'button' })).toBeNull()
+  })
+
+  it('选下拉 → 填候选 + 勾多选 → 应用 payload controlType=select, enums.data/multiple 正确', () => {
+    const { onApply } = renderDialog()
+    fireEvent.click(screen.getByRole('tab', { name: '格式' }))
+    fireEvent.click(screen.getByRole('button', { name: '下拉' }))
+    fireEvent.click(screen.getByRole('button', { name: '+ 添加选项' }))
+    const nameInput = screen.getByPlaceholderText('名称')
+    const valueInput = screen.getByPlaceholderText('值')
+    fireEvent.change(nameInput, { target: { value: '轻度' } })
+    fireEvent.change(valueInput, { target: { value: 'mild' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: /允许多选/ }))
+    fireEvent.click(screen.getByRole('button', { name: '插入' }))
+    const payload = onApply.mock.calls[0][0] as { element: ElementMeta; definition?: TemplateDefinition }
+    expect(payload.element.format?.dataType).toBe('S1')
+    expect(payload.definition?.controlType).toBe('select')
+    expect(payload.element.format?.enums?.multiple).toBe(true)
+    expect(payload.element.format?.enums?.data).toEqual([{ name: '轻度', value: 'mild' }])
+  })
+
+  it('选数字 → 应用 payload controlType=number, dataType=N', () => {
+    const { onApply } = renderDialog()
+    fireEvent.click(screen.getByRole('tab', { name: '格式' }))
+    fireEvent.click(screen.getByRole('button', { name: '数字' }))
+    fireEvent.click(screen.getByRole('button', { name: '插入' }))
+    const payload = onApply.mock.calls[0][0] as { element: ElementMeta; definition?: TemplateDefinition }
+    expect(payload.element.format?.dataType).toBe('N')
+    expect(payload.definition?.controlType).toBe('number')
+  })
+})
