@@ -68,6 +68,7 @@ function buildEnv(over?: { snap?: Partial<ControlSnapshot>; target?: Partial<Con
   const editor = {
     getControlEditTarget: vi.fn(() => target),
     getControlSnapshot: vi.fn(() => snap),
+    getControlClientRect: vi.fn(() => ({ left: 10, top: 20, width: 60, height: 16 })),
     setControlValue,
     deactivateControl,
     activateControl,
@@ -156,7 +157,7 @@ describe('RuntimeControlOverlay 无缝内联 (契约 §12.6)', () => {
     const input = await screen.findByRole('textbox')
     fireEvent.change(input, { target: { value: '超长值' } })
     fireEvent.keyDown(input, { key: 'Enter' })
-    await waitFor(() => expect(screen.getByText('数值精度超出限制')).toBeTruthy())
+    await waitFor(() => expect(screen.getAllByText('数值精度超出限制').length).toBeGreaterThan(0))
     // 提交被拒绝一次; 不因卸载静默重试
     expect(setControlValue.mock.calls.length).toBe(1)
   })
@@ -186,7 +187,17 @@ describe('RuntimeControlOverlay 无缝内联 (契约 §12.6)', () => {
     const input = await screen.findByRole('textbox')
     fireEvent.change(input, { target: { value: 'abc' } })
     fireEvent.keyDown(input, { key: 'Enter' })
-    await waitFor(() => expect(screen.getByText('请输入数字')).toBeTruthy())
+    await waitFor(() => expect(screen.getAllByText('请输入数字').length).toBeGreaterThan(0))
+    expect(setControlValue).not.toHaveBeenCalled()
+  })
+
+  it('数字控件非数字点空白(卸载) → 浮层提示仍显示', async () => {
+    const { ctx, setControlValue, deactivateControl } = buildEnv({ snap: { controlType: 'number', dataType: 'N' } })
+    renderOverlay(ctx)
+    const input = await screen.findByRole('textbox')
+    fireEvent.change(input, { target: { value: 'abc' } })
+    deactivateControl() // 点空白 → 卸载, 卸载提交触发 reject 浮层
+    await waitFor(() => expect(screen.getAllByText('请输入数字').length).toBeGreaterThan(0))
     expect(setControlValue).not.toHaveBeenCalled()
   })
 })

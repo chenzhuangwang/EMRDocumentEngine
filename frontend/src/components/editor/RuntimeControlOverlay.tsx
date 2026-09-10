@@ -116,54 +116,86 @@ export function RuntimeControlOverlay({ canvasContainerRef }: RuntimeControlOver
     return () => window.removeEventListener('pointerdown', onPointerDown, true)
   }, [activeId, interactive, editorRef, canvasContainerRef])
 
-  if (!activeId || !interactive || !target) return null
+  // 校验失败浮层提示: 由 overlay 自身渲染, 不随字段 widget 卸载消失 (点空白/切控件时也能看到)
+  const [reject, setReject] = useState<{ id: number; text: string; left: number; top: number } | null>(null)
+  const rejectTimer = useRef<number | null>(null)
+  const showReject = useCallback((nodeId: string, text: string) => {
+    const r = editorRef.current?.getControlClientRect(nodeId)
+    setReject({
+      id: Date.now(), text,
+      left: r?.left ?? 0,
+      top: (r ? r.top + r.height : 0) + 2,
+    })
+    if (rejectTimer.current) window.clearTimeout(rejectTimer.current)
+    rejectTimer.current = window.setTimeout(() => setReject(null), 2600)
+  }, [editorRef])
+  useEffect(() => () => { if (rejectTimer.current) window.clearTimeout(rejectTimer.current) }, [])
+  const rejectFly = reject ? (
+    <div
+      data-ctl-overlay
+      style={{
+        position: 'fixed', left: reject.left, top: reject.top,
+        color: '#DC2626', fontSize: 12, lineHeight: '14px', whiteSpace: 'nowrap',
+        zIndex: 60, pointerEvents: 'none',
+      }}
+    >{reject.text}</div>
+  ) : null
+
+  if (!activeId || !interactive || !target) return rejectFly
   const ed = editorRef.current
-  if (!ed) return null
+  if (!ed) return rejectFly
   const snap = ed.getControlSnapshot(activeId)
-  if (!snap) return null
+  if (!snap) return rejectFly
+  const onReject = (text: string) => showReject(activeId, text)
 
   if (target.masked || !snap.writable) {
     const text = target.masked ? '••••••' : (valueToText(snap.value) || target.placeholderText)
     return (
-      <div
-        className="select-none"
-        style={{
-          position: 'fixed', left: target.textArea.left, top: target.textArea.top,
-          width: target.textArea.width, height: target.textArea.height,
-          fontFamily: target.fontFamily, fontSize: target.fontSizeCss,
-          color: PLACEHOLDER_COLOR, lineHeight: `${target.ascentCss + target.descentCss}px`,
-          whiteSpace: 'pre-wrap', overflow: 'hidden', pointerEvents: 'none',
-        }}
-      >
-        {text}
-      </div>
+      <>
+        {rejectFly}
+        <div
+          className="select-none"
+          style={{
+            position: 'fixed', left: target.textArea.left, top: target.textArea.top,
+            width: target.textArea.width, height: target.textArea.height,
+            fontFamily: target.fontFamily, fontSize: target.fontSizeCss,
+            color: PLACEHOLDER_COLOR, lineHeight: `${target.ascentCss + target.descentCss}px`,
+            whiteSpace: 'pre-wrap', overflow: 'hidden', pointerEvents: 'none',
+          }}
+        >
+          {text}
+        </div>
+      </>
     )
   }
 
   const type = resolveControlType(snap)
   const kind = type === 'textarea' ? 'textarea' : type === 'select' || type === 'checkbox' || type === 'radio' ? 'select' : type
   return (
-    <div
-      id="ctl-overlay-host"
-      data-ctl-overlay
-      className="fixed z-40"
-      style={{
-        position: 'fixed', left: target.textArea.left, top: target.textArea.top,
-        width: target.textArea.width, height: target.textArea.height,
-      }}
-    >
-      {kind === 'textarea' ? <TextareaField key={activeId} snap={snap} target={target} editor={ed} />
-        : kind === 'number' ? <NumberField key={activeId} snap={snap} target={target} editor={ed} />
-          : kind === 'select' ? <SelectField key={activeId} snap={snap} target={target} editor={ed} />
-            : kind === 'date' ? <DateField key={activeId} snap={snap} target={target} editor={ed} />
-              : <TextField key={activeId} snap={snap} target={target} editor={ed} />}
-    </div>
+    <>
+      {rejectFly}
+      <div
+        id="ctl-overlay-host"
+        data-ctl-overlay
+        className="fixed z-40"
+        style={{
+          position: 'fixed', left: target.textArea.left, top: target.textArea.top,
+          width: target.textArea.width, height: target.textArea.height,
+        }}
+      >
+        {kind === 'textarea' ? <TextareaField key={activeId} snap={snap} target={target} editor={ed} onReject={onReject} />
+          : kind === 'number' ? <NumberField key={activeId} snap={snap} target={target} editor={ed} onReject={onReject} />
+            : kind === 'select' ? <SelectField key={activeId} snap={snap} target={target} editor={ed} onReject={onReject} />
+              : kind === 'date' ? <DateField key={activeId} snap={snap} target={target} editor={ed} onReject={onReject} />
+                : <TextField key={activeId} snap={snap} target={target} editor={ed} onReject={onReject} />}
+      </div>
+    </>
   )
 }
 
 /** 统一文本字段状态: onChange 本地草稿; 卸载即提交; 非法值就地提示。
  *  numeric=true → 提交时把草稿解析为数字 (空→undefined, 非数字→提示)。 */
-function useFieldText(snap: ControlSnapshot, editor: Editor, numeric = false) {
+function useFieldText(snap: ControlSnapshot, editor: Editor, numeric = false, onReject?: (msg: string) => void) {
   const [draft, setDraft] = useState(() => valueToText(snap.value))
   const [error, setError] = useState<string | null>(null)
   const draftRef = useRef(draft)
@@ -187,16 +219,18 @@ function useFieldText(snap: ControlSnapshot, editor: Editor, numeric = false) {
       if (t === '') value = undefined
       else {
         const n = Number(t)
-        if (!Number.isFinite(n)) { setError('请输入数字'); setDraft(canon); return false }
+        if (!Number.isFinite(n)) { setError('请输入数字'); onReject?.('请输入数字'); setDraft(canon); return false }
         value = n
       }
     }
     const r = editor.setControlValue(snap.nodeId, value)
     if (r.ok) return true
-    setError(controlRejectMessage(r.reason))
+    const msg = controlRejectMessage(r.reason)
+    setError(msg)
+    onReject?.(msg)
     setDraft(canon)
     return false
-  }, [editor, snap.nodeId, snap.value, numeric])
+  }, [editor, snap.nodeId, snap.value, numeric, onReject])
   const submitRef = useRef(submit)
   submitRef.current = submit
   // 卸载即提交 (切换/点空白/失焦/模式切)
@@ -264,8 +298,8 @@ function baseInputStyle(target: ControlEditTarget): React.CSSProperties {
   }
 }
 
-function TextField({ snap, target, editor }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor }) {
-  const { draft, error, change, submit, done } = useFieldText(snap, editor)
+function TextField({ snap, target, editor, onReject }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor; onReject?: (msg: string) => void }) {
+  const { draft, error, change, submit, done } = useFieldText(snap, editor, false, onReject)
   const inputRef = useAutoFocus<HTMLInputElement>()
   const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
   const w = Math.max(target.textArea.width, textWidth(draft || ' ', font) + 2)
@@ -292,8 +326,8 @@ function TextField({ snap, target, editor }: { snap: ControlSnapshot; target: Co
   )
 }
 
-function NumberField({ snap, target, editor }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor }) {
-  const { draft, error, change, submit } = useFieldText(snap, editor, true)
+function NumberField({ snap, target, editor, onReject }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor; onReject?: (msg: string) => void }) {
+  const { draft, error, change, submit } = useFieldText(snap, editor, true, onReject)
   const inputRef = useAutoFocus<HTMLInputElement>()
   const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
   const w = Math.max(target.textArea.width, textWidth(draft || ' ', font) + 2)
@@ -324,8 +358,8 @@ function NumberField({ snap, target, editor }: { snap: ControlSnapshot; target: 
   )
 }
 
-function TextareaField({ snap, target, editor }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor }) {
-  const { draft, error, change, submit, done } = useFieldText(snap, editor)
+function TextareaField({ snap, target, editor, onReject }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor; onReject?: (msg: string) => void }) {
+  const { draft, error, change, submit, done } = useFieldText(snap, editor, false, onReject)
   const ref = useAutoFocus<HTMLTextAreaElement>()
   const lineCount = Math.max(1, (draft.match(/\n/g)?.length ?? 0) + 1, target.minRows ?? 1)
   const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
@@ -353,7 +387,7 @@ function TextareaField({ snap, target, editor }: { snap: ControlSnapshot; target
   )
 }
 
-function SelectField({ snap, target, editor }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor }) {
+function SelectField({ snap, target, editor, onReject }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor; onReject?: (msg: string) => void }) {
   const [error, setError] = useState<string | null>(null)
   const current = typeof snap.value === 'string' ? snap.value : ''
   const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
@@ -369,7 +403,7 @@ function SelectField({ snap, target, editor }: { snap: ControlSnapshot; target: 
         onChange={(e) => {
           setError(null)
           const r = editor.setControlValue(snap.nodeId, e.target.value === '' ? undefined : e.target.value)
-          if (!r.ok) setError(controlRejectMessage(r.reason))
+          if (!r.ok) { const m = controlRejectMessage(r.reason); setError(m); onReject?.(m) }
         }}
         onKeyDown={(e) => {
           if (e.key === 'Tab') { e.preventDefault(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
@@ -384,8 +418,8 @@ function SelectField({ snap, target, editor }: { snap: ControlSnapshot; target: 
   )
 }
 
-function DateField({ snap, target, editor }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor }) {
-  const { draft, error, change, submit, done } = useFieldText(snap, editor)
+function DateField({ snap, target, editor, onReject }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor; onReject?: (msg: string) => void }) {
+  const { draft, error, change, submit, done } = useFieldText(snap, editor, false, onReject)
   const ref = useAutoFocus<HTMLInputElement>()
   const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
   const w = Math.max(target.textArea.width, textWidth(draft || 'YYYY-MM-DD', font) + 16)
