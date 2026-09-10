@@ -1005,8 +1005,29 @@ export class LayoutEngine {
           const display = childType === 'smarttext'
             ? smartTextDisplayValue(child as unknown as { text: string; value?: ControlValue })
             : tn.text
+          // 控件预留宽 (与正文一致): checkbox/radio 候选组 / 方括号+affordance,
+          // 否则纯文本宽。使页眉内控件不与后续文字/选项重叠。
+          let control: LineElement['control']
+          if (childType === 'smarttext') {
+            const info = this.controlInfoOf?.(tn.id)
+            const recipe = controlVisualRecipe(info?.controlType)
+            const opts = info?.options
+            const font = tn.font || 'SimSun'
+            const size = tn.size || BASE_FONT_SIZE
+            const measure = (t: string) => measurer.measureWidth(t, { font, size, bold: tn.bold, italic: tn.italic })
+            if (recipe.kind === 'options') {
+              control = opts && opts.length > 0
+                ? { width: controlOptionsWidth(layoutControlOptions(opts, info!.controlType as 'checkbox' | 'radio', measure)) }
+                : { width: controlOptionsPlaceholderWidth(measure) }
+            } else if (recipe.frame === 'brackets') {
+              const isEmpty = isControlValueEmpty((child as { value?: unknown }).value)
+              let width = measure(isEmpty ? display : `[${display}]`)
+              if (recipe.affordance) width += AFFORDANCE_GAP + AFFORDANCE_WIDTH
+              control = { width }
+            }
+          }
           elements.push({
-            id: tn.id, type: childType, value: display,
+            id: tn.id, type: childType, value: display, control,
             font: tn.font, size: tn.size, bold: tn.bold, italic: tn.italic,
             color: tn.color, underline: tn.underline,
             strikeout: tn.strikeout, superscript: tn.superscript, subscript: tn.subscript,
@@ -1084,10 +1105,15 @@ export class LayoutEngine {
       let cursorX = lineStartX
       for (const el of line.elements) {
         const charHeight = measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || BASE_FONT_SIZE })
-        const elWidth = measurer.measureWidth(el.value || '', {
-          font: el.font || 'SimSun', size: el.size || BASE_FONT_SIZE,
-          bold: el.bold, italic: el.italic,
-        })
+        // smarttext 控件: 用预留宽 (control.width, 与正文一致); 否则纯文本宽
+        const elControl = (el as LineElement).control
+        const layoutW = (el.type === 'smarttext' && typeof elControl?.width === 'number' && elControl.width > 0)
+          ? elControl.width
+          : measurer.measureWidth(el.value || '', {
+              font: el.font || 'SimSun', size: el.size || BASE_FONT_SIZE,
+              bold: el.bold, italic: el.italic,
+            })
+        const elWidth = layoutW
         const advanceWidth = el.type === 'smarttext' ? elWidth + CONTROL_BOX_PADDING * 2 : elWidth
         items.push({
           nodeId: el.id, nodeType: el.type, type: el.type,

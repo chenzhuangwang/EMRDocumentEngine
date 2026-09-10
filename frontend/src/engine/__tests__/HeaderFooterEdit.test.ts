@@ -367,3 +367,32 @@ describe('向页眉/页脚插入控件 (InsertControlCommand)', () => {
     expect(ctrlId).toBeTruthy()
   })
 })
+
+describe('页眉/页脚控件按语义预留宽 (与正文一致)', () => {
+  it('footer checkbox → footerItems 宽 = 候选组总宽 (> 纯占位符文本宽)', () => {
+    const doc = createDocument('hf-opt')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const el: ElementMeta = {
+      code: { internal: 'CTL_SX', dataElement: 'DE99.99.006' }, name: '症状',
+      format: { dataType: 'S1', enums: { multiple: true, data: [{ name: '发热', value: 'fever' }, { name: '咳嗽', value: 'cough' }] } },
+    }
+    const st = createSmartTextNode('[症状]', el)
+    const p = createParagraph([st.id])
+    all.set(st.id, st as unknown as BaseNode)
+    all.set(p.id, p as unknown as BaseNode)
+    doc.body.children = []
+    doc.header = []
+    doc.footer = [p.id]
+    const pool = buildNodePool(all, { body: doc.id })
+    const engine = new LayoutEngine(new EventBus(), testMeasurer)
+    engine.setControlInfoOf((nodeId) => nodeId === st.id
+      ? { controlType: 'checkbox', options: el.format!.enums!.data }
+      : undefined)
+    const pages = engine.fullLayout(doc, pool)
+    const item = pages.flatMap(pg => pg.footerItems || []).find(it => it.nodeId === st.id)
+    expect(item).toBeTruthy()
+    // 候选组宽远超占位符 '[症状]' 的文本宽
+    expect((item!.width || 0)).toBeGreaterThan(60)
+  })
+})
