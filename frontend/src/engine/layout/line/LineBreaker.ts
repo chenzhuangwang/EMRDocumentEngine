@@ -228,7 +228,14 @@ export class LineBreaker {
     }
 
     // ---- 避头尾调整: 行头/行尾禁止字符处理 ----
-    return this.applyKinsokuRules(lines, options)
+    const result = this.applyKinsokuRules(lines, options)
+    // 行距倍率 (ParagraphStyle.lineHeight): 行高 = 基线行高 × 倍率。ascent/descent
+    // 不变 (基线/命中高度不变), 仅行高与 y 递进放大 → 行间距表现为行间留白。
+    const lh = options.lineHeight ?? 1
+    if (lh !== 1) {
+      for (const l of result) l.height = (l.maxAscent + l.maxDescent) * lh
+    }
+    return result
   }
 
   /**

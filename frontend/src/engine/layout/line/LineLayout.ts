@@ -48,6 +48,8 @@ export interface LineBreakOptions {
   wordBreak: 'break-all' | 'break-word' | 'keep-all'
   defaultFont: string
   defaultSize: number
+  /** 段落行距倍率 (ParagraphStyle.lineHeight, 1.0=单倍) */
+  lineHeight?: number
 }
 
 /** 折行结果 — 一行内的所有元素 + 度量 */

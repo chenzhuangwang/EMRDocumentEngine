@@ -188,6 +188,7 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
         <ToolbarButton title="两端对齐" active={paraStyle?.alignment === 'justify'} onClick={() => onFormat?.('alignJustify')}>
           <AlignJustify size={16} />
         </ToolbarButton>
+        <LineHeightDropdown onSelect={(v) => onFormat?.('lineHeight', v)} />
       </ToolbarGroup>
 
       <ToolbarDivider />
@@ -341,6 +342,47 @@ function FontSizeDropdown({ onSelect }: { onSelect: (size: number) => void }) {
               onClick={() => onSelect(s)}
             >
               {s}
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  )
+}
+
+// ---- 行距下拉 (段落行间距倍率) ----
+
+const LINE_HEIGHTS = [1, 1.15, 1.5, 2, 2.5]
+
+function LineHeightDropdown({ onSelect }: { onSelect: (v: number) => void }) {
+  const paraStyle = useEditorStoreSnapshot((s) => s.paragraphStyle)
+  const selected = paraStyle?.lineHeight || 1
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          title="行距"
+          className="flex items-center gap-1 px-2 py-1 text-sm text-gray-700
+                     hover:bg-gray-100 rounded-md min-w-[50px] h-8
+                     data-[state=open]:bg-gray-100"
+        >
+          <span>{selected}</span>
+          <ChevronDown size={12} />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className="min-w-[64px] bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
+          sideOffset={4} align="start"
+        >
+          {LINE_HEIGHTS.map(v => (
+            <DropdownMenu.Item
+              key={v}
+              className="px-3 py-1.5 text-sm text-gray-700 outline-none cursor-default
+                         data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 text-center"
+              onClick={() => onSelect(v)}
+            >
+              {v}
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>

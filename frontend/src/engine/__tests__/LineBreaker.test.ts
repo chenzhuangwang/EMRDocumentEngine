@@ -80,3 +80,20 @@ describe('LineBreaker — smarttext 盒宽参与换行 (契约 §12.6, 排版不
     }
   })
 })
+
+describe('LineBreaker — 段落行距倍率 (ParagraphStyle.lineHeight)', () => {
+  it('lineHeight=1.5 → 行高 = size * 1.5 (ascent/descent 不变)', () => {
+    const lines = breaker().breakLines([el()], { ...options, lineHeight: 1.5 })
+    expect(lines[0].height).toBeCloseTo(16 * 1.5)
+    expect(lines[0].maxAscent).toBeCloseTo(16 * 0.8)
+    expect(lines[0].maxDescent).toBeCloseTo(16 * 0.2)
+  })
+  it('lineHeight=2 → 行高 = size * 2', () => {
+    const lines = breaker().breakLines([el()], { ...options, lineHeight: 2 })
+    expect(lines[0].height).toBeCloseTo(32)
+  })
+  it('未设 lineHeight → 行高 = size (回归)', () => {
+    const lines = breaker().breakLines([el()], options)
+    expect(lines[0].height).toBeCloseTo(16)
+  })
+})

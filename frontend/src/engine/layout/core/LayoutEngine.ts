@@ -297,6 +297,7 @@ export class LayoutEngine {
           const lines = lineBreaker.breakLines(elements, {
             maxWidth: contentWidth, wordBreak: 'break-all',
             defaultFont: 'SimSun', defaultSize: 16,
+            lineHeight: para.lineHeight,
           })
           // 标记每行的段落对齐/缩进
           let isFirstLine = true
@@ -840,6 +841,7 @@ export class LayoutEngine {
       const lines = lineBreaker.breakLines(elements, {
         maxWidth: maxTextWidth, wordBreak: 'break-all',
         defaultFont: 'SimSun', defaultSize: DEFAULT_SIZE,
+        lineHeight: (para as { lineHeight?: number } | undefined)?.lineHeight,
       })
 
       for (const line of lines) {
@@ -1074,6 +1076,7 @@ export class LayoutEngine {
       const lines = lineBreaker.breakLines(elements, {
         maxWidth: contentWidth, wordBreak: 'break-all',
         defaultFont: 'SimSun', defaultSize: BASE_FONT_SIZE,
+        lineHeight: (para as Paragraph).lineHeight,
       })
       for (const line of lines) {
         line.alignment = para.alignment || 'left' // 页眉页脚默认左对齐 (WPS)

@@ -19,6 +19,7 @@ export interface ParagraphStyleProjection {
   continueNumbering?: boolean
   indent?: number
   outlineLevel?: number
+  lineHeight?: number
 }
 
 export interface EditorStoreState {
