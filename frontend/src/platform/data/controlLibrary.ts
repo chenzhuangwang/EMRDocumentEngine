@@ -180,3 +180,39 @@ export const CONTROL_WIDGETS: ControlLibraryEntry[] = [
 export function controlWidgetById(id: string): ControlLibraryEntry | undefined {
   return CONTROL_WIDGETS.find(w => w.id === id)
 }
+
+/**
+ * 导入清理: 去掉等于「控件库默认标签」的 TemplateDefinition.label。
+ * 旧版控件向导把库默认 label(如 '文本输入：')写入每个控件; 导入(或打开旧文档)时
+ * 这些标签会渲染在控件左侧, 表现为"多出来的文字"。匹配到默认值即移除。
+ */
+export function stripWidgetDefaultLabels(store: { entries(): IterableIterator<[string, TemplateDefinition]> } | undefined): void {
+  if (!store) return
+  const defaults = new Map<string, string>()
+  for (const w of CONTROL_WIDGETS) {
+    const l = w.definition?.label
+    if (l && w.definition?.controlType) defaults.set(w.definition.controlType, l)
+  }
+  for (const [, def] of store.entries()) {
+    if (!def || typeof def.label !== 'string' || !def.controlType) continue
+    if (defaults.get(def.controlType) === def.label) {
+      delete def.label
+    }
+  }
+}
+
+/** label 是否等于该 controlType 的控件库默认标签 (导入/导出两侧清理用) */
+export function isWidgetDefaultLabel(controlType: string | undefined, label: string | undefined): boolean {
+  if (!controlType || typeof label !== 'string') return false
+  const w = CONTROL_WIDGETS.find(w => w.definition?.controlType === controlType)
+  return w?.definition?.label === label
+}
+
+/** 从「普通对象」形式的 templateDefinitions 去掉等于库默认标签的 label (导出侧) */
+export function stripWidgetDefaultLabelsFromObject(defs: Record<string, TemplateDefinition> | undefined): void {
+  if (!defs) return
+  for (const def of Object.values(defs)) {
+    if (!def) continue
+    if (isWidgetDefaultLabel(def.controlType, def.label)) delete def.label
+  }
+}

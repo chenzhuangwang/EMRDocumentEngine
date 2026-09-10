@@ -10,6 +10,7 @@ import { DesignControlPalette } from '@/components/views/DesignControlPalette'
 import { DesignControlProperties } from '@/components/views/DesignControlProperties'
 import { EditorProvider, useEditorRef, useEditorReady, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { RuntimeControlOverlay } from '@/components/editor/RuntimeControlOverlay'
+import { stripWidgetDefaultLabels, stripWidgetDefaultLabelsFromObject } from '@/platform/data/controlLibrary'
 import { useEditorContextMenu } from '@/components/editor/useEditorContextMenu'
 import { ContextMenu } from '@/components/editor/ContextMenu'
 import { ExportDialog } from '@/components/dialogs/ExportDialog'
@@ -60,7 +61,12 @@ export default function EditorPage() {
     documentApi.getById(id!).then(res => {
       const detail = res.data.data
       if (detail) {
-        try { setLoadedDoc(JSON.parse(detail.content)) } catch { /* 忽略解析错误 */ }
+        try {
+          const parsed = JSON.parse(detail.content)
+          // 打开旧文档同样清理库默认标签 (与导入/导出一致)
+          stripWidgetDefaultLabelsFromObject((parsed as { templateDefinitions?: Record<string, import('@/engine').TemplateDefinition> }).templateDefinitions)
+          setLoadedDoc(parsed)
+        } catch { /* 忽略解析错误 */ }
       }
     }).catch(err => {
       console.error('加载文档失败:', err)
@@ -390,6 +396,10 @@ function EditorPageInner({
 
       const result = documentLoaderRegistry.load(text, file.name)
       if (result?.doc) {
+        // 导入清理: 旧版控件向导会把控件库默认标签(如 '文本输入：')写进
+        // templateDefinitions; 这里把「等于库默认标签」的 label 去掉, 避免导入后
+        // 出现用户并不想要的多余标签文字 (契约 §12.1)。
+        stripWidgetDefaultLabels(result.templateDefinitions)
         // 传入加载器展开的节点映射 + 设计期/表现层 store, 据此重建 NodePool
         // (契约 §12.1: templateDefinitions 必须随导入恢复, 否则控件丢失 controlType)
         ed.setDocument(result.doc, result.nodes, {
@@ -693,6 +703,9 @@ function EditorPageInner({
       const toc = tocGen.extractEntries(doc, pool)
       // 使用完整序列化 (含节点 payload), 再附加目录信息
       const serialized = JSON.parse(ed.getSerializedDocument()) as Record<string, unknown>
+      // 导出清理: 未填标签(等于控件库默认值, 如 '文本输入：')不写入 JSON,
+      // 与导入侧 stripWidgetDefaultLabels 对齐 (导入导出一致)。
+      stripWidgetDefaultLabelsFromObject(serialized.templateDefinitions as Record<string, import('@/engine').TemplateDefinition> | undefined)
       serialized._toc = toc
       const json = JSON.stringify(serialized, null, 2)
       const blob = new Blob([json], { type: 'application/json' })
@@ -829,6 +842,7 @@ function EditorPageInner({
       const detail = res.data.data
       if (detail) {
         const doc = JSON.parse(detail.content)
+        stripWidgetDefaultLabelsFromObject((doc as { templateDefinitions?: Record<string, import('@/engine').TemplateDefinition> }).templateDefinitions)
         ed.setDocument(doc)
       }
     } catch (err) {

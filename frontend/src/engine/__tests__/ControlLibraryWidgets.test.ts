@@ -9,7 +9,8 @@
 // ================================================================
 
 import { describe, it, expect } from 'vitest'
-import { CONTROL_WIDGETS, controlWidgetById } from '../../platform/data/controlLibrary'
+import { CONTROL_WIDGETS, controlWidgetById, stripWidgetDefaultLabels } from '../../platform/data/controlLibrary'
+import { TemplateDefinitionStore } from '../template/TemplateDefinition'
 
 describe('CONTROL_WIDGETS 通用控件目录 (契约 §12.4)', () => {
   it('7 个通用控件 widget 条目', () => {
@@ -60,5 +61,16 @@ describe('CONTROL_WIDGETS 通用控件目录 (契约 §12.4)', () => {
 
   it('未知 type → undefined (不产生兜底假定义)', () => {
     expect(controlWidgetById('not-a-widget')).toBeUndefined()
+  })
+})
+
+describe('stripWidgetDefaultLabels (导入清理)', () => {
+  it('等于控件库默认 label 的被移除; 自定义 label 保留', () => {
+    const store = new TemplateDefinitionStore()
+    store.set('a', { controlType: 'input', label: '文本输入：' })   // 默认 → 移除
+    store.set('b', { controlType: 'input', label: '姓名：' })        // 自定义 → 保留
+    stripWidgetDefaultLabels(store)
+    expect(store.get('a')?.label).toBeUndefined()
+    expect(store.get('b')?.label).toBe('姓名：')
   })
 })
