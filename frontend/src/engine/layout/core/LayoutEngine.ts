@@ -9,7 +9,7 @@
 // 导出链路可直接消费 SLIFPage[]
 // ================================================================
 
-import type { DocumentTree, Paragraph, TextNode, ElementEnumOption } from '../../document/core/DocumentModel'
+import type { DocumentTree, Paragraph, TextNode, ElementEnumOption, ControlValue } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
 import type { ControlType } from '../../template/TemplateDefinition'
 import type { SLIFPage, SLIFItem, SLIFRow, SLIFCell } from './SLIF'
@@ -1001,8 +1001,12 @@ export class LayoutEngine {
         const childType = (child as unknown as Record<string, unknown>).type as string
         if (childType === 'text' || childType === 'smarttext') {
           const tn = child as unknown as TextNode
+          // smarttext: 有值显示值、无值回退占位符 (与正文一致); text: 原文
+          const display = childType === 'smarttext'
+            ? smartTextDisplayValue(child as unknown as { text: string; value?: ControlValue })
+            : tn.text
           elements.push({
-            id: tn.id, type: childType, value: tn.text,
+            id: tn.id, type: childType, value: display,
             font: tn.font, size: tn.size, bold: tn.bold, italic: tn.italic,
             color: tn.color, underline: tn.underline,
             strikeout: tn.strikeout, superscript: tn.superscript, subscript: tn.subscript,

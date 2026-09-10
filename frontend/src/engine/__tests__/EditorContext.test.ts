@@ -108,14 +108,21 @@ describe('buildContextSnapshot 种类判别', () => {
     })
   })
 
-  it('优先级: 页眉区域 > 控件命中 > 单元格 > 表格 > 文本', () => {
-    // headerFooterSection 应压过 textHit 与 controlId
+  it('优先级: 控件命中 > 页眉区域 > 单元格 > 表格 > 文本', () => {
+    // controlId 压过 headerFooterSection: 页眉/页脚带内的控件右键得 smartText (→ 属性)
     const hf = buildContextSnapshot(baseFacts({
       headerFooterSection: 'footer',
       controlId: 'ctrl-1',
       textHit: { paragraphId: 'p1', paragraphPath: ['doc', 'p1'], offset: 0, scope: { type: 'body' } },
     }))
-    expect(hf.kind).toBe('headerFooterRegion')
+    expect(hf.kind).toBe('smartText')
+
+    // 无控件命中时, 页眉区域仍压过 textHit
+    const hfRegion = buildContextSnapshot(baseFacts({
+      headerFooterSection: 'footer',
+      textHit: { paragraphId: 'p1', paragraphPath: ['doc', 'p1'], offset: 0, scope: { type: 'body' } },
+    }))
+    expect(hfRegion.kind).toBe('headerFooterRegion')
 
     // controlId 应压过 cellPosition + textHit
     const ctrl = buildContextSnapshot(baseFacts({

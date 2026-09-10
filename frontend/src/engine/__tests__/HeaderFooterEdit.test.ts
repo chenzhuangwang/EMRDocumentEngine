@@ -20,6 +20,7 @@ import type { CommandContext } from '../command/ICommand'
 import { SplitParagraphCommand } from '../command/commands/SplitParagraphCommand'
 import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand'
 import { InsertNodesCommand } from '../command/commands/InsertNodesCommand'
+import { InsertControlCommand } from '../command/commands/InsertControlCommand'
 import { resolveParagraphRegion, resolveSiblingRange } from '../state/CaretScope'
 import { selectionSpine } from '../document/selection/SelectionCollector'
 import type { SerializedPara } from '../command/ClipboardManager'
@@ -317,5 +318,52 @@ describe('页眉/页脚含 smarttext 控件布局产物', () => {
     const pages = engine.fullLayout(doc, pool)
     const found = pages.some(page => (page.footerItems || []).some(it => it.nodeId === st.id))
     expect(found).toBe(true)
+  })
+
+  it('footer 控件填值 → footerItems 显示值 (非占位符)', () => {
+    const doc = createDocument('hf-val')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const el: ElementMeta = {
+      code: { internal: 'CTL_NAME', dataElement: 'DE99.99.001' }, name: '姓名',
+      format: { dataType: 'S1' },
+    }
+    const st = createSmartTextNode('[姓名]', el)
+    st.value = '张三'
+    const p = createParagraph([st.id])
+    all.set(st.id, st as unknown as BaseNode)
+    all.set(p.id, p as unknown as BaseNode)
+    doc.body.children = []
+    doc.header = [p.id]
+    doc.footer = []
+    const pool = buildNodePool(all, { body: doc.id })
+    const engine = new LayoutEngine(new EventBus(), testMeasurer)
+    const pages = engine.fullLayout(doc, pool)
+    const item = pages.flatMap(pg => pg.headerItems || []).find(it => it.nodeId === st.id)
+    expect(item?.text).toBe('张三')
+  })
+})
+
+describe('向页眉/页脚插入控件 (InsertControlCommand)', () => {
+  it('光标 path=[doc, headerPara] offset0 → 控件落入 doc.header 段且布局可见', () => {
+    const doc = createDocument('ins-hf')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const tn = createTextNode('')
+    const hp = createParagraph([tn.id])
+    all.set(tn.id, tn as unknown as BaseNode)
+    all.set(hp.id, hp as unknown as BaseNode)
+    doc.body.children = []
+    doc.header = [hp.id]
+    doc.footer = []
+    const pool = buildNodePool(all, { body: doc.id })
+    const el: ElementMeta = { code: { internal: 'CTL_NAME', dataElement: 'DE99.99.001' }, name: '姓名', format: { dataType: 'S1' } }
+    const cmd = new InsertControlCommand('ic', Date.now(), 'u', [doc.id, hp.id], 0, el, { controlType: 'input', label: '姓名：', editable: true })
+    const patch = cmd.forward(ctxOf(doc, pool))
+    expect(patch).not.toBeNull()
+    const hpNode = pool.nodes.get(hp.id) as { children?: readonly string[] }
+    expect(hpNode.children!.length).toBeGreaterThanOrEqual(2) // 空text + 新控件
+    const ctrlId = hpNode.children!.find(cid => (pool.nodes.get(cid) as { type?: string })?.type === 'smarttext')
+    expect(ctrlId).toBeTruthy()
   })
 })

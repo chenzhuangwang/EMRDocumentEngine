@@ -954,14 +954,13 @@ export class Draw {
       const page = this.pages[i]
       if (!page) continue
       const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
-      for (const item of getFlatPageItems(page)) {
-        if (item.nodeId !== nodeId || item.nodeType !== 'smarttext') continue
+      for (const { item, bandTop } of this.controlCandidatesForNode(page, nodeId)) {
         // 选中框须与 ControlParticle 的控件视觉盒同源几何 (computeControlBox, 单一事实源) —
         // 历史 bug: 两处各算各的几何, 且把 item.y (行顶) 当基线, 选中框与控件盒/光标错位。
         const fontSize = item.size || 16
         const ascent = item.ascent > 0 ? item.ascent : fontSize * 0.8
         const descent = item.descent > 0 ? item.descent : fontSize * 0.2
-        const box = computeControlBox(item.x, spY + item.y, (item.width || 0) - (item.markerWidth || 0), ascent, descent, this.presentationStyleOf(nodeId)?.minWidth)
+        const box = computeControlBox(item.x, spY + bandTop + item.y, (item.width || 0) - (item.markerWidth || 0), ascent, descent, this.presentationStyleOf(nodeId)?.minWidth)
         ictx.fillRect(box.x, box.y, box.w, box.h)
         ictx.strokeRect(box.x, box.y, box.w, box.h)
       }
@@ -1065,6 +1064,22 @@ export class Draw {
    * 事实源), 复用 getCaretClientRect 的 scale/offsetX/canvasRect 转换, 保证
    * overlay 与 Canvas 静态 widget 逐像素对齐。
    */
+  /** 某页内 nodeId 的控件布局项(正文展平 + 页眉 + 页脚), 附带页面顶部偏移 bandTop */
+  private controlCandidatesForNode(page: SLIFPage, nodeId: string): Array<{ item: SLIFItem; bandTop: number }> {
+    const out: Array<{ item: SLIFItem; bandTop: number }> = []
+    for (const item of getFlatPageItems(page)) {
+      if (item.nodeId === nodeId && item.nodeType === 'smarttext') out.push({ item, bandTop: 0 })
+    }
+    for (const item of page.headerItems ?? []) {
+      if (item.nodeId === nodeId && item.nodeType === 'smarttext') out.push({ item, bandTop: 0 })
+    }
+    const footerTop = page.height - (page.footerHeight ?? 42)
+    for (const item of page.footerItems ?? []) {
+      if (item.nodeId === nodeId && item.nodeType === 'smarttext') out.push({ item, bandTop: footerTop })
+    }
+    return out
+  }
+
   getControlClientRect(
     nodeId: string,
   ): { left: number; top: number; width: number; height: number } | null {
@@ -1082,12 +1097,11 @@ export class Draw {
       const page = this.pages[i]
       if (!page) continue
       const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
-      for (const item of getFlatPageItems(page)) {
-        if (item.nodeId !== nodeId || item.nodeType !== 'smarttext') continue
+      for (const { item, bandTop } of this.controlCandidatesForNode(page, nodeId)) {
         const fontSize = item.size || 16
         const ascent = item.ascent > 0 ? item.ascent : fontSize * 0.8
         const descent = item.descent > 0 ? item.descent : fontSize * 0.2
-        const box = computeControlBox(item.x, spY + item.y, (item.width || 0) - (item.markerWidth || 0), ascent, descent, this.presentationStyleOf(nodeId)?.minWidth)
+        const box = computeControlBox(item.x, spY + bandTop + item.y, (item.width || 0) - (item.markerWidth || 0), ascent, descent, this.presentationStyleOf(nodeId)?.minWidth)
         const surface = this.renderer.getInteractSurface()
         const canvasRect = surface?.getBoundingClientRect() ?? { left: 0, top: 0 }
         return {
@@ -1148,8 +1162,7 @@ export class Draw {
       const page = this.pages[i]
       if (!page) continue
       const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
-      for (const item of getFlatPageItems(page)) {
-        if (item.nodeId !== nodeId || item.nodeType !== 'smarttext') continue
+      for (const { item, bandTop } of this.controlCandidatesForNode(page, nodeId)) {
 
         const fontSize = item.size || 16
         const fontFamily = item.font || 'SimSun'
@@ -1171,7 +1184,7 @@ export class Draw {
         const region = computeFieldRegion({
           controlType: def?.controlType,
           lineLeft: item.x,
-          lineTop: spY + item.y,
+          lineTop: spY + bandTop + item.y,
           layoutWidth: (item.width || 0) - (item.markerWidth || 0),
           ascent,
           descent,

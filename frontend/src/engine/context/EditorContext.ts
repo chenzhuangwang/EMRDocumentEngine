@@ -215,12 +215,14 @@ export function buildContextSnapshot(facts: ContextFacts): EditorContextSnapshot
     localY: facts.localY,
   }
 
-  if (facts.headerFooterSection) {
-    return { ...base, kind: 'headerFooterRegion', section: facts.headerFooterSection }
-  }
-
+  // 控件命中优先于页眉/页脚区域: 页眉/页脚带内的 smarttext 控件右键应得
+  // smartText 上下文 (→ 属性菜单), 而非整块 headerFooterRegion。
   if (facts.controlId) {
     return { ...base, kind: 'smartText', controlId: facts.controlId }
+  }
+
+  if (facts.headerFooterSection) {
+    return { ...base, kind: 'headerFooterRegion', section: facts.headerFooterSection }
   }
 
   if (facts.cellPosition && facts.textHit) {

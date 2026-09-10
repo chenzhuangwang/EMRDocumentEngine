@@ -31,6 +31,21 @@ export function findControlItemEntryAt(page: SLIFPage, docX: number, docY: numbe
       return item
     }
   }
+  // 页眉 (相对页顶 y=0) / 页脚 (相对 footer 带顶) 的控件同样可命中
+  for (const item of page.headerItems ?? []) {
+    if (item.nodeType !== 'smarttext') continue
+    const w = item.width || 0
+    const h = item.height || item.ascent + item.descent
+    if (docX >= item.x && docX <= item.x + w && docY >= item.y && docY <= item.y + h) return item
+  }
+  const footerTop = page.height - (page.footerHeight ?? 42)
+  for (const item of page.footerItems ?? []) {
+    if (item.nodeType !== 'smarttext') continue
+    const w = item.width || 0
+    const h = item.height || item.ascent + item.descent
+    const itemY = footerTop + item.y
+    if (docX >= item.x && docX <= item.x + w && docY >= itemY && docY <= itemY + h) return item
+  }
   return null
 }
 
@@ -69,44 +84,54 @@ export function findRuntimeControlHitAt(
   resolve: (nodeId: string) => RuntimeControlResolve | undefined,
   measurer: TextMeasurer,
 ): RuntimeControlHit | null {
-  for (const item of getFlatPageItems(page)) {
-    if (item.nodeType !== 'smarttext') continue
-    const r = resolve(item.nodeId)
-    if (!r) continue
+  const tryItems = (items: readonly SLIFItem[], bandTop: number): RuntimeControlHit | null => {
+    for (const item of items) {
+      if (item.nodeType !== 'smarttext') continue
+      const r = resolve(item.nodeId)
+      if (!r) continue
 
-    const fontSize = item.size || 16
-    const ascent = item.ascent > 0 ? item.ascent : fontSize * 0.8
-    const descent = item.descent > 0 ? item.descent : fontSize * 0.2
-    const lineH = ascent + descent
+      const fontSize = item.size || 16
+      const ascent = item.ascent > 0 ? item.ascent : fontSize * 0.8
+      const descent = item.descent > 0 ? item.descent : fontSize * 0.2
+      const lineH = ascent + descent
+      const itemY = bandTop + item.y
 
-    if (r.kind === 'field') {
-      const layoutW = (item.width || 0) - (item.markerWidth || 0)
-      const box = computeControlBox(item.x, item.y, layoutW, ascent, descent, r.minWidth)
-      if (docX >= box.x && docX <= box.x + box.w && docY >= box.y && docY <= box.y + box.h) {
-        return { kind: 'field', item }
+      if (r.kind === 'field') {
+        const layoutW = (item.width || 0) - (item.markerWidth || 0)
+        const box = computeControlBox(item.x, itemY, layoutW, ascent, descent, r.minWidth)
+        if (docX >= box.x && docX <= box.x + box.w && docY >= box.y && docY <= box.y + box.h) {
+          return { kind: 'field', item }
+        }
+        continue
       }
-      continue
-    }
 
-    // options 拓扑: 从入口逐选项几何命中, 空白区不返回整体 node (不变量 2)
-    const opts = r.options ?? []
-    if (opts.length === 0) continue // 空候选项占位不可点 (不变量 3)
-    if (docY < item.y || docY > item.y + lineH) continue
+      // options 拓扑
+      const opts = r.options ?? []
+      if (opts.length === 0) continue
+      if (docY < itemY || docY > itemY + lineH) continue
 
-    const font = item.font || 'SimSun'
-    const size = item.size || 16
-    const layout = layoutControlOptions(
-      opts,
-      r.controlType === 'radio' ? 'radio' : 'checkbox',
-      (t) => measurer.measureWidth(t, { font, size, bold: item.bold, italic: item.italic }),
-    )
-    const relX = docX - item.x
-    for (let i = 0; i < layout.length; i++) {
-      const opt = layout[i]
-      if (relX >= opt.x && relX <= opt.x + opt.width) {
-        return { kind: 'option', item, option: opts[i] }
+      const font = item.font || 'SimSun'
+      const size = item.size || 16
+      const layout = layoutControlOptions(
+        opts,
+        r.controlType === 'radio' ? 'radio' : 'checkbox',
+        (t) => measurer.measureWidth(t, { font, size, bold: item.bold, italic: item.italic }),
+      )
+      const relX = docX - item.x
+      for (let i = 0; i < layout.length; i++) {
+        const opt = layout[i]
+        if (relX >= opt.x && relX <= opt.x + opt.width) {
+          return { kind: 'option', item, option: opts[i] }
+        }
       }
     }
+    return null
   }
-  return null
+
+  // 正文 (含表格 cell) → 页眉 (页顶 y=0) → 页脚 (footer 带顶)
+  const body = tryItems(getFlatPageItems(page), 0)
+  if (body) return body
+  const header = tryItems(page.headerItems ?? [], 0)
+  if (header) return header
+  return tryItems(page.footerItems ?? [], page.height - (page.footerHeight ?? 42))
 }
