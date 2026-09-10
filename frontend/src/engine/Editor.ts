@@ -943,7 +943,10 @@ export class Editor {
    * (与 MouseHandler 激活谓词一致)。用于 Tab/回车在区域内跳转。
    */
   getRegionControlIds(anchorNodeId: string): string[] {
-    const section = sectionOf(anchorNodeId, this.doc)
+    // anchorNodeId 是控件 (smarttext) nodeId; 区域由「其所属段落」判定
+    // (sectionOf 判的是段落 id, 直接传控件 id 会被误判为 body)。
+    const anchorPara = this.findParagraphContaining(anchorNodeId)
+    const section = anchorPara ? sectionOf(anchorPara.id, this.doc) : 'body'
     const spine = regionSpine(this.doc, this.pool, section)
     const ids: string[] = []
     for (const paraId of spine) {

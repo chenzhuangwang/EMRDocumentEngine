@@ -397,3 +397,41 @@ describe('Tab 跳转后上一控件值提交并反映到布局', () => {
     editor.destroy(); container.remove()
   })
 })
+
+describe('区域导航: 页眉控件不跳到正文', () => {
+  it('页眉两控件 + 正文一控件 → 页眉内环绕, 不跨到正文', () => {
+    const doc = createDocument('hf-nav')
+    const defs = new TemplateDefinitionStore()
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const mk = (name: string, internal: string, de: string) => {
+      const el: ElementMeta = { code: { internal, dataElement: de }, name, format: { dataType: 'S1' } }
+      const st = createSmartTextNode(`[${name}]`, el)
+      all.set(st.id, st as unknown as BaseNode)
+      defs.set(st.id, { controlType: 'input', editable: true })
+      return st.id
+    }
+    const h1 = mk('姓', 'H1', 'DH1'); const h2 = mk('名', 'H2', 'DH2'); const b1 = mk('正文', 'B1', 'DB1')
+    const hp = createParagraph([h1, h2])
+    const bp = createParagraph([b1])
+    all.set(hp.id, hp as unknown as BaseNode)
+    all.set(bp.id, bp as unknown as BaseNode)
+    doc.header = [hp.id]
+    doc.footer = []
+    doc.body.children = [bp.id]
+    const nodes: Record<string, BaseNode> = {}
+    for (const [id, n] of all) nodes[id] = n
+    ;(doc as unknown as DocumentTree & { nodes?: Record<string, BaseNode> }).nodes = nodes
+    const host = createDomEditorHost()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    host.surface.mount(container); host.input.mount(container)
+    const editor = new Editor(host, doc)
+    editor.setDocument(doc, undefined, { templateDefinitions: defs })
+
+    expect(editor.getRegionControlIds(h1)).toEqual([h1, h2])   // 仅页眉
+    expect(editor.getAdjacentControlId(h1, 1)).toBe(h2)
+    expect(editor.getAdjacentControlId(h2, 1)).toBe(h1)         // 页眉内环绕, 不跳 b1
+    editor.destroy(); container.remove()
+  })
+})
