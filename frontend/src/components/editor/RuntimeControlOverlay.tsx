@@ -393,11 +393,23 @@ function SelectField({ snap, target, editor, onReject }: { snap: ControlSnapshot
   const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
   const w = Math.max(target.textArea.width, textWidth(current || target.placeholderText, font) + 24)
   const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
+  const ref = useRef<HTMLSelectElement>(null)
+  // 首次进入即展开原生下拉 (避免"点两下才出选项"): 激活通常由用户点击触发, 仍在
+  // 用户激活窗口内, showPicker 可用; 不支持则退化为聚焦 (点开即用)。
+  useEffect(() => {
+    const id = raf(() => {
+      const el = ref.current
+      if (!el) return
+      el.focus()
+      try { (el as HTMLSelectElement & { showPicker?: () => void }).showPicker?.() } catch { /* 忽略 */ }
+    })
+    return () => caf(id)
+  }, [])
   return (
     <>
       <select
+        ref={ref}
         data-ctl-overlay
-        autoFocus
         value={current}
         style={{ ...baseInputStyle(target), width: w, height: target.textArea.height, cursor: 'pointer', position: 'absolute', left: 0, top: topOff }}
         onChange={(e) => {

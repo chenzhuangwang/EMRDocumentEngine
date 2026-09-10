@@ -324,3 +324,18 @@ describe('ControlParticle 模板设计期属性 label/prefix/suffix (不变量 1
     expect(texts).toHaveLength(3)
   })
 })
+
+describe('ControlParticle — select 无方括号 (冒泡 §12.6)', () => {
+  it('select → 不画 [ ] (只画内容 + ▼), 空态剥占位符括号', () => {
+    const r = render({ def: { controlType: 'select' }, text: '[状态]' })
+    expect(r.texts.find((t) => t.text === '[')).toBeUndefined()
+    expect(r.texts.find((t) => t.text === ']')).toBeUndefined()
+    // 内容为剥括号后的占位名
+    expect(r.texts.find((t) => t.text === '状态')).toBeTruthy()
+  })
+  it('input → 仍画 [ ] (对照)', () => {
+    const r = render({ def: { controlType: 'input' }, text: '[状态]' })
+    expect(r.texts.find((t) => t.text === '[')).toBeTruthy()
+    expect(r.texts.find((t) => t.text === ']')).toBeTruthy()
+  })
+})

@@ -24,7 +24,7 @@ import type { ILine, IPage } from '../page/PageLayout'
 import { DEFAULT_PAGE_SETUP } from '../../document/core/DocumentModel'
 import { smartTextDisplayValue } from '../../document/factory/ElementFormatter'
 import { layoutControlOptions, controlOptionsWidth, controlOptionsPlaceholderWidth } from '../../document/control/ControlOptions'
-import { controlVisualRecipe, CONTROL_BOX_PADDING, AFFORDANCE_GAP, AFFORDANCE_WIDTH, controlInlineLeadTrail } from '../../document/control/ControlBox'
+import { controlVisualRecipe, CONTROL_BOX_PADDING, AFFORDANCE_GAP, AFFORDANCE_WIDTH, controlInlineLeadTrail, stripPlaceholderBrackets } from '../../document/control/ControlBox'
 import { isControlValueEmpty } from '../../document/control/ControlValue'
 import { wrapControlText } from '../text/TextWrap'
 import { MergeMatrix } from '../../document/table/MergeMatrix'
@@ -200,8 +200,13 @@ export class LayoutEngine {
               } else if (recipe.frame === 'brackets') {
                 // 方括号框: 空态 textVal 已含 `[ ]` (占位符), 填充态需补画 `[ value ]`。
                 // 预留宽 = 完整可见宽 (框 + 文本 + affordance), 闭环不变量 1。
+                // select (affordance dropdown) 不画括号 → 预留宽不含方括号。
                 const isEmpty = isControlValueEmpty((tn as unknown as { value?: unknown }).value)
-                let width = measure(isEmpty ? textVal : `[${textVal}]`)
+                const bracketsOn = recipe.affordance !== 'dropdown'
+                const shown = isEmpty
+                  ? (bracketsOn ? textVal : stripPlaceholderBrackets(textVal))
+                  : (bracketsOn ? `[${textVal}]` : textVal)
+                let width = measure(shown)
                 if (recipe.affordance) width += AFFORDANCE_GAP + AFFORDANCE_WIDTH
                 control = { width }
               } else if (recipe.frame === 'box') {
@@ -843,7 +848,11 @@ export class LayoutEngine {
                 : controlOptionsPlaceholderWidth(measure)
             } else if (recipe.frame === 'brackets') {
               const isEmpty = isControlValueEmpty(child.value)
-              width = measure(isEmpty ? display : `[${display}]`)
+              const bracketsOn = recipe.affordance !== 'dropdown'
+              const shown = isEmpty
+                ? (bracketsOn ? display : stripPlaceholderBrackets(display))
+                : (bracketsOn ? `[${display}]` : display)
+              width = measure(shown)
               if (recipe.affordance) width += AFFORDANCE_GAP + AFFORDANCE_WIDTH
             }
             if (typeof width === 'number') {
@@ -1091,7 +1100,11 @@ export class LayoutEngine {
                 : { width: controlOptionsPlaceholderWidth(measure) }
             } else if (recipe.frame === 'brackets') {
               const isEmpty = isControlValueEmpty((child as { value?: unknown }).value)
-              let width = measure(isEmpty ? display : `[${display}]`)
+              const bracketsOn = recipe.affordance !== 'dropdown'
+              const shown = isEmpty
+                ? (bracketsOn ? display : stripPlaceholderBrackets(display))
+                : (bracketsOn ? `[${display}]` : display)
+              let width = measure(shown)
               if (recipe.affordance) width += AFFORDANCE_GAP + AFFORDANCE_WIDTH
               control = { width }
             }
