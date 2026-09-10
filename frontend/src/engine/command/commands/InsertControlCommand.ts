@@ -21,10 +21,10 @@
 //   与节点集一致, 不留孤儿定义。
 // ================================================================
 
-import type { ElementMeta, SmartTextNode } from '../../document/core/DocumentModel'
+import type { ElementMeta, SmartTextNode, TextNode } from '../../document/core/DocumentModel'
 import { NodeType } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
-import { createSmartTextNode } from '../../document/factory/ElementFormatter'
+import { createSmartTextNode, createTextNode, extractStyle } from '../../document/factory/ElementFormatter'
 import { elementIdentity } from './InsertNodesCommand'
 import type { TemplateDefinition } from '../../template/TemplateDefinition'
 import type { CommandContext, ICommand, SerializedCommand, StatePatch } from '../ICommand'
@@ -75,9 +75,28 @@ export class InsertControlCommand implements ICommand {
 
     const resolved = pool.resolveCharOffset(paraId, this.offset)
     if (resolved) {
+      const target = pool.nodes.get(resolved.textNodeId)
       const idx = para.children.indexOf(resolved.textNodeId)
-      if (idx >= 0) pool.insertChild(paraId, node.id, idx + 1)
-      else pool.insertChild(paraId, node.id, para.children.length)
+      if (idx >= 0 && target && (target as { type?: string }).type === 'text') {
+        // 目标为文本节点: 按段内偏移在「文本中间」插入需先拆分文本节点,
+        // 否则控件会落到整个文本 run 之后 (行尾)。
+        const text = (target as unknown as { text: string }).text
+        const lo = resolved.localOffset
+        if (lo > 0 && lo < text.length) {
+          const afterNode = createTextNode(text.slice(lo), extractStyle(target as unknown as TextNode))
+          pool.addNode(afterNode)
+          pool.updateNode(target.id, { text: text.slice(0, lo) } as Partial<TextNode>)
+          pool.insertChildren(paraId, [node.id, afterNode.id], idx + 1)
+        } else {
+          // 文本首/尾 → 控件插到文本前/后
+          pool.insertChild(paraId, node.id, idx + (lo === 0 ? 0 : 1))
+        }
+      } else if (idx >= 0) {
+        // 内联非文本节点 (image/field/smarttext 等) → localOffset 0=前, 1=后
+        pool.insertChild(paraId, node.id, idx + (resolved.localOffset >= 1 ? 1 : 0))
+      } else {
+        pool.insertChild(paraId, node.id, para.children.length)
+      }
     } else {
       pool.insertChild(paraId, node.id, para.children.length)
     }

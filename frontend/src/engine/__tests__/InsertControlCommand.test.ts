@@ -153,3 +153,31 @@ describe('InsertControlCommand — 控件库插入 (契约 §12.4)', () => {
     expect(h.defs.get(st.id)?.label).toBe('复选框：')
   })
 })
+
+describe('InsertControlCommand — 文本中间插入 (拆分文本节点)', () => {
+  it('"abcdef" 在 offset=3 插入 → 文本拆为 "abc"/"def", 控件在两者之间', () => {
+    const doc = createDocument('mid-insert')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const tn = createTextNode('abcdef')
+    const para = createParagraph([tn.id])
+    all.set(tn.id, tn as unknown as BaseNode)
+    all.set(para.id, para as unknown as BaseNode)
+    doc.body.children = [para.id]
+    const pool = buildNodePool(all, { body: doc.id })
+    const defs = new TemplateDefinitionStore()
+    const ctx: CommandContext = { mode: 'local', doc, pool, templateDefinitions: defs }
+
+    const el: ElementMeta = { code: { internal: 'CTL_X', dataElement: 'DE99.99.001' }, name: 'X' }
+    const cmd = new InsertControlCommand('ic', Date.now(), 'u', [doc.id, para.id], 3, el)
+    const patch = cmd.forward(ctx)
+    expect(patch).not.toBeNull()
+
+    const p = pool.nodes.get(para.id) as unknown as { children: readonly string[] }
+    const kinds = p.children.map(cid => (pool.nodes.get(cid) as { type?: string; text?: string }))
+    expect(kinds.length).toBe(3)
+    expect(kinds[0].type).toBe('text'); expect(kinds[0].text).toBe('abc')
+    expect(kinds[1].type).toBe('smarttext')
+    expect(kinds[2].type).toBe('text'); expect(kinds[2].text).toBe('def')
+  })
+})
