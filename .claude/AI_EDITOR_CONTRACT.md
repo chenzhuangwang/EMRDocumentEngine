@@ -1582,14 +1582,18 @@ Value-type mapping (canonical, MUST):
     N                       →  number            numeric
     D                       →  string "YYYY-MM-DD"
                               Canonical DATE STRING, not a Date object
-                              and not ISO datetime. The importer's DT→D
-                              merge already folds datetime into D, so
-                              storing ISO datetime would smuggle the time
-                              component back. A future datetime need is a
-                              NEW dataType, not this one. This is a
-                              canonical rule adopted THIS phase — it is an
+                              and not ISO datetime. This is a canonical
+                              rule adopted THIS phase — it is an
                               architecture judgment, not a pre-existing
                               business spec.
+    DT                      →  string "YYYY-MM-DD HH:mm:ss"
+                              Canonical DATETIME STRING (space-separated,
+                              second precision). NOT a Date object and NOT
+                              ISO ("T"/"Z" forbidden). DT is a SEPARATE
+                              dataType from D — a datetime need is a new
+                              dataType, never folded into D (the importer's
+                              old DT→D merge is reversed: DT imports as DT,
+                              values normalized to this shape).
     enums.multiple === true →  string[]          checkbox / multi-select
     enums.multiple !== true →  string            select / radio
 
@@ -1699,6 +1703,7 @@ independent (§27–§29), and lives in the document domain
       | 'number_scale_exceeded'       // VR-10
       | 'string_length_out_of_range'  // VR-11
       | 'date_format_invalid'         // D not matching YYYY-MM-DD
+      | 'datetime_format_invalid'     // DT not matching YYYY-MM-DD HH:mm:ss
 
     interface ControlValuePermissions {
       editable?: boolean   // TemplateDefinition.editable, injected by
@@ -1747,8 +1752,8 @@ independent (§27–§29), and lives in the document domain
        'enum_value_not_allowed'. Empty data + non-editable therefore
        rejects every non-empty value. data absent ≡ data: [].
     6. constraints: N + scale (VR-10); string minLength/maxLength
-       (VR-11); D YYYY-MM-DD format (regex — calendar validity is a
-       separate later concern).
+       (VR-11); D YYYY-MM-DD format; DT YYYY-MM-DD HH:mm:ss format
+       (regex — calendar/clock validity is a separate later concern).
     7. normalize checkbox order (VR-12); return { ok, normalized }.
 
     SetControlValueCommand is LANDED and routes through

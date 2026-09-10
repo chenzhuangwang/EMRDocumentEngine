@@ -65,6 +65,7 @@ function resolveControlType(snap: ControlSnapshot): ControlType {
   if (snap.options !== undefined) return 'select'
   if (snap.dataType === 'N') return 'number'
   if (snap.dataType === 'D') return 'date'
+  if (snap.dataType === 'DT') return 'datetime'
   if (snap.dataType === 'S2' || snap.dataType === 'S3') return 'textarea'
   return 'input'
 }
@@ -187,7 +188,8 @@ export function RuntimeControlOverlay({ canvasContainerRef }: RuntimeControlOver
           : kind === 'number' ? <NumberField key={activeId} snap={snap} target={target} editor={ed} onReject={onReject} />
             : kind === 'select' ? <SelectField key={activeId} snap={snap} target={target} editor={ed} onReject={onReject} />
               : kind === 'date' ? <DateField key={activeId} snap={snap} target={target} editor={ed} onReject={onReject} />
-                : <TextField key={activeId} snap={snap} target={target} editor={ed} onReject={onReject} />}
+                : kind === 'datetime' ? <DateTimeField key={activeId} snap={snap} target={target} editor={ed} onReject={onReject} />
+                  : <TextField key={activeId} snap={snap} target={target} editor={ed} onReject={onReject} />}
       </div>
     </>
   )
@@ -270,7 +272,8 @@ function useAutoFocus<T extends HTMLInputElement | HTMLTextAreaElement | HTMLSel
     if (!el) return
     const id = raf(() => {
       el.focus()
-      if (el instanceof HTMLInputElement && el.type !== 'date') el.select()
+      // 原生 date/datetime-local 不 .select() (会破坏其原生交互)
+      if (el instanceof HTMLInputElement && el.type !== 'date' && el.type !== 'datetime-local') el.select()
       else if (el instanceof HTMLTextAreaElement) el.setSelectionRange(el.value.length, el.value.length)
     })
     return () => caf(id)
@@ -445,6 +448,36 @@ function DateField({ snap, target, editor, onReject }: { snap: ControlSnapshot; 
         value={draft}
         style={{ ...baseInputStyle(target), width: w, height: target.textArea.height, position: 'absolute', left: 0, top: topOff }}
         onChange={(e) => change(e.target.value)}
+        onBlur={() => { submit() }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); if (submit()) goAdjacent(editor, snap.nodeId, 1) }
+          else if (e.key === 'Tab') { e.preventDefault(); submit(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
+          else if (e.key === 'Escape') { e.preventDefault(); done(); editor.deactivateControl() }
+        }}
+      />
+      <FieldHint msg={error} />
+    </>
+  )
+}
+
+function DateTimeField({ snap, target, editor, onReject }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor; onReject?: (msg: string) => void }) {
+  const { draft, error, change, submit, done } = useFieldText(snap, editor, false, onReject)
+  const ref = useAutoFocus<HTMLInputElement>()
+  const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
+  // 规范值 'YYYY-MM-DD HH:mm:ss' ↔ HTML datetime-local 'YYYY-MM-DDTHH:mm:ss'
+  const htmlValue = draft ? draft.replace(' ', 'T') : ''
+  const w = Math.max(target.textArea.width, textWidth('2026-09-11 08:30:00', font) + 28)
+  const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
+  return (
+    <>
+      <input
+        ref={ref}
+        data-ctl-overlay
+        type="datetime-local"
+        step="1"
+        value={htmlValue}
+        style={{ ...baseInputStyle(target), width: w, height: target.textArea.height, position: 'absolute', left: 0, top: topOff }}
+        onChange={(e) => change(e.target.value ? e.target.value.replace('T', ' ') : '')}
         onBlur={() => { submit() }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') { e.preventDefault(); if (submit()) goAdjacent(editor, snap.nodeId, 1) }

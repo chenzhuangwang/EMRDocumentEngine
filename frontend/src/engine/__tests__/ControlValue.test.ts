@@ -169,3 +169,28 @@ describe('isControlValueComplete — 完整性 (layer C, required)', () => {
     expect(isControlValueComplete('', el)).toBe(true)
   })
 })
+
+describe('validateControlValue — DT 日期时间 (契约 §12.6.1)', () => {
+  const dtEl = (): ElementMeta => ({
+    code: { internal: 'C', dataElement: 'D' }, name: '时间', format: { dataType: 'DT' },
+  })
+  it('合法 2026-09-11 08:30:00 → ok', () => {
+    const r = validateControlValue('2026-09-11 08:30:00', dtEl())
+    expect(r.ok).toBe(true)
+    expect(r.ok && r.value).toBe('2026-09-11 08:30:00')
+  })
+  it('缺秒 → datetime_format_invalid', () => {
+    const r = validateControlValue('2026-09-11 08:30', dtEl())
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.reason).toBe('datetime_format_invalid')
+  })
+  it('ISO T 分隔 → 拒绝 (canonical 用空格)', () => {
+    const r = validateControlValue('2026-09-11T08:30:00', dtEl())
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.reason).toBe('datetime_format_invalid')
+  })
+  it('纯日期 → 拒绝', () => {
+    const r = validateControlValue('2026-09-11', dtEl())
+    expect(!r.ok && r.reason).toBe('datetime_format_invalid')
+  })
+})

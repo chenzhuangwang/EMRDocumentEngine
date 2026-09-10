@@ -47,6 +47,7 @@ export function controlVisualRecipe(controlType?: string): ControlVisualRecipe {
     case 'input':    return { kind: 'field',   frame: 'brackets', align: 'left',  affordance: null }
     case 'number':   return { kind: 'field',   frame: 'brackets', align: 'right', affordance: null }
     case 'date':     return { kind: 'field',   frame: 'brackets', align: 'left',  affordance: 'calendar' }
+    case 'datetime': return { kind: 'field',   frame: 'brackets', align: 'left',  affordance: 'calendar' }
     case 'select':   return { kind: 'field',   frame: 'brackets', align: 'left',  affordance: 'dropdown' }
     case 'textarea': return { kind: 'field',   frame: 'box',      align: 'left',  affordance: null }
     case 'radio':    return { kind: 'options', frame: null,       align: 'left',  affordance: null }

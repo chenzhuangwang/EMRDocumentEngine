@@ -362,3 +362,36 @@ describe('TemplateImporter 真实外部模板 smoke', () => {
     expect(r.presentationStyles.size).toBe(266)  // 全部 smarttext
   })
 })
+
+describe('TemplateImporter — DT 日期时间 (契约 §12.6.1)', () => {
+  const tpl = (value: unknown) => ({
+    properties: { version: '2.1.0' },
+    document: {
+      body: {
+        id: 'root-body', type: '$root', children: [
+          { id: 'p1', type: 'paragraph', children: [
+            {
+              id: 'st-dt', type: 'smarttext', code: 'st-dt',
+              format: { dataType: 'DT' },
+              element: { name: '入院时间', code: { internal: 'X', dataElement: 'Y' } },
+              value,
+            },
+          ] },
+        ],
+      },
+    },
+  })
+
+  it('format.dataType DT 不再折叠为 D', () => {
+    const r = new TemplateImporter().import(tpl('2026-09-11 08:30:00'))
+    const st = r.nodes.get('st-dt') as SmartTextNode
+    expect(st.element.format?.dataType).toBe('DT')
+  })
+
+  it('ISO T / 缺秒值规范化为 YYYY-MM-DD HH:mm:ss', () => {
+    const r1 = new TemplateImporter().import(tpl('2026-09-11T08:30'))
+    expect((r1.nodes.get('st-dt') as SmartTextNode).value).toBe('2026-09-11 08:30:00')
+    const r2 = new TemplateImporter().import(tpl('2026-09-11T08:30:05'))
+    expect((r2.nodes.get('st-dt') as SmartTextNode).value).toBe('2026-09-11 08:30:05')
+  })
+})

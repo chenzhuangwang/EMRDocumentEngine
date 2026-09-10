@@ -29,6 +29,7 @@ export type ControlValueRejectReason =
   | 'number_scale_exceeded'       // VR-10: 精度 > scale (拒绝, 不四舍五入)
   | 'string_length_out_of_range'  // VR-11: minLength/maxLength 越界 (拒绝, 不截断)
   | 'date_format_invalid'         // D 非 YYYY-MM-DD
+  | 'datetime_format_invalid'     // DT 非 YYYY-MM-DD HH:mm:ss
 
 /** 校验结果: ok → 归一化后的规范值 (undefined = 清空); 否则拒绝 */
 export type ControlValueValidationResult =
@@ -37,6 +38,8 @@ export type ControlValueValidationResult =
 
 /** D 规范形 YYYY-MM-DD (格式校验; 日历有效性是后续完整性校验的独立关注点) */
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+/** DT 规范形 YYYY-MM-DD HH:mm:ss (空格分隔, 秒必填; 非 ISO 的 T/Z) */
+const DATETIME_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
 
 /**
  * 是否为空/未填 (契约 §12.6.1 规范空态): undefined / '' / []。
@@ -153,6 +156,10 @@ export function validateControlValue(
   // 6a. 日期格式 (D)
   if (dataType === 'D' && !DATE_RE.test(nextValue)) {
     return { ok: false, reason: 'date_format_invalid' }
+  }
+  // 6a'. 日期时间格式 (DT): YYYY-MM-DD HH:mm:ss (非 ISO)
+  if (dataType === 'DT' && !DATETIME_RE.test(nextValue)) {
+    return { ok: false, reason: 'datetime_format_invalid' }
   }
   // 6b. 字符串长度 (VR-11): 越界拒绝, 不截断
   if (format?.minLength !== undefined && nextValue.length < format.minLength) {

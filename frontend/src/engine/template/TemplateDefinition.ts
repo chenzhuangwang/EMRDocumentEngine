@@ -33,6 +33,7 @@ export type ControlType =
   | 'number'     // 数字输入
   | 'select'     // 下拉单选
   | 'date'       // 日期选择
+  | 'datetime'   // 日期时间选择
   | 'checkbox'   // 复选框 (多选)
   | 'radio'      // 单选框 (单选)
 

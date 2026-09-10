@@ -71,6 +71,7 @@ describe('ControlInputDialog — 格式形态 (纯文本/数字/日期/下拉)',
     expect(screen.getByText('纯文本', { selector: 'button' })).toBeTruthy()
     expect(screen.getByText('数字', { selector: 'button' })).toBeTruthy()
     expect(screen.getByText('日期', { selector: 'button' })).toBeTruthy()
+    expect(screen.getByText('日期时间', { selector: 'button' })).toBeTruthy()
     expect(screen.getByText('下拉', { selector: 'button' })).toBeTruthy()
     expect(screen.queryByText('多行文本', { selector: 'button' })).toBeNull()
     expect(screen.queryByText('长文本', { selector: 'button' })).toBeNull()
@@ -102,5 +103,19 @@ describe('ControlInputDialog — 格式形态 (纯文本/数字/日期/下拉)',
     const payload = onApply.mock.calls[0][0] as { element: ElementMeta; definition?: TemplateDefinition }
     expect(payload.element.format?.dataType).toBe('N')
     expect(payload.definition?.controlType).toBe('number')
+  })
+})
+
+describe('ControlInputDialog — 日期时间形态', () => {
+  it('选日期时间 → payload dataType=DT, controlType=datetime', () => {
+    const onApply = vi.fn()
+    const onClose = vi.fn()
+    render(<ControlInputDialog open mode="create" initial={{ element: INPUT_EL, definition: INPUT_DEF }} onClose={onClose} onApply={onApply} />)
+    fireEvent.click(screen.getByRole('tab', { name: '格式' }))
+    fireEvent.click(screen.getByText('日期时间', { selector: 'button' }))
+    fireEvent.click(screen.getByRole('button', { name: '插入' }))
+    const payload = onApply.mock.calls[0][0] as { element: ElementMeta; definition?: TemplateDefinition }
+    expect(payload.element.format?.dataType).toBe('DT')
+    expect(payload.definition?.controlType).toBe('datetime')
   })
 })

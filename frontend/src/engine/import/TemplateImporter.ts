@@ -276,7 +276,11 @@ export class TemplateImporter {
         ...this.resolveTextStyle(node),
       }
       const value = this.coerceControlValue(node.value)
-      if (!isControlValueEmpty(value)) st.value = value
+      // DT 值规范化到规范形 (ISO 'T'→空格; HH:mm 缺秒补 :00), 契约 §12.6.1
+      const normValue = (format?.dataType === 'DT' && typeof value === 'string')
+        ? normalizeDateTime(value)
+        : value
+      if (!isControlValueEmpty(normValue)) st.value = normValue
 
       this.nodeMap.set(id, st)
       this.setTemplateDefinition(id, node)
@@ -465,7 +469,7 @@ export class TemplateImporter {
   private coerceDataType(dt: string | undefined): ElementFormat['dataType'] {
     switch (dt) {
       case 'S1': case 'S2': case 'S3': case 'N': case 'D': return dt
-      case 'DT': return 'D'    // 日期时间 → 日期
+      case 'DT': return 'DT'   // 日期时间 (契约 §12.6.1: 独立 dataType, 不再折叠为 D)
       case 'L': return 'S3'    // 长文本 → 字符串
       default: return 'S3'
     }
@@ -601,4 +605,15 @@ export function isExternalTemplate(raw: unknown): boolean {
   if (!raw || typeof raw !== 'object') return false
   const doc = (raw as Record<string, unknown>).document
   return !!doc && typeof doc === 'object'
+}
+
+/**
+ * 外部日期时间值 → 规范形 'YYYY-MM-DD HH:mm:ss' (契约 §12.6.1 DT):
+ * ISO 'T' 分隔符 → 空格; 缺秒补 ':00'; 无法识别则原样返回 (交给校验拒绝)。
+ */
+function normalizeDateTime(s: string): string {
+  const t = s.trim().replace('T', ' ')
+  const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})(:\d{2})?$/.exec(t)
+  if (!m) return s
+  return `${m[1]} ${m[2]}${m[3] ?? ':00'}`
 }

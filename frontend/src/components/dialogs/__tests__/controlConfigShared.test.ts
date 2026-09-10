@@ -24,10 +24,11 @@ describe('controlFamilyOf (路由用, 不回写)', () => {
       expect(controlFamilyOf(baseEl('S1'), { controlType: ct })).toBe('input')
     }
   })
-  it('def.controlType radio/checkbox(/select legacy) → choice', () => {
+  it('def.controlType radio/checkbox → choice; select/datetime → input (输入域弹框)', () => {
     expect(controlFamilyOf(baseEl('S1'), { controlType: 'radio' })).toBe('choice')
     expect(controlFamilyOf(baseEl('S1'), { controlType: 'checkbox' })).toBe('choice')
-    expect(controlFamilyOf(baseEl('S1'), { controlType: 'select' })).toBe('choice')
+    expect(controlFamilyOf(baseEl('S1'), { controlType: 'select' })).toBe('input')
+    expect(controlFamilyOf(baseEl('DT'), { controlType: 'datetime' })).toBe('input')
   })
   it('undefined + 有 enums → choice; undefined 无 enums → input (按 dataType 路由)', () => {
     expect(controlFamilyOf(enumsEl('S1'))).toBe('choice')

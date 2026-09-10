@@ -42,8 +42,10 @@ export function cloneData<T>(value: T): T {
  */
 export function controlFamilyOf(element: ElementMeta, definition?: TemplateDefinition): ControlFamily {
   const ct = definition?.controlType
-  if (ct === 'input' || ct === 'textarea' || ct === 'number' || ct === 'date') return 'input'
-  if (ct === 'radio' || ct === 'checkbox' || ct === 'select') return 'choice'
+  // 输入族含 select/datetime (输入域弹框已覆盖 纯文本/数字/日期/日期时间/下拉)
+  if (ct === 'input' || ct === 'textarea' || ct === 'number' || ct === 'date' ||
+      ct === 'datetime' || ct === 'select') return 'input'
+  if (ct === 'radio' || ct === 'checkbox') return 'choice'
   const fmt = element.format
   if (fmt !== undefined && fmt.enums !== undefined) return 'choice'
   return 'input'

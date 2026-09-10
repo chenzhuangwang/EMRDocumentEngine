@@ -80,7 +80,7 @@ export interface ElementCode {
 }
 
 export interface ElementFormat {
-  dataType: 'S1' | 'S2' | 'S3' | 'N' | 'D'
+  dataType: 'S1' | 'S2' | 'S3' | 'N' | 'D' | 'DT'
   showType?: 'AN' | 'N'
   minLength?: number
   maxLength?: number
@@ -151,7 +151,7 @@ export interface TextNode extends BaseNode, TextStyle {
  * SmartTextNode 运行时值的规范类型 (契约 §12.6.1)。
  * undefined (缺失 value 字段) 是规范的空/未填状态, 不在该联合类型内。
  * 值类型映射: S1/S2/S3→string; N→number; D→"YYYY-MM-DD" string;
- * 枚举 multiple===true→string[], 否则→string。
+ * DT→"YYYY-MM-DD HH:mm:ss" string; 枚举 multiple===true→string[], 否则→string。
  * 已落地: value 拓宽为 ControlValue 与 SetControlValueCommand 同步 (契约 §12.6.1)。
  */
 export type ControlValue = string | number | string[]

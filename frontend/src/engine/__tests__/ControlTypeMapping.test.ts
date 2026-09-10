@@ -19,6 +19,7 @@ describe('controlTypeForDataType / controlTypeForMultiple', () => {
     expect(controlTypeForDataType('S3')).toBe('textarea')
     expect(controlTypeForDataType('N')).toBe('number')
     expect(controlTypeForDataType('D')).toBe('date')
+    expect(controlTypeForDataType('DT')).toBe('datetime')
   })
   it('枚举家族: multiple→checkbox, 否则→radio', () => {
     expect(controlTypeForMultiple(true)).toBe('checkbox')

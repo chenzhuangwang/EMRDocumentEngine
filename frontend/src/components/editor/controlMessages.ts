@@ -14,6 +14,7 @@ const MESSAGES: Record<ControlValueRejectReason, string> = {
   number_scale_exceeded: '数值精度超出限制',
   string_length_out_of_range: '字符长度超出限制',
   date_format_invalid: '日期格式应为 YYYY-MM-DD',
+  datetime_format_invalid: '日期时间格式应为 YYYY-MM-DD HH:mm:ss',
 }
 
 export function controlRejectMessage(reason: ControlValueRejectReason): string {

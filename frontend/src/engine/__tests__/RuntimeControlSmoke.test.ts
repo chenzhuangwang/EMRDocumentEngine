@@ -473,3 +473,40 @@ describe('空文档惰性 templateDefinitions 同步到 Draw (select 不再回�
     editor.destroy(); container.remove()
   })
 })
+
+describe('运行时控件 — DT 日期时间 (契约 §12.6.1)', () => {
+  it('写入规范值 / 快照 dataType=DT / 序列化往返', () => {
+    const doc = createDocument('dt')
+    const defs = new TemplateDefinitionStore()
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const el: ElementMeta = { code: { internal: 'DT1', dataElement: 'DE' }, name: '入院时间', format: { dataType: 'DT' } }
+    const st = createSmartTextNode('[入院时间]', el)
+    all.set(st.id, st as unknown as BaseNode)
+    defs.set(st.id, { controlType: 'datetime', editable: true })
+    const para = createParagraph([st.id])
+    all.set(para.id, para as unknown as BaseNode)
+    doc.body.children = [para.id]
+    const nodes: Record<string, BaseNode> = {}
+    for (const [id, n] of all) nodes[id] = n
+    ;(doc as unknown as DocumentTree & { nodes?: Record<string, BaseNode> }).nodes = nodes
+    const host = createDomEditorHost()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    host.surface.mount(container); host.input.mount(container)
+    const editor = new Editor(host, doc)
+    editor.setDocument(doc, undefined, { templateDefinitions: defs })
+
+    expect(editor.getControlSnapshot(st.id)?.dataType).toBe('DT')
+    expect(editor.setControlValue(st.id, '2026-09-11 08:30:00').ok).toBe(true)
+    expect(editor.getControlValue(st.id)).toBe('2026-09-11 08:30:00')
+    // 非法: 缺秒 / ISO T 被拒
+    expect(editor.setControlValue(st.id, '2026-09-11 08:30').ok).toBe(false)
+    expect(editor.setControlValue(st.id, '2026-09-11T08:30:00').ok).toBe(false)
+
+    const loaded = loadDocumentFromObject(JSON.parse(editor.getSerializedDocument()))
+    expect((loaded.pool.nodes.get(st.id) as SmartTextNode).value).toBe('2026-09-11 08:30:00')
+    expect((loaded.pool.nodes.get(st.id) as SmartTextNode).element.format?.dataType).toBe('DT')
+    editor.destroy(); container.remove()
+  })
+})

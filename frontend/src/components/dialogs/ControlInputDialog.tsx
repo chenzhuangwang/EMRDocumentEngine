@@ -18,8 +18,8 @@ import type { ElementMeta, ElementEnumOption, TemplateDefinition } from '@/engin
 import { cleanDefinition, cloneData, CodeBadge, Field, NumField, TextField, ToggleField, inputCls } from './controlConfigShared'
 import type { ControlConfigData } from './controlConfigShared'
 
-/** 输入域形态: 纯文本/数字/日期/下拉 (下拉不是 dataType, 是 S1+enums+select) */
-export type InputKind = 'S1' | 'N' | 'D' | 'select'
+/** 输入域形态: 纯文本/数字/日期/日期时间/下拉 (下拉=select; 日期时间=DT) */
+export type InputKind = 'S1' | 'N' | 'D' | 'DT' | 'select'
 
 interface ControlInputDialogProps {
   open: boolean
@@ -33,6 +33,7 @@ const KIND_OPTIONS: { value: InputKind; label: string }[] = [
   { value: 'S1', label: '纯文本' },
   { value: 'N', label: '数字' },
   { value: 'D', label: '日期' },
+  { value: 'DT', label: '日期时间' },
   { value: 'select', label: '下拉' },
 ]
 
@@ -69,7 +70,9 @@ interface Draft {
 function kindFrom(el: ElementMeta | undefined, def: TemplateDefinition | undefined): InputKind {
   if (def?.controlType === 'select') return 'select'
   const dt = el?.format?.dataType
+  if (dt === 'DT') return 'DT'
   if (dt === 'N' || dt === 'D') return dt
+  if (def?.controlType === 'datetime') return 'DT'
   return 'S1'
 }
 
@@ -155,7 +158,8 @@ export function ControlInputDialog({
 
     const initialFamily = initial.definition?.controlType
     const initialFamilyIsInput =
-      initialFamily === 'input' || initialFamily === 'number' || initialFamily === 'date' || initialFamily === 'select'
+      initialFamily === 'input' || initialFamily === 'number' || initialFamily === 'date' ||
+      initialFamily === 'datetime' || initialFamily === 'select'
     const typeChanged = draft.kind !== kindFrom(initial.element, initial.definition)
     let controlType: TemplateDefinition['controlType']
     if (draft.kind === 'select') {
@@ -291,6 +295,9 @@ export function ControlInputDialog({
                 )}
                 {draft.kind === 'D' && (
                   <p className="text-xs text-gray-400">日期按 YYYY-MM-DD 存储与校验。</p>
+                )}
+                {draft.kind === 'DT' && (
+                  <p className="text-xs text-gray-400">日期时间按 YYYY-MM-DD HH:mm:ss 存储与校验。</p>
                 )}
               </Tabs.Content>
 

@@ -112,7 +112,7 @@ export interface ControlSnapshot {
   /** widget 形态 (TemplateDefinition.controlType, 插入或配置弹框写定, 旧文档可缺省) */
   controlType: ControlType | undefined
   /** 数据取值类型 (ElementFormat.dataType) */
-  dataType: 'S1' | 'S2' | 'S3' | 'N' | 'D' | undefined
+  dataType: 'S1' | 'S2' | 'S3' | 'N' | 'D' | 'DT' | undefined
   /** 展示形态 (ElementFormat.showType) */
   showType: 'AN' | 'N' | undefined
   /** 解析后的枚举候选 (inline enums 优先, 否则外部字典候选 §12.6 VR-7) */

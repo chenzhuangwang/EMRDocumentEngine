@@ -23,6 +23,7 @@ export function controlTypeForDataType(dataType: ElementFormat['dataType']): Con
     case 'S3': return 'textarea'
     case 'N': return 'number'
     case 'D': return 'date'
+    case 'DT': return 'datetime'
   }
 }
 
