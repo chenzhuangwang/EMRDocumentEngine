@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useEditorRef, useEditorStoreSnapshot } from './EditorProvider'
 import { controlRejectMessage } from './controlMessages'
-import type { ControlEditTarget, ControlSnapshot, ControlType, Editor } from '@/engine'
+import type { ControlEditTarget, ControlSnapshot, ControlType, ControlValue, Editor } from '@/engine'
 
 const PLACEHOLDER_COLOR = '#9CA3AF'
 
@@ -161,8 +161,9 @@ export function RuntimeControlOverlay({ canvasContainerRef }: RuntimeControlOver
   )
 }
 
-/** 统一文本字段状态: onChange 本地草稿; 卸载即提交; 非法值就地提示 */
-function useFieldText(snap: ControlSnapshot, editor: Editor) {
+/** 统一文本字段状态: onChange 本地草稿; 卸载即提交; 非法值就地提示。
+ *  numeric=true → 提交时把草稿解析为数字 (空→undefined, 非数字→提示)。 */
+function useFieldText(snap: ControlSnapshot, editor: Editor, numeric = false) {
   const [draft, setDraft] = useState(() => valueToText(snap.value))
   const [error, setError] = useState<string | null>(null)
   const draftRef = useRef(draft)
@@ -180,12 +181,22 @@ function useFieldText(snap: ControlSnapshot, editor: Editor) {
     const cur = draftRef.current
     const canon = valueToText(snap.value)
     if (cur === canon) return true
-    const r = editor.setControlValue(snap.nodeId, cur === '' ? undefined : cur)
+    let value: ControlValue | undefined = cur === '' ? undefined : cur
+    if (numeric) {
+      const t = cur.trim()
+      if (t === '') value = undefined
+      else {
+        const n = Number(t)
+        if (!Number.isFinite(n)) { setError('请输入数字'); setDraft(canon); return false }
+        value = n
+      }
+    }
+    const r = editor.setControlValue(snap.nodeId, value)
     if (r.ok) return true
     setError(controlRejectMessage(r.reason))
     setDraft(canon)
     return false
-  }, [editor, snap.nodeId, snap.value])
+  }, [editor, snap.nodeId, snap.value, numeric])
   const submitRef = useRef(submit)
   submitRef.current = submit
   // 卸载即提交 (切换/点空白/失焦/模式切)
@@ -282,25 +293,11 @@ function TextField({ snap, target, editor }: { snap: ControlSnapshot; target: Co
 }
 
 function NumberField({ snap, target, editor }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor }) {
-  const { draft, change, done } = useFieldText(snap, editor)
-  const [error, setError] = useState<string | null>(null)
+  const { draft, error, change, submit } = useFieldText(snap, editor, true)
   const inputRef = useAutoFocus<HTMLInputElement>()
   const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
   const w = Math.max(target.textArea.width, textWidth(draft || ' ', font) + 2)
   const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
-  // 数值提交: 空 → 清空; 非数字/精度超限 → 就地提示, 不提交。
-  // done() 阻断 useFieldText 的字符串卸载提交 (数值语义自管)。
-  const commitNumber = (): boolean => {
-    done()
-    const t = draft.trim()
-    if (t === '') { editor.setControlValue(snap.nodeId, undefined); return true }
-    const n = Number(t)
-    if (!Number.isFinite(n)) { setError('请输入数字'); return false }
-    const r = editor.setControlValue(snap.nodeId, n)
-    if (r.ok) return true
-    setError(controlRejectMessage(r.reason)); return false
-  }
-  const changeClear = (v: string) => { setError(null); change(v) }
   return (
     <>
       <input
@@ -314,11 +311,11 @@ function NumberField({ snap, target, editor }: { snap: ControlSnapshot; target: 
           width: w, height: target.textArea.height,
           position: 'absolute', left: Math.min(0, target.textArea.width - w), top: topOff,
         }}
-        onChange={(e) => changeClear(e.target.value)}
-        onBlur={() => { commitNumber() }}
+        onChange={(e) => change(e.target.value)}
+        onBlur={() => { submit() }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') { e.preventDefault(); if (commitNumber()) goAdjacent(editor, snap.nodeId, 1) }
-          else if (e.key === 'Tab') { e.preventDefault(); commitNumber(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
+          if (e.key === 'Enter') { e.preventDefault(); if (submit()) goAdjacent(editor, snap.nodeId, 1) }
+          else if (e.key === 'Tab') { e.preventDefault(); submit(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
           else if (e.key === 'Escape') { e.preventDefault(); editor.deactivateControl() }
         }}
       />

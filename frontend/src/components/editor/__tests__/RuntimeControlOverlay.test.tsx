@@ -170,4 +170,23 @@ describe('RuntimeControlOverlay 无缝内联 (契约 §12.6)', () => {
     await waitFor(() => expect(activateControl).toHaveBeenCalledWith('n2'))
     expect(setControlValue).toHaveBeenCalledWith('n1', '张三')
   })
+
+  it('数字控件点空白(卸载) → 以数字提交 (非字符串)', async () => {
+    const { ctx, setControlValue, deactivateControl } = buildEnv({ snap: { controlType: 'number', dataType: 'N', placeholder: '[年龄]' } })
+    renderOverlay(ctx)
+    const input = await screen.findByRole('textbox')
+    fireEvent.change(input, { target: { value: '42' } })
+    deactivateControl() // 模拟点空白 → 卸载
+    await waitFor(() => expect(setControlValue).toHaveBeenCalledWith('n1', 42))
+  })
+
+  it('数字控件非数字 → 提示且不提交', async () => {
+    const { ctx, setControlValue } = buildEnv({ snap: { controlType: 'number', dataType: 'N' } })
+    renderOverlay(ctx)
+    const input = await screen.findByRole('textbox')
+    fireEvent.change(input, { target: { value: 'abc' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(screen.getByText('请输入数字')).toBeTruthy())
+    expect(setControlValue).not.toHaveBeenCalled()
+  })
 })
