@@ -60,7 +60,11 @@ export function initialConfigForCreate(kind: ControlKind): ControlConfigData {
       definition: { controlType: kind === 'checkbox' ? 'checkbox' : kind === 'radio' ? 'radio' : 'input', editable: true },
     }
   }
-  return { element: cloneData(entry.element), definition: entry.definition ? cloneData(entry.definition) : undefined }
+  // 库条目自带控制台默认 label (如 '文本输入：') — 不作为向导默认, 否则每次插入
+  // 都附带一个用户并不想要的标签 (会渲染在控件左侧, 被认为是"多出来的文字")
+  const definition = entry.definition ? cloneData(entry.definition) : undefined
+  if (definition) delete definition.label
+  return { element: cloneData(entry.element), definition }
 }
 
 /** 定义 clean (自 DesignControlProperties 迁来): 丢弃空串/undefined 键; 布尔保留 */

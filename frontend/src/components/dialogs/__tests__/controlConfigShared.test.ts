@@ -55,6 +55,11 @@ describe('initialConfigForCreate (向导种子)', () => {
     a.element.name = '改'
     expect(initialConfigForCreate('textInput').element.name).not.toBe('改')
   })
+  it('不含库默认 label (不把「文本输入：」当默认标签带进文档)', () => {
+    expect(initialConfigForCreate('textInput').definition?.label).toBeUndefined()
+    expect(initialConfigForCreate('radio').definition?.label).toBeUndefined()
+    expect(initialConfigForCreate('checkbox').definition?.label).toBeUndefined()
+  })
 })
 
 describe('cleanDefinition', () => {
