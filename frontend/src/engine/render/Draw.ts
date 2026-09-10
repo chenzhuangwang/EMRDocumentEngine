@@ -25,7 +25,7 @@ import { createFootnoteParticle } from './particles/FootnoteParticle'
 import { createTableParticle } from './particles/TableParticle'
 import { createImageParticle } from './particles/ImageParticle'
 import { createControlParticle } from './particles/ControlParticle'
-import { computeControlBox, stripPlaceholderBrackets, controlVisualType } from '../document/control/ControlBox'
+import { computeControlBox, stripPlaceholderBrackets, controlVisualType, controlInlineLeadTrail } from '../document/control/ControlBox'
 import { computeFieldRegion } from '../document/control/ControlFieldGeometry'
 import { isControlValueEmpty } from '../document/control/ControlValue'
 import type { PresentationStyleStore } from './presentation/PresentationStyle'
@@ -129,6 +129,7 @@ export class Draw {
       return {
         controlType: def?.controlType ?? controlVisualType(def?.controlType, hasEnums, el?.format?.enums?.multiple === true),
         options: el?.format?.enums?.data,
+        label: def?.label, prefix: def?.prefix, suffix: def?.suffix,
       }
     })
     this.renderer = new LayeredRenderer(this.host, this.coordSystem)
@@ -981,7 +982,9 @@ export class Draw {
         const fontSize = item.size || 16
         const ascent = item.ascent > 0 ? item.ascent : fontSize * 0.8
         const descent = item.descent > 0 ? item.descent : fontSize * 0.2
-        const box = computeControlBox(item.x, spY + bandTop + item.y, (item.width || 0) - (item.markerWidth || 0), ascent, descent, this.presentationStyleOf(nodeId)?.minWidth)
+        const layoutW0 = (item.width || 0) - (item.markerWidth || 0)
+        const lt0 = this.controlLeadTrail(nodeId, item.font || 'SimSun', item.size || 16, item.bold, item.italic)
+        const box = computeControlBox(item.x + lt0.lead, spY + bandTop + item.y, Math.max(0, layoutW0 - lt0.lead - lt0.trail), ascent, descent, this.presentationStyleOf(nodeId)?.minWidth)
         ictx.fillRect(box.x, box.y, box.w, box.h)
         ictx.strokeRect(box.x, box.y, box.w, box.h)
       }
@@ -1085,6 +1088,13 @@ export class Draw {
    * 事实源), 复用 getCaretClientRect 的 scale/offsetX/canvasRect 转换, 保证
    * overlay 与 Canvas 静态 widget 逐像素对齐。
    */
+  /** 控件附属字面量 (label/prefix/suffix) 的内联占位 (lead/trail) — 与布局/渲染同源 */
+  private controlLeadTrail(nodeId: string, fontFamily: string, fontSize: number, bold?: boolean, italic?: boolean): { lead: number; trail: number } {
+    const def = this.templateDefinitionOf?.(nodeId)
+    const m = (t: string) => this.measurer.measureWidth(t, { font: fontFamily, size: fontSize, bold, italic })
+    return controlInlineLeadTrail(def, m)
+  }
+
   /** 某页内 nodeId 的控件布局项(正文展平 + 页眉 + 页脚), 附带页面顶部偏移 bandTop */
   private controlCandidatesForNode(page: SLIFPage, nodeId: string): Array<{ item: SLIFItem; bandTop: number }> {
     const out: Array<{ item: SLIFItem; bandTop: number }> = []
@@ -1122,7 +1132,9 @@ export class Draw {
         const fontSize = item.size || 16
         const ascent = item.ascent > 0 ? item.ascent : fontSize * 0.8
         const descent = item.descent > 0 ? item.descent : fontSize * 0.2
-        const box = computeControlBox(item.x, spY + bandTop + item.y, (item.width || 0) - (item.markerWidth || 0), ascent, descent, this.presentationStyleOf(nodeId)?.minWidth)
+        const layoutW0 = (item.width || 0) - (item.markerWidth || 0)
+        const lt0 = this.controlLeadTrail(nodeId, item.font || 'SimSun', item.size || 16, item.bold, item.italic)
+        const box = computeControlBox(item.x + lt0.lead, spY + bandTop + item.y, Math.max(0, layoutW0 - lt0.lead - lt0.trail), ascent, descent, this.presentationStyleOf(nodeId)?.minWidth)
         const surface = this.renderer.getInteractSurface()
         const canvasRect = surface?.getBoundingClientRect() ?? { left: 0, top: 0 }
         return {
@@ -1202,11 +1214,12 @@ export class Draw {
         const masked = el?.privacy?.enabled === true
         const writable = (def?.editable !== false) && el?.readonly !== true
 
+        const lt2 = this.controlLeadTrail(nodeId, fontFamily, fontSize, item.bold, item.italic)
         const region = computeFieldRegion({
           controlType: def?.controlType,
-          lineLeft: item.x,
+          lineLeft: item.x + lt2.lead,
           lineTop: spY + bandTop + item.y,
-          layoutWidth: (item.width || 0) - (item.markerWidth || 0),
+          layoutWidth: Math.max(0, ((item.width || 0) - (item.markerWidth || 0)) - lt2.lead - lt2.trail),
           ascent,
           descent,
           minWidth: style?.minWidth,

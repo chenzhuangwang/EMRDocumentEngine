@@ -396,3 +396,27 @@ describe('页眉/页脚控件按语义预留宽 (与正文一致)', () => {
     expect((item!.width || 0)).toBeGreaterThan(60)
   })
 })
+
+describe('页眉/页脚控件 label 预留宽 (防相邻重叠)', () => {
+  function widthWith(label?: string): number {
+    const doc = createDocument('lbl')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const el: ElementMeta = { code: { internal: 'C', dataElement: 'D' }, name: '姓名', format: { dataType: 'S1' } }
+    const st = createSmartTextNode('[姓名]', el)
+    const p = createParagraph([st.id])
+    all.set(st.id, st as unknown as BaseNode)
+    all.set(p.id, p as unknown as BaseNode)
+    doc.body.children = []
+    doc.header = [p.id]
+    doc.footer = []
+    const pool = buildNodePool(all, { body: doc.id })
+    const engine = new LayoutEngine(new EventBus(), testMeasurer)
+    engine.setControlInfoOf(() => ({ controlType: 'input', label }))
+    const item = engine.fullLayout(doc, pool).flatMap(pg => pg.headerItems || []).find(it => it.nodeId === st.id)!
+    return item.width || 0
+  }
+  it('带 label 的控件预留宽 > 不带 label (label 占位计入行内宽)', () => {
+    expect(widthWith('文本输入：')).toBeGreaterThan(widthWith(undefined))
+  })
+})

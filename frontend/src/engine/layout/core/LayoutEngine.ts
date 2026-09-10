@@ -24,7 +24,7 @@ import type { ILine, IPage } from '../page/PageLayout'
 import { DEFAULT_PAGE_SETUP } from '../../document/core/DocumentModel'
 import { smartTextDisplayValue } from '../../document/factory/ElementFormatter'
 import { layoutControlOptions, controlOptionsWidth, controlOptionsPlaceholderWidth } from '../../document/control/ControlOptions'
-import { controlVisualRecipe, CONTROL_BOX_PADDING, AFFORDANCE_GAP, AFFORDANCE_WIDTH } from '../../document/control/ControlBox'
+import { controlVisualRecipe, CONTROL_BOX_PADDING, AFFORDANCE_GAP, AFFORDANCE_WIDTH, controlInlineLeadTrail } from '../../document/control/ControlBox'
 import { isControlValueEmpty } from '../../document/control/ControlValue'
 import { wrapControlText } from '../text/TextWrap'
 import { MergeMatrix } from '../../document/table/MergeMatrix'
@@ -42,6 +42,10 @@ export type { LayoutResult } from './LayoutResult'
 export interface InlineControlInfo {
   controlType?: ControlType
   options?: ElementEnumOption[]
+  /** 附属字面量 (契约 §12.1 不变量 10) — 布局为其预留宽, 避免相邻控件重叠 */
+  label?: string
+  prefix?: string
+  suffix?: string
 }
 
 /** 标题级别 → 字体缩放倍率 (基于正文默认 16px: H1=32, H2=24, H3=20, H4=18, H5=16, H6=14) */
@@ -232,6 +236,12 @@ export class LayoutEngine {
                 }
               } else {
                 control = undefined
+              }
+              // 附属字面量 label/prefix/suffix 占位宽计入行内 advance (契约 §12.1
+              // 不变量 10): 否则相邻控件的 label 会压到前一个盒/文字上。
+              if (control && typeof control.width === 'number') {
+                const { lead, trail } = controlInlineLeadTrail(info, measure)
+                control = { ...control, width: control.width + lead + trail }
               }
             } else {
               control = undefined
@@ -1024,6 +1034,10 @@ export class LayoutEngine {
               let width = measure(isEmpty ? display : `[${display}]`)
               if (recipe.affordance) width += AFFORDANCE_GAP + AFFORDANCE_WIDTH
               control = { width }
+            }
+            if (control && typeof control.width === 'number') {
+              const { lead, trail } = controlInlineLeadTrail(info, measure)
+              control = { ...control, width: control.width + lead + trail }
             }
           }
           elements.push({

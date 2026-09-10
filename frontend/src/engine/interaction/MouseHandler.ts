@@ -655,11 +655,13 @@ export class MouseHandler {
       if (!snap) return undefined
       const hasEnums = snap.options !== undefined
       const visualType = snap.controlType ?? controlVisualType(snap.controlType, hasEnums, snap.multiple)
+      const def = this.editor.getControlDefinition(nodeId)
       return {
         kind: controlVisualRecipe(visualType).kind,
         minWidth: this.editor.getPresentationStyles()?.get(nodeId)?.minWidth,
         options: snap.options,
         controlType: visualType,
+        label: def?.label, prefix: def?.prefix, suffix: def?.suffix,
       }
     }
     return findRuntimeControlHitAt(page, docX, localY, resolve, this.measurer)

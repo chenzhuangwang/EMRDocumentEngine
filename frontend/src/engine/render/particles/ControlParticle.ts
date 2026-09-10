@@ -119,9 +119,17 @@ export function createControlParticle(): IParticle {
       ctx.font = fontParts.join(' ')
       ctx.textBaseline = 'alphabetic'
 
-      // 盒几何单一源 (不变量 1): 布局 advance 扣列表标记宽 = 完整可见控件宽
+      // 盒几何单一源 (不变量 1): 布局 advance 扣列表标记宽 = 完整可见控件宽。
+      // 附属字面量 label/prefix/suffix 占位: 布局已把 lead+trail 计入 item.width,
+      // 此处按 lead 右移盒, 使 label/prefix 画在预留左区、suffix 画在预留右区。
+      const labelW2 = label ? ctx.measureText(label).width : 0
+      const prefixW2 = prefix ? ctx.measureText(prefix).width : 0
+      const suffixW2 = suffix ? ctx.measureText(suffix).width : 0
+      const leadW = labelW2 + prefixW2
+      const trailW = suffixW2
       const layoutW = (item.width || 0) - (item.markerWidth || 0)
-      const box = computeControlBox(x, y, layoutW, ascent, descent, style?.minWidth)
+      const boxW = Math.max(0, layoutW - leadW - trailW)
+      const box = computeControlBox(x + leadW, y, boxW, ascent, descent, style?.minWidth)
 
       // 状态色 (非分类)
       const frameColor = isMasked ? FRAME_MASKED : (isEmpty ? PLACEHOLDER_COLOR : FRAME_FILLED)
@@ -194,7 +202,7 @@ export function createControlParticle(): IParticle {
         if (opts.length === 0) {
           // 空候选项占位, 不退化输入框 (不变量 3)
           ctx.fillStyle = PLACEHOLDER_COLOR
-          ctx.fillText(EMPTY_OPTIONS_PLACEHOLDER, x, box.baselineY)
+          ctx.fillText(EMPTY_OPTIONS_PLACEHOLDER, x + leadW, box.baselineY)
         } else {
           const layout = layoutControlOptions(opts, controlType as 'checkbox' | 'radio', (t) => ctx.measureText(t).width)
           const glyphChar = controlType === 'checkbox' ? '☐' : '○'
@@ -205,19 +213,18 @@ export function createControlParticle(): IParticle {
           for (const opt of layout) {
             const isSel = selected.includes(opt.value)
             ctx.fillStyle = isSel ? GLYPH_SELECTED : GLYPH_UNSELECTED
-            ctx.fillText(isSel ? selGlyphChar : glyphChar, x + opt.x, box.baselineY)
+            ctx.fillText(isSel ? selGlyphChar : glyphChar, x + leadW + opt.x, box.baselineY)
             ctx.fillStyle = item.color || '#374151'
-            ctx.fillText(opt.name, x + opt.x + glyphW + GLYPH_PAD, box.baselineY)
+            ctx.fillText(opt.name, x + leadW + opt.x + glyphW + GLYPH_PAD, box.baselineY)
           }
         }
       }
 
-      // 附属字面量 label/prefix/suffix (不变量 10): 画在 box 左右外侧, 不侵入 box / 不改 hit box
+      // 附属字面量 label/prefix/suffix (不变量 10): 画在控件预留的左/右区 (lead/trail),
+      // 不侵入 box / 不改 hit box。
       ctx.fillStyle = isMasked ? PLACEHOLDER_COLOR : (item.color || '#374151')
-      const prefixW = prefix ? ctx.measureText(prefix).width : 0
-      const labelW = label ? ctx.measureText(label).width : 0
-      if (label) ctx.fillText(label, box.leftEdge - prefixW - labelW, box.baselineY)
-      if (prefix) ctx.fillText(prefix, box.leftEdge - prefixW, box.baselineY)
+      if (label) ctx.fillText(label, x, box.baselineY)
+      if (prefix) ctx.fillText(prefix, x + labelW2, box.baselineY)
       if (suffix) ctx.fillText(suffix, box.rightEdge, box.baselineY)
 
       ctx.restore()

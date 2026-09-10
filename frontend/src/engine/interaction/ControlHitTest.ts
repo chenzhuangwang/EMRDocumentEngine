@@ -64,6 +64,10 @@ export interface RuntimeControlResolve {
   options?: readonly ElementEnumOption[]
   /** widget 形态 (options 拓扑为 'checkbox' | 'radio') */
   controlType?: string
+  /** 附属字面量 (占位宽需一并计入命中几何) */
+  label?: string
+  prefix?: string
+  suffix?: string
 }
 
 /** 运行时命中结果 */
@@ -95,10 +99,16 @@ export function findRuntimeControlHitAt(
       const descent = item.descent > 0 ? item.descent : fontSize * 0.2
       const lineH = ascent + descent
       const itemY = bandTop + item.y
+      const font = item.font || 'SimSun'
+      const size = item.size || 16
+      const mw = (t: string) => measurer.measureWidth(t, { font, size, bold: item.bold, italic: item.italic })
+      const leadW = (r.label ? mw(r.label) : 0) + (r.prefix ? mw(r.prefix) : 0)
+      const trailW = r.suffix ? mw(r.suffix) : 0
 
       if (r.kind === 'field') {
         const layoutW = (item.width || 0) - (item.markerWidth || 0)
-        const box = computeControlBox(item.x, itemY, layoutW, ascent, descent, r.minWidth)
+        const boxW = Math.max(0, layoutW - leadW - trailW)
+        const box = computeControlBox(item.x + leadW, itemY, boxW, ascent, descent, r.minWidth)
         if (docX >= box.x && docX <= box.x + box.w && docY >= box.y && docY <= box.y + box.h) {
           return { kind: 'field', item }
         }
@@ -110,14 +120,12 @@ export function findRuntimeControlHitAt(
       if (opts.length === 0) continue
       if (docY < itemY || docY > itemY + lineH) continue
 
-      const font = item.font || 'SimSun'
-      const size = item.size || 16
       const layout = layoutControlOptions(
         opts,
         r.controlType === 'radio' ? 'radio' : 'checkbox',
-        (t) => measurer.measureWidth(t, { font, size, bold: item.bold, italic: item.italic }),
+        mw,
       )
-      const relX = docX - item.x
+      const relX = docX - (item.x + leadW)
       for (let i = 0; i < layout.length; i++) {
         const opt = layout[i]
         if (relX >= opt.x && relX <= opt.x + opt.width) {

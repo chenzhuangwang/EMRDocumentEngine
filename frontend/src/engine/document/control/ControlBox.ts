@@ -129,3 +129,25 @@ export function stripPlaceholderBrackets(text: string): string {
   }
   return text
 }
+
+/**
+ * 控件附属字面量 (label/prefix/suffix) 的内联占位宽 (契约 §12.1 不变量 10)。
+ *
+ * label/prefix 画在盒左侧、suffix 画在盒右侧。布局必须为它们预留宽度, 否则
+ * 连续控件时后一个的 label 会压到前一个的盒/文字上 (重叠)。返回:
+ *   lead  = label + prefix 宽 (盒左侧预留)
+ *   trail = suffix 宽 (盒右侧预留)
+ * def 用弱结构 {label,prefix,suffix} 传参, 避免 document→template 依赖倒挂。
+ */
+export function controlInlineLeadTrail(
+  def: { label?: string; prefix?: string; suffix?: string } | undefined,
+  measure: (text: string) => number,
+): { lead: number; trail: number } {
+  const label = typeof def?.label === 'string' ? def.label : ''
+  const prefix = typeof def?.prefix === 'string' ? def.prefix : ''
+  const suffix = typeof def?.suffix === 'string' ? def.suffix : ''
+  return {
+    lead: (label ? measure(label) : 0) + (prefix ? measure(prefix) : 0),
+    trail: suffix ? measure(suffix) : 0,
+  }
+}
