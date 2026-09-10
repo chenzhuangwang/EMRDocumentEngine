@@ -97,16 +97,19 @@ export function RuntimeControlOverlay({ canvasContainerRef }: RuntimeControlOver
     return () => caf(r)
   }, [activeId, interactive, editorRef])
 
-  // 点 overlay 之外且不在画布容器 → 去激活 (卸载旧 widget → cleanup 提交)
+  // 点 overlay 之外的任何位置 → 去激活 (卸载旧 widget → cleanup 提交)。
+  // 用 capture 在 MouseHandler 的 mousedown 之前运行: 若点到别的控件, MouseHandler
+  // 随后会重新激活它, 净效果=切换; 若点到空白, 则提交并退出编辑。
   useEffect(() => {
     if (!activeId || !interactive) return
     const onPointerDown = (e: PointerEvent) => {
       const ed = editorRef.current
       if (!ed) return
       const host = document.getElementById('ctl-overlay-host')
-      const t = e.target as Node | null
-      if (t && host?.contains(t)) return
-      if (t && canvasContainerRef.current?.contains(t)) return
+      const t = e.target as HTMLElement | null
+      // 点在编辑控件本体(input/select/textarea)或提示文字上 → 视为内部, 不退出;
+      // 其余 (含 host 内空白、画布空白、工具栏等) → 提交并退出编辑。
+      if (t && host?.contains(t) && t.closest('input,select,textarea')) return
       ed.deactivateControl()
     }
     window.addEventListener('pointerdown', onPointerDown, true)
