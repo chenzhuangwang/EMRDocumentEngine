@@ -253,6 +253,10 @@ export class HitTestIndex {
     for (const ci of cellItems) {
       const ciText = ci.text || ''
       const ciHeight = ci.ascent + ci.descent
+      // 非文本内联节点(控件/图片等)按 1 字符计偏移 (与 NodePool.resolveCharOffset/
+      // computeOffsetInItems 一致), 否则控件之后光标会漂。
+      const isAtomic = ci.nodeType !== 'text'
+      const ciUnit = isAtomic ? 1 : (ciText.length || 0)
 
       // 先解析当前 item 所属段落 (v21.0 Phase 1: 修复首个 item 命中时 paraId 未赋值 → 返回 null)
       const itemPara = HitTestIndex.findParentParagraph(ci.nodeId, pool)
@@ -275,6 +279,12 @@ export class HitTestIndex {
         const bodyW = ci.markerWidth != null ? ci.width - ci.markerWidth : ci.width
         if (localX <= ci.x + bodyW) {
           const relativeX = localX - ci.x
+          if (isAtomic) {
+            // 原子节点: 左半=前、右半=后 (与 computeOffsetInItems 一致)
+            const offset = accumulated + (relativeX <= bodyW / 2 ? 0 : 1)
+            if (paraId) return { paraPath: [docId, paraId], offset: Math.max(0, offset) }
+            return null
+          }
           const cumWidths = cumulativeCharWidths(ciText, {
             font: ci.font || 'SimSun', size: ci.size || 16,
             bold: ci.bold, italic: ci.italic,
@@ -287,10 +297,10 @@ export class HitTestIndex {
         }
         // 点击越过当前 item 右边界 → 继续检查下一 item (拆分节点后同一行可含多 item),
         // 同时记住该段落当前行的末尾偏移, 供循环结束后回退到行尾。
-        hitParaEnd = accumulated + ciText.length
+        hitParaEnd = accumulated + ciUnit
       }
 
-      accumulated += ciText.length
+      accumulated += ciUnit
     }
 
     // 点击命中了某段落行但未落在任何 item 内 (越过行尾) → 回退到该段落行尾

@@ -808,18 +808,51 @@ export class LayoutEngine {
 
       if (para?.children) {
         for (const textId of para.children) {
-          const tn = pool.nodes.get(textId) as {
+          const child = pool.nodes.get(textId) as {
             type?: string; text?: string; font?: string; size?: number
             bold?: boolean; italic?: boolean; color?: string
             underline?: boolean; strikeout?: boolean
             superscript?: boolean; subscript?: boolean
+            value?: unknown; element?: { format?: { enums?: { multiple?: boolean; data?: ElementEnumOption[] }; minRows?: number } }
           } | undefined
-          if (tn?.type === 'text') {
+          if (!child) continue
+          if (child.type === 'text') {
             elements.push({
-              id: textId, type: 'text', value: tn.text || '',
-              font: tn.font, size: tn.size, bold: tn.bold, italic: tn.italic,
-              color: tn.color, underline: tn.underline, strikeout: tn.strikeout,
-              superscript: tn.superscript, subscript: tn.subscript,
+              id: textId, type: 'text', value: child.text || '',
+              font: child.font, size: child.size, bold: child.bold, italic: child.italic,
+              color: child.color, underline: child.underline, strikeout: child.strikeout,
+              superscript: child.superscript, subscript: child.subscript,
+            })
+          } else if (child.type === 'smarttext') {
+            // 表格 cell 内控件 — 预留宽与正文/页眉一致 (options 候选组 / 方括号+affordance /
+            // label·prefix·suffix lead/trail), 使 cell 内控件可见、占宽、不重叠。
+            const display = smartTextDisplayValue(child as unknown as { text: string; value?: ControlValue })
+            const font = child.font || 'SimSun'
+            const size = child.size || DEFAULT_SIZE
+            const measure = (t: string) => this.measurer.measureWidth(t, { font, size, bold: child.bold, italic: child.italic })
+            const info = this.controlInfoOf?.(textId)
+            const recipe = controlVisualRecipe(info?.controlType)
+            let width: number | undefined
+            if (recipe.kind === 'options') {
+              const opts = info?.options
+              width = opts && opts.length > 0
+                ? controlOptionsWidth(layoutControlOptions(opts, info!.controlType as 'checkbox' | 'radio', measure))
+                : controlOptionsPlaceholderWidth(measure)
+            } else if (recipe.frame === 'brackets') {
+              const isEmpty = isControlValueEmpty(child.value)
+              width = measure(isEmpty ? display : `[${display}]`)
+              if (recipe.affordance) width += AFFORDANCE_GAP + AFFORDANCE_WIDTH
+            }
+            if (typeof width === 'number') {
+              const { lead, trail } = controlInlineLeadTrail(info, measure)
+              width = width + lead + trail
+            }
+            elements.push({
+              id: textId, type: 'smarttext', value: display,
+              font, size, bold: child.bold, italic: child.italic,
+              color: child.color, underline: child.underline, strikeout: child.strikeout,
+              superscript: child.superscript, subscript: child.subscript,
+              control: typeof width === 'number' ? { width } : undefined,
             })
           }
         }
@@ -848,6 +881,28 @@ export class LayoutEngine {
         // 逐元素计算行内 x 偏移 (多样式 run 正确拼接)
         let elX = 0
         for (const el of line.elements) {
+          if (el.type === 'smarttext') {
+            const elControl = (el as LineElement).control
+            const layoutW = (typeof elControl?.width === 'number' && elControl.width > 0)
+              ? elControl.width
+              : this.measurer.measureWidth(el.value || '', {
+                  font: el.font || 'SimSun', size: el.size || DEFAULT_SIZE,
+                  bold: el.bold, italic: el.italic,
+                })
+            items.push({
+              nodeId: el.id, nodeType: 'smarttext', type: 'smarttext',
+              x: elX, y: lineY,
+              width: layoutW, height: line.height,
+              ascent: line.maxAscent, descent: line.maxDescent,
+              font: el.font || 'SimSun', size: el.size || DEFAULT_SIZE,
+              bold: el.bold, italic: el.italic,
+              color: el.color, underline: el.underline, strikeout: el.strikeout,
+              superscript: el.superscript, subscript: el.subscript,
+              text: el.value || '',
+            })
+            elX += layoutW + CONTROL_BOX_PADDING * 2
+            continue
+          }
           if (el.type !== 'text') continue
           const elWidth = this.measurer.measureWidth(el.value || '', {
             font: el.font || 'SimSun', size: el.size || DEFAULT_SIZE,
