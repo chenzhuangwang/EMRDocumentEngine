@@ -787,32 +787,32 @@ export class MouseHandler {
 
     // 使用 Draw 的页眉页脚命中检测
     const result = this.editor.getDraw().findHeaderFooterItemAt(docX, localY, pageIndex, section)
-    if (!result) return null
 
-    // 查找该 nodeId 所属的段落
-    const para = this.findParagraphContaining(result.nodeId)
+    // 计算段落内的字符偏移 — 与正文同源 (computeOffsetInItems): 非文本内联节点
+    // (smarttext 控件/图片等) 按「原子=1 字符」, 控件右半点击 = 控件之后。
+    // 旧实现按占位文本长度累加且用 box 宽/文本长估算, 与光标语义不一致 →
+    // 页眉/页脚里控件之后点不到光标。
+    const bandTop = section === 'footer' ? (page.height - (page.footerHeight ?? 42)) : 0
+    const regionLocalY = localY - bandTop
+
+    let para = result ? this.findParagraphContaining(result.nodeId) : null
+    if (!para) {
+      // 落在内容右侧空白 (未命中 item): 按 y 找该区域的行, 取该行 item 所属段落,
+      // 使控件/文字之后也能落光标。
+      const regionItems = section === 'header' ? (page.headerItems || []) : (page.footerItems || [])
+      const lineHit = regionItems.find(it =>
+        regionLocalY >= it.y && regionLocalY <= it.y + it.ascent + it.descent)
+      const fallback = lineHit ?? regionItems[regionItems.length - 1]
+      if (!fallback) return null
+      para = this.findParagraphContaining(fallback.nodeId)
+    }
     if (!para) return null
 
-    // 计算段落内的字符偏移
-    const items = section === 'header' ? (page.headerItems || []) : (page.footerItems || [])
-    let accumulated = 0
-    for (const childId of para.children) {
-      const item = items.find(it => it.nodeId === childId)
-      const text = (this.editor.getPool().nodes.get(childId) as unknown as { text?: string })?.text || ''
-      if (item) {
-        const itemTextLen = item.text?.length || 1
-        const charWidth = item.width / itemTextLen
-        if (docX <= item.x + item.width) {
-          const charIdx = Math.round((docX - item.x) / charWidth)
-          return {
-            paraPath: [this.editor.getDocument().id, para.id],
-            offset: Math.max(0, accumulated + Math.max(0, Math.min(charIdx, itemTextLen))),
-          }
-        }
-      }
-      accumulated += text.length
-    }
-    return { paraPath: [this.editor.getDocument().id, para.id], offset: Math.max(0, accumulated) }
+    const childSet = new Set(para.children)
+    const paraItems = (section === 'header' ? (page.headerItems || []) : (page.footerItems || []))
+      .filter(it => childSet.has(it.nodeId))
+    const offset = computeOffsetInItems(paraItems, docX, regionLocalY, this.measurer)
+    return { paraPath: [this.editor.getDocument().id, para.id], offset: Math.max(0, offset) }
   }
 
   destroy(): void {
