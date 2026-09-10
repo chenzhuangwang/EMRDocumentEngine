@@ -359,3 +359,41 @@ describe('控件填表导航 (区域内顺序 + 相邻环绕)', () => {
     expect(editor.getAdjacentControlId(idOf('ro'), 1)).toBeNull()
   })
 })
+
+describe('Tab 跳转后上一控件值提交并反映到布局', () => {
+  it('activate A → 填值 → activate B: A 值与布局文本均为该值', () => {
+    const doc = createDocument('tab')
+    const defs = new TemplateDefinitionStore()
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const mk = (name: string, internal: string, de: string) => {
+      const el: ElementMeta = { code: { internal, dataElement: de }, name, format: { dataType: 'S1' } }
+      const st = createSmartTextNode(`[${name}]`, el)
+      all.set(st.id, st as unknown as BaseNode)
+      defs.set(st.id, { controlType: 'input', editable: true })
+      return st.id
+    }
+    const a = mk('甲', 'C1', 'D1'); const b = mk('乙', 'C2', 'D2')
+    const para = createParagraph([a, b])
+    all.set(para.id, para as unknown as BaseNode)
+    doc.body.children = [para.id]
+    const nodes: Record<string, BaseNode> = {}
+    for (const [id, n] of all) nodes[id] = n
+    ;(doc as unknown as DocumentTree & { nodes?: Record<string, BaseNode> }).nodes = nodes
+    const host = createDomEditorHost()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    host.surface.mount(container); host.input.mount(container)
+    const editor = new Editor(host, doc)
+    editor.setDocument(doc, undefined, { templateDefinitions: defs })
+
+    editor.activateControl(a)
+    expect(editor.setControlValue(a, '张三').ok).toBe(true)
+    editor.activateControl(b) // 跳到下一个
+
+    expect(editor.getControlValue(a)).toBe('张三')
+    const item = editor.getDraw().getPages().flatMap(p => p.items).find(it => it.nodeId === a)
+    expect(item?.text).toBe('张三')
+    editor.destroy(); container.remove()
+  })
+})

@@ -172,7 +172,7 @@ function useFieldText(snap: ControlSnapshot, editor: Editor) {
   // 幂等提交; 返回是否提交成功 (ok 或无需提交)。非法 → 记 error + 回退, 且置 settled 防静默重试。
   const submit = useCallback((): boolean => {
     if (settledRef.current) return true
-    if (!changedRef.current) { settledRef.current = true; return true }
+    if (!changedRef.current) return true // 未改动: 不置 settled (避免 StrictMode/卸载清理吞掉后续提交)
     settledRef.current = true
     const cur = draftRef.current
     const canon = valueToText(snap.value)
@@ -266,6 +266,7 @@ function TextField({ snap, target, editor }: { snap: ControlSnapshot; target: Co
         placeholder={target.placeholderText}
         style={{ ...baseInputStyle(target), textAlign: 'left', width: w, height: target.textArea.height, position: 'absolute', left: 0, top: topOff }}
         onChange={(e) => change(e.target.value)}
+        onBlur={() => { submit() }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') { e.preventDefault(); if (submit()) goAdjacent(editor, snap.nodeId, 1) }
           else if (e.key === 'Tab') { e.preventDefault(); submit(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
@@ -278,14 +279,16 @@ function TextField({ snap, target, editor }: { snap: ControlSnapshot; target: Co
 }
 
 function NumberField({ snap, target, editor }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor }) {
-  const { draft, change } = useFieldText(snap, editor)
+  const { draft, change, done } = useFieldText(snap, editor)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useAutoFocus<HTMLInputElement>()
   const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
   const w = Math.max(target.textArea.width, textWidth(draft || ' ', font) + 2)
   const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
-  // 数值提交: 空 → 清空; 非数字/精度超限 → 就地提示, 不提交
+  // 数值提交: 空 → 清空; 非数字/精度超限 → 就地提示, 不提交。
+  // done() 阻断 useFieldText 的字符串卸载提交 (数值语义自管)。
   const commitNumber = (): boolean => {
+    done()
     const t = draft.trim()
     if (t === '') { editor.setControlValue(snap.nodeId, undefined); return true }
     const n = Number(t)
@@ -309,6 +312,7 @@ function NumberField({ snap, target, editor }: { snap: ControlSnapshot; target: 
           position: 'absolute', left: Math.min(0, target.textArea.width - w), top: topOff,
         }}
         onChange={(e) => changeClear(e.target.value)}
+        onBlur={() => { commitNumber() }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') { e.preventDefault(); if (commitNumber()) goAdjacent(editor, snap.nodeId, 1) }
           else if (e.key === 'Tab') { e.preventDefault(); commitNumber(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
