@@ -2149,19 +2149,40 @@ export class Editor {
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return null
     const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+    const def = this.effectiveParagraphDefault(paraId)
     const resolved = this.pool.resolveCharOffset(paraId, cursor.offset)
     if (resolved) {
-      return this.effectiveTextStyleForNode(resolved.textNodeId)
+      const s = this.effectiveTextStyleForNode(resolved.textNodeId)
+      return s ? { ...s, font: s.font || def.font, size: s.size || def.size } : null
     }
     // 光标在段尾 → 取最后一个 text node 的样式 (继承上一字符格式)
     const paraChildren = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
     if (paraChildren?.children) {
       for (let i = paraChildren.children.length - 1; i >= 0; i--) {
         const n = this.pool.nodes.get(paraChildren.children[i]) as { type?: string } | undefined
-        if (n?.type === 'text') return this.effectiveTextStyleForNode(paraChildren.children[i])
+        if (n?.type === 'text') {
+          const s = this.effectiveTextStyleForNode(paraChildren.children[i])
+          return s ? { ...s, font: s.font || def.font, size: s.size || def.size } : null
+        }
       }
     }
     return null
+  }
+
+  /**
+   * 段落实际默认字体/字号 — 取首个文本 run 的 font/size, 缺省 16。
+   * 供工具栏样式投影在节点未显式设字号时读出「实际渲染字号」(而非硬编码兜底),
+   * 与 LayoutEngine.paraRunDefault 同源语义。
+   */
+  private effectiveParagraphDefault(paraId: string): { font: string; size: number } {
+    const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
+    if (para?.children) {
+      for (const cid of para.children) {
+        const n = this.pool.nodes.get(cid) as { type?: string; font?: string; size?: number } | undefined
+        if (n?.type === 'text') return { font: n.font || 'SimSun', size: n.size || 16 }
+      }
+    }
+    return { font: 'SimSun', size: 16 }
   }
 
   /** 单段落格式投影 (alignment 缺省视为 left) */
