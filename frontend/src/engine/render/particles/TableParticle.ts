@@ -11,7 +11,7 @@ import { particleRegistry } from './ParticleRegistry'
 
 const BORDER_COLOR = '#9CA3AF'
 const HEADER_BG = '#F3F4F6'
-const CELL_PADDING = 6
+const CELL_PADDING = 10
 const MIN_CELL_WIDTH = 40
 const MIN_ROW_HEIGHT = 24
 

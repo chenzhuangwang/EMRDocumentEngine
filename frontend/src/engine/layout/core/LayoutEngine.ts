@@ -657,8 +657,8 @@ export class LayoutEngine {
     contentWidth: number,
     lineBreaker: LineBreaker,
   ): { rows: SLIFRow[]; columnWidths: number[] } {
-    const CELL_PAD = 6
-    const MIN_ROW_HEIGHT = 24
+    const CELL_PAD = 10
+    const MIN_ROW_HEIGHT = 32
 
     const colDefs = table.columns
     const numCols = colDefs?.length || 2

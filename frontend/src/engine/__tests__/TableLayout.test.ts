@@ -71,13 +71,13 @@ describe('TableLayout rowspan', () => {
     // row0: [c00(rowspan=2), c01]
     expect(rows[0].cells.length).toBe(2)
     expect(rows[0].cells[0].rowspan).toBe(2)
-    expect(rows[0].cells[0].height).toBe(57) // 28 + 1(gap) + 28 (cell 默认字号 16)
+    expect(rows[0].cells[0].height).toBe(73) // 36 + 1(gap) + 36 (单行内容 16 + 上下 padding 20)
     expect(rows[0].cells[0].x).toBe(0)
 
     // row1: [c11] 且 c11 在列 1 (列 0 被 rowspan 占用)
     expect(rows[1].cells.length).toBe(1)
     expect(rows[1].cells[0].x).toBe(rows[0].cells[1].x) // 与 c01 同列 x
-    expect(rows[1].cells[0].height).toBe(28)
+    expect(rows[1].cells[0].height).toBe(36)
   })
 })
 
@@ -117,7 +117,7 @@ function buildSingleCellTable(paraTexts: (string | null)[]) {
 
 describe('TableLayout cell 内容换行 (Phase 3)', () => {
   it('长文本在 cell 内换行为多行, 行高增长', () => {
-    // 10 个 CJK 字 (cell 默认 16, 每字 16px) → 内容宽 100-12=88px, 每行 5 字 → 2 行
+    // 10 个 CJK 字 (cell 默认 16, 每字 16px) → 内容宽 100-20=80px, 每行 5 字 → 2 行
     const { tableItem } = buildSingleCellTable(['一二三四五六七八九十'])
     const cell = tableItem.rows![0].cells[0]
 
@@ -126,9 +126,9 @@ describe('TableLayout cell 内容换行 (Phase 3)', () => {
     expect(cell.items[1].text).toBe('六七八九十')
     // 两行堆叠: 第二行 y 大于第一行
     expect(cell.items[1].y).toBeGreaterThan(cell.items[0].y)
-    // 行高增长: 2*16 内容 + 12 padding = 44
-    expect(tableItem.rows![0].height).toBe(44)
-    expect(cell.height).toBe(44)
+    // 行高增长: 2*16 内容 + 20 padding = 52
+    expect(tableItem.rows![0].height).toBe(52)
+    expect(cell.height).toBe(52)
   })
 
   it('多段落垂直堆叠, 各行 y 递增', () => {
@@ -141,8 +141,8 @@ describe('TableLayout cell 内容换行 (Phase 3)', () => {
     expect(cell.items[1].text).toBe('乙')
     // 第二段落 y 在下方 (段落边界为硬换行)
     expect(cell.items[1].y).toBeGreaterThan(cell.items[0].y)
-    // 内容 32 → 行高 44
-    expect(tableItem.rows![0].height).toBe(44)
+    // 内容 32 → 行高 52
+    expect(tableItem.rows![0].height).toBe(52)
   })
 
   it('空段落占一行, 不产生可见文本但保留占位', () => {
@@ -155,8 +155,8 @@ describe('TableLayout cell 内容换行 (Phase 3)', () => {
     expect(texts[0]).toBe('甲')
     expect(texts[1]).toBe('') // 空段落占位
     expect(texts[2]).toBe('乙')
-    // 三段 3*16 内容 + 12 padding = 60
-    expect(tableItem.rows![0].height).toBe(60)
+    // 三段 3*16 内容 + 20 padding = 68
+    expect(tableItem.rows![0].height).toBe(68)
     // y 严格递增
     expect(cell.items[2].y).toBeGreaterThan(cell.items[1].y)
     expect(cell.items[1].y).toBeGreaterThan(cell.items[0].y)
