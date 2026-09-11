@@ -823,14 +823,19 @@ export class MouseHandler {
     if (this.clickCountTimer) clearTimeout(this.clickCountTimer)
   }
 
-  /** 获取段落全部文本 (拼接所有 TextNode) */
+  /**
+   * 段落「偏移对齐文本」: 文本子节点拼接其 text, 非文本内联节点 (控件/图片/域)
+   * 用 1 个占位符字符 (U+FFFC) 代入 —— 使长度/词边界与段落字符偏移一致
+   * (非文本计 1), 双击选词 / 三击选段不再漏掉末尾的控件。
+   */
   private getParagraphFullText(para: { children?: readonly string[] }): string {
     const pool = this.editor.getPool()
     let text = ''
     if (para.children) {
       for (const cid of para.children) {
         const n = pool.nodes.get(cid) as { type?: string; text?: string } | undefined
-        if (n?.type === 'text') text += n.text || ''
+        if (!n) continue
+        text += n.type === 'text' ? (n.text || '') : '￼'
       }
     }
     return text
