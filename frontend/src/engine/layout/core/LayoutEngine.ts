@@ -814,7 +814,7 @@ export class LayoutEngine {
   ): { items: SLIFItem[]; contentHeight: number } {
     const items: SLIFItem[] = []
     const maxTextWidth = Math.max(cellWidth - CELL_PAD * 2, 1)
-    const DEFAULT_SIZE = 12
+    const DEFAULT_SIZE = BASE_FONT_SIZE
     let lineY = 0
 
     for (const paraId of paraIds) {

@@ -81,7 +81,7 @@ export function createTableParticle(): IParticle {
               }
               if (!ci2.text) continue
               const font = ci2.font || 'SimSun'
-              const size = ci2.size || 12
+              const size = ci2.size || 16
               ctx.font = `${ci2.bold ? 'bold ' : ''}${size}px "${font}"`
               ctx.fillStyle = ci2.color || '#1F2937'
               ctx.textBaseline = 'alphabetic'
