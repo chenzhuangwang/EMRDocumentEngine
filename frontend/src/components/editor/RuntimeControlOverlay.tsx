@@ -466,7 +466,7 @@ function DateTimeField({ snap, target, editor, onReject }: { snap: ControlSnapsh
   const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
   // 规范值 'YYYY-MM-DD HH:mm:ss' ↔ HTML datetime-local 'YYYY-MM-DDTHH:mm:ss'
   const htmlValue = draft ? draft.replace(' ', 'T') : ''
-  const w = Math.max(target.textArea.width, textWidth('2026-09-11 08:30:00', font) + 28)
+  const w = Math.max(target.textArea.width, textWidth('2026-09-11 08:30:00', font) + 52)
   const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
   return (
     <>
