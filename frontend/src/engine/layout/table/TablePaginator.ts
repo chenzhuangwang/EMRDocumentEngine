@@ -70,6 +70,9 @@ export function createTablePaginator(
   let cursorRow = 0
   let cursorYInRow = 0
 
+  // 块边界尽量不拆在「剩余不足 minRows 行」处 (S1 规则 9); 0 = 不约束
+  const minRowsBeforeBreak = opts.minRowsBeforeBreak ?? 0
+
   const headerH = (): number => headerRows.reduce((s, r) => s + tableRowUnitHeight(r), 0)
 
   const hasRowspanCell = (row: SLIFRow): boolean =>
@@ -198,12 +201,24 @@ export function createTablePaginator(
     if (availForBody >= group.height) {
       let bodyH = 0
       let end = cursorRow
+      const groupEnds: number[] = []
       while (end < bodyRows.length) {
         const g = groupHeight(end)
         if (bodyH + g.height > availForBody) break
         bodyH += g.height
         end += g.count
+        groupEnds.push(end)
       }
+
+      // minRowsBeforeBreak: 避免续页只剩 < minRows 的孤行 (S1 规则 9)
+      if (minRowsBeforeBreak > 0 && end < bodyRows.length && bodyRows.length - end < minRowsBeforeBreak) {
+        let pulled = -1
+        for (const b of groupEnds) {
+          if (b < end && bodyRows.length - b >= minRowsBeforeBreak) pulled = b
+        }
+        if (pulled >= cursorRow) end = pulled
+      }
+
       const startIdx = cursorRow
       cursorRow = end
       return {

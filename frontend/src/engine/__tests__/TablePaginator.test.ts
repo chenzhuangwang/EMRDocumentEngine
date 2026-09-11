@@ -199,3 +199,38 @@ describe('TablePaginator repeatHeader', () => {
     expect(r2.fragment.logicalEnd).toBe(5)
   })
 })
+
+describe('TablePaginator minRowsBeforeBreak', () => {
+  it('续页只剩 < minRows 时回溯, 避免孤行', () => {
+    // 5 行, 每页可放 4 行 (unit 25), minRows=2 → 回溯成 3+2
+    const rows = Array.from({ length: 5 }, (_, i) => makeRow(`r${i}`, 24, 24))
+    const p = createTablePaginator(rows, [100], {
+      repeatHeader: false, headerCount: 0, pageContentHeight: 100, minRowsBeforeBreak: 2,
+    })
+
+    const r1 = p.paginate(100)
+    expect(r1.fragment.bodyRows.length).toBe(3)
+    expect(r1.consumedRows).toBe(3)
+    expect(r1.done).toBe(false)
+
+    const r2 = p.paginate(100)
+    expect(r2.fragment.bodyRows.length).toBe(2)
+    expect(r2.consumedRows).toBe(2)
+    expect(r2.done).toBe(true)
+  })
+
+  it('续页 ≥ minRows 时不回溯 (无影响)', () => {
+    const rows = Array.from({ length: 6 }, (_, i) => makeRow(`r${i}`, 24, 24))
+    const p = createTablePaginator(rows, [100], {
+      repeatHeader: false, headerCount: 0, pageContentHeight: 100, minRowsBeforeBreak: 2,
+    })
+
+    const r1 = p.paginate(100)
+    expect(r1.fragment.bodyRows.length).toBe(4) // 4 行本可放满, 续页 2 行 ≥ minRows
+    expect(r1.done).toBe(false)
+
+    const r2 = p.paginate(100)
+    expect(r2.fragment.bodyRows.length).toBe(2)
+    expect(r2.done).toBe(true)
+  })
+})
