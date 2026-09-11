@@ -25,13 +25,7 @@ export class NodePool {
   }
 
   // ---- rootIds: buildNodePool 注入, 供 QCEngine 等使用 ----
-  rootIds: {
-    body: string
-    header?: string[]
-    footer?: string[]
-    footnotes?: string[]
-    endnotes?: string[]
-  } = { body: '' }
+  rootIds: NodePoolRootIds = { body: '' }
 
   // ---- 节点注册 (唯一合法入口, 铁律 3 / 契约 §6.1) ----
 
@@ -276,15 +270,22 @@ export function traversePool(
  *
  * 输入: DocumentLoader 已将 JSON 序列化数据展开为扁平 Map + 根 ID 集合
  */
+export interface NodePoolRootIds {
+  body: string
+  header?: string[]
+  footer?: string[]
+  /** 首页/偶数页页眉页脚变体 (契约 §7.9) */
+  firstPageHeader?: string[]
+  firstPageFooter?: string[]
+  evenPageHeader?: string[]
+  evenPageFooter?: string[]
+  footnotes?: string[]
+  endnotes?: string[]
+}
+
 export function buildNodePool(
   flatNodes: Map<string, BaseNode>,
-  rootIds: {
-    body: string
-    header?: string[]
-    footer?: string[]
-    footnotes?: string[]
-    endnotes?: string[]
-  },
+  rootIds: NodePoolRootIds,
 ): NodePool {
   const pool = new NodePool()
 
@@ -313,6 +314,10 @@ export function buildNodePool(
     rootIds.body,
     ...(rootIds.header ?? []),
     ...(rootIds.footer ?? []),
+    ...(rootIds.firstPageHeader ?? []),
+    ...(rootIds.firstPageFooter ?? []),
+    ...(rootIds.evenPageHeader ?? []),
+    ...(rootIds.evenPageFooter ?? []),
     ...(rootIds.footnotes ?? []),
     ...(rootIds.endnotes ?? []),
   ])

@@ -31,8 +31,9 @@ export class SetHeaderFooterConfigCommand implements ICommand {
     const current = doc.headerFooterConfig ?? { differentFirstPage: false, differentOddEven: false }
     this.oldConfig = { ...current }
     doc.headerFooterConfig = { ...current, ...this.patch }
-    // 页眉页脚选项当前不影响布局/渲染, 故 invalidation = 'none' (仅标记脏 + 通知)
-    return { invalidation: 'none' }
+    // 开关决定逐页生效的页眉/页脚变体 (契约 §7.9), 会改变带内容与带高
+    // (→ 正文可用区), 故必须全量重排; 且需重绘使当前页立刻反映。
+    return { invalidation: 'full' }
   }
 
   invert(): ICommand | null {

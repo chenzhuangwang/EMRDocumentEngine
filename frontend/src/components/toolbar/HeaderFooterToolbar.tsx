@@ -5,17 +5,18 @@
 // - 首页不同 / 奇偶页不同 切换
 // - 插入页码 / 日期
 // - 关闭页眉页脚编辑
+//
+// 契约 §7.9: 两个开关决定逐页生效的页眉/页脚变体 (首页 / 偶数页),
+// 经 onConfigChange → EditorPage 'headerFooterConfig' → SetHeaderFooterConfigCommand。
 // ============================================================
 
 import {
   Hash, Calendar, X, CheckSquare, Square,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-export interface HeaderFooterConfig {
-  differentFirstPage: boolean
-  differentOddEven: boolean
-}
+// canonical 类型唯一来源 = 文档域 (契约 §7.3); 本组件不得再定义一份
+import type { HeaderFooterConfig } from '@/engine'
+import type { HeaderFooterVariant } from '@/engine'
 
 interface HeaderFooterToolbarProps {
   /** 当前编辑的是 header 还是 footer */
@@ -30,6 +31,13 @@ interface HeaderFooterToolbarProps {
   onInsertDate: () => void
   /** 关闭编辑模式 */
   onClose: () => void
+  /** 当前编辑目标页页码 (1-based) + 生效变体 — 仅用于区域标签 */
+  pageNumber?: number
+  variant?: HeaderFooterVariant
+}
+
+const VARIANT_LABEL: Record<HeaderFooterVariant, string> = {
+  default: '', first: '首页', even: '偶数页',
 }
 
 export function HeaderFooterToolbar({
@@ -39,8 +47,12 @@ export function HeaderFooterToolbar({
   onInsertPageNumber,
   onInsertDate,
   onClose,
+  pageNumber,
+  variant,
 }: HeaderFooterToolbarProps) {
   const label = section === 'header' ? '页眉' : '页脚'
+  const variantLabel = variant ? VARIANT_LABEL[variant] : ''
+  const scope = `${variantLabel}${label}${pageNumber ? ` · 第 ${pageNumber} 页` : ''}`
 
   return (
     <div className="flex items-center gap-1 px-2 py-1 bg-gray-50 border-b border-gray-200">
@@ -101,7 +113,7 @@ export function HeaderFooterToolbar({
       <div className="w-px h-5 bg-gray-200 mx-1" />
 
       {/* 区域标签 */}
-      <span className="text-xs text-gray-400 px-1">{label}</span>
+      <span className="text-xs text-gray-400 px-1">{scope}</span>
 
       <div className="flex-1" />
 

@@ -78,3 +78,105 @@ describe('QCEngine', () => {
     expect(result.grade).toBe('C')
   })
 })
+
+// ============================================================
+// qc_003 范围拓宽 — 正文 + 页眉/页脚各变体 (契约 §7.9)
+//
+// 旧实现只扫 doc.body.children: 页眉/页脚里的连续空段完全不被质检;
+// 且非段落块 (table/separator/image) 因没有 text 被误判为空段, 在
+// 「空段-表格-空段」时产生假阳性。
+// ============================================================
+
+describe('QCEngine qc_003 — 覆盖页眉/页脚 (契约 §7.9)', () => {
+  /** 构造: body + footer 各若干段 (文本 '' = 空段) */
+  function makeDocWithFooter(bodyTexts: string[], footerTexts: string[]): { doc: DocumentTree; pool: NodePool } {
+    const doc = createDocument('测试')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+
+    const mk = (t: string): string => {
+      const tn = createTextNode(t)
+      const p = createParagraph([tn.id])
+      all.set(tn.id, tn as unknown as BaseNode)
+      all.set(p.id, p as unknown as BaseNode)
+      return p.id
+    }
+
+    doc.body.children = bodyTexts.map(mk)
+    doc.header = []
+    doc.footer = footerTexts.map(mk)
+    return { doc, pool: buildNodePool(all, { body: doc.id, footer: doc.footer }) }
+  }
+
+  const emptyPara = (texts: string[], n: number) => [...texts, ...Array.from({ length: n }, () => '')]
+
+  it('页脚内连续两个空段 → 触发 qc_003', () => {
+    const { doc, pool } = makeDocWithFooter(['正文'], ['', ''])
+    const result = new QCEngine().check(doc, pool)
+    expect(result.issues.some(i => i.ruleId === 'qc_003')).toBe(true)
+  })
+
+  it('页脚内单个空段 → 不触发 (无警告)', () => {
+    const { doc, pool } = makeDocWithFooter(['正文'], [''])
+    const result = new QCEngine().check(doc, pool)
+    expect(result.issues.some(i => i.ruleId === 'qc_003')).toBe(false)
+  })
+
+  it('lastEmpty 按容器重置: 页脚尾部空段 + 正文首部空段 不算连续', () => {
+    // 旧实现若简单拼接两个容器, 会把这两段误判为「连续空段」
+    const { doc, pool } = makeDocWithFooter(emptyPara(['正文'], 1), [''])
+    const result = new QCEngine().check(doc, pool)
+    expect(result.issues.some(i => i.ruleId === 'qc_003')).toBe(false)
+  })
+
+  it('变体页脚 (首页/偶数页) 同样受检', () => {
+    const { doc, pool } = makeDocWithFooter(['正文'], [])
+    const tn = createTextNode('')
+    const p = createParagraph([tn.id])
+    const tn2 = createTextNode('')
+    const p2 = createParagraph([tn2.id])
+    pool.addNode(tn as unknown as BaseNode)
+    pool.addNode(p as unknown as BaseNode)
+    pool.addNode(tn2 as unknown as BaseNode)
+    pool.addNode(p2 as unknown as BaseNode)
+    doc.firstPageFooter = [p.id, p2.id]
+
+    const result = new QCEngine().check(doc, pool)
+    expect(result.issues.some(i => i.ruleId === 'qc_003')).toBe(true)
+  })
+
+  it('非段落块不再被误判为空段: 空段-表格-空段 不产生假阳性', () => {
+    const doc = createDocument('测试')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const mk = (t: string): string => {
+      const tn = createTextNode(t)
+      const p = createParagraph([tn.id])
+      all.set(tn.id, tn as unknown as BaseNode)
+      all.set(p.id, p as unknown as BaseNode)
+      return p.id
+    }
+    const empty1 = mk('')
+    const empty2 = mk('')
+
+    // 表格块 (无 text → 旧实现误判为空段)
+    const cellTn = createTextNode('单元格')
+    const cellPara = createParagraph([cellTn.id])
+    const table = { type: 'table', id: 'tbl-dbg', columns: [], children: [] } as unknown as BaseNode
+    all.set(cellTn.id, cellTn as unknown as BaseNode)
+    all.set(cellPara.id, cellPara as unknown as BaseNode)
+    all.set(table.id, table)
+
+    doc.body.children = [empty1, table.id, empty2]
+    const pool = buildNodePool(all, { body: doc.id })
+
+    const result = new QCEngine().check(doc, pool)
+    expect(result.issues.some(i => i.ruleId === 'qc_003')).toBe(false)
+  })
+
+  it('正文连续空段仍照常触发 (无回归)', () => {
+    const { doc, pool } = makeDocWithFooter(['段落1', '', ''], [])
+    const result = new QCEngine().check(doc, pool)
+    expect(result.issues.some(i => i.ruleId === 'qc_003')).toBe(true)
+  })
+})

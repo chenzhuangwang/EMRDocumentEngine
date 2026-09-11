@@ -32,8 +32,12 @@ export interface EditorStoreState {
   saveStatus: SaveStatus
   /** 格式刷是否激活 (canonical owner, §7.2) */
   formatPainterActive: boolean
-  /** 页眉页脚编辑模式 (canonical owner, §7.2) */
-  headerFooterEdit: { active: boolean; section: 'header' | 'footer' }
+  /**
+   * 页眉页脚编辑模式 (canonical owner, §7.2)。
+   * `pageIndex` = 编辑目标页「钉子」: 页眉页脚段落每页都有副本, 若不定页,
+   * 光标/控件 overlay 会恒解析到第 0 页。瞬态, 不序列化 (契约 §7.2/§7.9)。
+   */
+  headerFooterEdit: { active: boolean; section: 'header' | 'footer'; pageIndex: number }
   /** 光标处段落格式投影 (canonical owner = DocumentModel, 此处为 UI 读取投影) */
   paragraphStyle: ParagraphStyleProjection | null
   /** 光标处文本样式投影 (canonical owner = DocumentModel, 此处为 UI 读取投影) */
@@ -66,7 +70,7 @@ export class EditorStore {
       isDirty: false,
       saveStatus: 'saved',
       formatPainterActive: false,
-      headerFooterEdit: { active: false, section: 'header' },
+      headerFooterEdit: { active: false, section: 'header', pageIndex: 0 },
       paragraphStyle: null,
       textStyle: null,
       headerFooterConfig: { ...DEFAULT_HEADER_FOOTER_CONFIG },
@@ -165,9 +169,10 @@ export class EditorStore {
   }
 
   /** 页眉页脚编辑模式 — 唯一受控写入入口 */
-  setHeaderFooterEdit(active: boolean, section?: 'header' | 'footer'): void {
+  setHeaderFooterEdit(active: boolean, section?: 'header' | 'footer', pageIndex?: number): void {
     this._state.headerFooterEdit.active = active
     if (section) this._state.headerFooterEdit.section = section
+    if (pageIndex !== undefined) this._state.headerFooterEdit.pageIndex = Math.max(0, Math.floor(pageIndex))
     this.notify()
   }
 

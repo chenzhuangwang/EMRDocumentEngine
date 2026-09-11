@@ -13,7 +13,9 @@
 // ================================================================
 
 import type { DocumentTree, ControlValue } from './document/core/DocumentModel'
+import type { NodePool } from './document/core/NodePool'
 import { smartTextFindReplaceText } from './document/factory/ElementFormatter'
+import { documentSpine } from './document/selection/SelectionCollector'
 
 // ---- 类型 ----
 
@@ -50,7 +52,7 @@ export class FindReplaceEngine {
   findAll(
     query: string,
     doc: DocumentTree,
-    pool: { nodes: ReadonlyMap<string, { type: string; text?: string; children?: readonly string[] }> },
+    pool: NodePool,
     options: FindOptions = {},
   ): MatchResult[] {
     if (!query) return []
@@ -60,7 +62,8 @@ export class FindReplaceEngine {
     const wholeWord = options.wholeWord ?? false
     const useRegex = options.useRegex ?? false
 
-    const targetIds = options.paragraphIds ?? doc.body.children
+    // 默认范围 = 全文档阅读序 spine (body 展平 + 页眉/页脚各变体), 契约 §7.9
+    const targetIds = options.paragraphIds ?? documentSpine(doc, pool)
 
     for (const paraId of targetIds) {
       const paraText = this.getParagraphText(paraId, pool)
@@ -95,7 +98,7 @@ export class FindReplaceEngine {
     currentPath: string[],
     currentOffset: number,
     doc: DocumentTree,
-    pool: { nodes: ReadonlyMap<string, { type: string; text?: string; children?: readonly string[] }> },
+    pool: NodePool,
     options: FindOptions = {},
   ): MatchResult | null {
     const all = this.findAll(query, doc, pool, options)
@@ -111,15 +114,17 @@ export class FindReplaceEngine {
       }
     }
 
-    // 在后面段落找
+    // 在后面段落找 — 排序基准 = findAll 的遍历顺序 (含表格 cell / 页眉页脚, 契约 §7.9)。
+    // 旧实现用 doc.body.children.indexOf: 页眉/页脚段落得到 -1, 会越序或漏选。
+    const idxOf = this.orderIndex(doc, pool, options)
+    const curIdx = idxOf.get(currentParaId)
     for (const r of all) {
       const rParaId = r.paragraphPath[r.paragraphPath.length - 1]
-      if (rParaId !== currentParaId) {
-        const bodyIdx = doc.body.children.indexOf(rParaId)
-        const curIdx = doc.body.children.indexOf(currentParaId)
-        if (bodyIdx > curIdx || (bodyIdx === curIdx && r.startOffset > currentOffset)) {
-          return r
-        }
+      if (rParaId === currentParaId) continue
+      const rIdx = idxOf.get(rParaId)
+      if (rIdx === undefined || curIdx === undefined) continue
+      if (rIdx > curIdx || (rIdx === curIdx && r.startOffset > currentOffset)) {
+        return r
       }
     }
 
@@ -135,7 +140,7 @@ export class FindReplaceEngine {
     currentPath: string[],
     currentOffset: number,
     doc: DocumentTree,
-    pool: { nodes: ReadonlyMap<string, { type: string; text?: string; children?: readonly string[] }> },
+    pool: NodePool,
     options: FindOptions = {},
   ): MatchResult | null {
     const all = this.findAll(query, doc, pool, options)
@@ -143,22 +148,34 @@ export class FindReplaceEngine {
 
     const currentParaId = currentPath[currentPath.length - 1]
 
-    // 从后往前找
+    // 从后往前找 — 排序基准同上 (全文档 spine)
+    const idxOf = this.orderIndex(doc, pool, options)
+    const curIdx = idxOf.get(currentParaId)
     for (let i = all.length - 1; i >= 0; i--) {
       const r = all[i]
       const rParaId = r.paragraphPath[r.paragraphPath.length - 1]
       if (rParaId === currentParaId && r.endOffset < currentOffset) {
         return r
       }
-      const bodyIdx = doc.body.children.indexOf(rParaId)
-      const curIdx = doc.body.children.indexOf(currentParaId)
-      if (bodyIdx < curIdx) {
+      const rIdx = idxOf.get(rParaId)
+      if (rIdx === undefined || curIdx === undefined) continue
+      if (rIdx < curIdx) {
         return r
       }
     }
 
     // 回绕到最后一个
     return all[all.length - 1]
+  }
+
+  /**
+   * 匹配项排序基准 — 与 findAll 的遍历顺序完全一致
+   * (显式 paragraphIds 优先, 否则全文档 spine: body 展平 + 页眉/页脚各变体)。
+   * 单一事实源: 不得再用 doc.body.children.indexOf (页眉/页脚会得到 -1)。
+   */
+  private orderIndex(doc: DocumentTree, pool: NodePool, options: FindOptions): Map<string, number> {
+    const ids = options.paragraphIds ?? documentSpine(doc, pool)
+    return new Map(ids.map((id, i) => [id, i]))
   }
 
   /**
@@ -188,7 +205,7 @@ export class FindReplaceEngine {
   highlightAll(
     query: string,
     doc: DocumentTree,
-    pool: { nodes: ReadonlyMap<string, { type: string; text?: string; children?: readonly string[] }> },
+    pool: NodePool,
     options: FindOptions = {},
   ): MatchResult[] {
     return this.findAll(query, doc, pool, options)
@@ -199,14 +216,16 @@ export class FindReplaceEngine {
   /** 获取段落的完整纯文本 */
   private getParagraphText(
     paraId: string,
-    pool: { nodes: ReadonlyMap<string, { type: string; text?: string; children?: readonly string[] }> },
+    pool: NodePool,
   ): string | null {
-    const para = pool.nodes.get(paraId)
+    // NodePool.nodes 的元素类型是 BaseNode (无 children/text); 按段落实用形状收窄
+    type View = { type?: string; text?: string; children?: readonly string[] }
+    const para = pool.nodes.get(paraId) as unknown as View | undefined
     if (!para?.children) return null
 
     const parts: string[] = []
     for (const childId of para.children) {
-      const child = pool.nodes.get(childId)
+      const child = pool.nodes.get(childId) as unknown as View | undefined
       if (!child) continue
       if (child.type === 'text' || child.type === 'smarttext') {
         // smarttext 经 smartTextFindReplaceText: 占位符/多选集合排除 (null → ''), 字符串/数字值计入 (§26)

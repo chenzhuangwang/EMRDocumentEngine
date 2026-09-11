@@ -9,6 +9,7 @@ import type { DocumentTree, SmartTextNode } from '../document/core/DocumentModel
 import { NodeType } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import { isControlValueComplete } from '../document/control/ControlValue'
+import { hfContainers } from '../document/core/HeaderFooterRegions'
 
 // ---- 类型 ----
 
@@ -66,7 +67,7 @@ const BUILTIN_RULES: QCRule[] = [
   },
   {
     id: 'qc_003', name: '段落不包含连续空白段', severity: 'warning',
-    description: '不应有连续两个空段落',
+    description: '不应有连续两个空段落 (范围: 正文 + 页眉/页脚各变体, 逐容器独立判定)',
     check: 'no_consecutive_empty_paragraphs',
   },
   {
@@ -176,16 +177,23 @@ export class QCEngine {
         return Array.isArray(val) ? val.length > 0 : !!val
       }
       case 'no_consecutive_empty_paragraphs': {
-        let lastEmpty = false
-        for (const childId of doc.body.children) {
-          const para = pool.nodes.get(childId) as { children?: readonly string[] } | undefined
-          const isEmpty = !para?.children || para.children.length === 0 ||
-            para.children.every(cid => {
-              const n = pool.nodes.get(cid) as { text?: string } | undefined
-              return !n?.text
-            })
-          if (isEmpty && lastEmpty) return false
-          lastEmpty = isEmpty
+        // 覆盖正文 + 页眉/页脚全部变体 (契约 §7.9); lastEmpty 按容器重置
+        // (尾部空页眉段不得与正文首个空段配对)。
+        for (const container of [doc.body.children, ...hfContainers(doc)]) {
+          let lastEmpty = false
+          for (const childId of container) {
+            const node = pool.nodes.get(childId) as { type?: string; children?: readonly string[] } | undefined
+            // 非段落块 (表格/图片/分隔线…) 不算空段落, 也不与空段落构成"连续空段"
+            if (node?.type !== NodeType.PARAGRAPH) { lastEmpty = false; continue }
+            const para = node as unknown as { children?: readonly string[] }
+            const isEmpty = !para.children || para.children.length === 0 ||
+              para.children.every(cid => {
+                const n = pool.nodes.get(cid) as { text?: string } | undefined
+                return !n?.text
+              })
+            if (isEmpty && lastEmpty) return false
+            lastEmpty = isEmpty
+          }
         }
         return true
       }

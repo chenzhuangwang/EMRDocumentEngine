@@ -16,6 +16,7 @@
 //   v4.1.0 → v4.2.0  SmartTextNode 新增可选字段 value (运行时值)
 //   v4.2.0 → v4.3.0  DocumentTree.metadata 收紧为 DocumentMetadata (白名单收口)
 //   v4.3.0 → v4.4.0  TemplateDefinition 新增可选字段 controlType (控件 widget 形态)
+//   v4.4.0 → v4.5.0  DocumentTree 新增可选页眉/页脚变体数组 (首页/偶数页, 契约 §7.9)
 //
 // SLIF 是 layout 中间输出, 但 SLIFVersion 是名义独立版本域 (契约 §26.14),
 // 不通过 type alias 复用 DocumentFormatVersion。
@@ -29,7 +30,7 @@ export interface DocumentFormatVersion {
 }
 
 /** 当前引擎支持的最高文档格式版本 */
-export const CURRENT_DOCUMENT_VERSION: DocumentFormatVersion = { major: 4, minor: 4, patch: 0 }
+export const CURRENT_DOCUMENT_VERSION: DocumentFormatVersion = { major: 4, minor: 5, patch: 0 }
 
 /** 缺失 modelVersion 时视为的文档格式版本 (历史文档默认值) */
 export const LEGACY_DOCUMENT_VERSION = '1.0.0'

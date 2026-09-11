@@ -463,8 +463,22 @@ export interface DocumentTree {
   title: string
   pageSetup: PageSetup
   body: FlowBody
+  /** 默认页眉段落 id 数组 — 语义 = 默认(奇数页)变体 (契约 §7.9) */
   header?: string[]
+  /** 默认页脚段落 id 数组 — 语义 = 默认(奇数页)变体 (契约 §7.9) */
   footer?: string[]
+  /**
+   * 首页变体 (differentFirstPage 开启时用于第 1 页, 契约 §7.9)。
+   * 加法可选字段: 缺失 ≡ 该变体无内容 (空带), 不预创建、不补默认值。
+   */
+  firstPageHeader?: string[]
+  firstPageFooter?: string[]
+  /**
+   * 偶数页变体 (differentOddEven 开启时用于第 2,4,6… 页, 契约 §7.9)。
+   * 加法可选字段: 缺失 ≡ 该变体无内容 (空带), 不预创建、不补默认值。
+   */
+  evenPageHeader?: string[]
+  evenPageFooter?: string[]
   /** 页眉页脚选项 (可选, 缺失时读取方用 DEFAULT_HEADER_FOOTER_CONFIG) */
   headerFooterConfig?: HeaderFooterConfig
   footnotes?: string[]

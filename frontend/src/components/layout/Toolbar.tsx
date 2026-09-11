@@ -17,6 +17,8 @@ import {
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { cn } from '@/lib/utils'
 import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
+import { HeaderFooterToolbar } from '@/components/toolbar/HeaderFooterToolbar'
+import { resolveVariantForPage, type HeaderFooterVariant } from '@/engine'
 
 interface ToolbarProps {
   onFormat?: (action: string, value?: unknown) => void
@@ -67,8 +69,15 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
   const canRedo = useEditorStoreSnapshot((s) => s.runtime.history.canRedo)
   const formatPainterActive = useEditorStoreSnapshot((s) => s.formatPainterActive)
   const hfEdit = useEditorStoreSnapshot((s) => s.headerFooterEdit)
+  const hfConfig = useEditorStoreSnapshot((s) => s.headerFooterConfig)
+  const hfDoc = useEditorStoreSnapshot((s) => s.document)
+  // 生效变体 — 复用引擎唯一解析规则 (契约 §7.9), 不得在 UI 里再写一份选取逻辑
+  const hfVariant: HeaderFooterVariant = hfDoc
+    ? resolveVariantForPage(hfDoc, hfEdit.pageIndex + 1)
+    : 'default'
 
   return (
+    <>
     <div className="h-toolbar bg-white border-b border-gray-100 flex items-center px-3 gap-0.5 flex-shrink-0 overflow-x-auto select-none">
       {/* 组1：历史操作 */}
       <ToolbarGroup>
@@ -249,6 +258,21 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
         <ExportDropdown onExportClick={onExportClick} />
       </ToolbarGroup>
     </div>
+
+      {/* 页眉页脚上下文条 — 保留完整主工具栏 (不替换), 在其下方追加一行 (契约 §7.9) */}
+      {hfEdit.active && (
+        <HeaderFooterToolbar
+          section={hfEdit.section}
+          config={hfConfig}
+          onConfigChange={(patch) => onFormat?.('headerFooterConfig', patch)}
+          onInsertPageNumber={() => onInsert?.('pageNumber')}
+          onInsertDate={() => onInsert?.('currentDate')}
+          onClose={() => onFormat?.('headerFooterClose')}
+          pageNumber={hfEdit.pageIndex + 1}
+          variant={hfVariant}
+        />
+      )}
+    </>
   )
 }
 

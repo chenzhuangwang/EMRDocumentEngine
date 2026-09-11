@@ -206,11 +206,14 @@ export class MouseHandler {
       return
     }
 
-    // 先检查是否在页眉/页脚区域
-    const hfSection = this.detectHeaderFooterRegion(e.clientX, e.clientY)
+    // 先检查是否在页眉/页脚区域 (含所在页 — 编辑目标页需跟随点击的那页)
+    const hfHit = this.detectHeaderFooterRegion(e.clientX, e.clientY)
 
     // --- 页眉页脚编辑模式下, 单击定位光标 ---
-    if (hfSection && this.editor.isHeaderFooterEditActive() && this.editor.getHeaderFooterEditSection() === hfSection) {
+    if (hfHit && this.editor.isHeaderFooterEditActive() && this.editor.getHeaderFooterEditSection() === hfHit.section) {
+      // 钉住编辑目标页: 页眉页脚段落每页都有副本, 不定页则光标/控件 overlay 恒落第 0 页
+      this.editor.setHeaderFooterEditPage(hfHit.pageIndex)
+
       // 双击检测 (用于切换编辑的 header/footer 区域)
       const now = Date.now()
       const dx = Math.abs(e.clientX - this.lastClickX)
@@ -223,12 +226,12 @@ export class MouseHandler {
 
       if (dt < DOUBLE_CLICK_THRESHOLD && dx < DOUBLE_CLICK_DISTANCE && dy < DOUBLE_CLICK_DISTANCE) {
         // 双击: 重新激活 (已在编辑模式, 保持)
-        this.editor.setHeaderFooterEditActive(true, hfSection)
+        this.editor.setHeaderFooterEditActive(true, hfHit.section)
         return
       }
 
       // 单击: 在页眉/页脚区域内定位光标
-      const hfResult = this.hitTestHeaderFooter(e.clientX, e.clientY, hfSection)
+      const hfResult = this.hitTestHeaderFooter(e.clientX, e.clientY, hfHit.section)
       if (hfResult) {
         const store = this.editor.getStore()
 
@@ -253,7 +256,7 @@ export class MouseHandler {
       return
     }
 
-    if (hfSection) {
+    if (hfHit) {
       // 页眉/页脚区域, 但编辑模式未激活或区域不匹配
       const now = Date.now()
       const dx = Math.abs(e.clientX - this.lastClickX)
@@ -265,12 +268,14 @@ export class MouseHandler {
       this.lastClickY = e.clientY
 
       if (dt < DOUBLE_CLICK_THRESHOLD && dx < DOUBLE_CLICK_DISTANCE && dy < DOUBLE_CLICK_DISTANCE) {
-        // 双击页眉/页脚 → 激活编辑模式
-        this.editor.setHeaderFooterEditActive(true, hfSection)
+        // 双击页眉/页脚 → 激活编辑模式, 并钉在所点的那页
+        this.editor.setHeaderFooterEditPage(hfHit.pageIndex)
+        this.editor.setHeaderFooterEditActive(true, hfHit.section)
 
         // 确保目标区域有段落 (无则创建) + 光标定位到第一个段落
+        // (先钉页再建段: 决定创建哪一个变体的段落, 契约 §7.9)
         const doc = this.editor.getDocument()
-        const paraId = this.editor.ensureHeaderFooterParagraph(hfSection)
+        const paraId = this.editor.ensureHeaderFooterParagraph(hfHit.section, hfHit.pageIndex + 1)
         const store = this.editor.getStore()
         store.setCursor({
           paragraphPath: [doc.id, paraId],
@@ -529,7 +534,7 @@ export class MouseHandler {
       const reg = resolveParagraphRegion(anchorParaId, doc, this.editor.getPool())
       if (reg && (reg.type === 'header' || reg.type === 'footer')
         && this.editor.isHeaderFooterEditActive() && this.editor.getHeaderFooterEditSection() === reg.type) {
-        if (this.detectHeaderFooterRegion(e.clientX, e.clientY) === reg.type) {
+        if (this.detectHeaderFooterRegion(e.clientX, e.clientY)?.section === reg.type) {
           const hf = this.hitTestHeaderFooter(e.clientX, e.clientY, reg.type)
           if (hf) {
             const store = this.editor.getStore()
@@ -891,8 +896,11 @@ export class MouseHandler {
     return computeOffsetInItems(related, docX, docY, this.measurer)
   }
 
-  /** 检测点击位置是否在页眉/页脚区域 */
-  private detectHeaderFooterRegion(clientX: number, clientY: number): 'header' | 'footer' | null {
+  /** 检测点击位置是否在页眉/页脚区域 (含所在页下标 — 供编辑目标页定位) */
+  private detectHeaderFooterRegion(
+    clientX: number,
+    clientY: number,
+  ): { section: 'header' | 'footer'; pageIndex: number } | null {
     const rect = this.host.viewport.bounds()
     const coord = this.editor.getDraw().getCoordinateSystem()
     const { scale, scrollY } = coord.transform
@@ -915,11 +923,11 @@ export class MouseHandler {
 
     // 页眉区域: y 0 ~ headerHeight
     const headerH = page.headerHeight ?? 42
-    if (localY >= 0 && localY <= headerH) return 'header'
+    if (localY >= 0 && localY <= headerH) return { section: 'header', pageIndex }
 
     // 页脚区域: y from pageHeight - footerHeight to pageHeight
     const footerH = page.footerHeight ?? 42
-    if (localY >= page.height - footerH && localY <= page.height) return 'footer'
+    if (localY >= page.height - footerH && localY <= page.height) return { section: 'footer', pageIndex }
 
     return null
   }

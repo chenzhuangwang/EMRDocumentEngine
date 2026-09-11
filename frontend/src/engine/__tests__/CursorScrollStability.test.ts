@@ -295,3 +295,133 @@ describe('Draw.getCaretClientRect — scrollY 变化时位置严格跟随', () =
     expect(rect!.top).toBe(1123)
   })
 })
+// ============================================================
+// 页眉/页脚编辑目标页 — 光标与控件几何必须跟随「正在编辑的那页」
+//
+// 页眉/页脚段落每页都有副本, computeCaretPos / controlCandidatesForNode 原先
+// 「取首个命中」→ 恒解析到第 0 页。契约 §7.9: 编辑目标页是瞬态运行时状态,
+// 几何解析须按该页优先。
+// ============================================================
+
+describe('页眉页脚编辑目标页跟随 (契约 §7.9)', () => {
+  let container: HTMLDivElement
+  let doc: DocumentTree
+  let pool: NodePool
+  let draw: Draw
+  let headerTextId: string
+  let headerParaId: string
+
+  const GAP = 20
+
+  function mkItem(nodeId: string, text: string, x: number, y: number): SLIFItem {
+    return {
+      nodeId, nodeType: 'text', type: 'text', text, x, y,
+      width: 40, height: 20, ascent: 16, descent: 4, font: 'SimSun', size: 16,
+    }
+  }
+
+  function mkPage(i: number): SLIFPage {
+    return {
+      pageIndex: i, width: 794, height: 1123,
+      // 正文 item 只存在于第 0 页 (真实布局如此); 页眉 item 每页都有副本
+      items: i === 0 ? [mkItem(bodyTextId, '正文', 90, 300)] : [],
+      headerItems: [mkItem(headerTextId, '页眉', 90, 8)],
+      footerItems: [],
+      headerHeight: 42, footerHeight: 42,
+    }
+  }
+
+  let bodyTextId: string
+
+  beforeEach(() => {
+    container = document.createElement('div')
+    container.style.width = '800px'
+    container.style.height = '600px'
+    document.body.appendChild(container)
+    testHost.surface.mount(container)
+
+    doc = createDocument('hf-page')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const ht = createTextNode('页眉')
+    const hp = createParagraph([ht.id])
+    const bt = createTextNode('正文')
+    const bp = createParagraph([bt.id])
+    all.set(ht.id, ht as unknown as BaseNode)
+    all.set(hp.id, hp as unknown as BaseNode)
+    all.set(bt.id, bt as unknown as BaseNode)
+    all.set(bp.id, bp as unknown as BaseNode)
+    doc.body.children = [bp.id]
+    doc.header = [hp.id]
+    pool = buildNodePool(all, { body: doc.id })
+
+    headerTextId = ht.id
+    headerParaId = hp.id
+    bodyTextId = bt.id
+
+    // 契约 §27.3: host 经构造注入 (无全局注册表)
+    draw = new Draw(testHost, new EventBus(), testMeasurer, doc)
+    draw.setDocument(doc, pool)
+    ;(draw as unknown as { pages: SLIFPage[] }).pages = [mkPage(0), mkPage(1), mkPage(2)]
+    draw.setPageVerticalGap(GAP)
+  })
+
+  function caretState(paraId: string, offset: number): EditorRuntimeState {
+    return {
+      cursor: { paragraphPath: [doc.id, paraId], offset, visible: true },
+      selection: {
+        anchor: { paragraphPath: [doc.id, paraId], offset: 0, visible: true },
+        focus: { paragraphPath: [doc.id, paraId], offset: 0, visible: true },
+        active: false, granularity: 'character',
+      },
+    } as unknown as EditorRuntimeState
+  }
+
+  it('编辑态钉在第 2 页 → 页眉光标解析到第 2 页带 (非第 0 页)', () => {
+    draw.getCoordinateSystem().update({ scrollY: 0 })
+    draw.setHeaderFooterEditActive(true, 'header', 2)
+
+    const rect = draw.getCaretClientRect(pool, caretState(headerParaId, 0))
+    expect(rect).not.toBeNull()
+    // 第 2 页带顶 = 2*(1123+20) + headerItems.y(8)
+    expect(rect!.top).toBe(2 * (1123 + GAP) + 8)
+  })
+
+  it('编辑态钉在第 0 页 → 复现历史结果 (第 0 页带)', () => {
+    draw.getCoordinateSystem().update({ scrollY: 0 })
+    draw.setHeaderFooterEditActive(true, 'header', 0)
+    const rect = draw.getCaretClientRect(pool, caretState(headerParaId, 0))
+    expect(rect!.top).toBe(8)
+  })
+
+  it('未进入编辑态 → 自然序, 仍解析到第 0 页 (无回归)', () => {
+    draw.getCoordinateSystem().update({ scrollY: 0 })
+    const rect = draw.getCaretClientRect(pool, caretState(headerParaId, 0))
+    expect(rect!.top).toBe(8)
+  })
+
+  it('钉页越界 → 退化为自然序 (不崩, 不越界)', () => {
+    draw.getCoordinateSystem().update({ scrollY: 0 })
+    draw.setHeaderFooterEditActive(true, 'header', 99)
+    const rect = draw.getCaretClientRect(pool, caretState(headerParaId, 0))
+    expect(rect!.top).toBe(8)
+  })
+
+  it('正文段落不受钉页影响 (只存在于一页)', () => {
+    draw.getCoordinateSystem().update({ scrollY: 0 })
+    draw.setHeaderFooterEditActive(true, 'header', 2)
+    const rect = draw.getCaretClientRect(pool, caretState(doc.body.children[0], 0))
+    // 正文 item 只在第 0 页 → 恒为第 0 页的 y (300)
+    expect(rect!.top).toBe(300)
+  })
+
+  it('getHeaderFooterEditPageIndex 反映钉子', () => {
+    draw.setHeaderFooterEditActive(true, 'header', 1)
+    expect(draw.getHeaderFooterEditPageIndex()).toBe(1)
+    draw.setHeaderFooterEditPage(2)
+    expect(draw.getHeaderFooterEditPageIndex()).toBe(2)
+    // 负值/小数被规范化
+    draw.setHeaderFooterEditPage(-5)
+    expect(draw.getHeaderFooterEditPageIndex()).toBe(0)
+  })
+})

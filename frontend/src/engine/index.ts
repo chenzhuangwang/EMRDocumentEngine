@@ -128,6 +128,20 @@ export type {
   ControlValueValidationResult,
 } from './document/control/ControlValue'
 export { DictionaryStore } from './document/control/Dictionary'
+
+// ---- 页眉页脚变体解析 (契约 §7.9) ----
+export {
+  hfArrayOf, ensureHfArray, isVariantEnabled, resolveVariantForPage,
+  hfParagraphsForPage, hfParagraphsForExport, resolveHfParagraphLocation,
+  isHeaderFooterParagraph, hfContainers,
+} from './document/core/HeaderFooterRegions'
+export type {
+  HeaderFooterBand, HeaderFooterVariant, HfParagraphLocation,
+} from './document/core/HeaderFooterRegions'
+
+// ---- 域代码显示文本 (渲染/导出共用) ----
+export { resolveFieldText } from './document/factory/FieldFormatter'
+export type { FieldTextContext } from './document/factory/FieldFormatter'
 export type { DictionaryProvider } from './document/control/Dictionary'
 export { SetControlValueCommand } from './command/commands/SetControlValueCommand'
 

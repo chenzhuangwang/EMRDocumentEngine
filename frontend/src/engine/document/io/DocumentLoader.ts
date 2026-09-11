@@ -182,7 +182,7 @@ function validateDocument(
       (typeof doc.metadata !== 'object' || doc.metadata === null || Array.isArray(doc.metadata))) {
     throw new LoadError('validate', 'doc.metadata 非对象')
   }
-  for (const id of [...doc.body.children, ...(doc.header ?? []), ...(doc.footer ?? [])]) {
+  for (const id of validatedRootIds(doc)) {
     if (typeof id !== 'string') {
       throw new LoadError('validate', `children 包含非字符串引用: ${String(id)}`)
     }
@@ -196,11 +196,25 @@ function validateDocument(
   if (extraNodes) {
     for (const id of extraNodes.keys()) knownIds.add(id)
   }
-  for (const id of [...doc.body.children, ...(doc.header ?? []), ...(doc.footer ?? [])]) {
+  for (const id of validatedRootIds(doc)) {
     if (!knownIds.has(id)) {
       throw new LoadError('validate', `引用悬空 (节点未在 nodes/extraNodes 中): ${id}`)
     }
   }
+}
+
+/**
+ * 受校验的文档根 id 引用 — 正文 + 页眉/页脚全部变体 (契约 §7.9)。
+ * 单一事实源, 供"引用类型校验"与"引用不悬空校验"共用。
+ * 脚注/尾注沿用既有行为 (不在此列)。
+ */
+function validatedRootIds(doc: DocumentTree): string[] {
+  return [
+    ...doc.body.children,
+    ...(doc.header ?? []), ...(doc.footer ?? []),
+    ...(doc.firstPageHeader ?? []), ...(doc.firstPageFooter ?? []),
+    ...(doc.evenPageHeader ?? []), ...(doc.evenPageFooter ?? []),
+  ]
 }
 
 /** 从 DocumentTree 重建 NodePool */
@@ -234,6 +248,10 @@ function buildPoolFromDocument(
     body: doc.id,
     header: present(doc.header),
     footer: present(doc.footer),
+    firstPageHeader: present(doc.firstPageHeader),
+    firstPageFooter: present(doc.firstPageFooter),
+    evenPageHeader: present(doc.evenPageHeader),
+    evenPageFooter: present(doc.evenPageFooter),
     footnotes: present(doc.footnotes),
     endnotes: present(doc.endnotes),
   })

@@ -20,6 +20,10 @@ import { buildCellGrid } from '../document/table/TableOps'
 import type { TableGrid, GridCell } from '../document/table/TableOps'
 import type { NodePool } from '../document/core/NodePool'
 import type { DocumentTree } from '../document/core/DocumentModel'
+import {
+  hfArrayOf, resolveHfParagraphLocation,
+  type HeaderFooterVariant,
+} from '../document/core/HeaderFooterRegions'
 
 export class KeyboardHandler {
   private editor: Editor
@@ -653,8 +657,8 @@ export class KeyboardHandler {
         return result
       }
     }
-    if (doc.header?.includes(paraId)) return filterParas(doc.header)
-    if (doc.footer?.includes(paraId)) return filterParas(doc.footer)
+    const hfLoc = resolveHfParagraphLocation(doc, paraId)
+    if (hfLoc) return filterParas(hfLoc.ids)
     return []
   }
 
@@ -688,8 +692,8 @@ export class KeyboardHandler {
   ):
     | { kind: 'body'; index: number }
     | { kind: 'cell'; tableId: string; tableIndex: number; row: number; col: number }
-    | { kind: 'header'; index: number }
-    | { kind: 'footer'; index: number }
+    | { kind: 'header'; index: number; variant: HeaderFooterVariant }
+    | { kind: 'footer'; index: number; variant: HeaderFooterVariant }
     | null {
     const bi = doc.body.children.indexOf(paraId)
     if (bi >= 0) return { kind: 'body', index: bi }
@@ -698,10 +702,8 @@ export class KeyboardHandler {
       const ti = doc.body.children.indexOf(cellPos.tableId)
       return { kind: 'cell', tableId: cellPos.tableId, tableIndex: ti, row: cellPos.row, col: cellPos.col }
     }
-    const hi = doc.header?.indexOf(paraId)
-    if (hi !== undefined && hi >= 0) return { kind: 'header', index: hi }
-    const fi = doc.footer?.indexOf(paraId)
-    if (fi !== undefined && fi >= 0) return { kind: 'footer', index: fi }
+    const hfLoc = resolveHfParagraphLocation(doc, paraId)
+    if (hfLoc) return { kind: hfLoc.band, index: hfLoc.index, variant: hfLoc.variant }
     return null
   }
 
@@ -718,8 +720,8 @@ export class KeyboardHandler {
     if (!loc) return null
 
     if (loc.kind === 'header' || loc.kind === 'footer') {
-      // 页眉/页脚区域隔离: 仅在该区域段落间移动
-      const region = loc.kind === 'header' ? doc.header! : doc.footer!
+      // 页眉/页脚区域隔离: 仅在该区域**同一变体**的段落间移动 (契约 §7.9)
+      const region = hfArrayOf(doc, loc.kind, loc.variant)
       const targetIdx = loc.index + dir
       if (targetIdx >= 0 && targetIdx < region.length) {
         const targetId = region[targetIdx]

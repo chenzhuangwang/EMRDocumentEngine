@@ -20,6 +20,9 @@ import type {
 } from '../../document/core/DocumentModel'
 import { createParagraph, createTextNode } from '../../document/factory/ElementFormatter'
 import type { NodePool } from '../../document/core/NodePool'
+import {
+  ensureHfArray, hfArrayOf, type HeaderFooterVariant,
+} from '../../document/core/HeaderFooterRegions'
 import type { CursorState } from '../../state/EditorRuntimeState'
 import {
   ICommand, CommandContext, StatePatch, SerializedCommand, generateCommandId,
@@ -76,8 +79,8 @@ type Container =
   | { kind: 'paragraph'; paraId: string }
   | { kind: 'cell'; cellId: string }
   | { kind: 'body' }
-  | { kind: 'header' }
-  | { kind: 'footer' }
+  | { kind: 'header'; variant?: HeaderFooterVariant }
+  | { kind: 'footer'; variant?: HeaderFooterVariant }
   | { kind: 'footnotes' }
 
 interface NodeRemoval {
@@ -98,11 +101,9 @@ interface RemovalSnapshot {
 function docArrayOf(doc: DocumentTree, container: Container): string[] {
   switch (container.kind) {
     case 'header':
-      if (!doc.header) doc.header = []
-      return doc.header
+      return ensureHfArray(doc, 'header', container.variant ?? 'default')
     case 'footer':
-      if (!doc.footer) doc.footer = []
-      return doc.footer
+      return ensureHfArray(doc, 'footer', container.variant ?? 'default')
     case 'footnotes':
       if (!doc.footnotes) doc.footnotes = []
       return doc.footnotes
@@ -118,8 +119,8 @@ function containerLengthOf(pool: NodePool, doc: DocumentTree, container: Contain
       return pool.getChildren(parentId).length
     }
     case 'body': return doc.body.children.length
-    case 'header': return doc.header?.length ?? 0
-    case 'footer': return doc.footer?.length ?? 0
+    case 'header': return hfArrayOf(doc, 'header', container.variant ?? 'default').length
+    case 'footer': return hfArrayOf(doc, 'footer', container.variant ?? 'default').length
     case 'footnotes': return doc.footnotes?.length ?? 0
   }
 }
@@ -724,19 +725,23 @@ export class EnsureHeaderFooterParagraphCommand implements ICommand {
   readonly timestamp: number
   readonly author: string
   private section: 'header' | 'footer'
+  /** 变体 (契约 §7.9) — 决定写入哪一个数组 (header / firstPageHeader / evenPageHeader …) */
+  private variant: HeaderFooterVariant
   private createdParaId: string | null = null
 
-  constructor(id: string, timestamp: number, author: string, section: 'header' | 'footer') {
+  constructor(
+    id: string, timestamp: number, author: string,
+    section: 'header' | 'footer', variant: HeaderFooterVariant = 'default',
+  ) {
     this.id = id; this.timestamp = timestamp; this.author = author
     this.section = section
+    this.variant = variant
   }
 
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
     const { pool, doc } = ctx
-    const arr = this.section === 'header'
-      ? (doc.header ?? (doc.header = []))
-      : (doc.footer ?? (doc.footer = []))
+    const arr = ensureHfArray(doc, this.section, this.variant)
     if (arr.length > 0) return null
     const para = createTrailingParagraph(pool)
     arr.push(para.id)
@@ -748,14 +753,15 @@ export class EnsureHeaderFooterParagraphCommand implements ICommand {
     if (!this.createdParaId) return null
     return new RemoveNodesCommand(
       generateCommandId(), Date.now(), this.author,
-      [{ container: { kind: this.section }, nodeIds: [this.createdParaId] }],
+      // 必须带同一 variant: 否则 undo 会去默认数组删, 而段落创建在变体数组里
+      [{ container: { kind: this.section, variant: this.variant }, nodeIds: [this.createdParaId] }],
     )
   }
 
   serialize(): SerializedCommand {
     return {
       type: 'ensure-header-footer-paragraph', id: this.id, timestamp: this.timestamp,
-      author: this.author, changes: { section: this.section },
+      author: this.author, changes: { section: this.section, variant: this.variant },
     }
   }
 }

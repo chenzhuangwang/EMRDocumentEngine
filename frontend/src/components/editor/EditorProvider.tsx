@@ -29,7 +29,7 @@ const DEFAULT_STORE_STATE: EditorStoreState = {
   isDirty: false,
   saveStatus: 'saved',
   formatPainterActive: false,
-  headerFooterEdit: { active: false, section: 'header' },
+  headerFooterEdit: { active: false, section: 'header', pageIndex: 0 },
   paragraphStyle: null,
   textStyle: null,
   headerFooterConfig: { differentFirstPage: false, differentOddEven: false },

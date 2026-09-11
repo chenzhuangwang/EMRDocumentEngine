@@ -17,6 +17,9 @@
 
 import type { NodePool } from '../document/core/NodePool'
 import type { DocumentTree } from '../document/core/DocumentModel'
+import {
+  resolveHfParagraphLocation, type HeaderFooterVariant,
+} from '../document/core/HeaderFooterRegions'
 
 // ---- 域类型 ----
 
@@ -213,8 +216,8 @@ export function getCaretScope(
 export type ParagraphRegion =
   | { type: 'body'; siblings: readonly string[]; containerId: string; index: number }
   | { type: 'cell'; siblings: readonly string[]; containerId: string; index: number }
-  | { type: 'header'; siblings: string[]; index: number }
-  | { type: 'footer'; siblings: string[]; index: number }
+  | { type: 'header'; siblings: string[]; index: number; variant: HeaderFooterVariant }
+  | { type: 'footer'; siblings: string[]; index: number; variant: HeaderFooterVariant }
 
 export function resolveParagraphRegion(
   paraId: string,
@@ -237,11 +240,15 @@ export function resolveParagraphRegion(
     }
   }
 
-  // 3. 页眉/页脚段落 (doc.header / doc.footer — 非 children 数组, 不在 PROBLEM B choke point 范围)
-  const hi = doc.header?.indexOf(paraId)
-  if (hi !== undefined && hi >= 0) return { type: 'header', siblings: doc.header!, index: hi }
-  const fi = doc.footer?.indexOf(paraId)
-  if (fi !== undefined && fi >= 0) return { type: 'footer', siblings: doc.footer!, index: fi }
+  // 3. 页眉/页脚段落 (6 个变体数组 — 非 children 数组, 不在 PROBLEM B choke point 范围)
+  //    归属解析唯一经 HeaderFooterRegions (契约 §7.9): 变体不同 → 兄弟数组不同。
+  const loc = resolveHfParagraphLocation(doc, paraId)
+  if (loc) {
+    if (loc.band === 'header') {
+      return { type: 'header', siblings: loc.ids, index: loc.index, variant: loc.variant }
+    }
+    return { type: 'footer', siblings: loc.ids, index: loc.index, variant: loc.variant }
+  }
 
   return null
 }
@@ -270,6 +277,10 @@ export function resolveSiblingRange(
     if (ra.containerId !== rf.containerId) return null          // 不同 cell
   } else if (ra.type !== rf.type) {
     return null // body↔header / header↔footer 混选
+  } else if ((ra.type === 'header' || ra.type === 'footer') &&
+             (rf.type === 'header' || rf.type === 'footer') &&
+             ra.variant !== rf.variant) {
+    return null // 同带不同变体 (header ↔ header:first) 混选: 兄弟数组不同, 不得混排
   }
   return {
     regionType: ra.type,

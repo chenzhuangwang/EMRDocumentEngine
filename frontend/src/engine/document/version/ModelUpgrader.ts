@@ -211,6 +211,18 @@ modelUpgrader.register({
   },
 })
 
+// v4.4→v4.5: DocumentTree 新增可选页眉/页脚变体数组
+// (firstPageHeader/firstPageFooter/evenPageHeader/evenPageFooter, 契约 §7.9)
+// 纯向后兼容: 字段全部可选, 缺失 ≡ 该变体无内容 (空带), 不预创建、不回填。no-op。
+modelUpgrader.register({
+  from: { major: 4, minor: 4, patch: 0 },
+  to: { major: 4, minor: 5, patch: 0 },
+  breaking: false,
+  upgrade(doc: DocumentTree): DocumentTree {
+    return doc
+  },
+})
+
 // ---- 兼容矩阵 ----
 
 export interface VersionCompatibility {

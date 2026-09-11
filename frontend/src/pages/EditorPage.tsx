@@ -26,26 +26,11 @@ import { initialConfigForCreate, controlFamilyOf } from '@/components/dialogs/co
 import type { ControlConfigData } from '@/components/dialogs/controlConfigShared'
 import { documentApi, templateApi } from '@/services/api'
 import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
-import { templateImporter, isExternalTemplate } from '@/engine'
+import { templateImporter, isExternalTemplate, hfParagraphsForPage } from '@/engine'
 import { TOCGenerator } from '@/engine/render/TOCGenerator'
-import { ListParticle } from '@/engine/render/particles/ListParticle'
+import { buildExportHtml, buildExportText } from '@/lib/documentExport'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
 import type { EditorMode, ElementMeta } from '@/engine'
-import type { ListStyle } from '@/engine/document/core/DocumentModel'
-
-/** 生成列表标记文本 (供 TXT/HTML 导出) */
-function getListMarker(list: ListStyle, orderNum?: number): string {
-  const level = list.level || 1
-  const indent = '  '.repeat(level - 1)
-  if (list.type === 'bullet') {
-    const bulletChar = list.bulletChar || ListParticle.resolveBulletChar(level)
-    return indent + bulletChar + ' '
-  }
-  // ordered list
-  const num = orderNum ?? (list.startAt || 1)
-  const numberStyle = list.numberStyle || 'decimal'
-  return indent + ListParticle.formatOrderedNumberRaw(num, numberStyle) + '. '
-}
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -660,18 +645,20 @@ function EditorPageInner({
           // 已在编辑同一区域 → 关闭
           ed.setHeaderFooterEditActive(false)
         } else {
-          // 激活或切换区域
+          // 激活或切换区域 (缺省钉在正在看的那页)
           ed.setHeaderFooterEditActive(true, section)
 
-          // 确保目标区域有段落 (无则创建)
+          // 目标段落: 按编辑目标页的生效变体取 (契约 §7.9); 无则创建
           const doc = ed.getDocument()
-          const targetIds = section === 'header' ? doc.header! : doc.footer!
-          if (targetIds.length === 0) {
-            ed.ensureHeaderFooterParagraph(section)
+          let firstParaId = hfParagraphsForPage(
+            doc, section, ed.getHeaderFooterEditPageIndex() + 1,
+          )[0]
+          if (!firstParaId) {
+            firstParaId = ed.ensureHeaderFooterParagraph(section)
           }
+          if (!firstParaId) break // 极端情况 (非 local 命令被拒) — 不设无效光标路径
 
           // 自动将光标定位到对应区域的第一个段落
-          const firstParaId = targetIds[0]
           const store = ed.getStore()
           store.setCursor({
             paragraphPath: [doc.id, firstParaId],
@@ -721,119 +708,14 @@ function EditorPageInner({
       a.href = url; a.download = `document-${Date.now()}.json`; a.click()
       URL.revokeObjectURL(url)
     } else if (format === 'txt') {
-      const lines: string[] = []
-      // 有序列表编号计数器: 按 level 追踪
-      const orderedCounters = new Map<number, number>()
-      let lastListLevel = 0
-      for (const paraId of doc.body.children) {
-        const para = pool.nodes.get(paraId) as { children?: readonly string[]; list?: ListStyle } | undefined
-        if (para?.children) {
-          let line = ''
-          // 列表标记
-          if (para.list) {
-            const level = para.list.level || 1
-            // 非有序 → 重置计数器
-            if (para.list.type !== 'ordered' || level !== lastListLevel) {
-              if (lastListLevel > 0) orderedCounters.delete(lastListLevel)
-            }
-            lastListLevel = level
-            if (para.list.type === 'ordered' && !para.list.startAt) {
-              const count = (orderedCounters.get(level) || 0) + 1
-              orderedCounters.set(level, count)
-              line += getListMarker(para.list, count)
-            } else {
-              if (para.list.startAt) {
-                orderedCounters.set(level, para.list.startAt)
-              }
-              line += getListMarker(para.list)
-            }
-          } else {
-            lastListLevel = 0
-          }
-          for (const childId of para.children) {
-            const node = pool.nodes.get(childId) as { text?: string; type?: string } | undefined
-            if (node?.type === 'text') line += (node.text || '')
-          }
-          lines.push(line)
-        }
-      }
-      const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
+      // 页眉 + 正文 + 页脚 (含 smarttext 显示值 / 域代码), 见 lib/documentExport
+      const blob = new Blob([buildExportText(doc, pool)], { type: 'text/plain' })
       const url = URL.createObjectURL(blob)
       const a = window.document.createElement('a')
       a.href = url; a.download = `document-${Date.now()}.txt`; a.click()
       URL.revokeObjectURL(url)
     } else if (format === 'html') {
-      const result: string[] = ['<!DOCTYPE html><html><head><meta charset="utf-8"><title>', doc.title, '</title></head><body>']
-      const orderedCounters = new Map<number, number>()
-      let inListType = ''       // 'bullet' | 'ordered' | ''
-      let inListLevel = 0
-
-      const flushList = () => {
-        if (inListType) { result.push(inListType === 'ordered' ? '</ol>' : '</ul>'); inListType = ''; inListLevel = 0 }
-      }
-
-      for (const paraId of doc.body.children) {
-        const para = pool.nodes.get(paraId) as { children?: readonly string[]; outlineLevel?: number; alignment?: string; list?: ListStyle } | undefined
-        if (!para?.children) continue
-
-        // 收集段落文本
-        let text = ''
-        let bold = false; let italic = false; let underline = false
-        const fragments: string[] = []
-        const flushText = () => {
-          if (!text) return
-          let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-          if (bold) html = `<strong>${html}</strong>`
-          if (italic) html = `<em>${html}</em>`
-          if (underline) html = `<u>${html}</u>`
-          fragments.push(html)
-          text = ''
-        }
-        for (const childId of para.children) {
-          const node = pool.nodes.get(childId) as { text?: string; type?: string; bold?: boolean; italic?: boolean; underline?: boolean } | undefined
-          if (node?.type === 'text') {
-            if (node.bold !== bold || node.italic !== italic || node.underline !== underline) {
-              flushText()
-              bold = !!node.bold; italic = !!node.italic; underline = !!node.underline
-            }
-            text += (node.text || '')
-          }
-        }
-        flushText()
-        const htmlText = fragments.join('')
-
-        if (para.list) {
-          const listType = para.list.type
-          const level = para.list.level || 1
-
-          // 列表类型或层级变化 → 刷新旧列表, 开新列表
-          if (inListType !== listType || inListLevel !== level) {
-            flushList()
-            inListType = listType; inListLevel = level
-            orderedCounters.clear()
-            result.push(listType === 'ordered' ? '<ol>' : '<ul>')
-          }
-
-          // 生成标记
-          let marker = ''
-          if (listType === 'ordered' && !para.list.startAt) {
-            const count = (orderedCounters.get(level) || 0) + 1
-            orderedCounters.set(level, count)
-            marker = getListMarker(para.list, count)
-          } else {
-            if (para.list.startAt) orderedCounters.set(level, para.list.startAt)
-            marker = getListMarker(para.list)
-          }
-
-          result.push(`<li>${marker}${htmlText}</li>`)
-        } else {
-          flushList()
-          if (htmlText) result.push(`<p>${htmlText}</p>`)
-        }
-      }
-      flushList()
-      result.push('</body></html>')
-      const blob = new Blob([result.join('\n')], { type: 'text/html' })
+      const blob = new Blob([buildExportHtml(doc, pool)], { type: 'text/html' })
       const url = URL.createObjectURL(blob)
       const a = window.document.createElement('a')
       a.href = url; a.download = `document-${Date.now()}.html`; a.click()

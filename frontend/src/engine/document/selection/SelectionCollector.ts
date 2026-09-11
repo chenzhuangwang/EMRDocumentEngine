@@ -17,6 +17,10 @@
 import type { TextNode, DocumentTree } from '../core/DocumentModel'
 import { NodeType } from '../core/DocumentModel'
 import type { NodePool } from '../core/NodePool'
+import {
+  hfArrayOf, hfContainers, resolveHfParagraphLocation,
+  type HeaderFooterBand, type HeaderFooterVariant,
+} from '../core/HeaderFooterRegions'
 
 /** 段落字符偏移区间 (exclusive end), 语义与 PositionalCommand.path 一致 */
 export interface FormatRange {
@@ -182,37 +186,70 @@ export function collectSelectionSegments(
 
 export type SelectionSection = 'body' | 'header' | 'footer'
 
-/** 段落所属区 (doc.header/doc.footer 成员判定, 其余=body) */
-export function sectionOf(paraId: string, doc: DocumentTree): SelectionSection {
-  if (doc.header?.includes(paraId)) return 'header'
-  if (doc.footer?.includes(paraId)) return 'footer'
-  return 'body'
+/**
+ * 区域**身份** (含页眉/页脚变体, 契约 §7.9)。
+ * 同区判定必须用它而非 SelectionSection: `header` 与 `header:first` 是
+ * 两个不同区域, 段落 id 不共享, 混选必须拒绝。
+ */
+export type SelectionRegionId = 'body' | `${HeaderFooterBand}:${HeaderFooterVariant}`
+
+/** 段落所属区域身份 (body / header:variant / footer:variant) */
+export function regionIdOf(paraId: string, doc: DocumentTree): SelectionRegionId {
+  const loc = resolveHfParagraphLocation(doc, paraId)
+  return loc ? `${loc.band}:${loc.variant}` : 'body'
 }
 
 /**
- * 选区读序 spine — anchor/focus 必须同区。
- *   body   → flattenTextContainers(body) (保留 body↔table 线性语义)
- *   header → doc.header
- *   footer → doc.footer
- * 跨区 (body↔header 等) 返回 null。
+ * 选区读序 spine — anchor/focus 必须同区 (含变体)。
+ *   body          → flattenTextContainers(body) (保留 body↔table 线性语义)
+ *   header:variant → 该变体数组
+ *   footer:variant → 该变体数组
+ * 跨区 / 跨变体 (body↔header, header↔header:first 等) 返回 null。
  */
 export function selectionSpine(
   doc: DocumentTree,
   pool: NodePool,
   anchorParaId: string,
   focusParaId: string,
-): { section: SelectionSection; spine: string[] } | null {
-  const aSec = sectionOf(anchorParaId, doc)
-  const fSec = sectionOf(focusParaId, doc)
-  if (aSec !== fSec) return null
-  if (aSec === 'body') return { section: 'body', spine: flattenTextContainers(pool, doc.body.children) }
-  if (aSec === 'header') return { section: 'header', spine: [...(doc.header ?? [])] }
-  return { section: 'footer', spine: [...(doc.footer ?? [])] }
+): { section: SelectionSection; variant: HeaderFooterVariant | null; spine: string[] } | null {
+  const aLoc = resolveHfParagraphLocation(doc, anchorParaId)
+  if (regionIdOf(anchorParaId, doc) !== regionIdOf(focusParaId, doc)) return null
+  if (!aLoc) return { section: 'body', variant: null, spine: flattenTextContainers(pool, doc.body.children) }
+  return {
+    section: aLoc.band,
+    variant: aLoc.variant,
+    spine: [...hfArrayOf(doc, aLoc.band, aLoc.variant)],
+  }
 }
 
-/** 整区段落数组 (Ctrl+A / 需要整区时) */
-export function regionSpine(doc: DocumentTree, pool: NodePool, section: SelectionSection): string[] {
-  if (section === 'header') return [...(doc.header ?? [])]
-  if (section === 'footer') return [...(doc.footer ?? [])]
+/** 整区段落数组 (Ctrl+A / 需要整区时) — 页眉页脚须指明变体 */
+export function regionSpine(
+  doc: DocumentTree,
+  pool: NodePool,
+  section: SelectionSection,
+  variant: HeaderFooterVariant = 'default',
+): string[] {
+  if (section === 'header' || section === 'footer') return [...hfArrayOf(doc, section, variant)]
   return flattenTextContainers(pool, doc.body.children)
+}
+
+/**
+ * 全文档阅读顺序的文本容器 spine (查找/替换 / QC 的搜索范围)。
+ *
+ * 顺序: body (展平表格 cell 段落) → header 各变体 → footer 各变体。
+ * 页眉/页脚段落每页都有副本, 但**文档里只有一份**, 故在此只出现一次。
+ * 按 id 去重 (保留首次出现) — 防御同一段落被两个数组引用的异常文档。
+ * 脚注/尾注不在其中 (无既有消费方, 属既有缺口)。
+ */
+export function documentSpine(doc: DocumentTree, pool: NodePool): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const push = (id: string): void => {
+    if (seen.has(id)) return
+    seen.add(id)
+    out.push(id)
+  }
+  for (const id of flattenTextContainers(pool, doc.body.children)) push(id)
+  for (const arr of hfContainers(doc)) for (const id of arr) push(id)
+  return out
 }

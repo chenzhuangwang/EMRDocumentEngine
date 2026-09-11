@@ -103,4 +103,56 @@ describe('DocumentSerializer serializeDocument', () => {
     expect(parsed.nodes[st.id].text).toBe('[姓名]')
     expect(parsed.nodes[st.id].value).toBe('张三')
   })
+
+  it('collectDocumentNodes 收全仅经页眉/页脚变体可达的节点 (契约 §7.9)', () => {
+    const doc = createDocument('variants')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+
+    const mk = (text: string) => {
+      const tn = createTextNode(text)
+      const p = createParagraph([tn.id])
+      all.set(tn.id, tn as unknown as BaseNode)
+      all.set(p.id, p as unknown as BaseNode)
+      return { paraId: p.id, textId: tn.id }
+    }
+    const first = mk('首页页脚')
+    const even = mk('偶数页页眉')
+
+    doc.body.children = []
+    doc.header = []
+    doc.footer = []
+    doc.firstPageFooter = [first.paraId]
+    doc.evenPageHeader = [even.paraId]
+
+    const pool = buildNodePool(all, { body: doc.id })
+    const nodes = collectDocumentNodes(doc, pool)
+
+    // 遗漏 → 节点不进扁平表 → 重载报「引用悬空」
+    expect(nodes.has(first.paraId)).toBe(true)
+    expect(nodes.has(first.textId)).toBe(true)
+    expect(nodes.has(even.paraId)).toBe(true)
+    expect(nodes.has(even.textId)).toBe(true)
+  })
+
+  it('serializeDocument 写出变体顶层字段与对应节点 payload', () => {
+    const doc = createDocument('variants')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const tn = createTextNode('首页页脚')
+    const p = createParagraph([tn.id])
+    all.set(tn.id, tn as unknown as BaseNode)
+    all.set(p.id, p as unknown as BaseNode)
+    doc.body.children = []
+    doc.header = []
+    doc.footer = []
+    doc.firstPageFooter = [p.id]
+
+    const pool = buildNodePool(all, { body: doc.id })
+    const parsed = JSON.parse(serializeDocument(doc, pool))
+
+    expect(parsed.firstPageFooter).toEqual([p.id])
+    expect(parsed.nodes[p.id]).toBeTruthy()
+    expect(parsed.nodes[tn.id].text).toBe('首页页脚')
+  })
 })

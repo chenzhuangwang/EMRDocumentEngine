@@ -35,7 +35,9 @@ import { createBarcodeParticle } from './particles/BarcodeParticle'
 import { particleRegistry } from './particles/ParticleRegistry'
 import { textParticle, separatorParticle, listParticle, fieldParticle } from './particles/ParticleAdapters'
 import { buildCellGrid } from '../document/table/TableOps'
-import { flattenTextContainers, sectionOf, selectionSpine } from '../document/selection/SelectionCollector'
+import { flattenTextContainers, regionIdOf, selectionSpine } from '../document/selection/SelectionCollector'
+import { resolveHfParagraphLocation } from '../document/core/HeaderFooterRegions'
+import { resolveFieldText as formatFieldText } from '../document/factory/FieldFormatter'
 
 interface CaretPos { x: number; y: number; h: number }
 
@@ -77,6 +79,11 @@ export class Draw {
   // 页眉页脚编辑模式 (TASK-470/471 双击激活)
   private hfEditActive = false
   private hfEditSection: 'header' | 'footer' = 'header'
+  /**
+   * 编辑目标页「钉子」下标 (契约 §7.2/§7.9)。页眉页脚段落每页都有副本,
+   * 不定页时光标/控件 overlay 会恒解析到第 0 页 (computeCaretPos 取首个命中)。
+   */
+  private hfEditPageIndex = 0
 
   // 不可见字符显示 (TASK-475)
   private _showInvisible = false
@@ -225,6 +232,7 @@ export class Draw {
     paragraphPath: string[],
     offset: number,
     pageVerticalGap: number = 0,
+    preferredPageIndex?: number,
   ): CaretPos | null {
     const paraId = paragraphPath[paragraphPath.length - 1]
     const para = pool.nodes.get(paraId) as unknown as { children: readonly string[] } | undefined
@@ -237,8 +245,10 @@ export class Draw {
     const section = this.resolveParagraphSection(paraId)
     let charCount = 0
 
-    // 遍历所有页面查找 (而非 visible.start..visible.end) — 避免与画布 overscan 不一致
-    for (let i = 0; i < this.pages.length; i++) {
+    // 遍历所有页面查找 (而非 visible.start..visible.end) — 避免与画布 overscan 不一致。
+    // 页眉/页脚段落每页都有副本 → 按「优先页」顺序遍历, 使光标落在正在编辑的那页
+    // (契约 §7.9); 正文段落只存在于一页, 顺序无关。
+    for (const i of this.pageOrder(preferredPageIndex)) {
       const page = this.pages[i]
       if (!page) continue
       // 每页 canvas Y = 该页累加文档 Y (含 pageVerticalGap) - 当前 scrollY
@@ -307,13 +317,11 @@ export class Draw {
 
   /**
    * 判断段落 ID 属于 body / header / footer 哪个区域
-   * 遍历 doc.header[] 和 doc.footer[] 进行匹配
+   * (归属唯一经 HeaderFooterRegions 解析 — 含首页/偶数页变体, 契约 §7.9)
    */
   private resolveParagraphSection(paraId: string): 'body' | 'header' | 'footer' {
     if (!this.document) return 'body'
-    if (this.document.header?.includes(paraId)) return 'header'
-    if (this.document.footer?.includes(paraId)) return 'footer'
-    return 'body'
+    return resolveHfParagraphLocation(this.document, paraId)?.band ?? 'body'
   }
 
   /**
@@ -460,12 +468,7 @@ export class Draw {
         // 页眉区域 + 分隔线
         // ================================================================
         // 分隔线 (页眉下方) — 0.5px细线, 浅灰
-        ctx.strokeStyle = '#CCCCCC'
-        ctx.lineWidth = 0.5
-        ctx.beginPath()
-        ctx.moveTo(0, pageY + headerH)
-        ctx.lineTo(pageWidth, pageY + headerH)
-        ctx.stroke()
+        this.drawHfSeparator(ctx, pageWidth, pageY + headerH)
 
         // 编辑模式: 激活区域用虚线边框标记
         if (this.hfEditActive && this.hfEditSection === 'header') {
@@ -491,46 +494,7 @@ export class Draw {
 
         // --- 正文 ---
         for (const item of page.items) {
-          if (item.type === 'separator') {
-            const sepRenderer = particleRegistry.get('separator')
-            if (sepRenderer) {
-              sepRenderer.render(ctx, item, item.x, pageY + item.y, { contentWidth })
-            }
-          } else if (item.type === 'image') {
-            this.imageParticle.render(ctx, item, item.x, pageY + item.y)
-          } else if (item.type === 'footnote') {
-            // 脚注引用: 上标编号 (R31)
-            const fp = createFootnoteParticle()
-            fp.render(ctx, item, item.x, pageY + item.y, {
-              pageIndex: i, totalPages: this.pages.length,
-            })
-          } else if (item.type === 'table') {
-            // 表格渲染 (R37) — cell 内 smarttext 经 TableParticle 委托 registry (§4)
-            const tp = createTableParticle()
-            tp.render(ctx, item, item.x, pageY + item.y, {
-              showInvisible: this._showInvisible,
-              pageIndex: i,
-              presentationStyleOf: this.presentationStyleOf,
-              templateDefinitionOf: this.templateDefinitionOf,
-              elementOf: this.elementOf,
-              controlValueOf: this.controlValueOf,
-              activeControlId: this.activeControlNodeId,
-            })
-          } else {
-            // 文本/域代码/控件 — 通过 ParticleRegistry 调度 (含列表标记)
-            const textRenderer = particleRegistry.get(item.nodeType || item.type) || particleRegistry.get('text')
-            if (textRenderer) {
-              textRenderer.render(ctx, { ...item, text: this.resolveFieldText(item, i) }, item.x, pageY + item.y, {
-                showInvisible: this._showInvisible,
-                pageIndex: i,
-                presentationStyleOf: this.presentationStyleOf,
-                templateDefinitionOf: this.templateDefinitionOf,
-                elementOf: this.elementOf,
-                controlValueOf: this.controlValueOf,
-                activeControlId: this.activeControlNodeId,
-              })
-            }
-          }
+          this.renderBodyItem(ctx, item, pageY, i, contentWidth)
         }
 
         // ================================================================
@@ -558,12 +522,7 @@ export class Draw {
         const footerTop = pageHeight - footerH
 
         // 分隔线 (页脚上方) — 0.5px细线, 浅灰
-        ctx.strokeStyle = '#CCCCCC'
-        ctx.lineWidth = 0.5
-        ctx.beginPath()
-        ctx.moveTo(0, pageY + footerTop)
-        ctx.lineTo(pageWidth, pageY + footerTop)
-        ctx.stroke()
+        this.drawHfSeparator(ctx, pageWidth, pageY + footerTop)
 
         // 编辑模式: 激活区域用虚线边框标记
         if (this.hfEditActive && this.hfEditSection === 'footer') {
@@ -624,7 +583,7 @@ export class Draw {
 
       // --- 光标 (文字上方, 仅在 visible 时绘制; 无缝编辑激活时隐藏, 由 DOM 光标承担) ---
       if (cursor.visible && !this.activeControlNodeId) {
-        const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, pageVerticalGap)
+        const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, pageVerticalGap, this.hfPreferredPage)
         if (caret) {
           ictx.fillStyle = '#000000'
           ictx.fillRect(caret.x, caret.y, 2, caret.h)
@@ -678,12 +637,12 @@ export class Draw {
     const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1] || ''
     if (!this.document) return
 
-    // 区域: 同 header/footer 的选区 → 专用高亮 (每页独立 offset); 跨区拒绝。
-    const aSec = sectionOf(anchorParaId, this.document)
-    const fSec = sectionOf(focusParaId, this.document)
-    if (aSec !== fSec) return
-    if (aSec === 'header' || aSec === 'footer') {
-      this.fillRegionSelection(pool, selection, aSec, pageVerticalGap, ictx)
+    // 区域: 同 header/footer (含变体) 的选区 → 专用高亮 (每页独立 offset); 跨区/跨变体拒绝。
+    // 同区判定复用 SelectionCollector 的区域身份 (单一事实源, 契约 §7.9)。
+    const aLoc = resolveHfParagraphLocation(this.document, anchorParaId)
+    if (regionIdOf(anchorParaId, this.document) !== regionIdOf(focusParaId, this.document)) return
+    if (aLoc) {
+      this.fillRegionSelection(pool, selection, aLoc.band, pageVerticalGap, ictx)
       return
     }
 
@@ -1007,7 +966,8 @@ export class Draw {
 
     const scrollY = this.coordSystem.transform.scrollY
 
-    for (let i = 0; i < this.pages.length; i++) {
+    // 优先页在前: 页眉/页脚控件每页都有副本, 取首个命中会恒落第 0 页 (契约 §7.9)
+    for (const i of this.pageOrder(this.hfPreferredPage)) {
       const page = this.pages[i]
       if (!page) continue
       const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
@@ -1040,12 +1000,85 @@ export class Draw {
     return null
   }
 
-  /** 渲染 SLIFItem[] — 页眉/页脚/正文共用 (TASK-470) */
+  /**
+   * 渲染单个**正文** SLIFItem (separator / image / footnote / table / 文本·域·控件)。
+   *
+   * 屏幕画布 (render) 与打印离屏 (renderPageToContext) 共用同一分派 — 契约 §4:
+   * 打印是渲染管线的投影, 不得有第二个渲染器或第二份域代码解析。
+   * @param separatorContentWidth separator 粒子的可用宽 (两处调用方取值不同, 故由调用方传入)
+   * @param showInvisible 覆盖不可见字符显示 — 打印必须强制 false (编辑标记不进打印稿);
+   *                      缺省跟随屏幕设置
+   */
+  private renderBodyItem(
+    ctx: CanvasRenderingContext2D,
+    item: SLIFItem,
+    pageY: number,
+    pageIndex: number,
+    separatorContentWidth: number,
+    showInvisible: boolean = this._showInvisible,
+  ): void {
+    if (item.type === 'separator') {
+      const sepRenderer = particleRegistry.get('separator')
+      if (sepRenderer) {
+        sepRenderer.render(ctx, item, item.x, pageY + item.y, { contentWidth: separatorContentWidth })
+      }
+    } else if (item.type === 'image') {
+      this.imageParticle.render(ctx, item, item.x, pageY + item.y)
+    } else if (item.type === 'footnote') {
+      // 脚注引用: 上标编号 (R31)
+      const fp = createFootnoteParticle()
+      fp.render(ctx, item, item.x, pageY + item.y, {
+        pageIndex, totalPages: this.pages.length,
+      })
+    } else if (item.type === 'table') {
+      // 表格渲染 (R37) — cell 内 smarttext 经 TableParticle 委托 registry (§4)
+      const tp = createTableParticle()
+      tp.render(ctx, item, item.x, pageY + item.y, {
+        showInvisible,
+        pageIndex,
+        presentationStyleOf: this.presentationStyleOf,
+        templateDefinitionOf: this.templateDefinitionOf,
+        elementOf: this.elementOf,
+        controlValueOf: this.controlValueOf,
+        activeControlId: this.activeControlNodeId,
+      })
+    } else {
+      // 文本/域代码/控件 — 通过 ParticleRegistry 调度 (含列表标记)
+      const textRenderer = particleRegistry.get(item.nodeType || item.type) || particleRegistry.get('text')
+      if (textRenderer) {
+        textRenderer.render(ctx, { ...item, text: this.resolveFieldText(item, pageIndex) }, item.x, pageY + item.y, {
+          showInvisible,
+          pageIndex,
+          presentationStyleOf: this.presentationStyleOf,
+          templateDefinitionOf: this.templateDefinitionOf,
+          elementOf: this.elementOf,
+          controlValueOf: this.controlValueOf,
+          activeControlId: this.activeControlNodeId,
+        })
+      }
+    }
+  }
+
+  /** 页眉/页脚带分隔线 (0.5px 浅灰) — 屏幕渲染与打印同源 */
+  private drawHfSeparator(ctx: CanvasRenderingContext2D, pageWidth: number, y: number): void {
+    ctx.strokeStyle = '#CCCCCC'
+    ctx.lineWidth = 0.5
+    ctx.beginPath()
+    ctx.moveTo(0, y)
+    ctx.lineTo(pageWidth, y)
+    ctx.stroke()
+  }
+
+  /**
+   * 渲染 SLIFItem[] — 页眉/页脚/正文共用 (TASK-470)
+   * @param showInvisible 覆盖不可见字符显示 (打印强制 false); 缺省跟随屏幕设置
+   */
   private renderParticleItems(
     ctx: CanvasRenderingContext2D,
     items: SLIFItem[],
     pageY: number,
     pageIndex: number,
+    showInvisible: boolean = this._showInvisible,
   ): void {
     for (const item of items) {
       if (item.type === 'image') {
@@ -1059,7 +1092,7 @@ export class Draw {
       const textRenderer = particleRegistry.get(item.nodeType || item.type)
       if (textRenderer) {
         textRenderer.render(ctx, { ...item, text: this.resolveFieldText(item, pageIndex) }, item.x, pageY + item.y, {
-          showInvisible: this._showInvisible,
+          showInvisible,
           pageIndex,
           presentationStyleOf: this.presentationStyleOf,
           templateDefinitionOf: this.templateDefinitionOf,
@@ -1103,7 +1136,7 @@ export class Draw {
     // 分页间隙 — 与 Draw.render() 同源, 保证光标 / 鼠标命中在同一坐标系
     const pageVerticalGap = this.renderer.getPageVerticalGap()
 
-    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, pageVerticalGap)
+    const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, pageVerticalGap, this.hfPreferredPage)
     if (!caret) return null
 
     const surface = this.renderer.getInteractSurface()
@@ -1159,7 +1192,8 @@ export class Draw {
     const pageVerticalGap = this.renderer.getPageVerticalGap()
     const scrollY = this.coordSystem.transform.scrollY
 
-    for (let i = 0; i < this.pages.length; i++) {
+    // 优先页在前: 页眉/页脚控件每页都有副本, 取首个命中会恒落第 0 页 (契约 §7.9)
+    for (const i of this.pageOrder(this.hfPreferredPage)) {
       const page = this.pages[i]
       if (!page) continue
       const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
@@ -1226,7 +1260,8 @@ export class Draw {
     const pageVerticalGap = this.renderer.getPageVerticalGap()
     const scrollY = this.coordSystem.transform.scrollY
 
-    for (let i = 0; i < this.pages.length; i++) {
+    // 优先页在前: 页眉/页脚控件每页都有副本, 取首个命中会恒落第 0 页 (契约 §7.9)
+    for (const i of this.pageOrder(this.hfPreferredPage)) {
       const page = this.pages[i]
       if (!page) continue
       const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
@@ -1345,21 +1380,14 @@ export class Draw {
   }
 
   /** 域代码动态值计算 (TASK-471) */
+  /** 域代码显示文本 — 委托 document 域纯函数, 注入本渲染器的时间/页面事实 */
   private resolveFieldText(item: { fieldType?: string; text?: string }, pageIndex: number): string {
-    if (!item.fieldType) return item.text || ''
-    const total = this.pages.length
-    const now = new Date()
-    switch (item.fieldType) {
-      case 'page_number': return String(pageIndex + 1)
-      case 'total_pages': return String(total)
-      case 'current_date': return now.toLocaleDateString('zh-CN')
-      case 'current_time': return now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-      case 'document_title': return this.document?.title || ''
-      case 'author_name': return 'user' // 暂取默认
-      case 'last_saved_date': return now.toLocaleDateString('zh-CN')
-      case 'print_date': return now.toLocaleDateString('zh-CN')
-      default: return item.text || `[${item.fieldType}]`
-    }
+    return formatFieldText(item.fieldType, item.text, {
+      pageNumber: pageIndex + 1,
+      totalPages: this.pages.length,
+      documentTitle: this.document?.title,
+      now: new Date(),
+    })
   }
 
   /** 不可见字符显示 (TASK-475) */
@@ -1410,29 +1438,83 @@ export class Draw {
   /** 当前编辑的页眉/页脚区域 */
   getHeaderFooterEditSection(): 'header' | 'footer' { return this.hfEditSection }
 
-  /** 激活/关闭页眉页脚编辑模式 */
-  setHeaderFooterEditActive(active: boolean, section?: 'header' | 'footer'): void {
+  /** 激活/关闭页眉页脚编辑模式 (pageIndex 缺省保持原钉子) */
+  setHeaderFooterEditActive(active: boolean, section?: 'header' | 'footer', pageIndex?: number): void {
     this.hfEditActive = active
     if (section) this.hfEditSection = section
+    if (pageIndex !== undefined) this.hfEditPageIndex = Math.max(0, Math.floor(pageIndex))
   }
 
-  /** 渲染单个 SLIF 页面到离屏 Canvas 上下文 (用于打印) */
+  /** 当前编辑目标页下标 (0-based) */
+  getHeaderFooterEditPageIndex(): number { return this.hfEditPageIndex }
+  /** 重钉编辑目标页 */
+  setHeaderFooterEditPage(pageIndex: number): void {
+    this.hfEditPageIndex = Math.max(0, Math.floor(pageIndex))
+  }
+
+  /**
+   * 当前可见的首个页面下标 — 派生值, 不新增 scroll 事实源
+   * (与 render() 同源: getVisiblePages(scrollY, viewportH / scale))。
+   * 供"进入页眉页脚编辑时默认钉在正在看的那页"。
+   */
+  getActivePageIndex(): number {
+    if (this.pages.length === 0) return 0
+    const scale = this.coordSystem.transform.scale || 1
+    const viewportH = this.host.viewport.size().height
+    const { start } = this.layoutEngine.getVisiblePages(
+      this.coordSystem.transform.scrollY, viewportH / scale,
+    )
+    return Math.min(Math.max(0, start), this.pages.length - 1)
+  }
+
+  /**
+   * 页遍历顺序 — 优先页在前, 其余按自然序补足。
+   * 页眉/页脚段落每页都有副本, 「取首个命中」会恒落第 0 页; 用优先页纠正
+   * (契约 §7.9)。preferred 越界时退化为自然序。
+   */
+  private pageOrder(preferred?: number): number[] {
+    const n = this.pages.length
+    const out: number[] = []
+    const hasPreferred = preferred !== undefined && preferred >= 0 && preferred < n
+    if (hasPreferred) out.push(preferred!)
+    for (let i = 0; i < n; i++) {
+      if (i !== (hasPreferred ? preferred : -1)) out.push(i)
+    }
+    return out
+  }
+
+  /** 页眉页脚编辑期的优先页 (非编辑态 → undefined, 保持原行为) */
+  private get hfPreferredPage(): number | undefined {
+    return this.hfEditActive ? this.hfEditPageIndex : undefined
+  }
+
+  /**
+   * 渲染单个 SLIF 页面到离屏 Canvas 上下文 (用于打印)。
+   *
+   * 与屏幕渲染 (render) 同源 — 契约 §4/§12: 打印是渲染管线的投影, 必须包含
+   * 页眉 + 页脚, 并复用粒子管线 (域代码逐页解析 / 控件 presentation 上下文)。
+   * 页面局部坐标 (item.y 相对页顶; 页眉项 y 相对页顶=带顶, 页脚项 y 相对带顶)。
+   */
   renderPageToContext(ctx: CanvasRenderingContext2D, page: SLIFPage, pageWidth: number): void {
+    const pageIndex = page.pageIndex
+    const headerH = page.headerHeight ?? 42
+    const footerTop = page.height - (page.footerHeight ?? 42)
+
+    // --- 页眉 + 分隔线 ---
+    if (page.headerItems && page.headerItems.length > 0) {
+      this.renderParticleItems(ctx, page.headerItems, 0, pageIndex, false)
+    }
+    this.drawHfSeparator(ctx, pageWidth, headerH)
+
+    // --- 正文 (含表格/脚注; separator 可用宽与旧打印行为保持一致) ---
     for (const item of page.items) {
-      if (item.type === 'separator') {
-        const sepRenderer = particleRegistry.get('separator')
-        if (sepRenderer) {
-          sepRenderer.render(ctx, item, item.x, item.y, { contentWidth: pageWidth - item.x - 90 })
-        }
-      } else if (item.type === 'image') {
-        this.imageParticle.render(ctx, item, item.x, item.y)
-      } else {
-        // 文本/域代码 — 通过 Registry 调度 (含列表标记)
-        const textRenderer = particleRegistry.get(item.nodeType || item.type)
-        if (textRenderer) {
-          textRenderer.render(ctx, { ...item, text: item.text || '' }, item.x, item.y, { showInvisible: false })
-        }
-      }
+      this.renderBodyItem(ctx, item, 0, pageIndex, pageWidth - item.x - 90, false)
+    }
+
+    // --- 页脚分隔线 + 页脚 ---
+    this.drawHfSeparator(ctx, pageWidth, footerTop)
+    if (page.footerItems && page.footerItems.length > 0) {
+      this.renderParticleItems(ctx, page.footerItems, footerTop, pageIndex, false)
     }
   }
 

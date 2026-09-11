@@ -275,6 +275,92 @@ describe('DocumentLoader 往返 (DocumentSerializer ↔ DocumentLoader)', () => 
 
 // ============ 路径: 节点池重建 ============
 
+describe('DocumentLoader 页眉/页脚变体 (契约 §7.9)', () => {
+  function variantFixture() {
+    const doc = createDocument('variant-rt')
+    const allNodes = new Map<string, BaseNode>()
+    allNodes.set(doc.id, doc as unknown as BaseNode)
+
+    const mk = (text: string) => {
+      const tn = createTextNode(text)
+      const p = createParagraph([tn.id])
+      allNodes.set(tn.id, tn as unknown as BaseNode)
+      allNodes.set(p.id, p as unknown as BaseNode)
+      return { paraId: p.id, textId: tn.id, text }
+    }
+    const first = mk('首页页脚')
+    const evenHeader = mk('偶数页页眉')
+
+    doc.body.children = []
+    doc.header = []
+    doc.footer = []
+    doc.firstPageFooter = [first.paraId]
+    doc.evenPageHeader = [evenHeader.paraId]
+    doc.headerFooterConfig = { differentFirstPage: true, differentOddEven: true }
+
+    return { doc, nodes: allNodes, first, evenHeader }
+  }
+
+  it('往返保持变体段落可寻址, 且变体字段原样保留', () => {
+    const { doc, nodes, first, evenHeader } = variantFixture()
+    const pool = buildNodePool(nodes, {
+      body: doc.id,
+      firstPageFooter: doc.firstPageFooter,
+      evenPageHeader: doc.evenPageHeader,
+    })
+    const json = serializeDocument(doc, pool)
+    const r = loadDocument(json)
+
+    expect(r.doc.firstPageFooter).toEqual([first.paraId])
+    expect(r.doc.evenPageHeader).toEqual([evenHeader.paraId])
+    const fp = r.pool.nodes.get(first.paraId) as Paragraph
+    expect(fp).toBeDefined()
+    expect((r.pool.nodes.get(fp.children[0]) as TextNode).text).toBe('首页页脚')
+    // rootIds 已填充 (Pass 3 校验依赖)
+    expect(r.pool.rootIds.firstPageFooter).toEqual([first.paraId])
+    expect(r.pool.rootIds.evenPageHeader).toEqual([evenHeader.paraId])
+  })
+
+  it('序列化产物缺失变体字段时, 加载不补默认值 (缺失 ≡ 空)', () => {
+    const { doc, nodes, first } = variantFixture()
+    // 只保留 firstPageFooter, 其余变体字段从产物中彻底移除
+    delete doc.evenPageHeader
+    delete doc.firstPageHeader
+    delete doc.evenPageFooter
+
+    const pool = buildNodePool(nodes, { body: doc.id, firstPageFooter: doc.firstPageFooter })
+    const json = serializeDocument(doc, pool)
+    expect(JSON.parse(json).evenPageHeader).toBeUndefined()
+
+    const r = loadDocument(json)
+    // 变体字段是加法可选: 加载器不得预创建
+    expect(r.doc.evenPageHeader).toBeUndefined()
+    expect(r.doc.evenPageFooter).toBeUndefined()
+    expect(r.doc.firstPageHeader).toBeUndefined()
+    expect(r.doc.firstPageFooter).toEqual([first.paraId])
+  })
+
+  it('变体数组含悬空 id → validate 阶段抛「引用悬空」', () => {
+    const doc = createDocument('dangling') as unknown as Record<string, unknown>
+    doc.modelVersion = versionToString(CURRENT_DOCUMENT_VERSION)
+    ;(doc as unknown as DocumentTree).body.children = []
+    ;(doc as unknown as DocumentTree).firstPageHeader = ['ghost-node-id']
+    ;(doc as unknown as { nodes?: Record<string, BaseNode> }).nodes = {}
+
+    expect(() => loadDocumentFromObject(doc)).toThrow(/引用悬空/)
+  })
+
+  it('变体数组含非字符串引用 → validate 阶段拒绝', () => {
+    const doc = createDocument('badref') as unknown as Record<string, unknown>
+    doc.modelVersion = versionToString(CURRENT_DOCUMENT_VERSION)
+    ;(doc as unknown as DocumentTree).body.children = []
+    ;(doc as unknown as DocumentTree).evenPageFooter = [123 as unknown as string]
+    ;(doc as unknown as { nodes?: Record<string, BaseNode> }).nodes = {}
+
+    expect(() => loadDocumentFromObject(doc)).toThrow(/非字符串引用/)
+  })
+})
+
 describe('DocumentLoader 节点池重建', () => {
   it('extraNodes 优先于 doc.nodes', () => {
     const { doc, nodes } = buildRoundTripFixture()

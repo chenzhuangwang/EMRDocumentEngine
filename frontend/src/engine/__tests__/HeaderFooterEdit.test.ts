@@ -25,6 +25,7 @@ import { resolveParagraphRegion, resolveSiblingRange } from '../state/CaretScope
 import { selectionSpine } from '../document/selection/SelectionCollector'
 import type { SerializedPara } from '../command/ClipboardManager'
 import { LayoutEngine } from '../layout/core/LayoutEngine'
+import type { SLIFItem } from '../layout/core/SLIF'
 import { EventBus } from '../interaction/EventBus'
 import { testMeasurer } from './helpers'
 
@@ -418,5 +419,143 @@ describe('页眉/页脚控件 label 预留宽 (防相邻重叠)', () => {
   }
   it('带 label 的控件预留宽 > 不带 label (label 占位计入行内宽)', () => {
     expect(widthWith('文本输入：')).toBeGreaterThan(widthWith(undefined))
+  })
+})
+
+// ---- 逐页变体布局 (契约 §7.9): 首页不同 / 奇偶页不同 ----
+
+/** 多页文档: body 段足够多 → ≥3 页; 可指定各变体的页脚/页眉文案 */
+function makeVariantDoc(opts: {
+  bodyParas?: number
+  header?: string
+  footer?: string
+  firstPageHeader?: string
+  firstPageFooter?: string
+  evenPageHeader?: string
+  evenPageFooter?: string
+  differentFirstPage?: boolean
+  differentOddEven?: boolean
+}): { doc: DocumentTree; pool: NodePool } {
+  const doc = createDocument('hf-variant')
+  const all = new Map<string, BaseNode>()
+  all.set(doc.id, doc as unknown as BaseNode)
+
+  const mk = (text: string): string => {
+    const tn = createTextNode(text)
+    const p = createParagraph([tn.id])
+    all.set(tn.id, tn as unknown as BaseNode)
+    all.set(p.id, p as unknown as BaseNode)
+    return p.id
+  }
+
+  doc.body.children = Array.from({ length: opts.bodyParas ?? 200 }, (_, i) => mk(`正文第${i + 1}段`))
+  doc.header = opts.header ? [mk(opts.header)] : []
+  doc.footer = opts.footer ? [mk(opts.footer)] : []
+  if (opts.firstPageHeader) doc.firstPageHeader = [mk(opts.firstPageHeader)]
+  if (opts.firstPageFooter) doc.firstPageFooter = [mk(opts.firstPageFooter)]
+  if (opts.evenPageHeader) doc.evenPageHeader = [mk(opts.evenPageHeader)]
+  if (opts.evenPageFooter) doc.evenPageFooter = [mk(opts.evenPageFooter)]
+  doc.headerFooterConfig = {
+    differentFirstPage: opts.differentFirstPage === true,
+    differentOddEven: opts.differentOddEven === true,
+  }
+
+  const pool = buildNodePool(all, { body: doc.id })
+  return { doc, pool }
+}
+
+const textsOf = (items: SLIFItem[] | undefined) => (items ?? []).map(i => i.text)
+
+describe('逐页页眉/页脚变体布局', () => {
+  it('两个开关都关 → 各页共享同一 items 数组 (惰性, 不复制)', () => {
+    const { doc, pool } = makeVariantDoc({ header: '页眉', footer: '页脚' })
+    const pages = layoutFooter(doc, pool)
+    expect(pages.length).toBeGreaterThan(2)
+    for (const p of pages) {
+      expect(p.headerItems).toBe(pages[0].headerItems)
+      expect(p.footerItems).toBe(pages[0].footerItems)
+    }
+  })
+
+  it('differentFirstPage → 第 1 页用首页变体, 第 2 页起用默认变体', () => {
+    const { doc, pool } = makeVariantDoc({
+      header: '默认页眉', footer: '默认页脚',
+      firstPageHeader: '首页页眉', firstPageFooter: '首页页脚',
+      differentFirstPage: true,
+    })
+    const pages = layoutFooter(doc, pool)
+    expect(textsOf(pages[0].footerItems)).toContain('首页页脚')
+    expect(textsOf(pages[0].headerItems)).toContain('首页页眉')
+    expect(textsOf(pages[1].footerItems)).toContain('默认页脚')
+    expect(textsOf(pages[1].headerItems)).toContain('默认页眉')
+  })
+
+  it('differentOddEven → 偶数页用 even 变体, 奇数页用默认变体', () => {
+    const { doc, pool } = makeVariantDoc({
+      header: '默认页眉', footer: '默认页脚',
+      evenPageHeader: '偶数页眉', evenPageFooter: '偶数页脚',
+      differentOddEven: true,
+    })
+    const pages = layoutFooter(doc, pool)
+    // 第 1 页 (索引 0) 奇数 → 默认
+    expect(textsOf(pages[0].footerItems)).toContain('默认页脚')
+    // 第 2 页 (索引 1) 偶数 → even
+    expect(textsOf(pages[1].footerItems)).toContain('偶数页脚')
+    expect(textsOf(pages[1].headerItems)).toContain('偶数页眉')
+    // 第 3 页 (索引 2) 奇数 → 默认
+    expect(textsOf(pages[2].footerItems)).toContain('默认页脚')
+  })
+
+  it('两者同开 → 第 1 页首页变体, 第 2 页 even, 第 3 页默认', () => {
+    const { doc, pool } = makeVariantDoc({
+      header: '默认页眉', firstPageHeader: '首页页眉', evenPageHeader: '偶数页眉',
+      differentFirstPage: true, differentOddEven: true,
+    })
+    const pages = layoutFooter(doc, pool)
+    expect(textsOf(pages[0].headerItems)).toContain('首页页眉')
+    expect(textsOf(pages[1].headerItems)).toContain('偶数页眉')
+    expect(textsOf(pages[2].headerItems)).toContain('默认页眉')
+  })
+
+  it('开关开但变体数组缺失 → 该页带为空 (不回退默认)', () => {
+    const { doc, pool } = makeVariantDoc({
+      footer: '默认页脚', differentFirstPage: true,
+    })
+    const pages = layoutFooter(doc, pool)
+    expect(pages[0].footerItems ?? []).toHaveLength(0)
+    expect(textsOf(pages[1].footerItems)).toContain('默认页脚')
+  })
+
+  it('逐页 headerHeight/footerHeight 跟随该页变体的带高', () => {
+    const { doc, pool } = makeVariantDoc({
+      footer: '默认页脚',
+      firstPageFooter: '首页页脚第一行',
+      differentFirstPage: true,
+    })
+    // 让首页页脚明显更高 (多段, 超过 HF_MIN_REGION=42)
+    for (let i = 2; i <= 4; i++) {
+      const extra = createTextNode(`首页页脚第${i}行`)
+      const extraPara = createParagraph([extra.id])
+      pool.addNode(extra as unknown as BaseNode)
+      pool.addNode(extraPara as unknown as BaseNode)
+      doc.firstPageFooter = [...(doc.firstPageFooter ?? []), extraPara.id]
+    }
+
+    const pages = layoutFooter(doc, pool)
+    const hFirst = pages[0].footerHeight!
+    const hDefault = pages[1].footerHeight!
+    expect(hFirst).toBeGreaterThan(hDefault)
+  })
+
+  it('变体未开启时不为变体数组付出布局代价 (开关关 → 不读 firstPageHeader)', () => {
+    // firstPageHeader 存在但开关关闭 → 该内容不得出现在任何页
+    const { doc, pool } = makeVariantDoc({
+      header: '默认页眉', firstPageHeader: '首页页眉', differentFirstPage: false,
+    })
+    const pages = layoutFooter(doc, pool)
+    for (const p of pages) {
+      expect(textsOf(p.headerItems)).not.toContain('首页页眉')
+      expect(textsOf(p.headerItems)).toContain('默认页眉')
+    }
   })
 })

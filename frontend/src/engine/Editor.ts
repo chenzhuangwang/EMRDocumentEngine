@@ -45,9 +45,12 @@ import type { CellRange } from './document/table/TableOps'
 import {
   collectTextNodeIds, collectSelectionSegments,
   paragraphTextLength, findFirstTextNodeInRange,
-  flattenTextContainers, selectionSpine, sectionOf, regionSpine,
+  flattenTextContainers, selectionSpine, regionSpine,
 } from './document/selection/SelectionCollector'
 import type { FormatRange } from './document/selection/SelectionCollector'
+import {
+  ensureHfArray, hfParagraphsForPage, resolveHfParagraphLocation, resolveVariantForPage,
+} from './document/core/HeaderFooterRegions'
 import {
   InsertInlineNodeCommand, InsertBlockCommand, InsertFootnoteCommand,
   CreateCommentCommand, AddCommentReplyCommand, ResolveCommentCommand,
@@ -947,10 +950,13 @@ export class Editor {
    */
   getRegionControlIds(anchorNodeId: string): string[] {
     // anchorNodeId 是控件 (smarttext) nodeId; 区域由「其所属段落」判定
-    // (sectionOf 判的是段落 id, 直接传控件 id 会被误判为 body)。
+    // (归属判的是段落 id, 直接传控件 id 会被误判为 body)。
+    // 页眉/页脚必须带**变体**: 首页/偶数页变体是不同的兄弟数组 (契约 §7.9)。
     const anchorPara = this.findParagraphContaining(anchorNodeId)
-    const section = anchorPara ? sectionOf(anchorPara.id, this.doc) : 'body'
-    const spine = regionSpine(this.doc, this.pool, section)
+    const loc = anchorPara ? resolveHfParagraphLocation(this.doc, anchorPara.id) : null
+    const spine = loc
+      ? regionSpine(this.doc, this.pool, loc.band, loc.variant)
+      : regionSpine(this.doc, this.pool, 'body')
     const ids: string[] = []
     for (const paraId of spine) {
       const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
@@ -1209,6 +1215,9 @@ export class Editor {
     if (!doc.header) doc.header = []
     if (!doc.footer) doc.footer = []
     this.doc = doc
+    // EditorStore.document 是 canonical DocumentTree 的**引用视图** (契约 §7.2):
+    // 唯一写入方就是这里 — 换文档时必须替换引用, 否则 UI 侧读到上一份文档。
+    this.store.setDocument(doc)
     this.store.setDocumentTitle(doc.title)
     const loaded = loadDocumentFromObject(doc, { extraNodes: nodes })
     this.pool = loaded.pool
@@ -1235,16 +1244,19 @@ export class Editor {
   /**
    * 确保页眉/页脚区域至少有一个段落 (无则创建)
    * 返回第一个段落 ID
+   *
+   * @param pageNumber 目标页 (1-based) — 决定生效变体 (契约 §7.9);
+   *                   缺省用当前编辑目标页 + 1
    */
-  ensureHeaderFooterParagraph(section: 'header' | 'footer'): string {
-    const arr = section === 'header'
-      ? (this.doc.header ?? (this.doc.header = []))
-      : (this.doc.footer ?? (this.doc.footer = []))
+  ensureHeaderFooterParagraph(section: 'header' | 'footer', pageNumber?: number): string {
+    const page = pageNumber ?? this.getHeaderFooterEditPageIndex() + 1
+    const variant = resolveVariantForPage(this.doc, page)
+    const arr = ensureHfArray(this.doc, section, variant)
     if (arr.length > 0) return arr[0]
 
-    // 经 Command 创建段落 (RULE 4), 命令同步写回 doc.header/footer
+    // 经 Command 创建段落 (RULE 4), 命令同步写回对应的变体数组
     this.commandManager.execute(new EnsureHeaderFooterParagraphCommand(
-      generateCommandId(), Date.now(), 'user', section,
+      generateCommandId(), Date.now(), 'user', section, variant,
     ))
     return arr[0]
   }
@@ -2282,11 +2294,12 @@ export class Editor {
 
   /** 全选: 选区覆盖整篇文档所有段落 (含表格 cell 内段落) */
   selectAll(): void {
-    // 页眉/页脚编辑态 → 选整个页眉/页脚区 (WPS 对齐); 否则正文(含表格 cell)
+    // 页眉/页脚编辑态 → 选整个页眉/页脚区 (WPS 对齐, 按编辑目标页的变体);
+    // 否则正文(含表格 cell)
     const hf = this.store.state.headerFooterEdit
     let spine: string[]
     if (hf.active && (hf.section === 'header' || hf.section === 'footer')) {
-      spine = hf.section === 'header' ? [...(this.doc.header ?? [])] : [...(this.doc.footer ?? [])]
+      spine = [...hfParagraphsForPage(this.doc, hf.section, hf.pageIndex + 1)]
     } else {
       spine = flattenTextContainers(this.pool, this.doc.body.children)
     }
@@ -2316,14 +2329,25 @@ export class Editor {
     this.store.setScale(scale)
   }
   /** 页眉页脚编辑模式切换 — 同步 EditorStore (canonical owner, §7.2) 与 Draw (渲染镜像) */
-  setHeaderFooterEditActive(active: boolean, section?: 'header' | 'footer'): void {
-    this.draw.setHeaderFooterEditActive(active, section)
-    this.store.setHeaderFooterEdit(active, section)
+  setHeaderFooterEditActive(active: boolean, section?: 'header' | 'footer', pageIndex?: number): void {
+    const page = pageIndex ?? (active ? this.draw.getActivePageIndex() : undefined)
+    this.draw.setHeaderFooterEditActive(active, section, page)
+    this.store.setHeaderFooterEdit(active, section, page)
   }
   /** 页眉页脚编辑模式是否激活 */
   isHeaderFooterEditActive(): boolean { return this.store.state.headerFooterEdit.active }
   /** 当前编辑的页眉/页脚区域 */
   getHeaderFooterEditSection(): 'header' | 'footer' { return this.store.state.headerFooterEdit.section }
+  /**
+   * 页眉页脚「编辑目标页」下标 (0-based, 契约 §7.2/§7.9)。
+   * 页眉页脚段落每页都有副本, 定页才能让光标/控件 overlay 落在正在看的那页。
+   */
+  getHeaderFooterEditPageIndex(): number { return this.store.state.headerFooterEdit.pageIndex }
+  /** 重钉编辑目标页 — 点击命中某页页眉/页脚带时由 MouseHandler 调用 (唯一写入方之一) */
+  setHeaderFooterEditPage(pageIndex: number): void {
+    this.draw.setHeaderFooterEditPage(pageIndex)
+    this.store.setHeaderFooterEdit(this.store.state.headerFooterEdit.active, undefined, pageIndex)
+  }
   /** 页眉页脚选项 (canonical owner = DocumentTree) */
   getHeaderFooterConfig(): HeaderFooterConfig {
     return this.doc.headerFooterConfig ?? { ...DEFAULT_HEADER_FOOTER_CONFIG }

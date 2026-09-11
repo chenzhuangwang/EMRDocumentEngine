@@ -11,6 +11,9 @@
 
 import type { DocumentTree, Paragraph, TextNode, SmartTextNode, ElementEnumOption } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
+import {
+  isVariantEnabled, resolveVariantForPage, type HeaderFooterVariant,
+} from '../../document/core/HeaderFooterRegions'
 import type { ControlType } from '../../template/TemplateDefinition'
 import type { SLIFPage, SLIFItem, SLIFRow, SLIFCell } from './SLIF'
 import type { EventBus } from '../../interaction/EventBus'
@@ -49,6 +52,12 @@ export interface InlineControlInfo {
   prefix?: string
   suffix?: string
 }
+
+/** 单个页眉/页脚带的布局产物 (items 的 y 相对带顶) */
+interface HfRegion { items: SLIFItem[]; regionHeight: number }
+
+/** 已算出的页眉/页脚变体布局 — default 恒有; first/even 视开关惰性计算 */
+type HfVariantRegions = Partial<Record<HeaderFooterVariant, { header: HfRegion; footer: HfRegion }>>
 
 /** 标题级别 → 字体缩放倍率 (基于正文默认 16px: H1=32, H2=24, H3=20, H4=18, H5=16, H6=14) */
 const HEADING_SCALE: Record<number, number> = { 1: 2.0, 2: 1.5, 3: 1.25, 4: 1.125, 5: 1.0, 6: 0.875 }
@@ -102,18 +111,26 @@ export class LayoutEngine {
       marginRight: this.config.marginRight,
     }
 
-    // 页眉/页脚内容布局 (每页一致; y 相对各自带顶, WPS 式锚定朝版心扩展)
-    const headerLines = this.collectHFParagraphLines(doc.header, pool, lineBreaker, measurer, contentWidth)
-    const footerLines = this.collectHFParagraphLines(doc.footer, pool, lineBreaker, measurer, contentWidth)
-    const hfHeader = this.layoutHFRegion('header', headerLines, measurer, contentWidth)
-    const hfFooter = this.layoutHFRegion('footer', footerLines, measurer, contentWidth)
+    // 页眉/页脚内容布局 (y 相对各自带顶, WPS 式锚定朝版心扩展)。
+    // 逐页变体 (契约 §7.9): 默认变体恒算; first/even 仅在开关开启时才算 (惰性 —
+    // 两个开关都关时工作量与历史行为逐字节相同)。
+    const hfVariants = this.buildHfVariants(doc, pool, lineBreaker, measurer, contentWidth)
 
     // 脚注 gutter: 含脚注时正文为脚注区预留
     const footnoteReserve = this.docContainsFootnotes(pool) ? FOOTNOTE_GUTTER : 0
 
     // 正文实际可用区 (WPS): 页眉超高 → 正文起点下移; 页脚超高 → 正文终点上移。
-    const bodyTop = Math.max(this.config.marginTop, hfHeader.regionHeight)
-    const bodyBottom = this.config.pageHeight - Math.max(this.config.marginBottom, hfFooter.regionHeight)
+    // 取「已启用变体的最坏带高」, 使全文分页统一、确定 (逐页正文高度需改
+    // PageBreaker, 属本轮范围外); 代价是带较矮的页面正文起止略显富余。
+    let maxHeaderH = 0
+    let maxFooterH = 0
+    for (const set of Object.values(hfVariants)) {
+      if (!set) continue
+      maxHeaderH = Math.max(maxHeaderH, set.header.regionHeight)
+      maxFooterH = Math.max(maxFooterH, set.footer.regionHeight)
+    }
+    const bodyTop = Math.max(this.config.marginTop, maxHeaderH)
+    const bodyBottom = this.config.pageHeight - Math.max(this.config.marginBottom, maxFooterH)
     const bodyArea = Math.max(0, bodyBottom - bodyTop - footnoteReserve)
 
     for (const blockId of doc.body.children) {
@@ -496,11 +513,13 @@ export class LayoutEngine {
         y += line.height
       }
 
-      // 页眉/页脚 — 复用预计算的 items/带高 (每页一致)
+      // 页眉/页脚 — 按本页页码取生效变体 (契约 §7.9)。
+      // 同一变体各页共享同一 items 数组 (不做逐页复制)。
+      const hfSet = hfVariants[resolveVariantForPage(doc, ip.pageIndex + 1)] ?? hfVariants.default!
       return {
         pageIndex: ip.pageIndex, width: this.config.pageWidth, height: this.config.pageHeight, items,
-        headerItems: hfHeader.items, footerItems: hfFooter.items,
-        headerHeight: hfHeader.regionHeight, footerHeight: hfFooter.regionHeight,
+        headerItems: hfSet.header.items, footerItems: hfSet.footer.items,
+        headerHeight: hfSet.header.regionHeight, footerHeight: hfSet.footer.regionHeight,
       }
     })
 
@@ -1027,7 +1046,7 @@ export class LayoutEngine {
    * 空段/无可布局子节点 → 推占位行, 使 Enter 拆出的新空段有行、光标可落。
    */
   private collectHFParagraphLines(
-    blockIds: string[] | undefined,
+    blockIds: readonly string[] | undefined,
     pool: NodePool,
     lineBreaker: LineBreaker,
     measurer: TextMeasurer,
@@ -1132,6 +1151,48 @@ export class LayoutEngine {
       allLines.push(...lines)
     }
     return allLines
+  }
+
+  /** 单个带 (header|footer) 的区域布局 — 折行 + 带内定位 */
+  private layoutHfBand(
+    kind: 'header' | 'footer',
+    ids: readonly string[] | undefined,
+    pool: NodePool,
+    lineBreaker: LineBreaker,
+    measurer: TextMeasurer,
+    contentWidth: number,
+  ): HfRegion {
+    const lines = this.collectHFParagraphLines(ids, pool, lineBreaker, measurer, contentWidth)
+    return this.layoutHFRegion(kind, lines, measurer, contentWidth)
+  }
+
+  /**
+   * 逐页页眉/页脚变体布局 (契约 §7.9)。
+   * default 恒算 (等价历史行为); first / even 仅在对应开关开启时才算 — 惰性。
+   */
+  private buildHfVariants(
+    doc: DocumentTree,
+    pool: NodePool,
+    lineBreaker: LineBreaker,
+    measurer: TextMeasurer,
+    contentWidth: number,
+  ): HfVariantRegions {
+    const build = (
+      headerIds: readonly string[] | undefined,
+      footerIds: readonly string[] | undefined,
+    ): { header: HfRegion; footer: HfRegion } => ({
+      header: this.layoutHfBand('header', headerIds, pool, lineBreaker, measurer, contentWidth),
+      footer: this.layoutHfBand('footer', footerIds, pool, lineBreaker, measurer, contentWidth),
+    })
+
+    const out: HfVariantRegions = { default: build(doc.header, doc.footer) }
+    if (isVariantEnabled(doc, 'first')) {
+      out.first = build(doc.firstPageHeader, doc.firstPageFooter)
+    }
+    if (isVariantEnabled(doc, 'even')) {
+      out.even = build(doc.evenPageHeader, doc.evenPageFooter)
+    }
+    return out
   }
 
   /**

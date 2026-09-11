@@ -73,7 +73,13 @@ export function collectDocumentNodes(doc: DocumentTree, pool: NodePool): Map<str
   }
 
   for (const cid of doc.body.children) visit(cid)
-  for (const ids of [doc.header, doc.footer, doc.footnotes, doc.endnotes]) {
+  // 页眉/页脚全部变体 (契约 §7.9) 必须入扁平表, 否则重载报「引用悬空」
+  for (const ids of [
+    doc.header, doc.footer,
+    doc.firstPageHeader, doc.firstPageFooter,
+    doc.evenPageHeader, doc.evenPageFooter,
+    doc.footnotes, doc.endnotes,
+  ]) {
     if (Array.isArray(ids)) for (const id of ids) visit(id)
   }
 

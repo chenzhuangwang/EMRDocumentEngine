@@ -154,6 +154,14 @@ Examples of document state:
 
 These belong to the document model.
 
+Header/footer CONTENT is stored as page-variant id arrays on
+DocumentTree (default/odd pages, first page, even pages). See §7.9
+for the variant→page selection semantics and the single canonical
+resolver. Layout, render, command, interaction and feature code
+MUST resolve "which variant applies to page N" and "which array owns
+this paragraph id" through that resolver — never by re-implementing
+the field mapping or the page rule.
+
 ------------------------------------------------------------
 2.1 SmartText / EMR Field boundary
 ------------------------------------------------------------
@@ -584,6 +592,8 @@ Examples:
 - zoom
 - active page
 - editing mode
+- header/footer edit target page (§7.9 — which page's band is being
+  edited; transient, never serialized)
 - editor runtime state
 
 Note — EditorStore.document is NOT a second document owner:
@@ -619,6 +629,10 @@ Examples:
 - bookmarks
 - footnotes
 - document metadata
+
+Header/footer content includes the page variants (§7.9) — first-page
+and even-page arrays are document state of the same kind, owned by
+DocumentTree, not layout or render state.
 
 ------------------------------------------------------------
 7.4 Layout Derived State
@@ -782,6 +796,79 @@ Forbidden:
 Forbidden:
 
     selectedNode.properties = formValues   (invented generic bag)
+
+------------------------------------------------------------
+7.9 Page-variant header/footer semantics
+------------------------------------------------------------
+
+Header and footer content is document state (§7.3) held as up to six
+paragraph-id arrays on DocumentTree:
+
+    header / footer                      default variant (odd pages)
+    firstPageHeader / firstPageFooter     first-page variant
+    evenPageHeader / evenPageFooter       even-page variant
+
+`header` / `footer` keep their historical meaning: the DEFAULT (odd
+page) variant. The four variant arrays are ADDITIVE OPTIONAL fields —
+absent ≡ "this variant has no content" (an empty band), never a
+default to be backfilled. See §14 for the format-version bump.
+
+Canonical resolver — exactly ONE module owns both mappings:
+
+    engine/document/core/HeaderFooterRegions.ts
+
+It answers two questions and nothing else:
+
+    variant → array            (hfArrayOf / ensureHfArray)
+    paragraph id → variant     (resolveHfParagraphLocation)
+
+Selection rule (Word/WPS; n = pageIndex + 1):
+
+    1. differentFirstPage && n === 1   → first variant. NO fallback to
+                                         the default variant: enabling
+                                         the option blanks page 1 until
+                                         it is filled.
+    2. else differentOddEven           → odd  → default
+                                         even → even variant. No
+                                         fallback either.
+    3. else                            → default variant.
+    4. both flags on                   → page 1 first; pages ≥ 2 by parity.
+    5. Empty/absent variant array      → that page's band renders empty
+                                         (minimum band height), with no
+                                         content fallback.
+    6. Content of a disabled variant is RETAINED and reappears when the
+       flag is re-enabled (undo/redo and round-trip honesty).
+
+`isVariantEnabled` is driven PURELY by the config flags, never by
+whether an array exists — that is what makes enabling 首页不同 blank
+page 1 immediately, and makes paragraph creation target the variant
+that page actually shows.
+
+MUST:
+
+- layout/render/command/interaction/feature code MUST NOT re-derive the
+  variant→array mapping or the page→variant rule. A second mapping is
+  the drift this section forbids (§11).
+- Membership tests ("is this paragraph in a header/footer?") MUST use
+  the resolver, not `doc.header?.includes(...)` — with variants, the
+  former is wrong for first/even paragraphs.
+- Two paragraphs in DIFFERENT variants of the same band (`header` vs
+  `header:first`) are DIFFERENT regions: cross-variant selections MUST
+  be rejected, exactly like body↔header.
+- The variant array is the controlled mutation surface for this field
+  domain (§6.2): commands write through `ensureHfArray`. Direct
+  assignment remains legal only on the load / migration paths.
+- `headerFooterConfig` changes affect band content AND band height, so
+  the config command's invalidation MUST be full (§16) — not 'none'.
+
+Transient UI state (§7.2): the header/footer EDIT TARGET PAGE (which
+page's band the user is editing) is transient editor runtime state
+inside `headerFooterEdit`, canonical-owned by the Editor, never
+serialized. It exists because a header/footer paragraph is present on
+EVERY page, so geometry resolution ("which page's copy?") is otherwise
+ambiguous and would collapse to page 0. Scroll position remains owned
+by CoordinateSystem; the target page is pinned on activation and on a
+click inside a band, never re-derived from scrolling.
 
 ============================================================
 8. COMMANDS AND HISTORY
@@ -1148,6 +1235,14 @@ Do not add unrelated feature-specific logic to:
 unless the functionality is genuinely part of that subsystem.
 
 Prefer feature modules/adapters.
+
+Print and export are such features, and they are DOCUMENT PROJECTIONS:
+both MUST include header and footer content (§7.9). Print MUST reuse
+the render particle pipeline rather than introducing a second renderer
+or a second field-code resolver (§4): a page rendered to an offscreen
+context and a page rendered to the screen MUST resolve field codes
+(page number, total pages, date, title) identically, and field
+resolution MUST have exactly one implementation in the document domain.
 
 ------------------------------------------------------------
 12.1 Template / Form Definition boundary
@@ -1920,6 +2015,15 @@ Multi-format import loaders (HTML / Markdown / XML) construct NEW
 documents and MUST emit modelVersion = CURRENT_DOCUMENT_VERSION
 (§26.4).
 
+Header/footer page variants (§7.9) advanced the format from 4.4.0 to
+4.5.0. Because the four fields are additive and optional, the migration
+is an explicit NO-OP step (4.4.0 → 4.5.0, breaking: false, upgrade
+returns the document unchanged) — the same convention as the 4.3.0 →
+4.4.0 controlType bump. No data rewrite, no backfill: a pre-4.5
+document simply has no first/even variant content. CURRENT_SLIF_VERSION
+is NOT bumped by a document-format change (§26.13/§26.14).
+
+
 ============================================================
 15. EVENT BUS ARCHITECTURE
 ============================================================
@@ -2044,6 +2148,19 @@ Correctness MUST take priority over premature optimization.
 Do not introduce complex caching without understanding
 its invalidation rules.
 
+A `headerFooterConfig` change (§7.9) selects a different page variant
+and therefore changes band CONTENT and band HEIGHT, which moves the
+body area. Its invalidation is FULL, never 'none'.
+
+Per-page header/footer variants are laid out lazily: the default
+variant is always computed; the first/even variants are computed ONLY
+when their config flag is enabled. With both flags off, layout work
+MUST be unchanged from the single-variant behaviour. The body area is
+derived from the worst case over the ENABLED variants so pagination
+stays uniform and deterministic (per-page body height is a later
+concern, not a licence to re-run the paginator per page).
+
+
 ============================================================
 17. PERFORMANCE RULE
 ============================================================
@@ -2085,6 +2202,19 @@ Prefer unit tests for:
 - table operations
 - coordinate conversion
 - selection/range logic
+
+Page-variant header/footer behaviour is core engine behaviour and MUST
+stay coverable without React:
+
+    HeaderFooterRegions.test.ts   variant→page truth table, membership,
+                                  lazy array creation
+    HeaderFooterEdit.test.ts      variant-aware structure editing +
+                                  per-page variant layout emission
+    PrintRender.test.ts           print projection includes header/footer
+                                  and resolves field codes per page
+    FindReplaceHeaderFooter.test.ts
+                                  find scope + reading order over the
+                                  whole document spine
 
 UI-specific behavior belongs in component/E2E tests.
 
