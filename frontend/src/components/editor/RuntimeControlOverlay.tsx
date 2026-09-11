@@ -425,7 +425,7 @@ function SelectField({ snap, target, editor, onReject }: { snap: ControlSnapshot
           else if (e.key === 'Escape') { e.preventDefault(); editor.deactivateControl() }
         }}
       >
-        <option value="">{target.placeholderText || '请选择'}</option>
+        <option value="">请选择</option>
         {(snap.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.name}</option>)}
       </select>
       <FieldHint msg={error} />

@@ -61,6 +61,27 @@ export function smartTextDisplayValue(node: { text: string; value?: ControlValue
 }
 
 /**
+ * 控件显示文本 (渲染用) — 枚举值映射回候选 name:
+ *   - 空 (undefined/'') → fallbackText (占位符)
+ *   - 有 enums: 单值 → 该候选 name; 多值 → 各候选 name 以 '、' 连接
+ *     (找不到对应候选则回退原值)
+ *   - 无 enums: number→String(n); 其余原值
+ * 使下拉/单选/复选在页面上显示候选名称而非内部 value (如 汉族 而非 hz)。
+ */
+export function controlValueDisplay(
+  element: ElementMeta | undefined,
+  value: ControlValue | undefined,
+  fallbackText: string,
+): string {
+  if (value === undefined || value === '') return fallbackText
+  if (typeof value === 'number') return String(value)
+  const data = element?.format?.enums?.data
+  const nameOf = (v: string): string => data?.find((o) => o.value === v)?.name ?? v
+  if (Array.isArray(value)) return value.length > 0 ? value.map(nameOf).join('、') : fallbackText
+  return nameOf(value)
+}
+
+/**
  * SmartTextNode 在查找替换中的参与文本 (契约 §26), 与 smartTextDisplayValue 分离:
  *
  *   - value === undefined   → null (占位符非用户内容, 排除出查找替换)

@@ -9,7 +9,7 @@
 // 导出链路可直接消费 SLIFPage[]
 // ================================================================
 
-import type { DocumentTree, Paragraph, TextNode, ElementEnumOption, ControlValue } from '../../document/core/DocumentModel'
+import type { DocumentTree, Paragraph, TextNode, SmartTextNode, ElementEnumOption } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
 import type { ControlType } from '../../template/TemplateDefinition'
 import type { SLIFPage, SLIFItem, SLIFRow, SLIFCell } from './SLIF'
@@ -22,7 +22,7 @@ import type { LineElement } from '../line/LineLayout'
 import { PageBreaker } from '../page/PageBreaker'
 import type { ILine, IPage } from '../page/PageLayout'
 import { DEFAULT_PAGE_SETUP } from '../../document/core/DocumentModel'
-import { smartTextDisplayValue } from '../../document/factory/ElementFormatter'
+import { controlValueDisplay } from '../../document/factory/ElementFormatter'
 import { layoutControlOptions, controlOptionsWidth, controlOptionsPlaceholderWidth } from '../../document/control/ControlOptions'
 import { controlVisualRecipe, CONTROL_BOX_PADDING, AFFORDANCE_GAP, AFFORDANCE_WIDTH, controlInlineLeadTrail, stripPlaceholderBrackets } from '../../document/control/ControlBox'
 import { isControlValueEmpty } from '../../document/control/ControlValue'
@@ -169,7 +169,7 @@ export class LayoutEngine {
             const textVal = childType === 'cross_reference'
               ? ((child as unknown as { displayText: string }).displayText || tn.text || '?')
               : childType === 'smarttext'
-                ? smartTextDisplayValue(tn as unknown as { text: string; value?: string })
+                ? controlValueDisplay((child as SmartTextNode).element, (child as SmartTextNode).value, tn.text)
                 : tn.text
             const value = listMarker ? listMarker + textVal : textVal
             if (listMarker) listMarker = '' // 仅首节点添加
@@ -834,7 +834,7 @@ export class LayoutEngine {
           } else if (child.type === 'smarttext') {
             // 表格 cell 内控件 — 预留宽与正文/页眉一致 (options 候选组 / 方括号+affordance /
             // label·prefix·suffix lead/trail), 使 cell 内控件可见、占宽、不重叠。
-            const display = smartTextDisplayValue(child as unknown as { text: string; value?: ControlValue })
+            const display = controlValueDisplay((child as SmartTextNode).element, (child as SmartTextNode).value, (child as { text: string }).text)
             const font = child.font || 'SimSun'
             const size = child.size || DEFAULT_SIZE
             const measure = (t: string) => this.measurer.measureWidth(t, { font, size, bold: child.bold, italic: child.italic })
@@ -1082,7 +1082,7 @@ export class LayoutEngine {
           const tn = child as unknown as TextNode
           // smarttext: 有值显示值、无值回退占位符 (与正文一致); text: 原文
           const display = childType === 'smarttext'
-            ? smartTextDisplayValue(child as unknown as { text: string; value?: ControlValue })
+            ? controlValueDisplay((child as SmartTextNode).element, (child as SmartTextNode).value, tn.text)
             : tn.text
           // 控件预留宽 (与正文一致): checkbox/radio 候选组 / 方括号+affordance,
           // 否则纯文本宽。使页眉内控件不与后续文字/选项重叠。
