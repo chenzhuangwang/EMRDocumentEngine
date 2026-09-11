@@ -396,6 +396,12 @@ export class LineBreaker {
       case 'image': {
         return el.imageData?.width || 100
       }
+      case 'field': {
+        // 域代码按代表性显示值量宽 (非占位符 '[总页数]'): 占位符宽会让域后拖出空白。
+        // 此前该类型落到 default → 0 宽, 与 SLIF 映射的预留宽不一致 (折行与实际推进脱节)。
+        const config = this.getElementFontConfig(el, options)
+        return this.measurer.measureWidth(el.fieldReserveText ?? el.value ?? '', config)
+      }
       case 'table': {
         return options.maxWidth
       }

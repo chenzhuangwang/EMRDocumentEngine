@@ -30,6 +30,7 @@ import { layoutControlOptions, controlOptionsWidth, controlOptionsPlaceholderWid
 import { controlVisualRecipe, CONTROL_BOX_PADDING, AFFORDANCE_GAP, AFFORDANCE_WIDTH, controlInlineLeadTrail, stripPlaceholderBrackets } from '../../document/control/ControlBox'
 import { isControlValueEmpty } from '../../document/control/ControlValue'
 import { wrapControlText } from '../text/TextWrap'
+import { representativeFieldText, type FieldReserveContext } from '../../document/factory/FieldFormatter'
 import { MergeMatrix } from '../../document/table/MergeMatrix'
 import { FootnoteLayout } from '../footnote/FootnoteLayout'
 import { ListParticle } from '../../render/particles/ListParticle'
@@ -82,6 +83,13 @@ export class LayoutEngine {
   // templateDefinitions, 只消费回调, 保持布局与设计期层的解耦。
   private controlInfoOf: ((nodeId: string) => InlineControlInfo | undefined) | null = null
 
+  /**
+   * 域代码预留宽上下文 — 每次 fullLayout 开头刷新。
+   * totalPagesHint 取上一轮布局的页数 (首轮 1): 决定页码域预留几位数字,
+   * 位数与实际不符时 fullLayout 会带新页数重排一次 (见 fullLayout 注释)。
+   */
+  private fieldReserveCtx: FieldReserveContext = { totalPagesHint: 1 }
+
   constructor(eventBus: EventBus, measurer: TextMeasurer) {
     this.eventBus = eventBus
     this.measurer = measurer
@@ -92,8 +100,27 @@ export class LayoutEngine {
     }
   }
 
-  /** 全量重布局 — LineBreaker + PageBreaker 集成 (TASK-445) */
+  /**
+   * 全量重布局 — LineBreaker + PageBreaker 集成 (TASK-445)。
+   *
+   * 域代码 (页码/总页数) 的预留宽按**页数位数**取样, 而页数是本函数的结果 —
+   * 因此先用上一轮页数做估计排一次, 若位数与实际不符 (跨越 10/100 页) 再用
+   * 新页数重排一次。至多两轮, 使 '第[1]页' 的预留宽与绘制宽一致且不重叠。
+   */
   fullLayout(doc: DocumentTree, pool: NodePool): LayoutResult {
+    const hint = Math.max(1, this.pages.length)
+    let pages = this.layoutOnce(doc, pool, hint)
+    if (String(hint).length !== String(Math.max(1, pages.length)).length) {
+      pages = this.layoutOnce(doc, pool, Math.max(1, pages.length))
+    }
+    this.pages = pages
+    this.eventBus.emit('layout:changed', pages)
+    return pages
+  }
+
+  /** 单轮布局 (无副作用: 不写 this.pages / 不发事件) */
+  private layoutOnce(doc: DocumentTree, pool: NodePool, pageNumberHint: number): SLIFPage[] {
+    this.fieldReserveCtx = { totalPagesHint: pageNumberHint, documentTitle: doc.title }
     const measurer = this.measurer
     const lineBreaker = new LineBreaker(measurer)
     const pageBreaker = new PageBreaker()
@@ -337,6 +364,10 @@ export class LayoutEngine {
               font: fn.font as string, size: isHeading ? Math.round(fBaseSize * headingScale) : fn.size as number,
               bold: isHeading ? true : (fn.bold as boolean), italic: fn.italic as boolean,
               fieldType: fn.fieldType as string,
+              // 量宽用代表值 (非占位符): 否则域后拖出空白, 见 FieldFormatter 注释
+              fieldReserveText: representativeFieldText(
+                fn.fieldType as string, fn.cachedValue as string, this.fieldReserveCtx,
+              ),
             })
           }
         }
@@ -480,9 +511,14 @@ export class LayoutEngine {
           const controlWidth = isSmart && typeof elControl?.width === 'number' && elControl.width > 0
             ? elControl.width
             : undefined
+          // 域代码: 按代表值量宽 (非模型占位符 '[总页数]'), 与 LineBreaker 同源。
+          // 否则预留宽远大于渲染期解析出的 '3' → 域后拖出一大片空白。
+          const reserveText = el.type === 'field'
+            ? ((el as LineElement).fieldReserveText ?? itemText)
+            : itemText
           const itemWidth = controlWidth !== undefined
             ? controlWidth
-            : measurer.measureWidth(itemText || '', {
+            : measurer.measureWidth(reserveText || '', {
                 font: el.font || 'SimSun', size: el.size || 16,
                 bold: el.bold, italic: el.italic,
               })
@@ -546,8 +582,6 @@ export class LayoutEngine {
       }
     }
 
-    this.pages = slifPages
-    this.eventBus.emit('layout:changed', slifPages)
     return slifPages
   }
 
@@ -1120,6 +1154,10 @@ export class LayoutEngine {
             font: fn.font as string, size: fn.size as number,
             bold: fn.bold as boolean, italic: fn.italic as boolean,
             fieldType: fn.fieldType as string,
+            // 量宽用代表值 (非占位符): 页脚 '第[域]页 共[域]页' 不再拖出空白
+            fieldReserveText: representativeFieldText(
+              fn.fieldType as string, fn.cachedValue as string, this.fieldReserveCtx,
+            ),
           })
         }
       }
@@ -1231,11 +1269,15 @@ export class LayoutEngine {
       let cursorX = lineStartX
       for (const el of line.elements) {
         const charHeight = measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || BASE_FONT_SIZE })
-        // smarttext 控件: 用预留宽 (control.width, 与正文一致); 否则纯文本宽
+        // smarttext 控件: 用预留宽 (control.width, 与正文一致); 域代码用代表值;
+        // 其余纯文本宽
         const elControl = (el as LineElement).control
+        const measureText = el.type === 'field'
+          ? ((el as LineElement).fieldReserveText ?? el.value)
+          : el.value
         const layoutW = (el.type === 'smarttext' && typeof elControl?.width === 'number' && elControl.width > 0)
           ? elControl.width
-          : measurer.measureWidth(el.value || '', {
+          : measurer.measureWidth(measureText || '', {
               font: el.font || 'SimSun', size: el.size || BASE_FONT_SIZE,
               bold: el.bold, italic: el.italic,
             })

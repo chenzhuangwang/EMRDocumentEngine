@@ -46,3 +46,56 @@ export function resolveFieldText(
     default: return fallbackText || `[${fieldType}]`
   }
 }
+
+/** 布局预留宽所需的上下文 (与页面/时间无关的估计) */
+export interface FieldReserveContext {
+  /**
+   * 页数估计 — 决定 page_number / total_pages 预留的位数。
+   * 调用方传上一轮布局的页数 (首轮传 1); 位数变化时调用方应重排一次。
+   */
+  totalPagesHint: number
+  documentTitle?: string
+  authorName?: string
+}
+
+/** 宽度样本: 固定日期, 仅用于量宽 (与 toLocaleDateString 走同一格式化路径) */
+const SAMPLE_DATE = new Date(2026, 11, 28, 10, 30, 0)
+
+/**
+ * 域代码在**布局期**的代表性显示值 — 用于量宽。
+ *
+ * 为什么需要: 渲染期才逐页解析域值, 而布局只跑一次。若按占位符 ('[总页数]')
+ * 量宽, 预留宽远大于实际绘制的 '3' → 域后面拖出一大片空白; 反之若按 0 宽,
+ * 多位页码会与后续文字重叠。这里按域类型给出与解析结果**同形**的代表值,
+ * 使一次布局的预留宽≈逐页绘制宽。
+ *
+ * 不得与 resolveFieldText 的形状漂移: 新增域类型必须同时在此给出代表值。
+ */
+export function representativeFieldText(
+  fieldType: FieldType | string | undefined,
+  fallbackText: string | undefined,
+  ctx: FieldReserveContext,
+): string {
+  switch (fieldType) {
+    case 'page_number':
+    case 'total_pages': {
+      // 位数按页数估计 (至少 1 位) — 3 页文档预留 '8', '1'/'3' 正好填满
+      const digits = Math.min(4, Math.max(1, String(Math.max(1, Math.floor(ctx.totalPagesHint))).length))
+      return '8'.repeat(digits)
+    }
+    case 'current_date':
+    case 'last_saved_date':
+    case 'print_date':
+      // 用最大形状 (2 位月/日) 取样, 避免实际日期更长时与后续文字重叠
+      return SAMPLE_DATE.toLocaleDateString('zh-CN')
+    case 'current_time':
+      return SAMPLE_DATE.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    case 'document_title':
+      return ctx.documentTitle || ''
+    case 'author_name':
+      return ctx.authorName || 'user'
+    // 未知类型保持占位符显示 (与 resolveFieldText 的 default 分支一致)
+    default:
+      return fallbackText || (fieldType ? `[${fieldType}]` : '')
+  }
+}

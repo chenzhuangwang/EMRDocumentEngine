@@ -31,6 +31,13 @@ export interface LineElement {
   control?: { width?: number; minRows?: number; lines?: string[]; rows?: number }
   tableBlock?: unknown
   fieldType?: string
+  /**
+   * 域代码**量宽用**的代表性显示值 (契约 §12)。
+   * `value` 是模型里的占位符 ('[总页数]'), 渲染期才逐页解析出真实值 ('3');
+   * 若按占位符量宽, 域后会拖出大片空白。布局/折行一律用本字段量宽,
+   * `value` 仍作为未知域类型的显示回退。
+   */
+  fieldReserveText?: string
 }
 
 /** 行内文本元素的字体配置 */
