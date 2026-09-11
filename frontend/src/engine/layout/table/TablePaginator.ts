@@ -75,6 +75,22 @@ export function createTablePaginator(
   const hasRowspanCell = (row: SLIFRow): boolean =>
     row.cells.some((c) => (c.rowspan ?? 1) > 1)
 
+  /** 行的最大 rowspan (无合并 → 1)。rowspan span 视为原子单元: 跨页时整组同页 */
+  const maxRowspan = (row: SLIFRow): number =>
+    row.cells.reduce((m, c) => Math.max(m, c.rowspan ?? 1), 1)
+
+  /** 以 startIdx 起、覆盖 maxRowspan 行的一段 (group) 的总占高与行数 */
+  const groupHeight = (startIdx: number): { count: number; height: number } => {
+    const span = maxRowspan(bodyRows[startIdx])
+    let height = 0
+    let count = 0
+    for (let s = 0; s < span && startIdx + s < bodyRows.length; s++) {
+      height += tableRowUnitHeight(bodyRows[startIdx + s])
+      count++
+    }
+    return { count, height }
+  }
+
   /** 行的「行边界」: 各 cell item 顶 y (>0, 去重升序) + 行高 */
   const lineBoundaries = (row: SLIFRow): number[] => {
     const set = new Set<number>()
@@ -171,22 +187,22 @@ export function createTablePaginator(
     const fullBodyAvail = opts.pageContentHeight - hh
     const row = bodyRows[cursorRow]
 
-    // P1 续切: 上一片未切完当前行
+    // P1 续切: 上一片未切完当前行 (仅无 rowspan 的纯单行)
     if (cursorYInRow > 0) {
       return sliceRowProgress(row, cursorYInRow, availForBody, continuation)
     }
 
-    const firstUnit = tableRowUnitHeight(row)
+    const group = groupHeight(cursorRow)
 
-    // 整行放入直到放不下
-    if (availForBody >= firstUnit) {
+    // 整段 (rowspan span 或单行) 放入直到放不下
+    if (availForBody >= group.height) {
       let bodyH = 0
       let end = cursorRow
       while (end < bodyRows.length) {
-        const u = tableRowUnitHeight(bodyRows[end])
-        if (bodyH + u > availForBody) break
-        bodyH += u
-        end++
+        const g = groupHeight(end)
+        if (bodyH + g.height > availForBody) break
+        bodyH += g.height
+        end += g.count
       }
       const startIdx = cursorRow
       cursorRow = end
@@ -198,25 +214,25 @@ export function createTablePaginator(
       }
     }
 
-    // 本页剩余放不下该行
-    if (firstUnit > fullBodyAvail) {
-      // 行高于整页
+    // 本页剩余放不下该段
+    if (group.height > fullBodyAvail) {
+      // 段高于整页
       if (!hasRowspanCell(row)) {
-        // 可拆 → P1 行内切
+        // 纯单行可拆 → P1 行内切
         return sliceRowProgress(row, 0, availForBody, continuation)
       }
-      // 含 rowspan 的不可拆分行 → 整行独占一页, 允许视觉溢出 (硬约束 4)
-      const placed = [row]
-      cursorRow += 1
+      // 含 rowspan 的不可拆分 span → 整段独占一页, 允许视觉溢出 (硬约束 4)
+      const startIdx = cursorRow
+      cursorRow += group.count
       return {
-        fragment: buildFragment(placed, cursorRow - 1, cursorRow, continuation),
-        consumedRows: 1,
+        fragment: buildFragment(bodyRows.slice(startIdx, cursorRow), startIdx, cursorRow, continuation),
+        consumedRows: group.count,
         requiresNewPage: false,
         done: cursorRow >= bodyRows.length,
       }
     }
 
-    // 行能放进整页、只是本页剩余不够 → 换页后再问
+    // 段能放进整页、只是本页剩余不够 → 换页后再问 (rowspan span 整组同页)
     return {
       fragment: buildFragment([], cursorRow, cursorRow, continuation),
       consumedRows: 0,

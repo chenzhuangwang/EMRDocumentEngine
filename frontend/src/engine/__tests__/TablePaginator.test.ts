@@ -138,6 +138,38 @@ describe('TablePaginator P2 rowspan 守卫', () => {
   })
 })
 
+describe('TablePaginator rowspan span 跨页 (行级)', () => {
+  it('rowspan span 跨越页边界 → 整组移到下一页 (不溢出/不缺列)', () => {
+    const rows = [
+      makeRow('f0', 24, 24),
+      makeRow('f1', 24, 24),
+      makeRow('f2', 24, 24),
+      // row 3: rowspan=2 起始行 (span 覆盖 row3 + row4)
+      {
+        height: 24,
+        cells: [{ id: 'a', x: 0, y: 0, width: 100, height: 49, rowspan: 2, items: [textItem('a_0', 0, 20)] }],
+      },
+      makeRow('cont', 24, 24), // row 4: span 续行
+      makeRow('f3', 24, 24),
+    ]
+    const p = createTablePaginator(rows, [100], opts)
+
+    const r1 = p.paginate(100)
+    // 3 个 filler 占 75, rowspan span (50) 放不下 → 整组移到下一页
+    expect(r1.fragment.bodyRows.length).toBe(3)
+    expect(r1.consumedRows).toBe(3)
+    expect(r1.done).toBe(false)
+
+    const r2 = p.paginate(100)
+    // span (row3+row4) 整组 + filler f3 同页
+    expect(r2.fragment.bodyRows.length).toBe(3)
+    expect(r2.fragment.bodyRows[0].cells[0].rowspan).toBe(2)
+    expect(r2.fragment.bodyRows[0].cells[0].height).toBe(49) // span 完整, 未溢出
+    expect(r2.consumedRows).toBe(3)
+    expect(r2.done).toBe(true)
+  })
+})
+
 describe('TablePaginator repeatHeader', () => {
   it('每片 headerRows 单独存储, 逻辑 body 行不重复', () => {
     const header = makeRow('h', 24, 24)
