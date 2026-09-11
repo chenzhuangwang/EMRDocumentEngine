@@ -12,6 +12,7 @@
 // ================================================================
 
 import type { SLIFItem, SLIFPage } from '../layout/core/SLIF'
+import { tableHeaderRowsHeight } from '../layout/core/SLIF'
 import type { Paragraph } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import { cumulativeCharWidths, findCharIndexAtX } from '../layout/text/CharWidthHelper'
@@ -193,10 +194,13 @@ export class HitTestIndex {
     // 行高 (含 1px gap, 与 TableParticle 渲染的 rowY 累加一致)
     const rowHeights = rows.map(r => Math.max(r.height || 24, 24) + 1)
 
+    // 重复表头占高 — 命中只认 body rows, 故 body 行区要下移表头高
+    const headerH = tableHeaderRowsHeight(tableItem)
+
     // Level 2a: 空间定位 cell — 走 MergeMatrix (colspan/rowspan 感知)
     // v21.0 Phase 2: 渲染已展开 rowspan, 矩阵与渲染一致
     const matrix = buildMergeMatrix(rows, { numCols: colWidths.length })
-    const hit = matrix.findCellAt(docX - tableItem.x, docY - tableItem.y, colWidths, rowHeights)
+    const hit = matrix.findCellAt(docX - tableItem.x, docY - tableItem.y - headerH, colWidths, rowHeights)
     if (!hit) return null
 
     // 反查命中的 SLIFCell 对象
@@ -217,7 +221,7 @@ export class HitTestIndex {
     let cellY = 0
     for (let r = 0; r < startRow; r++) cellY += rowHeights[r]
     const targetCellX = tableItem.x + cellX
-    const targetCellY = tableItem.y + cellY
+    const targetCellY = tableItem.y + headerH + cellY
 
     const cellItems = targetCell.items
     const CELL_PAD = 6

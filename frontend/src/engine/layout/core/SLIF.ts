@@ -28,6 +28,8 @@ export interface SLIFItem {
   superscript?: boolean; subscript?: boolean
   // table extension
   rows?: SLIFRow[]
+  /** 跨页重复的表头行 (仅视觉渲染, 不参与逻辑行号/命中) */
+  headerRows?: SLIFRow[]
   /** 表头行数 (跨页重复, R65) */
   headerRowCount?: number
   /** 续表标记文本 (R65) */
@@ -83,6 +85,19 @@ export interface SLIFPage {
   footerHeight?: number
 }
 
+/** 表格相邻行之间的 1px 行隙 (与 TableParticle / getFlatPageItems / hitTestTable 一致) */
+export const TABLE_ROW_GAP = 1
+
+/** 单行的布局占高 (行高 + 行隙) — 表格分页/命中/渲染三方共用, 避免漂移 */
+export function tableRowUnitHeight(row: { height: number }): number {
+  return Math.max(row.height || 24, 24) + TABLE_ROW_GAP
+}
+
+/** 重复表头占高 (视觉行, 不计入逻辑行号, 但计入 fragment/item 高度) */
+export function tableHeaderRowsHeight(item: { headerRows?: SLIFRow[] }): number {
+  return (item.headerRows ?? []).reduce((s, r) => s + tableRowUnitHeight(r), 0)
+}
+
 export interface SLIF {
   version: string
   documentId: string
@@ -101,7 +116,7 @@ export function getFlatPageItems(page: SLIFPage): SLIFItem[] {
   const result: SLIFItem[] = []
   for (const item of page.items) {
     if (item.type === 'table' && item.rows && item.rows.length > 0) {
-      let rowY = item.y
+      let rowY = item.y + tableHeaderRowsHeight(item)
       for (let ri = 0; ri < item.rows.length; ri++) {
         const row = item.rows[ri]
         const rowHeight = Math.max(row.height || 24, 24)

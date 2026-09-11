@@ -26,6 +26,12 @@ export interface ILine {
   firstLineIndent?: number
   /** 列表标记文本 (首行), 由 Draw.ts 通过 ListParticle 渲染 */
   listMarker?: string
+  /** 可分页行 hook — 表格行由 LayoutEngine 注入 createTablePaginator 实例 (自持分页游标) */
+  pageable?: { paginate(availableHeight: number): import('../table/TablePaginator').PaginateResult }
+  /** PageBreaker 为表格行产出的一片 (本页渲染行子集) */
+  tableFragment?: import('../table/TablePaginator').TableFragment
+  /** 表格列宽数组 (由 LayoutEngine 注入, SLIF 映射时消费) */
+  columnWidths?: number[]
 }
 
 /** 布局内部类型 — 分页后的页面 */

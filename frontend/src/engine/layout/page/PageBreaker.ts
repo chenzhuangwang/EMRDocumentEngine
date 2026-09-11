@@ -41,8 +41,10 @@ export class PageBreaker {
     )
 
     // Pre-compute paragraph boundary markers.
-    // paragraphEnds[i] = true means line i ends a paragraph (its last element is \n).
+    // paragraphEnds[i] = true means line i ends a paragraph (its last element is \n),
+    // OR it is a pageable table line (block boundary — 不参与孤行/寡行控制).
     const paragraphEnds = lines.map(l => {
+      if (l.pageable) return true
       const last = l.elements[l.elements.length - 1]
       return last?.value === '\n'
     })
@@ -51,9 +53,9 @@ export class PageBreaker {
     let currentPageLines: ILine[] = []
     let currentPageHeight = 0
 
-    for (let i = 0; i < lines.length; i++) {
+    let i = 0
+    while (i < lines.length) {
       const line = lines[i]
-      const lineHeight = line.height
 
       // 检查当前行是否包含分页符或分节符
       const firstEl = line.elements[0]
@@ -70,14 +72,66 @@ export class PageBreaker {
         pageIndex++
         currentPageLines = []
         currentPageHeight = 0
+        i++
         continue
       }
+
+      // 可分页行 (表格): 以当前可用高问 paginate, 拿 TableFragment
+      if (line.pageable) {
+        const avail = pageContentHeight - currentPageHeight
+        const result = line.pageable.paginate(avail)
+
+        // 本页放不下 → 结束当前页, 换页后再问 (游标未推进)
+        if (result.requiresNewPage) {
+          if (currentPageLines.length > 0) {
+            pages.push({
+              pageIndex,
+              lines: currentPageLines,
+              headerLines,
+              footerLines,
+              totalHeight: currentPageHeight,
+            })
+            pageIndex++
+            currentPageLines = []
+            currentPageHeight = 0
+          }
+          // 不前进 i — 同一 pageable 在整页可用高下必能推进 (TablePaginator 契约)
+          continue
+        }
+
+        // 本页承载一片 fragment
+        currentPageLines.push({
+          ...line,
+          height: result.fragment.height,
+          tableFragment: result.fragment,
+        })
+        currentPageHeight += result.fragment.height
+
+        if (result.done) {
+          i++
+          continue
+        }
+        // 未排完 → 本 fragment 已占满当前页, 换页后继续问同一 pageable
+        pages.push({
+          pageIndex,
+          lines: currentPageLines,
+          headerLines,
+          footerLines,
+          totalHeight: currentPageHeight,
+        })
+        pageIndex++
+        currentPageLines = []
+        currentPageHeight = 0
+        continue
+      }
+
+      const lineHeight = line.height
 
       // 检查是否需要分页
       if (currentPageHeight + lineHeight > pageContentHeight && currentPageLines.length > 0) {
         // ---- 孤行检查 ----
         // 如果当前页的最后一段只有 1 行（孤行），将其移到下一页。
-        const orphanCount = this.countLastParagraphLines(currentPageLines, paragraphEnds, lines.indexOf(currentPageLines[0]))
+        const orphanCount = this.countLastParagraphLines(currentPageLines)
         if (orphanCount > 0 && orphanCount < MIN_PARAGRAPH_LINES) {
           // Move the orphan lines to the next page
           const orphans = currentPageLines.splice(currentPageLines.length - orphanCount, orphanCount)
@@ -99,6 +153,7 @@ export class PageBreaker {
 
           currentPageLines = [...orphans, line]
           currentPageHeight = orphans.reduce((h, l) => h + l.height, 0) + lineHeight
+          i++
           continue
         }
 
@@ -111,7 +166,10 @@ export class PageBreaker {
         }
         if (widowEnd < lines.length) widowEnd++ // include the \n line
         const widowLineCount = widowEnd - widowStart
-        if (widowLineCount > 0 && widowLineCount < MIN_PARAGRAPH_LINES && currentPageLines.length > 0) {
+        // 表格块边界不参与寡行 (不从上一页跨表格拉文本行)
+        const lastLine = currentPageLines[currentPageLines.length - 1]
+        const lastIsTableBlock = !!lastLine && (!!lastLine.tableFragment || !!lastLine.pageable)
+        if (widowLineCount > 0 && widowLineCount < MIN_PARAGRAPH_LINES && currentPageLines.length > 0 && !lastIsTableBlock) {
           // Pull one more line from current page to avoid widow
           const pulled = currentPageLines.pop()!
           currentPageHeight -= pulled.height
@@ -127,6 +185,7 @@ export class PageBreaker {
           pageIndex++
           currentPageLines = [pulled, line]
           currentPageHeight = pulled.height + lineHeight
+          i++
           continue
         }
 
@@ -146,6 +205,7 @@ export class PageBreaker {
         currentPageLines.push(line)
         currentPageHeight += lineHeight
       }
+      i++
     }
 
     // 处理最后一页
@@ -178,28 +238,20 @@ export class PageBreaker {
    * (incomplete) paragraph — i.e. lines after the last paragraph boundary.
    * Returns 0 if the last line ends a paragraph (boundary already present).
    *
-   * @param pageLines  Lines currently on the page
-   * @param paragraphEnds  Full document paragraph boundary markers
-   * @param pageStartIdx  Index of pageLines[0] in the full lines array
+   * 表格 fragment / pageable 行视为段落边界 (表格是块, 不参与孤行控制)。
    */
-  private countLastParagraphLines(
-    pageLines: ILine[],
-    paragraphEnds: boolean[],
-    pageStartIdx: number
-  ): number {
+  private countLastParagraphLines(pageLines: ILine[]): number {
     if (pageLines.length === 0) return 0
 
     // Check if the last line on the page ends a paragraph
-    const lastLineGlobalIdx = pageStartIdx + pageLines.length - 1
-    if (lastLineGlobalIdx < paragraphEnds.length && paragraphEnds[lastLineGlobalIdx]) {
+    if (this.lineEndsParagraph(pageLines[pageLines.length - 1])) {
       return 0 // Paragraph is complete — no orphan
     }
 
     // Walk backward to find the last paragraph boundary on this page
     let count = 0
     for (let j = pageLines.length - 1; j >= 0; j--) {
-      const globalJ = pageStartIdx + j
-      if (globalJ < paragraphEnds.length && paragraphEnds[globalJ]) {
+      if (this.lineEndsParagraph(pageLines[j])) {
         // Found the previous paragraph boundary — lines after it are the orphan
         return count
       }
@@ -209,5 +261,12 @@ export class PageBreaker {
     // No paragraph boundary found on this page — the entire page content
     // is one paragraph. Don't treat it as an orphan (it's the only content).
     return 0
+  }
+
+  /** 行是否结束一个段落 (或本身是表格块边界) */
+  private lineEndsParagraph(line: ILine): boolean {
+    if (line.pageable || line.tableFragment) return true
+    const last = line.elements[line.elements.length - 1]
+    return last?.value === '\n'
   }
 }

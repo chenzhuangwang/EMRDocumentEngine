@@ -20,22 +20,25 @@ export function createTableParticle(): IParticle {
     type: 'table',
 
     render(ctx: CanvasRenderingContext2D, item: SLIFItem, x: number, y: number, options?: RenderOptions): void {
-      const rows = item.rows
-      if (!rows || rows.length === 0) return
+      // 跨页片段: headerRows (重复表头, 视觉) + rows (本页 bodyRows), 两者按序绘制
+      const headerRows = item.headerRows
+      const bodyRows = item.rows
+      const allRows = [...(headerRows ?? []), ...(bodyRows ?? [])]
+      if (allRows.length === 0) return
 
-      // R65: 续表标记
+      // R65: 续表标记 — 纯视觉标记, 完全不参与布局 (④): 画在表格顶上方, 不推进 rowY
       if (item.continuationLabel) {
         ctx.save()
         ctx.font = 'italic 11px "SimSun"'
         ctx.fillStyle = '#6B7280'
-        ctx.fillText(item.continuationLabel, x, y + 12)
+        ctx.textBaseline = 'alphabetic'
+        ctx.fillText(item.continuationLabel, x, y - 6)
         ctx.restore()
-        y += 20 // 续表标记占位
       }
 
       let rowY = y
 
-      for (const row of rows) {
+      for (const row of allRows) {
         const rowHeight = Math.max(row.height || MIN_ROW_HEIGHT, MIN_ROW_HEIGHT)
 
         for (const cell of row.cells) {
@@ -55,7 +58,7 @@ export function createTableParticle(): IParticle {
             ctx.fillRect(cellX, cellY, cw, ch)
           }
 
-          // 边框
+          // 边框 (每片画自身外框, 内部行线照旧)
           ctx.strokeStyle = BORDER_COLOR
           ctx.lineWidth = 0.5
           ctx.strokeRect(cellX + 0.25, cellY + 0.25, cw - 0.5, ch - 0.5)

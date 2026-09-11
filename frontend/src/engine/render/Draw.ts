@@ -9,7 +9,7 @@
 import type { DocumentTree, WatermarkConfig, SmartTextNode } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
-import { getFlatPageItems } from '../layout/core/SLIF'
+import { getFlatPageItems, tableHeaderRowsHeight } from '../layout/core/SLIF'
 import type { EventBus } from '../interaction/EventBus'
 import type { EditorRuntimeState } from '../state/EditorRuntimeState'
 import type { EditorHost } from '../host/EditorHost'
@@ -748,7 +748,7 @@ export class Draw {
       for (const item of sp.items) {
         if (item.type === 'table') {
           // cell 段落: 遍历 rows/cells/items (cell 局部坐标 → 页面坐标)
-          let rowY = item.y
+          let rowY = item.y + tableHeaderRowsHeight(item)
           for (const row of item.rows || []) {
             const rowHeight = Math.max(row.height || 24, 24)
             for (const c of row.cells) {
@@ -937,7 +937,7 @@ export class Draw {
       const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
       for (const item of sp.items) {
         if (item.type !== 'table' || item.nodeId !== range.tableId) continue
-        let rowY = item.y
+        let rowY = item.y + tableHeaderRowsHeight(item)
         for (const row of item.rows || []) {
           const rowHeight = Math.max(row.height || 24, 24)
           for (const cell of row.cells) {

@@ -30,6 +30,8 @@ import { wrapControlText } from '../text/TextWrap'
 import { MergeMatrix } from '../../document/table/MergeMatrix'
 import { FootnoteLayout } from '../footnote/FootnoteLayout'
 import { ListParticle } from '../../render/particles/ListParticle'
+import { createTablePaginator } from '../table/TablePaginator'
+import type { TableFragment } from '../table/TablePaginator'
 
 export type { LayoutConfig } from './LayoutContext'
 export type { LayoutResult } from './LayoutResult'
@@ -100,6 +102,20 @@ export class LayoutEngine {
       marginRight: this.config.marginRight,
     }
 
+    // 页眉/页脚内容布局 (每页一致; y 相对各自带顶, WPS 式锚定朝版心扩展)
+    const headerLines = this.collectHFParagraphLines(doc.header, pool, lineBreaker, measurer, contentWidth)
+    const footerLines = this.collectHFParagraphLines(doc.footer, pool, lineBreaker, measurer, contentWidth)
+    const hfHeader = this.layoutHFRegion('header', headerLines, measurer, contentWidth)
+    const hfFooter = this.layoutHFRegion('footer', footerLines, measurer, contentWidth)
+
+    // 脚注 gutter: 含脚注时正文为脚注区预留
+    const footnoteReserve = this.docContainsFootnotes(pool) ? FOOTNOTE_GUTTER : 0
+
+    // 正文实际可用区 (WPS): 页眉超高 → 正文起点下移; 页脚超高 → 正文终点上移。
+    const bodyTop = Math.max(this.config.marginTop, hfHeader.regionHeight)
+    const bodyBottom = this.config.pageHeight - Math.max(this.config.marginBottom, hfFooter.regionHeight)
+    const bodyArea = Math.max(0, bodyBottom - bodyTop - footnoteReserve)
+
     for (const blockId of doc.body.children) {
       const block = pool.nodes.get(blockId)
       if (!block) continue
@@ -123,11 +139,27 @@ export class LayoutEngine {
       }
 
       if (blockType === 'table') {
-        // 表格: 生成 SLIFItem 时在后续步骤中展开 (R37)
+        // 表格: 预构建逻辑行 + 列宽, 注入可分页 hook (TablePaginator 自持游标)
+        // PageBreaker 遇到 pageable 行时按当前可用高分页; SLIF 映射时按 fragment 产出。
+        const tbl = block as unknown as {
+          id: string; columns?: { width: number }[]; children: readonly string[]
+          pageBreak?: { repeatHeader?: boolean; minRowsBeforeBreak?: number; continuationLabel?: string }
+        }
+        const { rows, columnWidths } = this.buildTableRows(tbl, pool, contentWidth, lineBreaker)
+        const pageBreak = tbl.pageBreak
+        const repeatHeader = !!pageBreak?.repeatHeader
+        const paginator = createTablePaginator(rows, columnWidths, {
+          repeatHeader,
+          headerCount: repeatHeader ? 1 : 0,
+          minRowsBeforeBreak: pageBreak?.minRowsBeforeBreak,
+          pageContentHeight: bodyArea,
+        })
         allLines.push({
           elements: [{ id: block.id, type: 'table', value: '', tableBlock: block } as LineElement],
           width: contentWidth, height: 0, maxAscent: 0, maxDescent: 0,
           indent: 0,
+          pageable: paginator,
+          columnWidths,
         })
         continue
       }
@@ -328,20 +360,6 @@ export class LayoutEngine {
       }
     }
 
-    // 页眉/页脚内容布局 (每页一致; y 相对各自带顶, WPS 式锚定朝版心扩展)
-    const headerLines = this.collectHFParagraphLines(doc.header, pool, lineBreaker, measurer, contentWidth)
-    const footerLines = this.collectHFParagraphLines(doc.footer, pool, lineBreaker, measurer, contentWidth)
-    const hfHeader = this.layoutHFRegion('header', headerLines, measurer, contentWidth)
-    const hfFooter = this.layoutHFRegion('footer', footerLines, measurer, contentWidth)
-
-    // 脚注 gutter: 含脚注时正文为脚注区预留
-    const footnoteReserve = this.docContainsFootnotes(pool) ? FOOTNOTE_GUTTER : 0
-
-    // 正文实际可用区 (WPS): 页眉超高 → 正文起点下移; 页脚超高 → 正文终点上移。
-    const bodyTop = Math.max(this.config.marginTop, hfHeader.regionHeight)
-    const bodyBottom = this.config.pageHeight - Math.max(this.config.marginBottom, hfFooter.regionHeight)
-    const bodyArea = Math.max(0, bodyBottom - bodyTop - footnoteReserve)
-
     // Step 2: PageBreaker 分页 (正文可用高 = bodyArea)
     const iPages = pageBreaker.breakPages(allLines, [], [], pageSetup, footnoteReserve, bodyArea)
 
@@ -349,74 +367,21 @@ export class LayoutEngine {
     const slifPages: SLIFPage[] = iPages.map((ip: IPage) => {
       let y = bodyTop
       const items: SLIFItem[] = []
-      const pageContentHeight = bodyArea
       for (const line of ip.lines) {
         const firstEl = line.elements[0]
 
-        // 表格: 展开为含行数据的 SLIFItem (R37+R65+TASK-702 跨页断表)
-        if (firstEl?.type === 'table') {
+        // 表格: 直接消费 PageBreaker 已产出的 fragment (headerRows + bodyRows)
+        if (line.tableFragment) {
+          const frag = line.tableFragment
           const tbl = (firstEl as LineElement).tableBlock as {
-            id: string; columns?: { width: number }[]; children: readonly string[]
-            pageBreak?: { repeatHeader?: boolean; minRowsBeforeBreak?: number; continuationLabel?: string }
+            id: string
+            pageBreak?: { continuationLabel?: string }
           } | undefined
-          if (tbl) {
-            const { rows: allRows, columnWidths } = this.buildTableRows(tbl, pool, contentWidth, lineBreaker)
-            const pageBreak = tbl.pageBreak
-            const headerRowCount = pageBreak?.repeatHeader ? 1 : 0
-            const minRows = pageBreak?.minRowsBeforeBreak || 2
-            const label = pageBreak?.continuationLabel || '（续表）'
-
-            // 计算剩余页面空间
-            const pageContentBottom = bodyTop + pageContentHeight
-            const remainingSpace = pageContentBottom - y
-            const totalTableH = allRows.reduce((h, r) => h + (r.height || 24) + 1, 0)
-
-            if (totalTableH <= remainingSpace || allRows.length <= minRows) {
-              // 表格完整放入当前页
-              items.push(this.createTableItem(tbl.id, allRows, contentWidth, y, totalTableH, headerRowCount, columnWidths))
-              // 关键: 推进 y, 否则表格后续内容会与表格重叠 (光标无法定位到表格之后)
-              y += totalTableH
-            } else {
-              // 跨页拆分 (TASK-702)
-              let rowStart = 0
-              let usedH = 0
-              let isFirstPage = true
-
-              while (rowStart < allRows.length) {
-                const pageRows = []
-                let pageH = 0
-                // 第一页: 使用当前页剩余空间; 后续页: 使用整页空间
-                const maxH = isFirstPage ? remainingSpace : pageContentHeight - 30 // 30 for continuation label
-
-                for (let ri = rowStart; ri < allRows.length; ri++) {
-                  const rh = (allRows[ri].height || 24) + 1
-                  if (pageH + rh > maxH && pageRows.length >= minRows) break
-                  pageRows.push(allRows[ri])
-                  pageH += rh
-                }
-
-                if (pageRows.length === 0) break
-
-                const item = this.createTableItem(tbl.id, pageRows, contentWidth, y,
-                  pageH, isFirstPage ? headerRowCount : headerRowCount, columnWidths)
-                if (!isFirstPage) {
-                  item.continuationLabel = label
-                  y += 20 // 续表标记占用
-                }
-                items.push(item)
-
-                rowStart += pageRows.length
-                y += pageH
-                usedH += pageH
-                isFirstPage = false
-
-                // 下一页从顶部开始
-                if (rowStart < allRows.length) {
-                  y = bodyTop
-                }
-              }
-            }
-          }
+          const label = tbl?.pageBreak?.continuationLabel || '（续表）'
+          items.push(this.createTableItemFromFragment(
+            tbl?.id ?? firstEl.id, frag, contentWidth, y, line.columnWidths || [], label,
+          ))
+          y += line.height
           continue
         }
 
@@ -1010,20 +975,20 @@ export class LayoutEngine {
     return widths
   }
 
-  /** 创建表格 SLIFItem (TASK-702, v21.0: +columnWidths) */
-  private createTableItem(
-    tableId: string, rows: import('./SLIF').SLIFRow[], contentWidth: number,
-    y: number, height: number, headerRowCount?: number,
-    columnWidths?: number[],
+  /** 从 TableFragment 创建表格 SLIFItem — rows = 本页 bodyRows, headerRows 单独存 (硬约束 1) */
+  private createTableItemFromFragment(
+    tableId: string, frag: TableFragment, contentWidth: number,
+    y: number, columnWidths: number[], continuationLabel?: string,
   ): import('./SLIF').SLIFItem {
     return {
       nodeId: tableId, nodeType: 'table', type: 'table',
       x: this.config.marginLeft, y,
-      width: contentWidth, height,
-      ascent: height, descent: 0,
+      width: contentWidth, height: frag.height,
+      ascent: frag.height, descent: 0,
       font: 'SimSun', size: 12,
-      rows,
-      headerRowCount,
+      rows: frag.bodyRows,
+      headerRows: frag.headerRows.length > 0 ? frag.headerRows : undefined,
+      continuationLabel: frag.continuation ? continuationLabel : undefined,
       columnWidths,
     }
   }
