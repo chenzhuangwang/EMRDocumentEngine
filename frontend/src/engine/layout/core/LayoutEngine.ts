@@ -26,10 +26,8 @@ import { PageBreaker } from '../page/PageBreaker'
 import type { ILine, IPage } from '../page/PageLayout'
 import { DEFAULT_PAGE_SETUP } from '../../document/core/DocumentModel'
 import { controlValueDisplay } from '../../document/factory/ElementFormatter'
-import { layoutControlOptions, controlOptionsWidth, controlOptionsPlaceholderWidth } from '../../document/control/ControlOptions'
-import { controlVisualRecipe, CONTROL_BOX_PADDING, AFFORDANCE_GAP, AFFORDANCE_WIDTH, controlInlineLeadTrail, stripPlaceholderBrackets } from '../../document/control/ControlBox'
-import { isControlValueEmpty } from '../../document/control/ControlValue'
-import { wrapControlText } from '../text/TextWrap'
+import { CONTROL_BOX_PADDING } from '../../document/control/ControlBox'
+import { smarttextLayoutHint } from '../control/ControlLayoutHint'
 import { representativeFieldText, type FieldReserveContext } from '../../document/factory/FieldFormatter'
 import { MergeMatrix } from '../../document/table/MergeMatrix'
 import { FootnoteLayout } from '../footnote/FootnoteLayout'
@@ -252,84 +250,37 @@ export class LayoutEngine {
             // 标题: 缩放字号 + 加粗
             const baseSize = tn.size || BASE_FONT_SIZE
             const headingSize = isHeading ? Math.round(baseSize * headingScale) : undefined
-            // 控件布局提示 (契约 §12.6):
+            // 控件布局提示 (契约 §12.6/§12.8):
             //   - 多行文本域 minRows (layer D): 影响行高, 不决定值语义
             //   - checkbox/radio 表单模式内联渲染: 预留候选项宽 (control.width),
             //     使内联候选项不与后续文本重叠 (信息源同 controlInfoOf, 无反向推导)
+            //   - 值宽于版心: 折行 + 锁盒宽 (由 smarttextLayoutHint 统一裁决)
             let control: LineElement['control']
             // 控件未显式设字体/字号时, 继承同段落文字 run (避免控件比周围文字偏大/偏小)
             const runDefault = this.paraRunDefault(pool, para.children, BASE_FONT_SIZE)
             let smartFont: string | undefined
             let smartSize: number | undefined
             if (childType === 'smarttext') {
-              const minRows = (child as unknown as { element?: { format?: { minRows?: number } } }).element?.format?.minRows
               const info = this.controlInfoOf?.(childId)
-              const recipe = controlVisualRecipe(info?.controlType)
-              const opts = info?.options
               const font = tn.font || runDefault.font
               const size = tn.size || runDefault.size
               smartFont = font
               smartSize = size
               const measure = (t: string) =>
                 this.measurer.measureWidth(t, { font, size, bold: tn.bold, italic: tn.italic })
-              if (recipe.kind === 'options') {
-                // 内联候选项预留宽 — 与渲染 (ControlParticle) / 命中 (MouseHandler) 共用
-                // layoutControlOptions 单一事实源; 空候选项 (enums 但 data=[]) 仍 enum 语义,
-                // 预留「无候选项」占位宽而非退化输入框 (不变量 3)。
-                control = opts && opts.length > 0
-                  ? { width: controlOptionsWidth(layoutControlOptions(opts, info!.controlType as 'checkbox' | 'radio', measure)) }
-                  : { width: controlOptionsPlaceholderWidth(measure) }
-              } else if (recipe.frame === 'brackets') {
-                // 方括号框: 空态 textVal 已含 `[ ]` (占位符), 填充态需补画 `[ value ]`。
-                // 预留宽 = 完整可见宽 (框 + 文本 + affordance), 闭环不变量 1。
-                // select (affordance dropdown) 不画括号 → 预留宽不含方括号。
-                const isEmpty = isControlValueEmpty((tn as unknown as { value?: unknown }).value)
-                const bracketsOn = recipe.affordance == null
-                const shown = isEmpty
-                  ? (bracketsOn ? textVal : stripPlaceholderBrackets(textVal))
-                  : (bracketsOn ? `[${textVal}]` : textVal)
-                let width = measure(shown)
-                if (recipe.affordance) width += AFFORDANCE_GAP + AFFORDANCE_WIDTH
-                control = { width }
-              } else if (recipe.frame === 'box') {
-                // 四边框多行文本域 (textarea): 空态沿用 minRows; 填充态按值折行、
-                // 预留 width+minRows+lines (契约 §12.6 多行, 行距=size)。
-                const raw = (tn as unknown as { value?: unknown }).value
-                const valueEmpty = isControlValueEmpty(raw)
-                if (valueEmpty) {
-                  control = (typeof minRows === 'number' && minRows > 0) ? { minRows } : undefined
-                } else {
-                  const str = typeof textVal === 'string' ? textVal : String(textVal)
-                  const logical = str.split('\n')
-                  const naturalW = logical.map((l) => measure(l))
-                  const needWrap = contentWidth > 0 && naturalW.some((w) => w > contentWidth)
-                  let physical: string[]
-                  let colW: number
-                  if (needWrap) {
-                    physical = wrapControlText(str, contentWidth, measure)
-                    colW = contentWidth
-                  } else {
-                    physical = logical
-                    colW = Math.max(0, ...naturalW)
-                  }
-                  const rowsCount = physical.length
-                  const reserveRows = Math.max(typeof minRows === 'number' && minRows > 0 ? minRows : 1, rowsCount)
-                  control = {
-                    width: colW > 0 ? colW : undefined,
-                    minRows: reserveRows,
-                    lines: physical,
-                    rows: rowsCount,
-                  }
-                }
-              } else {
-                control = undefined
-              }
-              // 附属字面量 label/prefix/suffix 占位宽计入行内 advance (契约 §12.1
-              // 不变量 10): 否则相邻控件的 label 会压到前一个盒/文字上。
-              if (control && typeof control.width === 'number') {
-                const { lead, trail } = controlInlineLeadTrail(info, measure)
-                control = { ...control, width: control.width + lead + trail }
-              }
+              // 控件盒量宽 + 超宽折行 — 单一事实源 (契约 §11/§12.8):
+              // 与表格 cell / 页眉页脚同一条路径, 内容宽于可用宽即折行 + 锁盒宽,
+              // 不再整块横向溢出正文区。
+              // 可用宽扣除段落的块缩进/首行缩进: 行起点右移是多少, 可用宽就少多少
+              // (缩进段落里的控件若按版心宽锁宽, 仍会越过版心右缘)。
+              control = smarttextLayoutHint({
+                value: (tn as unknown as { value?: unknown }).value,
+                display: textVal,
+                definition: info,
+                options: info?.options,
+                minRows: (child as unknown as { element?: { format?: { minRows?: number } } })
+                  .element?.format?.minRows,
+              }, measure, contentWidth - (para.indent ?? 0) - (para.firstLineIndent ?? 0))
             } else {
               control = undefined
             }
@@ -853,8 +804,9 @@ export class LayoutEngine {
               superscript: child.superscript, subscript: child.subscript,
             })
           } else if (child.type === 'smarttext') {
-            // 表格 cell 内控件 — 预留宽与正文/页眉一致 (options 候选组 / 方括号+affordance /
-            // label·prefix·suffix lead/trail), 使 cell 内控件可见、占宽、不重叠。
+            // 表格 cell 内控件 — 与正文/页眉共用 smarttextLayoutHint (契约 §12.8):
+            // 候选组宽 / 方括号+affordance / 文本域折行 / label·prefix·suffix lead·trail
+            // 全部同源, 且内容宽于 cell 文本宽时折行而非溢出 cell。
             const display = controlValueDisplay((child as SmartTextNode).element, (child as SmartTextNode).value, (child as { text: string }).text)
             // 未显式设字体/字号时继承同段落文字 run (与周围文字协调)
             const rd = this.paraRunDefault(pool, para.children, DEFAULT_SIZE)
@@ -862,32 +814,19 @@ export class LayoutEngine {
             const size = child.size || rd.size
             const measure = (t: string) => this.measurer.measureWidth(t, { font, size, bold: child.bold, italic: child.italic })
             const info = this.controlInfoOf?.(textId)
-            const recipe = controlVisualRecipe(info?.controlType)
-            let width: number | undefined
-            if (recipe.kind === 'options') {
-              const opts = info?.options
-              width = opts && opts.length > 0
-                ? controlOptionsWidth(layoutControlOptions(opts, info!.controlType as 'checkbox' | 'radio', measure))
-                : controlOptionsPlaceholderWidth(measure)
-            } else if (recipe.frame === 'brackets') {
-              const isEmpty = isControlValueEmpty(child.value)
-              const bracketsOn = recipe.affordance == null
-              const shown = isEmpty
-                ? (bracketsOn ? display : stripPlaceholderBrackets(display))
-                : (bracketsOn ? `[${display}]` : display)
-              width = measure(shown)
-              if (recipe.affordance) width += AFFORDANCE_GAP + AFFORDANCE_WIDTH
-            }
-            if (typeof width === 'number') {
-              const { lead, trail } = controlInlineLeadTrail(info, measure)
-              width = width + lead + trail
-            }
+            const control = smarttextLayoutHint({
+              value: child.value,
+              display,
+              definition: info,
+              options: info?.options,
+              minRows: child.element?.format?.minRows,
+            }, measure, maxTextWidth)
             elements.push({
               id: textId, type: 'smarttext', value: display,
               font, size, bold: child.bold, italic: child.italic,
               color: child.color, underline: child.underline, strikeout: child.strikeout,
               superscript: child.superscript, subscript: child.subscript,
-              control: typeof width === 'number' ? { width } : undefined,
+              control,
             })
           }
         }
@@ -934,6 +873,9 @@ export class LayoutEngine {
               color: el.color, underline: el.underline, strikeout: el.strikeout,
               superscript: el.superscript, subscript: el.subscript,
               text: el.value || '',
+              // 超宽折行的物理行 (契约 §12.8) — 与正文同源, 否则 cell 内控件
+              // 折行后仍按单行绘制 (值被截在盒外)
+              controlLines: elControl?.lines,
             })
             elX += layoutW + CONTROL_BOX_PADDING * 2
             continue
@@ -1113,32 +1055,22 @@ export class LayoutEngine {
           let smartSize: number | undefined
           if (childType === 'smarttext') {
             const info = this.controlInfoOf?.(tn.id)
-            const recipe = controlVisualRecipe(info?.controlType)
-            const opts = info?.options
             const rd = this.paraRunDefault(pool, para.children, BASE_FONT_SIZE)
             const font = tn.font || rd.font
             const size = tn.size || rd.size
             smartFont = font
             smartSize = size
             const measure = (t: string) => measurer.measureWidth(t, { font, size, bold: tn.bold, italic: tn.italic })
-            if (recipe.kind === 'options') {
-              control = opts && opts.length > 0
-                ? { width: controlOptionsWidth(layoutControlOptions(opts, info!.controlType as 'checkbox' | 'radio', measure)) }
-                : { width: controlOptionsPlaceholderWidth(measure) }
-            } else if (recipe.frame === 'brackets') {
-              const isEmpty = isControlValueEmpty((child as { value?: unknown }).value)
-              const bracketsOn = recipe.affordance == null
-              const shown = isEmpty
-                ? (bracketsOn ? display : stripPlaceholderBrackets(display))
-                : (bracketsOn ? `[${display}]` : display)
-              let width = measure(shown)
-              if (recipe.affordance) width += AFFORDANCE_GAP + AFFORDANCE_WIDTH
-              control = { width }
-            }
-            if (control && typeof control.width === 'number') {
-              const { lead, trail } = controlInlineLeadTrail(info, measure)
-              control = { ...control, width: control.width + lead + trail }
-            }
+            // 与正文/表格 cell 共用量宽 + 折行 (契约 §12.8): 页眉页脚内控件同样
+            // 不得横向溢出带区 (可用宽扣除段落首行缩进)。
+            control = smarttextLayoutHint({
+              value: (child as { value?: unknown }).value,
+              display,
+              definition: info,
+              options: info?.options,
+              minRows: (child as unknown as { element?: { format?: { minRows?: number } } })
+                .element?.format?.minRows,
+            }, measure, contentWidth - (para.firstLineIndent ?? 0))
           }
           elements.push({
             id: tn.id, type: childType, value: display, control,
@@ -1294,6 +1226,8 @@ export class LayoutEngine {
           color: el.color, underline: el.underline,
           strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,
           fieldType: (el as { fieldType?: string }).fieldType,
+          // 超宽折行的物理行 (契约 §12.8) — 与正文同源
+          controlLines: el.type === 'smarttext' ? elControl?.lines : undefined,
         })
         cursorX += advanceWidth
       }

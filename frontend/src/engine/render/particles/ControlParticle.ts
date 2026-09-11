@@ -144,24 +144,33 @@ export function createControlParticle(): IParticle {
 
         // 框内文本: 空态剥离占位符外框 (工厂 `[name]`), 填充态用值原样 (值可能合法含 `[ ]`)
         const inner = isMasked ? displayText : (isEmpty ? stripPlaceholderBrackets(displayText) : displayText)
-        const innerW = ctx.measureText(inner).width
 
         if (!activeEditing && recipe.frame === 'brackets') {
           // select(▼)/date(日历) 不画方括号, 只画内容 + affordance
           const frameHidden = style?.borderStyle === 'none' || recipe.affordance != null
           const bracketW = ctx.measureText('[').width
+          // 超宽折行 (契约 §12.8): 布局把过宽的值折成多物理行并锁盒宽 → 逐行绘制,
+          // `[` 落在首行行首、`]` 落在末行行尾, 行距 = size (与 box 配方同 pitch)。
+          const lines = (!isMasked && item.controlLines && item.controlLines.length > 0)
+            ? item.controlLines
+            : (inner.includes('\n') ? inner.split('\n') : [inner])
+          const lineWidths = lines.map((l) => ctx.measureText(l).width)
+          const innerW = lineWidths.length > 0 ? Math.max(...lineWidths) : 0
           const frameW = frameHidden ? innerW : (bracketW * 2 + innerW)
           let frameLeft = box.leftEdge + CONTROL_BOX_PADDING
           if (finalAlign === 'center') frameLeft = box.leftEdge + (box.contentW - frameW) / 2
           else if (finalAlign === 'right') frameLeft = box.rightEdge - CONTROL_BOX_PADDING - frameW
 
+          const textLeft = frameLeft + (frameHidden ? 0 : bracketW)
           if (!frameHidden) {
             ctx.fillStyle = isReadonly ? FRAME_READONLY : frameColor
             ctx.fillText('[', frameLeft, box.baselineY)
-            ctx.fillText(']', frameLeft + bracketW + innerW, box.baselineY)
+            ctx.fillText(']', textLeft + lineWidths[lineWidths.length - 1], box.baselineY + (lines.length - 1) * fontSize)
           }
           ctx.fillStyle = textColor
-          ctx.fillText(inner, frameLeft + (frameHidden ? 0 : bracketW), box.baselineY)
+          for (let k = 0; k < lines.length; k++) {
+            ctx.fillText(lines[k], textLeft, box.baselineY + k * fontSize)
+          }
         } else if (!activeEditing && recipe.frame === 'box') {
           // 四边框多行文本域 (textarea): 按 item.controlLines 折行逐行绘制,
           // 行距 = size (与 LayoutEngine 预留行高同 pitch, 契约 §12.6 多行)。

@@ -1961,6 +1961,93 @@ know the menu, the "properties" item, or the config dialog.
     the value is preserved. Clearing MUST go through
     SetControlValueCommand (VR-3).
 
+------------------------------------------------------------
+12.8 Inline control box width — no horizontal overflow
+------------------------------------------------------------
+
+A runtime control value is USER DATA and may be arbitrarily long
+(a hundred-digit number, a pasted ID string, an unbroken token with
+no space). Layout MUST NOT let such a value push the control box
+past the text area.
+
+Rule: the control's BOX WIDTH — the value the line breaker advances
+by (LineElement.control.width), which already includes the
+label/prefix/suffix affix reservation (§12.1) — MUST NOT exceed the
+available width of the text area the control sits in:
+
+    body paragraph           → content width LESS the paragraph's
+                               block indent and first-line indent (the
+                               line start is shifted right by exactly
+                               that much, so the usable width shrinks
+                               by it)
+    table cell paragraph     → the cell's text width
+    header / footer band     → content width LESS first-line indent
+
+When the natural (single-line) box width would exceed it, the
+control WRAPS instead of overflowing, using the SAME mechanism the
+multi-line textarea (controlType 'textarea', recipe frame 'box')
+already uses:
+
+    - the displayed text is broken into physical lines that fit the
+      available width (wrapControlText);
+    - the box width is LOCKED to the available width;
+    - the row count is carried as `control.minRows`, so the line's
+      descent extends (rows × size) and the wrapped rows cannot
+      collide with the following line;
+    - the physical lines are carried as `control.lines` → SLIFItem
+      .controlLines, and the renderer draws one row per line.
+
+A locked control is a BLOCK-like item: it carries
+`control.ownLine === true` and the line breaker MUST start it on a
+fresh line. The locked width is the width available AT A LINE START,
+so letting it share a line with preceding content would push its
+right edge past the text area by exactly the preceding width — the
+overflow this section exists to forbid.
+
+This follows the engine's existing text model: an over-long TEXT run
+is force-broken per character (wordBreak 'break-all'), so wrapping a
+control's value is consistent, not a new behaviour class.
+
+MUST:
+
+- The natural→box-width decision and the wrapping MUST have exactly
+  ONE implementation per recipe, shared by ALL layout paths (body,
+  table cell, header/footer). Duplicated per-path copies of the
+  control-sizing branch are what produced the drift this section
+  fixes: the table-cell and band paths had no textarea branch at all.
+  Canonical location: engine/layout/control/ControlLayoutHint.ts
+  (`smarttextLayoutHint`), consumed by LayoutEngine.
+- Render MUST NOT re-derive the wrap; it consumes SLIFItem
+  .controlLines (a layout product, §7.4) and draws the rows. Its
+  bracket frame bounds the wrapped block ('[' on the first row, ']'
+  after the last row), keeping the single-line case byte-identical.
+- The render-side box geometry (computeControlBox, §12.3) already
+  scales vertically with ascent/descent and therefore needs no
+  change: a multi-row control is a taller box, not a wider one.
+- A control whose content FITS is untouched: same width, same line
+  placement, no `ownLine`. The clamp is a fallback, not a new
+  default.
+
+Known limitations (recorded, NOT silently ignored):
+
+  - The inline options group (radio/checkbox candidates) sizes to the
+    TEMPLATE's candidate list rather than to runtime data, and still
+    lays its candidates out in a single row. A candidate list wider
+    than the text area therefore still overflows; fixing it requires a
+    multi-row candidate layout shared by render + hit-test.
+  - A `field` node (page number / total pages / date / document title)
+    is atomic in the same way and is sized from its representative
+    display value (§12, representativeFieldText); it is NOT wrapped
+    here. Those representative values are bounded by construction
+    (≤ 4-digit page numbers, fixed date samples), so only a very long
+    document title can make one over-wide.
+  - Separately, the line WIDTH BUDGET for plain text does not subtract
+    the paragraph indent (breakLines is given the full content width
+    while the line is drawn from marginLeft + indent), so a text line
+    in an indented paragraph can extend into the right margin by the
+    indent. That is a pre-existing line-model concern, not a
+    control-box concern, and it is NOT addressed here.
+
 ============================================================
 13. DOCUMENT SERIALIZATION
 ============================================================
