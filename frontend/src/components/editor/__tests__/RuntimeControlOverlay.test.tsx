@@ -2,7 +2,7 @@
 // RuntimeControlOverlay — 无缝内联编辑组件测试 (契约 §12.6)
 // ================================================================
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { EditorContext, type EditorContextValue } from '../EditorProvider'
 import { RuntimeControlOverlay } from '../RuntimeControlOverlay'
@@ -198,6 +198,79 @@ describe('RuntimeControlOverlay 无缝内联 (契约 §12.6)', () => {
     fireEvent.change(input, { target: { value: 'abc' } })
     deactivateControl() // 点空白 → 卸载, 卸载提交触发 reject 浮层
     await waitFor(() => expect(screen.getAllByText('请输入数字').length).toBeGreaterThan(0))
+    expect(setControlValue).not.toHaveBeenCalled()
+  })
+})
+
+// ---- 超长值编辑面 (契约 §12.8) ----
+//
+// jsdom 无 canvas 2D → 给 measureText 一个确定性的等宽实现 (每字 8px),
+// 使编辑面的贴宽/折行尺寸可断言 (编辑面尺寸由 textWidth + wrapControlText 推出)。
+beforeAll(() => {
+  HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+    font: '', measureText: (t: string) => ({ width: t.length * 8 }),
+  })) as never
+})
+
+describe('RuntimeControlOverlay 超长值: 编辑面随草稿增长 (§12.8)', () => {
+  const CHAR_W = 8
+  const AREA_W = 60   // makeTarget 的 textArea.width
+
+  it('短草稿: 宽度贴住草稿 (输入多少看见多少), 高度单行', async () => {
+    const { ctx } = buildEnv()
+    renderOverlay(ctx)
+    const box = (await screen.findByRole('textbox')) as HTMLTextAreaElement
+    expect(box.tagName).toBe('TEXTAREA')
+    fireEvent.change(box, { target: { value: '12345' } })
+    expect(box.style.width).toBe(`${5 * CHAR_W + 2}px`)
+    expect(box.style.height).toBe('16px')
+  })
+
+  it('超长草稿: 宽度封顶 = 文本区宽, 逐字符折行, 高度按行数增长且无滚动条', async () => {
+    const { ctx, setControlValue, deactivateControl } = buildEnv()
+    renderOverlay(ctx)
+    const box = (await screen.findByRole('textbox')) as HTMLTextAreaElement
+    const long = '1'.repeat(120)
+    fireEvent.change(box, { target: { value: long } })
+    expect(box.style.width).toBe(`${AREA_W}px`)   // 不再撑出页面右边界
+    expect(box.style.whiteSpace).toBe('pre-wrap')
+    expect(box.style.wordBreak).toBe('break-all') // 与布局 break-all 同口径
+    expect(box.style.overflow).toBe('hidden')      // 不出滚动条
+    const perRow = Math.floor(AREA_W / CHAR_W)     // 7
+    expect(box.style.height).toBe(`${Math.ceil(120 / perRow) * 16}px`)
+    deactivateControl()
+    await waitFor(() => expect(setControlValue).toHaveBeenCalledWith('n1', long))
+  })
+
+  it('空态按占位符量宽 (与静态渲染的空态盒同宽)', async () => {
+    const { ctx } = buildEnv()
+    renderOverlay(ctx)
+    const box = (await screen.findByRole('textbox')) as HTMLTextAreaElement
+    expect(box.style.width).toBe(`${'姓名'.length * CHAR_W + 2}px`)
+    expect(box.style.height).toBe('16px')
+  })
+
+  it('Enter 仍提交并跳转 (单行语义字段不插入换行)', async () => {
+    const { ctx, setControlValue, activateControl } = buildEnv({ adjacent: 'n2' })
+    renderOverlay(ctx)
+    const box = await screen.findByRole('textbox')
+    const long = '1'.repeat(120)
+    fireEvent.change(box, { target: { value: long } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() => expect(activateControl).toHaveBeenCalledWith('n2'))
+    expect(setControlValue).toHaveBeenCalledWith('n1', long)
+  })
+
+  it('多行文本域: 高度下限 = minRows, Enter 换行不提交', async () => {
+    const { ctx, setControlValue } = buildEnv({
+      snap: { controlType: 'textarea', dataType: 'S2', minRows: 4 },
+      target: { minRows: 4, textArea: { left: 100, top: 200, width: 600, height: 64, right: 700 } },
+    })
+    renderOverlay(ctx)
+    const box = (await screen.findByRole('textbox')) as HTMLTextAreaElement
+    expect(box.style.height).toBe(`${4 * 16}px`)
+    fireEvent.change(box, { target: { value: '第一行\n第二行' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
     expect(setControlValue).not.toHaveBeenCalled()
   })
 })

@@ -281,6 +281,13 @@ export class Draw {
           if (offset <= charCount + unitLen) {
             const localOff = offset - charCount
             if (isAtomic) {
+              // 折行控件 (契约 §12.8): 值折成多物理行后, 光标必须落在「值末尾所在
+              // 那一行」—— 横向在该行文本之后、纵向在该行行顶、高度为单行行高。
+              // 用整盒 ascent+descent 会让光标高成一整个盒、并停在盒右缘 (版心右缘)。
+              const lines = item.controlLines
+              if (lines && lines.length > 0) {
+                return this.wrappedControlCaret(item, lines, localOff, pageY + yOffset)
+              }
               // 原子: 0=前 (item.x), 1=后 (item.x + bodyW)
               const bodyW = (item.width || 0) - (item.markerWidth || 0)
               return {
@@ -313,6 +320,64 @@ export class Draw {
       `[computeCaretPos] para=${paraId} offset=${offset} NOT FOUND in SLIF pages`,
     )
     return null
+  }
+
+  /**
+   * 折行控件的段落光标 (契约 §12.8)。
+   *
+   * 值被折成多物理行后, 整个盒高 = 行数 × 字号, 盒宽 = 版心宽。若沿用「原子 item」
+   * 的光标公式 (x = 盒右缘, h = ascent+descent), 光标会高成一整个盒、并停在版心
+   * 右缘 —— 离值末尾很远。本方法改按「值末尾所在那一行」定位:
+   *   - 值之前 (localOff 0) → 盒左缘 / 首行行顶;
+   *   - 值之后 → 末行文本之后 / 末行行顶;
+   *   - 高度 = 单个物理行 (字号, 与 ControlParticle 的行距同一 pitch);
+   *   - 行内横向复用 computeFieldRegion 的文本区几何 (渲染/命中/overlay 同源)。
+   */
+  private wrappedControlCaret(
+    item: SLIFItem,
+    lines: readonly string[],
+    localOff: number,
+    itemTop: number,
+  ): CaretPos {
+    const size = item.size || 16
+    const fontFamily = item.font || 'SimSun'
+    const fontConfig = { font: fontFamily, size, bold: item.bold, italic: item.italic }
+    const measure = (t: string) => this.measurer.measureWidth(t, fontConfig)
+    const after = localOff >= 1
+    // 值之前: 与既有「原子 item」约定一致 (盒左缘), 只是高度收成单行
+    if (!after) return { x: item.x, y: itemTop + item.y, h: size }
+
+    const rowIdx = lines.length - 1
+    const rowText = lines[rowIdx] || ''
+
+    const lt = this.controlLeadTrail(item.nodeId, fontFamily, size, item.bold, item.italic)
+    const style = this.presentationStyleOf?.(item.nodeId)
+    const region = computeFieldRegion({
+      controlType: this.templateDefinitionOf?.(item.nodeId)?.controlType,
+      lineLeft: item.x + lt.lead,
+      lineTop: itemTop + item.y,
+      layoutWidth: Math.max(0, ((item.width || 0) - (item.markerWidth || 0)) - lt.lead - lt.trail),
+      ascent: item.ascent,
+      descent: item.descent,
+      minWidth: style?.minWidth,
+      borderStyle: style?.borderStyle,
+      measure,
+    })
+
+    // 行内横向: 文本区左缘 + 末行推进宽。center/right 对齐时粒子按「最宽行」整块
+    // 平移, 这里按同一口径近似还原 (左对齐为精确值)。
+    let textLeft = region.textX
+    if (region.align === 'center' || region.align === 'right') {
+      const widest = Math.max(0, ...lines.map((l) => measure(l)))
+      textLeft = region.align === 'center'
+        ? region.textX + Math.max(0, (region.contentW - widest) / 2)
+        : region.textRightX - widest
+    }
+    return {
+      x: textLeft + measure(rowText),
+      y: itemTop + item.y + rowIdx * size,
+      h: size,
+    }
   }
 
   /**

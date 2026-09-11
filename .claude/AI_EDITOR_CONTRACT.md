@@ -2024,6 +2024,29 @@ MUST:
 - The render-side box geometry (computeControlBox, §12.3) already
   scales vertically with ascent/descent and therefore needs no
   change: a multi-row control is a taller box, not a wider one.
+- The paragraph CARET adjacent to a wrapped control MUST be a single
+  line high and land on the row that holds the value's end, not span
+  the whole box: caret height = one physical row, y = that row's top,
+  x = after the last character of the last drawn row (for "after the
+  control") or the box's left edge (for "before"), reusing
+  computeFieldRegion's text-area geometry. Height taken from the
+  whole box (ascent+descent) makes the caret as tall as the entire
+  control and parks it on the box's right edge.
+- The overlay edit surface (§12.6 seamless inline editing) MUST grow
+  with the draft instead of hiding it:
+    - WIDTH hugs the draft and is capped at the text area's width;
+      past that the content wraps, using the SAME wrap rule as layout
+      (per-character 'break-all' — reuse wrapControlText; an unbroken
+      run of digits does not wrap under the browser's default rules);
+    - HEIGHT is the wrapped row count × font size, so what is typed
+      stays visible and no scrollbar appears;
+    - the element type MUST NOT change as the draft grows (an
+      input↔textarea swap remounts the node and drops focus).
+  Sizing the field to the text area alone is NOT enough: a short
+  committed value yields a narrow text area, so the user would type
+  into a slot a few characters wide; letting the field grow to the
+  draft's measured width without a cap is what pushed the native
+  input past the page in the first place.
 - A control whose content FITS is untouched: same width, same line
   placement, no `ownLine`. The clamp is a fallback, not a new
   default.

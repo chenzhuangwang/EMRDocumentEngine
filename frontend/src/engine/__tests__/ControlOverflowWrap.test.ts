@@ -29,6 +29,7 @@ import type { SLIFItem } from '../layout/core/SLIF'
 import type { BaseNode, DocumentTree, ElementMeta, ControlValue } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import type { TemplateDefinition } from '../template/TemplateDefinition'
+import type { EditorRuntimeState } from '../state/EditorRuntimeState'
 
 /** LayoutEngine 缺省版心 (pageWidth 794 - margin 90*2) */
 const CONTENT_W = 794 - 90 - 90
@@ -301,7 +302,8 @@ describe('控件超宽折行 — Editor 端到端 (真实命令 + 真实 Draw �
   const cleanups: Array<() => void> = []
   afterEach(() => { while (cleanups.length > 0) cleanups.pop()!() })
 
-  it('setControlValue(超长数字) → 页面内无横向溢出, 折成多行', () => {
+  /** 真实 Editor: 一段 [主诉：][控件] (withLabel=false → 段落只有控件) */
+  function makeE2EEditor(withLabel = true) {
     const doc = createDocument('e2e')
     const defs = new TemplateDefinitionStore()
     const all = new Map<string, BaseNode>()
@@ -309,7 +311,8 @@ describe('控件超宽折行 — Editor 端到端 (真实命令 + 真实 Draw �
     const el: ElementMeta = { code: { internal: 'CC', dataElement: 'DE' }, name: '主诉', format: { dataType: 'S1' } }
     const st = createSmartTextNode('[主诉]', el)
     const label = createTextNode('主诉：')
-    const para = createParagraph([label.id, st.id])
+    const children = withLabel ? [label.id, st.id] : [st.id]
+    const para = createParagraph(children)
     for (const n of [st, label, para]) all.set(n.id, n as unknown as BaseNode)
     doc.body.children = [para.id]
     defs.set(st.id, { controlType: 'input', editable: true } as TemplateDefinition)
@@ -325,6 +328,14 @@ describe('控件超宽折行 — Editor 端到端 (真实命令 + 真实 Draw �
     const editor = new Editor(host, doc)
     editor.setDocument(doc, undefined, { templateDefinitions: defs })
     cleanups.push(() => { editor.destroy(); container.remove() })
+    return { editor, doc, para, st }
+  }
+
+  const caretState = (doc: DocumentTree, paraId: string, offset: number) =>
+    ({ cursor: { paragraphPath: [doc.id, paraId], offset, visible: true } } as unknown as EditorRuntimeState)
+
+  it('setControlValue(超长数字) → 页面内无横向溢出, 折成多行', () => {
+    const { editor, st } = makeE2EEditor()
 
     expect(editor.setControlValue(st.id, LONG).ok).toBe(true)
 
@@ -342,5 +353,39 @@ describe('控件超宽折行 — Editor 端到端 (真实命令 + 真实 Draw �
     expect(item.controlLines?.join('')).toBe(LONG)
     expect((item.controlLines ?? []).length).toBeGreaterThan(1)
     expect(item.text).toBe(LONG)
+  })
+
+  it('折行控件的段落光标 (值之后) = 单行行高, 落在值末尾所在行 (不是整个盒高/盒右缘)', () => {
+    const { editor, doc, para, st } = makeE2EEditor()
+    expect(editor.setControlValue(st.id, LONG).ok).toBe(true)
+
+    const draw = editor.getDraw()
+    const item = draw.getPages().flatMap((p) => p.items ?? []).find((i) => i.nodeId === st.id)!
+    const rows = (item.controlLines ?? []).length
+    expect(rows).toBeGreaterThan(1)
+
+    // 段落 = '主诉：'(3 字符) + 控件(1 字符) → offset 4 即「控件之后」
+    const rect = draw.getCaretClientRect(editor.getPool(), caretState(doc, para.id, 4))!
+    expect(rect).not.toBeNull()
+    // 高度 = 单个物理行 (修复前 = ascent+descent = rows*16, "画的这么大")
+    expect(rect.height).toBeCloseTo(16, 0)
+    // 纵向落在末行行顶 (修复前恒在首行行顶)
+    expect(rect.top).toBeCloseTo((item.y ?? 0) + (rows - 1) * 16, 0)
+    // 横向在末行文本之后, 远早于盒右缘 (修复前恒 = 盒右缘 = 版心右缘)
+    expect(rect.left).toBeGreaterThan(item.x ?? 0)
+    expect(rect.left).toBeLessThan((item.x ?? 0) + (item.width ?? 0))
+  })
+
+  it('折行控件的段落光标 (值之前) = 首行行首', () => {
+    const { editor, doc, para, st } = makeE2EEditor(false)
+    editor.setControlValue(st.id, LONG)
+    const draw = editor.getDraw()
+    const item = draw.getPages().flatMap((p) => p.items ?? []).find((i) => i.nodeId === st.id)!
+    expect((item.controlLines ?? []).length).toBeGreaterThan(1)
+
+    const rect = draw.getCaretClientRect(editor.getPool(), caretState(doc, para.id, 0))!
+    expect(rect.height).toBeCloseTo(16, 0)
+    expect(rect.top).toBeCloseTo(item.y ?? 0, 0)
+    expect(rect.left).toBeCloseTo(item.x ?? 0, 0)
   })
 })

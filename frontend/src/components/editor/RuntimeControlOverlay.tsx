@@ -17,6 +17,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useEditorRef, useEditorStoreSnapshot } from './EditorProvider'
 import { controlRejectMessage } from './controlMessages'
+// 折行口径单一来源: 编辑面的换行位置与布局/静态渲染必须一致 (契约 §12.8)
+import { wrapControlText } from '@/engine/layout/text/TextWrap'
 import type { ControlEditTarget, ControlSnapshot, ControlType, ControlValue, Editor } from '@/engine'
 
 const PLACEHOLDER_COLOR = '#9CA3AF'
@@ -265,19 +267,24 @@ function FieldHint({ msg }: { msg: string | null }) {
   )
 }
 
-function useAutoFocus<T extends HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>() {
+/**
+ * 激活时聚焦 (selectAll=true → 全选, 便于整体覆盖输入)。
+ * 原生 date/datetime-local 不 .select() (会破坏其原生交互)。
+ */
+function useAutoFocus<T extends HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(selectAll = false) {
   const ref = useRef<T>(null)
   useEffect(() => {
     const el = ref.current
     if (!el) return
     const id = raf(() => {
       el.focus()
-      // 原生 date/datetime-local 不 .select() (会破坏其原生交互)
-      if (el instanceof HTMLInputElement && el.type !== 'date' && el.type !== 'datetime-local') el.select()
+      if (el instanceof HTMLInputElement && (el.type === 'date' || el.type === 'datetime-local')) return
+      if (el instanceof HTMLSelectElement) return
+      if (selectAll) el.select()
       else if (el instanceof HTMLTextAreaElement) el.setSelectionRange(el.value.length, el.value.length)
     })
     return () => caf(id)
-  }, [])
+  }, [selectAll])
   return ref
 }
 
@@ -301,92 +308,115 @@ function baseInputStyle(target: ControlEditTarget): React.CSSProperties {
   }
 }
 
-function TextField({ snap, target, editor, onReject }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor; onReject?: (msg: string) => void }) {
-  const { draft, error, change, submit, done } = useFieldText(snap, editor, false, onReject)
-  const inputRef = useAutoFocus<HTMLInputElement>()
-  const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
-  const w = Math.max(target.textArea.width, textWidth(draft || ' ', font) + 2)
-  const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
-  return (
-    <>
-      <input
-        ref={inputRef}
-        data-ctl-overlay
-        type="text"
-        value={draft}
-        placeholder={target.placeholderText}
-        style={{ ...baseInputStyle(target), textAlign: 'left', width: w, height: target.textArea.height, position: 'absolute', left: 0, top: topOff }}
-        onChange={(e) => change(e.target.value)}
-        onBlur={() => { submit() }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') { e.preventDefault(); if (submit()) goAdjacent(editor, snap.nodeId, 1) }
-          else if (e.key === 'Tab') { e.preventDefault(); submit(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
-          else if (e.key === 'Escape') { e.preventDefault(); done(); editor.deactivateControl() }
-        }}
-      />
-      <FieldHint msg={error} />
-    </>
-  )
+/** 文本类控件编辑面的 Enter/Tab/Escape 行为 (单行面与多行面一致: Enter 提交并跳转,
+ *  不插入换行 —— 这两个控件语义上是单行字段)。
+ *  opts.discard: 传了 → Escape 丢弃草稿 (TextField 语义, 见文件头注释);
+ *  不传 → 保持 NumberField 既有行为 (Escape 仅退出, 卸载清理时仍提交)。 */
+function fieldKeyHandler(
+  e: React.KeyboardEvent,
+  editor: Editor,
+  nodeId: string,
+  submit: () => boolean,
+  opts?: { discard: () => void },
+): void {
+  if (e.key === 'Enter') { e.preventDefault(); if (submit()) goAdjacent(editor, nodeId, 1) }
+  else if (e.key === 'Tab') { e.preventDefault(); submit(); goAdjacent(editor, nodeId, e.shiftKey ? -1 : 1) }
+  else if (e.key === 'Escape') { e.preventDefault(); opts?.discard(); editor.deactivateControl() }
 }
 
-function NumberField({ snap, target, editor, onReject }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor; onReject?: (msg: string) => void }) {
-  const { draft, error, change, submit } = useFieldText(snap, editor, true, onReject)
-  const inputRef = useAutoFocus<HTMLInputElement>()
-  const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
-  const w = Math.max(target.textArea.width, textWidth(draft || ' ', font) + 2)
-  const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
-  return (
-    <>
-      <input
-        ref={inputRef}
-        data-ctl-overlay
-        type="text" inputMode="decimal"
-        value={draft}
-        placeholder={target.placeholderText}
-        style={{
-          ...baseInputStyle(target), textAlign: 'right',
-          width: w, height: target.textArea.height,
-          position: 'absolute', left: Math.min(0, target.textArea.width - w), top: topOff,
-        }}
-        onChange={(e) => change(e.target.value)}
-        onBlur={() => { submit() }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') { e.preventDefault(); if (submit()) goAdjacent(editor, snap.nodeId, 1) }
-          else if (e.key === 'Tab') { e.preventDefault(); submit(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
-          else if (e.key === 'Escape') { e.preventDefault(); editor.deactivateControl() }
-        }}
-      />
-      <FieldHint msg={error} />
-    </>
-  )
+/**
+ * 控件编辑面 (契约 §12.8) — 恒用 <textarea> 承载, 尺寸随草稿走:
+ *   - 宽度贴住草稿、封顶 = 文本区宽; 超出部分逐字符折行 (wordBreak break-all 与
+ *     布局同口径), 行数用同一个 wrapControlText 计算 → 编辑中的换行位置与提交后
+ *     的静态渲染一致;
+ *   - 高度 = 行数 × 字号 → 输入多少看到多少, 且不出滚动条 (用户: "跟正常输入一样");
+ *     旧实现的两难: 单行 <input> 宽度 = max(文本区宽, 草稿宽) 会把输入框撑出页面
+ *     右边界, 改成恒 = 文本区宽后又只能看见末尾几个字;
+ *   - 元素类型恒定 (不随草稿长短在 input/textarea 之间切换) → 输入中不丢焦点。
+ */
+interface GrowingFieldProps {
+  target: ControlEditTarget
+  draft: string
+  error: string | null
+  align: 'left' | 'right'
+  /** 激活时全选 (单行语义字段: 便于整体覆盖输入) */
+  selectAll: boolean
+  /** 高度下限 (多行文本域 ElementFormat.minRows) */
+  minRows?: number
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
+  onBlur?: () => void
+  onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
 }
 
-function TextareaField({ snap, target, editor, onReject }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor; onReject?: (msg: string) => void }) {
-  const { draft, error, change, submit, done } = useFieldText(snap, editor, false, onReject)
-  const ref = useAutoFocus<HTMLTextAreaElement>()
-  const lineCount = Math.max(1, (draft.match(/\n/g)?.length ?? 0) + 1, target.minRows ?? 1)
+function GrowingField({ target, draft, error, align, selectAll, minRows, onChange, onBlur, onKeyDown }: GrowingFieldProps) {
+  const ref = useAutoFocus<HTMLTextAreaElement>(selectAll)
+  const font = `${target.fontSizeCss}px "${target.fontFamily}"`
+  const measure = (t: string) => textWidth(t, font)
+  // 空态按占位符量宽 (与静态渲染的空态盒同宽), 否则贴住草稿
+  const measured = draft === '' ? target.placeholderText : draft
+  const naturalW = Math.max(0, ...measured.split('\n').map(measure))
+  const w = Math.max(1, Math.min(target.textArea.width, naturalW + 2))
+  const rows = Math.max(1, minRows ?? 1, wrapControlText(draft, w, measure).length)
   const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
   return (
     <>
       <textarea
         ref={ref}
         data-ctl-overlay
-        rows={Math.min(lineCount, 12)}
         value={draft}
         placeholder={target.placeholderText}
         style={{
-          ...baseInputStyle(target), textAlign: 'left',
-          resize: 'none', whiteSpace: 'pre-wrap', overflowY: 'auto',
-          width: '100%', height: '100%', position: 'absolute', left: 0, top: topOff,
+          ...baseInputStyle(target), textAlign: align, resize: 'none',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflow: 'hidden',
+          width: w, height: rows * target.fontSizeCss,
+          position: 'absolute', left: 0, top: topOff,
         }}
-        onChange={(e) => change(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Tab') { e.preventDefault(); submit(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
-          else if (e.key === 'Escape') { e.preventDefault(); done(); editor.deactivateControl() }
-        }}
+        onChange={onChange}
+        onBlur={onBlur}
+        onKeyDown={onKeyDown}
       />
       <FieldHint msg={error} />
     </>
+  )
+}
+
+function TextField({ snap, target, editor, onReject }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor; onReject?: (msg: string) => void }) {
+  const { draft, error, change, submit, done } = useFieldText(snap, editor, false, onReject)
+  return (
+    <GrowingField
+      target={target} draft={draft} error={error} align="left" selectAll
+      onChange={(e) => change(e.target.value)}
+      onBlur={() => { submit() }}
+      onKeyDown={(e) => fieldKeyHandler(e, editor, snap.nodeId, submit, { discard: done })}
+    />
+  )
+}
+
+function NumberField({ snap, target, editor, onReject }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor; onReject?: (msg: string) => void }) {
+  const { draft, error, change, submit } = useFieldText(snap, editor, true, onReject)
+  return (
+    <GrowingField
+      target={target} draft={draft} error={error} align="right" selectAll
+      onChange={(e) => change(e.target.value)}
+      onBlur={() => { submit() }}
+      onKeyDown={(e) => fieldKeyHandler(e, editor, snap.nodeId, submit)}
+    />
+  )
+}
+
+function TextareaField({ snap, target, editor, onReject }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor; onReject?: (msg: string) => void }) {
+  const { draft, error, change, submit, done } = useFieldText(snap, editor, false, onReject)
+  // 多行文本域: Enter 换行 (不提交), Tab 提交并跳转, Escape 丢弃
+  return (
+    <GrowingField
+      target={target} draft={draft} error={error} align="left" selectAll={false}
+      minRows={target.minRows}
+      onChange={(e) => change(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Tab') { e.preventDefault(); submit(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
+        else if (e.key === 'Escape') { e.preventDefault(); done(); editor.deactivateControl() }
+      }}
+    />
   )
 }
 
