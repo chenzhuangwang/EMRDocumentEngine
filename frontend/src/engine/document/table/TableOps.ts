@@ -256,6 +256,81 @@ export function deleteColumn(pool: NodePool, tableId: string, colIndex: number):
 }
 
 // ============================================================
+// 列宽调整 (列间边界拖拽)
+//
+// 语义: 拖动相邻两列之间的竖线 → 两列此消彼长 (pair 总宽守恒),
+//       其余列不受影响, 表格仍铺满版面。
+// C1: 列的实际最小宽 = max(MIN_COL_WIDTH, ColumnDefinition.minWidth ?? 0)。
+//     拖动预览与最终提交走同一函数, 约束不漂移。
+// ============================================================
+
+/** 列宽下限 (与 LayoutEngine.computeColumnWidths.MIN_WIDTH / TableParticle.MIN_CELL_WIDTH 对齐) */
+export const MIN_COL_WIDTH = 40
+
+/** C1 唯一权威: 列的实际最小宽 (声明式 minWidth 优先于默认下限) */
+export function effectiveMinColumnWidth(def?: { minWidth?: number }): number {
+  return Math.max(MIN_COL_WIDTH, def?.minWidth ?? 0)
+}
+
+/**
+ * 相邻两列的合法宽度 — pair 总宽守恒 (表宽不变), 两侧都不塌缩。
+ *
+ * 返回值恒满足 left + right === 入参 left + right。仅当 pair 总宽本身
+ * 不足以容纳两侧最小宽之和时才退化 (fragment 实际宽小于声明 minWidth,
+ * 如 auto 列不读 minWidth): 此时仍守恒, 按最小宽比例分配, 避免单侧归零。
+ */
+export function clampColumnPair(
+  left: number, right: number, effMinLeft: number, effMinRight: number,
+): { left: number; right: number } {
+  const total = left + right
+  const minTotal = effMinLeft + effMinRight
+  if (!Number.isFinite(total) || total <= 0) return { left, right }
+  if (total < minTotal) {
+    const l = total * (effMinLeft / minTotal)
+    return { left: l, right: total - l }
+  }
+  const l = Math.min(Math.max(left, effMinLeft), total - effMinRight)
+  return { left: l, right: total - l }
+}
+
+/**
+ * 拖列间边界 (列 colIndex 与 colIndex+1 之间) → 写入两列宽度。
+ *
+ * 内部按 C1 自行夹紧 (调用方传越界值会被夹回, 不破坏守恒/最小宽),
+ * 两列落为 mode:'fixed' + px 宽 (spread 保留 minWidth 等既有字段)。
+ *
+ * @returns true = 已变更; false = 无操作 (下标越界 / 非有限值 / 宽度未变)
+ *          → 命令 forward 返回 null, 不入 undo 栈
+ */
+export function resizeColumn(
+  pool: NodePool, tableId: string, colIndex: number, leftWidth: number, rightWidth: number,
+): boolean {
+  const table = pool.nodes.get(tableId) as unknown as Table | undefined
+  if (!table || table.type !== 'table') return false
+  const cols = table.columns
+  if (!cols || colIndex < 0 || colIndex + 1 >= cols.length) return false
+  if (!Number.isFinite(leftWidth) || !Number.isFinite(rightWidth)) return false
+
+  const prevL = cols[colIndex]
+  const prevR = cols[colIndex + 1]
+  if (!prevL || !prevR) return false
+
+  const { left, right } = clampColumnPair(
+    leftWidth, rightWidth,
+    effectiveMinColumnWidth(prevL), effectiveMinColumnWidth(prevR),
+  )
+  // 宽度与 mode 均未变 → 无操作 (重复拖到同一位置不产生 undo)
+  if (prevL.width === left && prevR.width === right
+      && prevL.mode === 'fixed' && prevR.mode === 'fixed') {
+    return false
+  }
+
+  cols[colIndex] = { ...prevL, width: left, mode: 'fixed' }
+  cols[colIndex + 1] = { ...prevR, width: right, mode: 'fixed' }
+  return true
+}
+
+// ============================================================
 // 合并/拆分操作 (契约 §11.2, Drift 1 反转)
 // ============================================================
 

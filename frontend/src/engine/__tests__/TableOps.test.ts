@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   insertRow, deleteRow, insertColumn, deleteColumn,
+  resizeColumn, clampColumnPair, effectiveMinColumnWidth,
   buildCellGrid, getCellGridPosition, normalizeRange, cellsInRange,
   mergeAdjacentCells, mergeRange, splitCell,
 } from '../document/table/TableOps'
@@ -353,5 +354,124 @@ describe('TableOps 合并/拆分 (契约 §11.2, Drift 1)', () => {
     const { pool, table } = makeSimpleTable(2, 2)
     expect(splitCell(pool, table.id, 0, 0)).toBe(false)
     expect(gridSummary(pool, table.id).length).toBe(4) // 未变更
+  })
+})
+
+// ============================================================
+// 列宽调整 (列间边界拖拽) — C1 单一权威 / 表宽守恒 / 幂等
+// ============================================================
+
+/** 建表并覆写 columns (拖拽基准 = fragment 实际 px, 由调用方传入) */
+function makeResizeTable(defs: { width: number; minWidth?: number; mode?: 'fixed' | 'percentage' | 'auto' }[]) {
+  const { pool, table } = makeSimpleTable(2, defs.length)
+  table.columns = defs.map(d => ({ ...d }))
+  return { pool, table }
+}
+
+describe('TableOps 列宽调整 (resizeColumn)', () => {
+  it('effectiveMinColumnWidth: 声明式 minWidth 优先于默认下限 40', () => {
+    expect(effectiveMinColumnWidth(undefined)).toBe(40)
+    expect(effectiveMinColumnWidth({})).toBe(40)
+    expect(effectiveMinColumnWidth({ minWidth: 20 })).toBe(40)
+    expect(effectiveMinColumnWidth({ minWidth: 80 })).toBe(80)
+  })
+
+  it('clampColumnPair: pair 总宽守恒, 两侧都不塌缩', () => {
+    // 左列被拖到远超右列剩余空间 → 夹到 total - effMinRight
+    expect(clampColumnPair(190, 10, 40, 40)).toEqual({ left: 160, right: 40 })
+    // 反向同理
+    expect(clampColumnPair(-10, 210, 40, 40)).toEqual({ left: 40, right: 160 })
+    // 区间内原样通过
+    expect(clampColumnPair(120, 80, 40, 40)).toEqual({ left: 120, right: 80 })
+  })
+
+  it('clampColumnPair: 退化 (总宽 < 两侧最小宽之和) 仍守恒且不归零', () => {
+    const r = clampColumnPair(20, 30, 80, 80)
+    expect(r.left + r.right).toBe(50)
+    expect(r.left).toBeGreaterThan(0)
+    expect(r.right).toBeGreaterThan(0)
+    // minTotal 不可达时按最小宽比例分配 (80:80 → 对半)
+    expect(r.left).toBe(25)
+  })
+
+  it('resizeColumn: 两列落为 fixed, 保留 minWidth, pair 总宽守恒', () => {
+    const { pool, table } = makeResizeTable([
+      { width: 100, minWidth: 60, mode: 'percentage' },
+      { width: 100, mode: 'percentage' },
+    ])
+
+    expect(resizeColumn(pool, table.id, 0, 130, 70)).toBe(true)
+    expect(table.columns[0]).toEqual({ width: 130, minWidth: 60, mode: 'fixed' })
+    expect(table.columns[1]).toEqual({ width: 70, mode: 'fixed' })
+    // 表宽守恒: pair 总宽不变 (其余列不受影响)
+    expect(table.columns[0].width + table.columns[1].width).toBe(200)
+    // 第三列 (若存在) 不动 —— 此处两列, 断言列数不变
+    expect(table.columns.length).toBe(2)
+  })
+
+  it('resizeColumn: 只动相邻两列, 其余列原样 (pair 总量由调用方守恒)', () => {
+    const { pool, table } = makeResizeTable([
+      { width: 100, mode: 'fixed' },
+      { width: 100, mode: 'fixed' },
+      { width: 300, mode: 'fixed' },
+    ])
+
+    // 调用方按 pair 守恒传入 (100 + 300 → 60 + 340)
+    expect(resizeColumn(pool, table.id, 1, 60, 340)).toBe(true)
+    expect(table.columns[0]).toEqual({ width: 100, mode: 'fixed' })
+    expect(table.columns[1]).toEqual({ width: 60, mode: 'fixed' })
+    expect(table.columns[2]).toEqual({ width: 340, mode: 'fixed' })
+    // 三列总宽仍为 500 — 拖拽只在 pair 内部此消彼长
+    expect(table.columns.reduce((s, c) => s + c.width, 0)).toBe(500)
+  })
+
+  it('resizeColumn: 低于最小宽 → 在 op 内夹紧 (守恒不破)', () => {
+    const { pool, table } = makeResizeTable([
+      { width: 100, mode: 'fixed' },
+      { width: 100, minWidth: 80, mode: 'fixed' },
+    ])
+
+    // 把左列压到 10 → 夹回默认下限 40; 右列 = 200 - 40 = 160
+    expect(resizeColumn(pool, table.id, 0, 10, 190)).toBe(true)
+    expect(table.columns[0].width).toBe(40)
+    expect(table.columns[1].width).toBe(160)
+
+    // 把右列压到 10 → 夹回其声明 minWidth 80; 左列 = 200 - 80 = 120
+    expect(resizeColumn(pool, table.id, 0, 190, 10)).toBe(true)
+    expect(table.columns[1].width).toBe(80)
+    expect(table.columns[0].width).toBe(120)
+    expect(table.columns[0].width + table.columns[1].width).toBe(200)
+  })
+
+  it('resizeColumn: 下标越界 / 非有限值 → false 且无改动', () => {
+    const { pool, table } = makeResizeTable([
+      { width: 100, mode: 'fixed' },
+      { width: 100, mode: 'fixed' },
+    ])
+    const before = table.columns.map(c => ({ ...c }))
+
+    expect(resizeColumn(pool, table.id, -1, 10, 190)).toBe(false)   // 左越界
+    expect(resizeColumn(pool, table.id, 1, 10, 190)).toBe(false)    // colIndex+1 越界
+    expect(resizeColumn(pool, table.id, 0, NaN, 190)).toBe(false)
+    expect(resizeColumn(pool, table.id, 0, 100, Infinity)).toBe(false)
+    expect(resizeColumn(pool, 'no-such-table', 0, 10, 190)).toBe(false)
+    expect(table.columns).toEqual(before)
+  })
+
+  it('resizeColumn: 宽度与 mode 均未变 → false (重复拖到同位置不入 undo)', () => {
+    const { pool, table } = makeResizeTable([
+      { width: 120, mode: 'fixed' },
+      { width: 80, mode: 'fixed' },
+    ])
+    expect(resizeColumn(pool, table.id, 0, 120, 80)).toBe(false)
+
+    // 同为 120/80 但原为 percentage → mode 变了, 是变更
+    const b = makeResizeTable([
+      { width: 120, mode: 'percentage' },
+      { width: 80, mode: 'percentage' },
+    ])
+    expect(resizeColumn(b.pool, b.table.id, 0, 120, 80)).toBe(true)
+    expect(b.table.columns[0].mode).toBe('fixed')
+    expect(b.table.columns[1].mode).toBe('fixed')
   })
 })

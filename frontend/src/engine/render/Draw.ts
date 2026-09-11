@@ -102,6 +102,10 @@ export class Draw {
   // 设计模式选中的控件节点 id (契约 §12.3, 由 Editor 注入) — 高亮 overlay
   designSelectedControlId: string | null = null
 
+  // 列宽拖拽参考线 (由 Editor 注入) — draw-time overlay 交互态, 页面内逻辑坐标。
+  // 不进 DocumentModel、不进命令 (§7.2): 拖动期间只更新此字段, 松开才提交列宽命令。
+  columnResizeGuide: { pageIndex: number; x: number; top: number; bottom: number } | null = null
+
   // 当前激活的控件节点 id (无缝内联编辑, 契约 §12.6 运行时交互, 由 Editor 注入)
   // — 该控件渲染时隐藏静态 field (框/值/affordance), 由 DOM overlay 承担文本面
   activeControlNodeId: string | null = null
@@ -592,38 +596,69 @@ export class Draw {
     if (!ictx || !pool || !runtimeState) return
 
     const cursor = runtimeState.cursor
-    // 无有效光标位置 → 跳过 interact 层渲染
-    if (cursor.paragraphPath.length === 0) return
+    // 无有效光标位置 → 跳过 interact 层渲染 (列宽拖拽参考线除外 — 无光标也要画)
+    const noCaret = cursor.paragraphPath.length === 0
+    if (noCaret && !this.columnResizeGuide) return
 
     ictx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0)
     ictx.clearRect(0, 0, viewportW / scale, viewportH / scale)
     // 页面居中: 与 content 层相同偏移
     ictx.translate(offsetX / scale, 0)
 
-    // --- 选区高亮 (文字下方, 统一包围盒) — 无缝编辑激活期间隐藏 (消除双光标) ---
-    const selection = runtimeState.selection
-    if (selection.active && !this.activeControlNodeId) {
-      this.renderSelectionUnified(pool, selection, pageVerticalGap, ictx)
-    }
+    if (!noCaret) {
+      // --- 选区高亮 (文字下方, 统一包围盒) — 无缝编辑激活期间隐藏 (消除双光标) ---
+      const selection = runtimeState.selection
+      if (selection.active && !this.activeControlNodeId) {
+        this.renderSelectionUnified(pool, selection, pageVerticalGap, ictx)
+      }
 
-    // --- 单元格框选高亮 (文字下方) ---
-    if (this.cellSelection) {
-      this.renderCellSelection(pool, this.cellSelection, pageVerticalGap, ictx)
-    }
+      // --- 单元格框选高亮 (文字下方) ---
+      if (this.cellSelection) {
+        this.renderCellSelection(pool, this.cellSelection, pageVerticalGap, ictx)
+      }
 
-    // --- 设计模式控件选中高亮 (契约 §12.3, draw-time overlay) ---
-    if (this.designSelectedControlId) {
-      this.renderDesignSelection(this.designSelectedControlId, pageVerticalGap, ictx)
-    }
+      // --- 设计模式控件选中高亮 (契约 §12.3, draw-time overlay) ---
+      if (this.designSelectedControlId) {
+        this.renderDesignSelection(this.designSelectedControlId, pageVerticalGap, ictx)
+      }
 
-    // --- 光标 (文字上方, 仅在 visible 时绘制; 无缝编辑激活时隐藏, 由 DOM 光标承担) ---
-    if (cursor.visible && !this.activeControlNodeId) {
-      const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, pageVerticalGap)
-      if (caret) {
-        ictx.fillStyle = '#000000'
-        ictx.fillRect(caret.x, caret.y, 2, caret.h)
+      // --- 光标 (文字上方, 仅在 visible 时绘制; 无缝编辑激活时隐藏, 由 DOM 光标承担) ---
+      if (cursor.visible && !this.activeControlNodeId) {
+        const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, pageVerticalGap)
+        if (caret) {
+          ictx.fillStyle = '#000000'
+          ictx.fillRect(caret.x, caret.y, 2, caret.h)
+        }
       }
     }
+
+    // --- 列宽拖拽参考线 (最上层 — 拖动中只读 guide, 不读 columns) ---
+    if (this.columnResizeGuide) {
+      this.renderColumnResizeGuide(this.columnResizeGuide, pageVerticalGap, ictx)
+    }
+  }
+
+  /**
+   * 列宽拖拽参考线 (draw-time overlay, 契约 §7.2 交互态)
+   *
+   * 页面内逻辑坐标 → canvas Y 与内容层同源 (accumulatedHeightTo - scrollY),
+   * 故 50% / 200% 缩放下参考线与渲染的列边界始终对齐。
+   */
+  private renderColumnResizeGuide(
+    guide: { pageIndex: number; x: number; top: number; bottom: number },
+    pageVerticalGap: number,
+    ictx: CanvasRenderingContext2D,
+  ): void {
+    const pageY = accumulatedHeightTo(guide.pageIndex, this.pages, pageVerticalGap)
+      - this.coordSystem.transform.scrollY
+    ictx.save()
+    ictx.strokeStyle = '#2563EB'
+    ictx.lineWidth = 1.5
+    ictx.beginPath()
+    ictx.moveTo(guide.x, pageY + guide.top)
+    ictx.lineTo(guide.x, pageY + guide.bottom)
+    ictx.stroke()
+    ictx.restore()
   }
 
   // ================================================================

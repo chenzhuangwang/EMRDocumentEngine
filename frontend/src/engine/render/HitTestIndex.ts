@@ -12,13 +12,14 @@
 // ================================================================
 
 import type { SLIFItem, SLIFPage } from '../layout/core/SLIF'
-import { tableHeaderRowsHeight } from '../layout/core/SLIF'
-import type { Paragraph } from '../document/core/DocumentModel'
+import { tableHeaderRowsHeight, TABLE_ROW_GAP } from '../layout/core/SLIF'
+import type { Paragraph, Table } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import { cumulativeCharWidths, findCharIndexAtX } from '../layout/text/CharWidthHelper'
 import type { TextMeasurer } from '../layout/text/TextMeasurer'
 import { calcUniformColWidths } from '../layout/table/TableCoordUtil'
 import { buildMergeMatrix } from '../document/table/MergeMatrix'
+import { effectiveMinColumnWidth } from '../document/table/TableOps'
 
 interface HitEntry {
   nodeId: string
@@ -33,6 +34,31 @@ interface HitEntry {
 export interface TableHitResult {
   paraPath: string[]
   offset: number
+}
+
+/**
+ * 列间边界命中结果 (表格列宽拖拽)
+ *
+ * C3 — 自包含: 几何一律取自命中所在页的 table fragment, 不使用整表全局坐标,
+ * 跨页表在 page2 fragment 命中时携带的就是 page2 的 x/top/bottom/columnWidths。
+ */
+export interface ColumnBorderHit {
+  /** 命中所在页 (fragment 所在页) */
+  pageIndex: number
+  tableId: string
+  /** 边界位于列 colIndex 与 colIndex+1 之间 (k ∈ [0, n-2] → 外缘不命中) */
+  colIndex: number
+  /** 页面内 X (= fragment.x + Σ columnWidths[0..colIndex]) */
+  x: number
+  /** fragment 页面内纵向跨度 (含重复表头) */
+  top: number
+  bottom: number
+  /** fragment 实际列宽 (px) — 拖拽守恒基准 */
+  leftWidth: number
+  rightWidth: number
+  /** C1: 两侧列的实际最小宽 (与提交端同一规则) */
+  effMinLeft: number
+  effMinRight: number
 }
 
 export class HitTestIndex {
@@ -158,6 +184,75 @@ export class HitTestIndex {
       }
     }
     return null
+  }
+
+  /**
+   * Level 2 列间边界命中 (表格列宽拖拽)
+   *
+   * 只产「内部边界」— 列 k 与 k+1 之间, k ∈ [0, n-2]; 表左右外缘永不命中
+   * (整表宽度调整不在本轮范围)。列宽一律读 fragment 派生的 columnWidths
+   * (无缓存, 契约 C5), 最小宽经 effectiveMinColumnWidth 与提交端同规则 (C1)。
+   *
+   * @param pageIndex 页面索引
+   * @param docX      页面内 x (已扣除居中偏移)
+   * @param localY    页面内 y
+   * @param pool      节点池 (读 columns 补齐最小宽, 只读派生)
+   * @param tolerance X 方向容差 (页面内逻辑 px — 调用方按 1/scale 折算屏幕容差)
+   */
+  hitTestColumnBorder(
+    pageIndex: number, docX: number, localY: number, pool: NodePool, tolerance: number,
+  ): ColumnBorderHit | null {
+    const bucket = this.buckets.get(pageIndex)
+    if (!bucket || !(tolerance >= 0)) return null
+
+    let best: ColumnBorderHit | null = null
+    let bestDist = Infinity
+
+    for (const e of bucket) {
+      if (e.itemType !== 'table' || !e.tableItem) continue
+      const item = e.tableItem
+      // 纵向: localY 落在本 fragment 的行区内 (重复表头已计入 frag.height)
+      if (localY < item.y || localY > item.y + item.height) continue
+
+      const widths = item.columnWidths && item.columnWidths.length > 0
+        ? item.columnWidths
+        : calcUniformColWidths(item.width, HitTestIndex.fallbackColCount(item))
+      if (widths.length < 2) continue
+
+      // C1: 声明式 minWidth 从 pool 的 columns 读 (此处只读派生, 不缓存不写)
+      const table = pool.nodes.get(item.nodeId) as unknown as Table | undefined
+      const cols = table?.type === 'table' ? table.columns : undefined
+
+      let borderX = item.x
+      for (let k = 0; k < widths.length - 1; k++) {
+        borderX += widths[k]
+        const dist = Math.abs(docX - borderX)
+        if (dist > tolerance || dist >= bestDist) continue
+        bestDist = dist
+        best = {
+          pageIndex,
+          tableId: item.nodeId,
+          colIndex: k,
+          x: borderX,
+          top: item.y,
+          // frag.height 含末行 1px 行隙 → 视觉底线回退一个行隙
+          bottom: item.y + item.height - TABLE_ROW_GAP,
+          leftWidth: widths[k],
+          rightWidth: widths[k + 1],
+          effMinLeft: effectiveMinColumnWidth(cols?.[k]),
+          effMinRight: effectiveMinColumnWidth(cols?.[k + 1]),
+        }
+      }
+    }
+
+    return best
+  }
+
+  /** columnWidths 缺省时的列数推算 (与 hitTestTable 同规则: Σ colspan 最大值) */
+  private static fallbackColCount(item: SLIFItem): number {
+    const rows = item.rows
+    if (!rows || rows.length === 0) return 1
+    return Math.max(...rows.map(r => r.cells.reduce((s, c) => s + (c.colspan || 1), 0)))
   }
 
   /**

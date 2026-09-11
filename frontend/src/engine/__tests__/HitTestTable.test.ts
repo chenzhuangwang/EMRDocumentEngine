@@ -13,9 +13,9 @@ import { HitTestIndex } from '../render/HitTestIndex'
 import { testMeasurer } from './helpers'
 import { buildMergeMatrix } from '../document/table/MergeMatrix'
 import { buildNodePool } from '../document/core/NodePool'
-import { createDocument, createParagraph, createTextNode } from '../document/factory/ElementFormatter'
+import { createDocument, createParagraph, createTextNode, createTable } from '../document/factory/ElementFormatter'
 import type { BaseNode } from '../document/core/DocumentModel'
-import type { SLIFItem, SLIFCell } from '../layout/core/SLIF'
+import type { SLIFItem, SLIFCell, SLIFPage } from '../layout/core/SLIF'
 
 const hitIndex = new HitTestIndex(testMeasurer)
 
@@ -272,5 +272,168 @@ describe('HitTestTable rowspan', () => {
     expect(hitIndex.hitTestTable(tableItem, 50, 30, pool, doc.id)!.paraPath[1]).toBe(A.paraId)
     // row1 列 1 — 命中 D
     expect(hitIndex.hitTestTable(tableItem, 150, 30, pool, doc.id)!.paraPath[1]).toBe(D.paraId)
+  })
+})
+
+// ============================================================
+// hitTestColumnBorder — 列间边界命中 (列宽拖拽)
+//
+// 边界几何一律取自当前 page fragment (C3); 只产内部边界 (外缘不可拖);
+// 最小宽经 effectiveMinColumnWidth 与提交端同规则 (C1)。
+// ============================================================
+
+/** N 列表格 fragment + 真实 table 节点 (含 columns, 供 C1 最小宽) */
+function makeBorderFixture(
+  widths: number[],
+  opts: { x?: number; y?: number; minWidths?: (number | undefined)[] } = {},
+) {
+  const doc = createDocument('test')
+  const allNodes = new Map<string, BaseNode>()
+  allNodes.set(doc.id, doc as unknown as BaseNode)
+
+  const x = opts.x ?? 0
+  const y = opts.y ?? 0
+
+  const table = createTable(widths.map((w, i) => ({
+    width: w, mode: 'fixed' as const, minWidth: opts.minWidths?.[i],
+  })))
+  allNodes.set(table.id, table as unknown as BaseNode)
+  doc.body.children = [table.id]
+
+  const pool = buildNodePool(allNodes, { body: doc.id })
+
+  // 2 行 fragment (行高 24 + 1px 行隙) → height = 49
+  const rowH = 24
+  const height = rowH * 2 + 1
+  const tableItem: SLIFItem = {
+    nodeId: table.id, nodeType: 'table', type: 'table',
+    x, y, width: widths.reduce((s, w) => s + w, 0), height,
+    ascent: height, descent: 0, font: 'SimSun', size: 12,
+    columnWidths: [...widths],
+    rows: [
+      { height: rowH, cells: widths.map((w, i) => cell(`c0${i}`, w, [])) },
+      { height: rowH, cells: widths.map((w, i) => cell(`c1${i}`, w, [])) },
+    ],
+  }
+
+  return { doc, pool, tableItem, tableId: table.id }
+}
+
+function pageOf(tableItem: SLIFItem, pageIndex = 0): SLIFPage {
+  return { pageIndex, width: 794, height: 1123, items: [tableItem] }
+}
+
+describe('hitTestColumnBorder (列宽拖拽命中)', () => {
+  it('内部边界命中: 几何自包含 fragment (x/top/bottom/列宽)', () => {
+    const { pool, tableItem, tableId } = makeBorderFixture([100, 100])
+    hitIndex.rebuild([pageOf(tableItem)])
+
+    const hit = hitIndex.hitTestColumnBorder(0, 100, 10, pool, 4)
+    expect(hit).not.toBeNull()
+    expect(hit!.tableId).toBe(tableId)
+    expect(hit!.pageIndex).toBe(0)
+    expect(hit!.colIndex).toBe(0)
+    expect(hit!.x).toBe(100)
+    expect(hit!.top).toBe(0)
+    // fragment.height = 49 含末行 1px 行隙 → 视觉底线回退 1
+    expect(hit!.bottom).toBe(48)
+    expect(hit!.leftWidth).toBe(100)
+    expect(hit!.rightWidth).toBe(100)
+    // C1: 无声明 minWidth → 默认下限 40
+    expect(hit!.effMinLeft).toBe(40)
+    expect(hit!.effMinRight).toBe(40)
+  })
+
+  it('容差外 / 容差内', () => {
+    const { pool, tableItem } = makeBorderFixture([100, 100])
+    hitIndex.rebuild([pageOf(tableItem)])
+
+    expect(hitIndex.hitTestColumnBorder(0, 100, 10, pool, 4)).not.toBeNull()
+    expect(hitIndex.hitTestColumnBorder(0, 104, 10, pool, 4)).not.toBeNull()
+    expect(hitIndex.hitTestColumnBorder(0, 105, 10, pool, 4)).toBeNull()
+    expect(hitIndex.hitTestColumnBorder(0, 96, 10, pool, 4)).not.toBeNull()
+    expect(hitIndex.hitTestColumnBorder(0, 95, 10, pool, 4)).toBeNull()
+  })
+
+  it('表左右外缘永不命中 (仅内部边界可拖)', () => {
+    const { pool, tableItem } = makeBorderFixture([100, 100])
+    hitIndex.rebuild([pageOf(tableItem)])
+
+    expect(hitIndex.hitTestColumnBorder(0, 0, 10, pool, 4)).toBeNull()      // 左外缘
+    expect(hitIndex.hitTestColumnBorder(0, 200, 10, pool, 4)).toBeNull()    // 右外缘
+    // 即使容差放大: 外缘仍无候选边界 (k 只到 n-2)
+    expect(hitIndex.hitTestColumnBorder(0, 0, 10, pool, 200)).not.toBeNull() // 命中内部边界 100
+    expect(hitIndex.hitTestColumnBorder(0, 0, 10, pool, 200)!.colIndex).toBe(0)
+    expect(hitIndex.hitTestColumnBorder(0, 200, 10, pool, 200)!.x).toBe(100)
+  })
+
+  it('localY 越出 fragment 行区 → null', () => {
+    const { pool, tableItem } = makeBorderFixture([100, 100])
+    hitIndex.rebuild([pageOf(tableItem)])
+
+    expect(hitIndex.hitTestColumnBorder(0, 100, -1, pool, 4)).toBeNull()
+    expect(hitIndex.hitTestColumnBorder(0, 100, 50, pool, 4)).toBeNull()
+    expect(hitIndex.hitTestColumnBorder(0, 100, 49, pool, 4)).not.toBeNull()
+  })
+
+  it('多列: 取最近的内部边界 (x 累加自 fragment)', () => {
+    const { pool, tableItem } = makeBorderFixture([100, 10, 100], { x: 90 })
+    hitIndex.rebuild([pageOf(tableItem)])
+
+    // 边界: 190 (col0|col1), 200 (col1|col2)
+    expect(hitIndex.hitTestColumnBorder(0, 190, 10, pool, 4)!.colIndex).toBe(0)
+    expect(hitIndex.hitTestColumnBorder(0, 200, 10, pool, 4)!.colIndex).toBe(1)
+    // x=196 → 距 190 为 6, 距 200 为 4 → 取后者
+    const near = hitIndex.hitTestColumnBorder(0, 196, 10, pool, 6)
+    expect(near!.colIndex).toBe(1)
+    expect(near!.x).toBe(200)
+    expect(near!.leftWidth).toBe(10)
+    expect(near!.rightWidth).toBe(100)
+  })
+
+  it('C1: 声明式 minWidth 优先于默认下限 40', () => {
+    const { pool, tableItem } = makeBorderFixture([100, 100], { minWidths: [80, 20] })
+    hitIndex.rebuild([pageOf(tableItem)])
+
+    const hit = hitIndex.hitTestColumnBorder(0, 100, 10, pool, 4)!
+    expect(hit.effMinLeft).toBe(80)   // 声明 80 > 40
+    expect(hit.effMinRight).toBe(40)  // 声明 20 < 40 → 抬高到 40
+  })
+
+  it('C3: 跨页 fragment — 命中携带所在页, 几何取自该 fragment', () => {
+    const p0 = makeBorderFixture([100, 100], { y: 900 })
+    const p1 = makeBorderFixture([100, 100], { x: 90 })
+    hitIndex.rebuild([pageOf(p0.tableItem, 0), pageOf(p1.tableItem, 1)])
+
+    const hit = hitIndex.hitTestColumnBorder(1, 190, 10, p1.pool, 4)
+    expect(hit).not.toBeNull()
+    expect(hit!.pageIndex).toBe(1)
+    expect(hit!.tableId).toBe(p1.tableId)
+    expect(hit!.x).toBe(190)          // 90 + 100 (page2 fragment 自己的 x)
+    expect(hit!.leftWidth).toBe(100)
+
+    // page0 的 fragment 在 y=900 起, localY=10 不属于它 → 不命中
+    expect(hitIndex.hitTestColumnBorder(0, 100, 10, p0.pool, 4)).toBeNull()
+    expect(hitIndex.hitTestColumnBorder(0, 100, 910, p0.pool, 4)).not.toBeNull()
+  })
+
+  it('单列表格无内部边界 → null', () => {
+    const { pool, tableItem } = makeBorderFixture([200])
+    hitIndex.rebuild([pageOf(tableItem)])
+
+    expect(hitIndex.hitTestColumnBorder(0, 100, 10, pool, 40)).toBeNull()
+    expect(hitIndex.hitTestColumnBorder(0, 0, 10, pool, 40)).toBeNull()
+  })
+
+  it('columnWidths 缺省 → 回退均匀列宽', () => {
+    const { pool, tableItem } = makeBorderFixture([100, 100])
+    delete (tableItem as { columnWidths?: number[] }).columnWidths
+    hitIndex.rebuild([pageOf(tableItem)])
+
+    // width 200 / 2 列 → 均匀 100, 边界仍在 x=100
+    const hit = hitIndex.hitTestColumnBorder(0, 100, 10, pool, 4)
+    expect(hit).not.toBeNull()
+    expect(hit!.leftWidth).toBe(100)
+    expect(hit!.rightWidth).toBe(100)
   })
 })

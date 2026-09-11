@@ -11,8 +11,9 @@ import type { Paragraph } from '../document/core/DocumentModel'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 import { computeOffsetInItems } from '../layout/text/CharWidthHelper'
 import type { TextMeasurer } from '../layout/text/TextMeasurer'
-import { screenToDoc, findPageByDocY, pageCenteringOffset } from '../layout/table/TableCoordUtil'
-import { getCellGridPosition } from '../document/table/TableOps'
+import { screenToDoc, screenToPage, findPageByDocY, pageCenteringOffset } from '../layout/table/TableCoordUtil'
+import { getCellGridPosition, clampColumnPair } from '../document/table/TableOps'
+import type { ColumnBorderHit } from '../render/HitTestIndex'
 import { resolveParagraphRegion } from '../state/CaretScope'
 import { findControlItemEntryAt, findRuntimeControlHitAt } from './ControlHitTest'
 import type { RuntimeControlHit } from './ControlHitTest'
@@ -23,6 +24,34 @@ import type { ControlValue, ElementEnumOption } from '../document/core/DocumentM
 const DOUBLE_CLICK_THRESHOLD = 400
 /** 双击位置阈值 (px) — 两次点击坐标差在此范围内视为双击 */
 const DOUBLE_CLICK_DISTANCE = 8
+/** 列间边界命中容差 (屏幕 CSS px — 命中时按 1/scale 折算为页面内逻辑 px) */
+const COLUMN_BORDER_TOLERANCE = 4
+/** 列宽拖拽启动阈值 (屏幕 px) — 未越过则视为点击, 不改宽、不入 undo */
+const COLUMN_RESIZE_THRESHOLD = 3
+
+/** 列宽拖拽状态 (mousedown 建立, mouseup 提交 — 一次手势至多一条命令) */
+interface ColumnResizeState {
+  tableId: string
+  colIndex: number
+  pageIndex: number
+  /** 起手时 fragment 的实际列宽 (守恒基准) */
+  startLeft: number
+  startRight: number
+  /** C1: 两侧列的实际最小宽 (命中时已由 effectiveMinColumnWidth 补齐) */
+  effMinLeft: number
+  effMinRight: number
+  /** 起手边界 X (页面内逻辑坐标) */
+  startBorderX: number
+  /** fragment 页面内纵向跨度 (含重复表头) */
+  top: number
+  bottom: number
+  startClientX: number
+  /** 是否已越过启动阈值 — 越过后参考线持续跟随 (指针回到起点附近也不冻结) */
+  moved: boolean
+  /** 拖动中的待提交宽度 (夹紧后) */
+  pendingLeft: number
+  pendingRight: number
+}
 
 export class MouseHandler {
   private editor: Editor
@@ -61,6 +90,9 @@ export class MouseHandler {
   private cellBoxStartCol = -1
   // 是否已进入文本选区模式 (用于在首次进入文本选区时清除单击产生的单格高亮)
   private cellBoxTextMode = false
+
+  // 列宽拖拽状态 (null = 未在拖列宽)
+  private resize: ColumnResizeState | null = null
 
   constructor(editor: Editor, host: EditorHost, measurer: TextMeasurer) {
     this.editor = editor
@@ -148,6 +180,30 @@ export class MouseHandler {
       if (this.editor.getActiveControlId() !== null) {
         this.editor.deactivateControl()
       }
+    }
+
+    // --- 表格列间边界: 进入列宽拖拽 (参考线预览, 松开才提交) ---
+    //     优先于 cell 命中/文本选区; 表左右外缘不可拖 (hitTestColumnBorder 只产内部边界)
+    const borderHit = this.hitColumnBorder(e.clientX, e.clientY)
+    if (borderHit) {
+      this.resize = {
+        tableId: borderHit.tableId,
+        colIndex: borderHit.colIndex,
+        pageIndex: borderHit.pageIndex,
+        startLeft: borderHit.leftWidth,
+        startRight: borderHit.rightWidth,
+        effMinLeft: borderHit.effMinLeft,
+        effMinRight: borderHit.effMinRight,
+        startBorderX: borderHit.x,
+        top: borderHit.top,
+        bottom: borderHit.bottom,
+        startClientX: e.clientX,
+        moved: false,
+        pendingLeft: borderHit.leftWidth,
+        pendingRight: borderHit.rightWidth,
+      }
+      e.preventDefault()
+      return
     }
 
     // 先检查是否在页眉/页脚区域
@@ -389,14 +445,27 @@ export class MouseHandler {
   }
 
   private onMouseMove = (e: MouseEvent) => {
+    // ① 列宽拖拽进行中 — 优先于阈值/cellBox/文本选区。
+    //    只更新 draw-time 参考线, 绝不建命令 (C4: 一次手势至多一条命令, 在 mouseup)
+    if (this.resize) {
+      this.updateColumnResize(e)
+      return
+    }
+
+    const mode = this.editor.getStore().state.runtime.view.mode
+
     // 设计模式悬停提示 (契约 §12.3) — 不拖拽时也命中控件, 供 UI tooltip 消费
-    if (!this.dragging && this.editor.getStore().state.runtime.view.mode === 'design') {
+    if (!this.dragging && mode === 'design') {
       const controlId = this.hitTestControl(e.clientX, e.clientY)
       this.editor.setHoveredControl(controlId)
       return
     }
 
-    if (!this.dragging) return
+    if (!this.dragging) {
+      // ② 悬停列间边界 → col-resize 光标 (仅 edit/form)
+      this.updateColumnResizeCursor(e.clientX, e.clientY)
+      return
+    }
 
     // 阈值判定
     if (!this.dragMoved) {
@@ -529,12 +598,17 @@ export class MouseHandler {
   private onMouseUp = () => {
     this.dragging = false
     this.cellBoxActive = false
+    if (this.resize) this.endColumnResize()
   }
 
   /** 鼠标离开容器 → 清除设计模式悬停 (契约 §12.3), 避免 tooltip 残留 */
   private onMouseLeave = () => {
     if (this.editor.getStore().state.runtime.view.mode === 'design') {
       this.editor.setHoveredControl(null)
+    }
+    // 离开容器: 清掉 col-resize 悬停光标 (拖拽中保持, 由 mouseup 收尾; 格式刷独占 cursor)
+    if (!this.resize && !this.editor.isFormatPainterActive) {
+      this.host.input.setCursor('')
     }
   }
 
@@ -596,6 +670,96 @@ export class MouseHandler {
       return { paraPath: [doc.id, nearest.id], offset }
     }
     return null
+  }
+
+  // ================================================================
+  // 列宽拖拽 (表格列间边界)
+  // ================================================================
+
+  /** 屏幕坐标 → 页面内坐标 (页面索引 + 页面内 x/y + 当前 scale) */
+  private screenToPageLocal(
+    clientX: number, clientY: number,
+  ): { pageIndex: number; docX: number; localY: number; scale: number } | null {
+    const rect = this.host.viewport.bounds()
+    const { scale, scrollY } = this.editor.getDraw().getCoordinateSystem().transform
+    const pages = this.editor.getDraw().getPages()
+    if (pages.length === 0) return null
+    const gap = this.editor.getDraw().getPageVerticalGap()
+    const pos = screenToPage(
+      clientX, clientY, scale, scrollY, rect, pages, this.host.viewport.size().width, gap,
+    )
+    if (!pos) return null
+    return { pageIndex: pos.pageIndex, docX: pos.x, localY: pos.y, scale }
+  }
+
+  /** 命中列间边界 (仅 edit/form 模式; 容差按 scale 折算 → 各缩放级别手感一致) */
+  private hitColumnBorder(clientX: number, clientY: number): ColumnBorderHit | null {
+    const mode = this.editor.getStore().state.runtime.view.mode
+    if (mode !== 'edit' && mode !== 'form') return null
+    const pool = this.editor.getPool()
+    if (!pool) return null
+    const pos = this.screenToPageLocal(clientX, clientY)
+    if (!pos) return null
+    return this.editor.getDraw().getHitTestIndex().hitTestColumnBorder(
+      pos.pageIndex, pos.docX, pos.localY, pool, COLUMN_BORDER_TOLERANCE / (pos.scale || 1),
+    )
+  }
+
+  /** 悬停列间边界 → col-resize 光标 (格式刷激活时独占 cursor, 不抢) */
+  private updateColumnResizeCursor(clientX: number, clientY: number): void {
+    if (this.editor.isFormatPainterActive) return
+    const hit = this.hitColumnBorder(clientX, clientY)
+    this.host.input.setCursor(hit ? 'col-resize' : '')
+  }
+
+  /**
+   * 拖动中的列宽更新 — 只画参考线, 不产生任何 Command (C4)。
+   *
+   * dx 取屏幕差分 (1/scale 折算): 拖动期间 offsetX / scrollY 变化被差分相消,
+   * 故缩放/滚动不干扰位移。夹紧走 clampColumnPair — 与提交端同一函数 (C1)。
+   */
+  private updateColumnResize(e: MouseEvent): void {
+    const r = this.resize
+    if (!r) return
+    const dxScreen = e.clientX - r.startClientX
+    if (!r.moved) {
+      if (Math.abs(dxScreen) < COLUMN_RESIZE_THRESHOLD) return
+      // 越过阈值 → 本次手势是拖拽而非点击, 让尾随 click 被 wasDragging() 吞掉
+      r.moved = true
+      this.dragMoved = true
+    }
+
+    const scale = this.editor.getDraw().getCoordinateSystem().transform.scale || 1
+    const delta = dxScreen / scale
+    const { left } = clampColumnPair(
+      r.startLeft + delta, r.startRight - delta, r.effMinLeft, r.effMinRight,
+    )
+    r.pendingLeft = left
+    r.pendingRight = r.startLeft + r.startRight - left
+    // 参考线跟随「已夹紧」的位移 → 拖到极限时线停在 minWidth 处不再前移
+    const guideX = r.startBorderX + (left - r.startLeft)
+    this.editor.setColumnResizeGuide({
+      pageIndex: r.pageIndex, x: guideX, top: r.top, bottom: r.bottom,
+    })
+  }
+
+  /**
+   * 结束列宽拖拽 (mouseup) — 一次手势至多一条命令 (C4)。
+   *
+   * 未越阈值 / 最终宽度未变 → 仅清参考线, 不发命令、不入 undo。
+   */
+  private endColumnResize(): void {
+    const r = this.resize
+    this.resize = null
+    if (!r || !r.moved) return   // 未越阈值: 从未画过参考线, 无文档变更 → 直接收尾
+    if (r.pendingLeft === r.startLeft) {
+      // 拖出去又拖回起点: 线已画过 → 清线重绘; 但宽度未变 → 不发命令、不入 undo
+      this.editor.setColumnResizeGuide(null)
+      return
+    }
+    // 先清线 (不重渲染) — 命令链负责那一次重排+重绘
+    this.editor.setColumnResizeGuide(null, false)
+    this.editor.resizeTableColumn(r.tableId, r.colIndex, r.pendingLeft, r.pendingRight)
   }
 
   /** 运行时/设计控件命中 (契约 §12.3/§12.6) — 屏幕坐标 → { SLIFItem, docX }
@@ -821,6 +985,12 @@ export class MouseHandler {
     this.detachContainer()
     this.detachGlobal()
     if (this.clickCountTimer) clearTimeout(this.clickCountTimer)
+    // 拖拽中销毁 (alt-tab / 卸载) 会丢失 mouseup → 清残留参考线 (不重渲染)。
+    // 参考线只可能由拖拽产生, 故仅在拖拽中才回写 Editor。
+    if (this.resize) {
+      this.resize = null
+      this.editor.setColumnResizeGuide(null, false)
+    }
   }
 
   /**

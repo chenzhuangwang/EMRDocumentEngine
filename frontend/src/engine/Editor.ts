@@ -40,7 +40,7 @@ import { screenToDoc, findPageByDocY, pageCenteringOffset } from './layout/table
 import { findControlItemAt } from './interaction/ControlHitTest'
 import { buildContextSnapshot } from './context/EditorContext'
 import type { EditorContextSnapshot } from './context/EditorContext'
-import { insertRow, deleteRow, insertColumn, deleteColumn, getCellGridPosition, mergeAdjacentCells, mergeRange, splitCell } from './document/table/TableOps'
+import { insertRow, deleteRow, insertColumn, deleteColumn, resizeColumn, getCellGridPosition, mergeAdjacentCells, mergeRange, splitCell } from './document/table/TableOps'
 import type { CellRange } from './document/table/TableOps'
 import {
   collectTextNodeIds, collectSelectionSegments,
@@ -1406,6 +1406,34 @@ export class Editor {
   private syncCellSelection(): void {
     this.draw.cellSelection = this._cellRange ? { ...this._cellRange } : null
     this.draw.render(this.pool, this.store.state.runtime)
+  }
+
+  /**
+   * 列宽拖拽参考线 (draw-time overlay 交互态, 契约 §7.2)
+   *
+   * 不进 DocumentModel、不进命令 — 拖动中每次 mousemove 只更新此交互态。
+   * @param render false = 只写字段不重渲染 (提交前清线, 由命令链负责那一次重绘)
+   */
+  setColumnResizeGuide(
+    guide: { pageIndex: number; x: number; top: number; bottom: number } | null,
+    render = true,
+  ): void {
+    this.draw.columnResizeGuide = guide ? { ...guide } : null
+    if (render) this.draw.render(this.pool, this.store.state.runtime)
+  }
+
+  /**
+   * 提交列宽调整 (列 colIndex 与 colIndex+1 之间, 单位 px)
+   *
+   * RULE 4: 列宽是文档内容 → 经 TableStructureCommand (快照包含 columns, undo 精确还原
+   * mode/width)。一次手势至多一条命令 (C4): 宽度未变时 resizeColumn 返回 false →
+   * 命令 null → 不入 undo 栈。
+   */
+  resizeTableColumn(tableId: string, colIndex: number, leftWidth: number, rightWidth: number): void {
+    this.commandManager.execute(new TableStructureCommand(
+      generateCommandId(), Date.now(), 'user', tableId,
+      (pool) => resizeColumn(pool, tableId, colIndex, leftWidth, rightWidth),
+    ))
   }
 
   /** 合并选中的相邻单元格 (单格右合并 / 框选矩形合并) */
