@@ -53,8 +53,12 @@ export function useEditorContextMenu(options?: UseEditorContextMenuOptions) {
   }, [editorRef])
 
   const close = useCallback(() => {
+    // 右键命中控件 → 菜单关闭(未走「属性」)时也要清除选中态, 否则高亮残留
+    if (state.open && state.snapshot?.kind === 'smartText') {
+      editorRef.current?.selectControl(null)
+    }
     setState((s) => (s.open ? { ...s, open: false } : s))
-  }, [])
+  }, [editorRef, state.open, state.snapshot])
 
   const entries: ContextMenuEntry[] = useMemo(
     () => (state.snapshot ? buildContextMenuModel(state.snapshot, { textStyle, paragraphStyle }).entries : []),

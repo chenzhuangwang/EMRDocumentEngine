@@ -34,6 +34,7 @@ function Harness({ onProperty }: { onProperty?: (id: string) => void }) {
     <div>
       <div data-testid="target" onContextMenu={cm.onContextMenu}>画布</div>
       <button onClick={() => cm.runAction('properties')}>属性</button>
+      <button onClick={() => cm.close()}>关闭</button>
     </div>
   )
 }
@@ -62,6 +63,14 @@ describe('useEditorContextMenu — 设计模式控件属性 (契约 §12.7)', ()
     fireEvent.contextMenu(screen.getByTestId('target'))
     expect(selectControl).toHaveBeenCalledWith('B')
     expect(collapseSelectionToPoint).not.toHaveBeenCalled()
+  })
+
+  it('右键控件后关闭菜单(未走属性) → 清除选中 (selectControl(null))', () => {
+    const { selectControl } = renderHarness(() => smartText('B'))
+    fireEvent.contextMenu(screen.getByTestId('target'))
+    selectControl.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+    expect(selectControl).toHaveBeenCalledWith(null)
   })
 
   it('runAction("properties") → onProperty(命中 controlId)', () => {
