@@ -27,8 +27,9 @@ export interface LineElement {
   subscript?: boolean
   imageData?: { width?: number; height?: number; wrapType?: string }
   /** 控件布局提示: width 固定宽 / minRows 多行文本域最小行数 /
-   *  lines·rows 文本域折行后的物理行 (供 SLIFItem.controlLines 与粒子绘制) */
-  control?: { width?: number; minRows?: number; lines?: string[]; rows?: number }
+   *  lines·rows 文本域折行后的物理行 (供 SLIFItem.controlLines 与粒子绘制) /
+   *  ownLine 内容超宽被锁宽折行 → 必须独占起行 (契约 §12.8) */
+  control?: { width?: number; minRows?: number; lines?: string[]; rows?: number; ownLine?: boolean }
   tableBlock?: unknown
   fieldType?: string
   /**

@@ -201,6 +201,16 @@ export class LineBreaker {
         continue
       }
 
+      // 超宽锁定控件 (契约 §12.8): 内容宽于可用宽时盒宽被锁到「独占起行」的可用宽,
+      // 与前面的内容同行会越过版心右缘 → 先 flush, 让其独占起行。
+      if (el.control?.ownLine && currentLineElements.length > 0) {
+        lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
+        currentLineElements = []
+        currentLineWidth = 0
+        maxAscent = 0
+        maxDescent = 0
+      }
+
       // 非文本元素 (image 等) 超出剩余空间 → 整行换行
       if (currentLineWidth + elWidth >= options.maxWidth && currentLineElements.length > 0) {
         lines.push(this.createLine(currentLineElements, currentLineWidth, maxAscent, maxDescent))
