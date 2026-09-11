@@ -737,7 +737,7 @@ export class Draw {
       ictx.fillRect(x + dx, y, dw, ascent + descent)
     }
 
-    const CELL_PAD = 10 // 与 TableParticle.CELL_PADDING 一致
+    const CELL_PAD = 6 // 与 TableParticle.CELL_PADDING 一致
 
     // 遍历所有页面 — 选区可能跨越 visible 之外的页面
     for (let i = 0; i < this.pages.length; i++) {
