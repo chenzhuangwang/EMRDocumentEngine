@@ -181,13 +181,19 @@ export class LayoutEngine {
             //   - checkbox/radio 表单模式内联渲染: 预留候选项宽 (control.width),
             //     使内联候选项不与后续文本重叠 (信息源同 controlInfoOf, 无反向推导)
             let control: LineElement['control']
+            // 控件未显式设字体/字号时, 继承同段落文字 run (避免控件比周围文字偏大/偏小)
+            const runDefault = this.paraRunDefault(pool, para.children, BASE_FONT_SIZE)
+            let smartFont: string | undefined
+            let smartSize: number | undefined
             if (childType === 'smarttext') {
               const minRows = (child as unknown as { element?: { format?: { minRows?: number } } }).element?.format?.minRows
               const info = this.controlInfoOf?.(childId)
               const recipe = controlVisualRecipe(info?.controlType)
               const opts = info?.options
-              const font = tn.font || 'SimSun'
-              const size = tn.size || BASE_FONT_SIZE
+              const font = tn.font || runDefault.font
+              const size = tn.size || runDefault.size
+              smartFont = font
+              smartSize = size
               const measure = (t: string) =>
                 this.measurer.measureWidth(t, { font, size, bold: tn.bold, italic: tn.italic })
               if (recipe.kind === 'options') {
@@ -253,7 +259,8 @@ export class LayoutEngine {
             }
             elements.push({
               id: tn.id, type: childType, value,
-              font: tn.font, size: headingSize ?? tn.size,
+              font: childType === 'smarttext' ? smartFont : tn.font,
+              size: headingSize ?? (childType === 'smarttext' ? smartSize : tn.size),
               bold: isHeading ? true : tn.bold, italic: tn.italic,
               color: tn.color, underline: tn.underline,
               underlineStyle: (tn as { underlineStyle?: string }).underlineStyle,
@@ -835,8 +842,10 @@ export class LayoutEngine {
             // 表格 cell 内控件 — 预留宽与正文/页眉一致 (options 候选组 / 方括号+affordance /
             // label·prefix·suffix lead/trail), 使 cell 内控件可见、占宽、不重叠。
             const display = controlValueDisplay((child as SmartTextNode).element, (child as SmartTextNode).value, (child as { text: string }).text)
-            const font = child.font || 'SimSun'
-            const size = child.size || DEFAULT_SIZE
+            // 未显式设字体/字号时继承同段落文字 run (与周围文字协调)
+            const rd = this.paraRunDefault(pool, para.children, DEFAULT_SIZE)
+            const font = child.font || rd.font
+            const size = child.size || rd.size
             const measure = (t: string) => this.measurer.measureWidth(t, { font, size, bold: child.bold, italic: child.italic })
             const info = this.controlInfoOf?.(textId)
             const recipe = controlVisualRecipe(info?.controlType)
@@ -1087,12 +1096,17 @@ export class LayoutEngine {
           // 控件预留宽 (与正文一致): checkbox/radio 候选组 / 方括号+affordance,
           // 否则纯文本宽。使页眉内控件不与后续文字/选项重叠。
           let control: LineElement['control']
+          let smartFont: string | undefined
+          let smartSize: number | undefined
           if (childType === 'smarttext') {
             const info = this.controlInfoOf?.(tn.id)
             const recipe = controlVisualRecipe(info?.controlType)
             const opts = info?.options
-            const font = tn.font || 'SimSun'
-            const size = tn.size || BASE_FONT_SIZE
+            const rd = this.paraRunDefault(pool, para.children, BASE_FONT_SIZE)
+            const font = tn.font || rd.font
+            const size = tn.size || rd.size
+            smartFont = font
+            smartSize = size
             const measure = (t: string) => measurer.measureWidth(t, { font, size, bold: tn.bold, italic: tn.italic })
             if (recipe.kind === 'options') {
               control = opts && opts.length > 0
@@ -1115,7 +1129,8 @@ export class LayoutEngine {
           }
           elements.push({
             id: tn.id, type: childType, value: display, control,
-            font: tn.font, size: tn.size, bold: tn.bold, italic: tn.italic,
+            font: childType === 'smarttext' ? smartFont : tn.font,
+            size: childType === 'smarttext' ? smartSize : tn.size, bold: tn.bold, italic: tn.italic,
             color: tn.color, underline: tn.underline,
             strikeout: tn.strikeout, superscript: tn.superscript, subscript: tn.subscript,
           })
@@ -1222,6 +1237,15 @@ export class LayoutEngine {
       y += line.height
     }
     return { items, regionHeight }
+  }
+
+  /** 段落内首个文本 run 的字体/字号 — 供控件未显式设置时继承 (与周围文字协调) */
+  private paraRunDefault(pool: NodePool, children: readonly string[], fallbackSize: number): { font: string; size: number } {
+    for (const cid of children) {
+      const n = pool.nodes.get(cid) as { type?: string; font?: string; size?: number } | undefined
+      if (n?.type === 'text') return { font: n.font || 'SimSun', size: n.size || fallbackSize }
+    }
+    return { font: 'SimSun', size: fallbackSize }
   }
 
   /** 文档 (pool) 是否含脚注引用 — 用于正文分页预留脚注 gutter */

@@ -69,3 +69,36 @@ describe('表格 cell 内 smarttext 布局', () => {
     expect((item as { width: number }).width).toBeGreaterThan(40)
   })
 })
+
+describe('表格 cell 内控件字号继承同段落文字 run', () => {
+  it('文字 run size=18 → 控件 item.size 也是 18 (不落 12 兜底)', () => {
+    const doc = createDocument('cell-fs')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const tn = createTextNode('体温')
+    ;(tn as unknown as { size: number }).size = 18
+    const st = createSmartTextNode('[体温]', { code: { internal: 'T', dataElement: 'D' }, name: '体温', format: { dataType: 'S1' } })
+    const para = createParagraph([tn.id, st.id])
+    all.set(tn.id, tn as unknown as BaseNode)
+    all.set(st.id, st as unknown as BaseNode)
+    all.set(para.id, para as unknown as BaseNode)
+    const cell = createTableCell([para.id])
+    const row = createTableRow([cell])
+    const table = createTable([{ width: 100, mode: 'percentage' }], [row])
+    for (const n of [table, row, cell]) all.set(n.id, n as unknown as BaseNode)
+    doc.body.children = [table.id]
+    const pool = buildNodePool(all, { body: doc.id })
+    const engine = new LayoutEngine(new EventBus(), testMeasurer)
+    engine.setControlInfoOf(() => ({ controlType: 'input' }))
+    let size: number | undefined
+    for (const page of engine.fullLayout(doc, pool)) {
+      for (const it of page.items ?? []) {
+        for (const r of it.rows ?? []) for (const c of r.cells ?? []) {
+          const ci = (c.items ?? []).find(x => x.nodeId === st.id)
+          if (ci) size = ci.size
+        }
+      }
+    }
+    expect(size).toBe(18)
+  })
+})
