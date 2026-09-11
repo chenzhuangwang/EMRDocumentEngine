@@ -32,7 +32,7 @@ export interface SLIFItem {
   headerRows?: SLIFRow[]
   /** 表头行数 (跨页重复, R65) */
   headerRowCount?: number
-  /** 续表标记文本 (R65) */
+  /** 续表标记文本 (R65) — 保留字段; 当前布局不再产出, 渲染层不再绘制 */
   continuationLabel?: string
   /** 表格列宽数组 (TASK-701, px) */
   columnWidths?: number[]

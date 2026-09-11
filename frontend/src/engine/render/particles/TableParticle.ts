@@ -26,16 +26,6 @@ export function createTableParticle(): IParticle {
       const allRows = [...(headerRows ?? []), ...(bodyRows ?? [])]
       if (allRows.length === 0) return
 
-      // R65: 续表标记 — 纯视觉标记, 完全不参与布局 (④): 画在表格顶上方, 不推进 rowY
-      if (item.continuationLabel) {
-        ctx.save()
-        ctx.font = 'italic 11px "SimSun"'
-        ctx.fillStyle = '#6B7280'
-        ctx.textBaseline = 'alphabetic'
-        ctx.fillText(item.continuationLabel, x, y - 6)
-        ctx.restore()
-      }
-
       let rowY = y
 
       for (const row of allRows) {

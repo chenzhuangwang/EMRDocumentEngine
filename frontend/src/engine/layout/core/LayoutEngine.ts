@@ -373,13 +373,9 @@ export class LayoutEngine {
         // 表格: 直接消费 PageBreaker 已产出的 fragment (headerRows + bodyRows)
         if (line.tableFragment) {
           const frag = line.tableFragment
-          const tbl = (firstEl as LineElement).tableBlock as {
-            id: string
-            pageBreak?: { continuationLabel?: string }
-          } | undefined
-          const label = tbl?.pageBreak?.continuationLabel || '（续表）'
+          const tbl = (firstEl as LineElement).tableBlock as { id: string } | undefined
           items.push(this.createTableItemFromFragment(
-            tbl?.id ?? firstEl.id, frag, contentWidth, y, line.columnWidths || [], label,
+            tbl?.id ?? firstEl.id, frag, contentWidth, y, line.columnWidths || [],
           ))
           y += line.height
           continue
@@ -978,7 +974,7 @@ export class LayoutEngine {
   /** 从 TableFragment 创建表格 SLIFItem — rows = 本页 bodyRows, headerRows 单独存 (硬约束 1) */
   private createTableItemFromFragment(
     tableId: string, frag: TableFragment, contentWidth: number,
-    y: number, columnWidths: number[], continuationLabel?: string,
+    y: number, columnWidths: number[],
   ): import('./SLIF').SLIFItem {
     return {
       nodeId: tableId, nodeType: 'table', type: 'table',
@@ -988,7 +984,6 @@ export class LayoutEngine {
       font: 'SimSun', size: 12,
       rows: frag.bodyRows,
       headerRows: frag.headerRows.length > 0 ? frag.headerRows : undefined,
-      continuationLabel: frag.continuation ? continuationLabel : undefined,
       columnWidths,
     }
   }
