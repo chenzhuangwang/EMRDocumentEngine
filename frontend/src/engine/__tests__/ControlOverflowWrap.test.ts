@@ -25,6 +25,7 @@ import {
 } from '../document/factory/ElementFormatter'
 import { buildNodePool } from '../document/core/NodePool'
 import { createControlParticle } from '../render/particles/ControlParticle'
+import { findRuntimeControlHitAt } from '../interaction/ControlHitTest'
 import type { SLIFItem } from '../layout/core/SLIF'
 import type { BaseNode, DocumentTree, ElementMeta, ControlValue } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
@@ -170,8 +171,49 @@ describe('控件超宽折行 — 布局 (契约 §12.8)', () => {
     expect(sItem.x).toBeGreaterThan(90)
   })
 
-  it('表格 cell 内长值 → 不溢出 cell 文本宽', () => {
-    const el: ElementMeta = { code: { internal: 'C', dataElement: 'D' }, name: '住址', format: { dataType: 'S1' } }
+  it('命中几何逐行: 末行短于整宽, 闭合 ] 之后的空白让给「控件之后」的光标', () => {
+    const { engine, doc, pool, stId } = paraDoc({ controlType: 'input', value: LONG })
+    const page = engine.fullLayout(doc, pool)[0]
+    const item = itemOf([page], stId)!
+    const resolved = { kind: 'field' as const, controlType: 'input' }
+    const resolve = (id: string) => (id === stId ? resolved : undefined)
+    const des = (t: string) => testMeasurer.measureWidth(t, { font: item.font || 'SimSun', size: item.size || 16 })
+    const bracketW = des('[')
+
+    const lines = item.controlLines!
+    expect(lines.length).toBeGreaterThan(1)
+    const rowH = item.size || 16
+    const lastRowMidY = (item.y ?? 0) + (lines.length - 1) * rowH + rowH / 2
+
+    // 末行文本之内 → 控件命中 (点值 = 进编辑)
+    const inLastText = (item.x ?? 0) + bracketW + des(lines[lines.length - 1]) / 2
+    expect(findRuntimeControlHitAt(page, inLastText, lastRowMidY, resolve, testMeasurer)).not.toBeNull()
+
+    // 末行闭合 ] 之后 (仍在盒矩形内) → 不是控件命中, 回落到文本光标
+    const afterBracket = (item.x ?? 0) + bracketW * 2 + des(lines[lines.length - 1]) + 30
+    expect(afterBracket).toBeLessThan((item.x ?? 0) + (item.width ?? 0))
+    expect(findRuntimeControlHitAt(page, afterBracket, lastRowMidY, resolve, testMeasurer)).toBeNull()
+
+    // 首行 (文本铺满整宽) → 仍是控件命中
+    const firstRowMidY = (item.y ?? 0) + rowH / 2
+    expect(findRuntimeControlHitAt(page, (item.x ?? 0) + 200, firstRowMidY, resolve, testMeasurer)).not.toBeNull()
+
+    // 盒外 → 不命中
+    expect(findRuntimeControlHitAt(page, (item.x ?? 0) - 40, firstRowMidY, resolve, testMeasurer)).toBeNull()
+  })
+
+  it('短值 (未折行) 仍是整盒命中 — 行为不变', () => {
+    const { engine, doc, pool, stId } = paraDoc({ controlType: 'input', value: '123' })
+    const page = engine.fullLayout(doc, pool)[0]
+    const item = itemOf([page], stId)!
+    expect(item.controlLines).toBeUndefined()
+    const resolve = (id: string) => (id === stId ? { kind: 'field' as const, controlType: 'input' } : undefined)
+    const midY = (item.y ?? 0) + ((item.ascent ?? 0) + (item.descent ?? 0)) / 2
+    // 盒右缘以内 (含方括号之后的 padding 区) 都算控件
+    expect(findRuntimeControlHitAt(page, (item.x ?? 0) + (item.width ?? 0), midY, resolve, testMeasurer)).not.toBeNull()
+  })
+
+  it('表格 cell 内长值 → 不溢出 cell 文本宽', () => {    const el: ElementMeta = { code: { internal: 'C', dataElement: 'D' }, name: '住址', format: { dataType: 'S1' } }
     const st = createSmartTextNode('[住址]', el, undefined, LONG)
     const para = createParagraph([st.id])
     const cell = createTableCell([para.id])

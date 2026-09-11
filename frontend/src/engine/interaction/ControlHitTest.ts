@@ -18,7 +18,7 @@ import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 import { getFlatPageItems } from '../layout/core/SLIF'
 import type { TextMeasurer } from '../layout/text/TextMeasurer'
 import type { ElementEnumOption } from '../document/core/DocumentModel'
-import { computeControlBox } from '../document/control/ControlBox'
+import { computeControlBox, controlVisualRecipe, CONTROL_BOX_PADDING } from '../document/control/ControlBox'
 import { layoutControlOptions } from '../document/control/ControlOptions'
 
 /** 在页面展平 items 中查找命中点 (docX, docY) 的 smarttext 控件 SLIFItem (含完整几何) */
@@ -109,10 +109,26 @@ export function findRuntimeControlHitAt(
         const layoutW = (item.width || 0) - (item.markerWidth || 0)
         const boxW = Math.max(0, layoutW - leadW - trailW)
         const box = computeControlBox(item.x + leadW, itemY, boxW, ascent, descent, r.minWidth)
-        if (docX >= box.x && docX <= box.x + box.w && docY >= box.y && docY <= box.y + box.h) {
-          return { kind: 'field', item }
+        // 盒外 → 下一个 item
+        if (docY < box.y || docY > box.y + box.h) continue
+        if (docX < box.x || docX > box.x + box.w) continue
+
+        // 折行控件 (契约 §12.8): 锁宽后盒宽 = 版心宽, 但真正画出来的只有各行的
+        // 文本 + 方括号 —— 末行通常短于整宽, 那一段空白必须让给「控件之后」的
+        // 文本光标, 否则用户点不到闭合 ']' 之后 (整个矩形都被控件吃掉)。
+        // 仅对左对齐方括号框逐行判定: 其余形态 (textarea 四边框整块绘制 /
+        // select·date 的 affordance 贴盒右缘 / 右对齐整块平移) 仍是整盒命中。
+        const lines = item.controlLines
+        const recipe = controlVisualRecipe(r.controlType)
+        if (lines && lines.length > 1 && recipe.frame === 'brackets'
+          && recipe.affordance == null && recipe.align === 'left') {
+          const rowH = fontSize
+          const rowIdx = Math.min(lines.length - 1, Math.max(0, Math.floor((docY - box.y) / rowH)))
+          const rowRight = item.x + leadW + mw('[') + mw(lines[rowIdx] ?? '') + mw('[')
+          if (docX <= rowRight + CONTROL_BOX_PADDING) return { kind: 'field', item }
+          continue
         }
-        continue
+        return { kind: 'field', item }
       }
 
       // options 拓扑

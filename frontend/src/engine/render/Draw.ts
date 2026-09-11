@@ -374,7 +374,8 @@ export class Draw {
         : region.textRightX - widest
     }
     return {
-      x: textLeft + measure(rowText),
+      // 落在末行文本之后 + 该行闭合方括号之后 (与单行原子「盒右缘」口径一致)
+      x: textLeft + measure(rowText) + region.bracketW,
       y: itemTop + item.y + rowIdx * size,
       h: size,
     }
@@ -1312,6 +1313,8 @@ export class Draw {
     writable: boolean
     masked: boolean
     minRows?: number
+    /** 框内文本可用宽 (契约 §12.8): 编辑面贴宽到此为止, 超出即折行 */
+    availableWidth: number
   } | null {
     if (this.pages.length === 0) return null
     const node = this.pool?.nodes.get(nodeId) as SmartTextNode | undefined
@@ -1391,6 +1394,8 @@ export class Draw {
           writable,
           masked,
           minRows: el?.format?.minRows,
+          // 框内文本可用宽 (契约 §12.8): 布局裁决的折行宽 = overlay 编辑面上限
+          availableWidth: item.wrapWidth ?? region.contentW,
         }
       }
     }

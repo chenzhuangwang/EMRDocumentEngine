@@ -491,6 +491,7 @@ export class LayoutEngine {
             listMarkerX: itemListMarker ? markerX : undefined,
             markerWidth: itemMarkerWidth,
             controlLines: isSmart ? elControl?.lines : undefined,
+            wrapWidth: isSmart ? elControl?.wrapWidth : undefined,
             fieldType: (el as { fieldType?: string }).fieldType,
           })
 
@@ -876,6 +877,7 @@ export class LayoutEngine {
               // 超宽折行的物理行 (契约 §12.8) — 与正文同源, 否则 cell 内控件
               // 折行后仍按单行绘制 (值被截在盒外)
               controlLines: elControl?.lines,
+              wrapWidth: elControl?.wrapWidth,
             })
             elX += layoutW + CONTROL_BOX_PADDING * 2
             continue
@@ -1228,6 +1230,7 @@ export class LayoutEngine {
           fieldType: (el as { fieldType?: string }).fieldType,
           // 超宽折行的物理行 (契约 §12.8) — 与正文同源
           controlLines: el.type === 'smarttext' ? elControl?.lines : undefined,
+          wrapWidth: el.type === 'smarttext' ? elControl?.wrapWidth : undefined,
         })
         cursorX += advanceWidth
       }

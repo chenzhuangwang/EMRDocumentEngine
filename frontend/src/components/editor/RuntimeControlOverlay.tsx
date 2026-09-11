@@ -355,7 +355,9 @@ function GrowingField({ target, draft, error, align, selectAll, minRows, onChang
   // 空态按占位符量宽 (与静态渲染的空态盒同宽), 否则贴住草稿
   const measured = draft === '' ? target.placeholderText : draft
   const naturalW = Math.max(0, ...measured.split('\n').map(measure))
-  const w = Math.max(1, Math.min(target.textArea.width, naturalW + 2))
+  // 上限取「布局裁决的框内文本可用宽」而非已提交盒宽: 空/短值控件的盒只有
+  // 占位符那么窄, 拿盒宽当上限会把长草稿折进一条窄柱 (契约 §12.8)。
+  const w = Math.max(1, Math.min(target.availableWidth, naturalW + 2))
   const rows = Math.max(1, minRows ?? 1, wrapControlText(draft, w, measure).length)
   const topOff = target.ascentCss - (target.lineAscentCss || target.ascentCss)
   return (

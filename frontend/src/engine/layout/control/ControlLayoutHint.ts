@@ -73,7 +73,7 @@ export function smarttextLayoutHint(
     const natural = opts && opts.length > 0
       ? controlOptionsWidth(layoutControlOptions(opts, def?.controlType as 'checkbox' | 'radio', measure))
       : controlOptionsPlaceholderWidth(measure)
-    return { width: natural + affixW }
+    return { width: natural + affixW, wrapWidth: boxAvail }
   }
 
   if (recipe.frame === 'box') {
@@ -81,7 +81,7 @@ export function smarttextLayoutHint(
     // 预留 width+minRows+lines (契约 §12.6 多行, 行距 = size)。
     if (isControlValueEmpty(input.value)) {
       const rows = typeof input.minRows === 'number' && input.minRows > 0 ? input.minRows : 0
-      return rows > 0 ? { minRows: rows } : undefined
+      return { wrapWidth: boxAvail, ...(rows > 0 ? { minRows: rows } : {}) }
     }
     const str = input.display
     const logical = str.split('\n')
@@ -100,6 +100,7 @@ export function smarttextLayoutHint(
       lines: physical,
       rows: rowsCount,
       ownLine: needWrap,
+      wrapWidth: boxAvail,
     }
   }
 
@@ -112,15 +113,16 @@ export function smarttextLayoutHint(
     ? (bracketsOn ? input.display : stripPlaceholderBrackets(input.display))
     : (bracketsOn ? `[${input.display}]` : input.display)
   const affordanceW = recipe.affordance ? AFFORDANCE_GAP + AFFORDANCE_WIDTH : 0
+  // 框内文本可用宽 = 盒可用宽 - 方括号 - affordance。折行与 overlay 编辑面共用
+  // 它作宽度上限 (契约 §12.8): 编辑面在「还没提交、盒还窄」时也知道自己能占多宽。
+  const wrapWidth = Math.max(1, boxAvail - (bracketsOn ? measure('[') * 2 : 0) - affordanceW)
   // 量宽口径与历史一致 (shown 含方括号 + affordance): 不折行时宽度逐字节不变。
   const natural = measure(shown) + affordanceW
 
   if (boxAvail > 0 && natural > boxAvail) {
     // 框内文本 (与 ControlParticle 同源): 空态剥离占位符外框, 填充态用值原样。
     const inner = isEmpty ? stripPlaceholderBrackets(input.display) : input.display
-    const frameW = bracketsOn ? measure('[') * 2 : 0
-    const innerAvail = Math.max(1, boxAvail - frameW - affordanceW)
-    const lines = wrapControlText(inner, innerAvail, measure)
+    const lines = wrapControlText(inner, wrapWidth, measure)
     return {
       width: boxAvail + affixW,
       // minRows 使整行纵向空间延展为 lines.length 行 (LineBreaker descent 延展),
@@ -131,8 +133,9 @@ export function smarttextLayoutHint(
       // 盒宽按「独占起行」的可用宽锁定 → 必须自己起一行, 否则与前面的文本同行
       // 时右缘会越过版心 (契约 §12.8)。
       ownLine: true,
+      wrapWidth,
     }
   }
 
-  return { width: natural + affixW }
+  return { width: natural + affixW, wrapWidth }
 }
