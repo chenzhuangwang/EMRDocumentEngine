@@ -16,13 +16,14 @@
 // ================================================================
 
 import type {
-  BaseNode, DocumentTree, Paragraph, PageSetup, CommentThread, FootnoteContent,
+  BaseNode, DocumentTree, Paragraph, PageSetup, CommentThread, FootnoteContent, TextNode,
 } from '../../document/core/DocumentModel'
-import { createParagraph, createTextNode } from '../../document/factory/ElementFormatter'
+import { createParagraph, createTextNode, extractStyle } from '../../document/factory/ElementFormatter'
 import type { NodePool } from '../../document/core/NodePool'
 import {
   ensureHfArray, hfArrayOf, type HeaderFooterVariant,
 } from '../../document/core/HeaderFooterRegions'
+import { normalizeParagraph } from './ParagraphUtils'
 import type { CursorState } from '../../state/EditorRuntimeState'
 import {
   ICommand, CommandContext, StatePatch, SerializedCommand, generateCommandId,
@@ -292,15 +293,46 @@ export class InsertInlineNodeCommand implements ICommand {
     pool.addNode(node)
     this.insertedNodeId = node.id
 
+    // 字符偏移 → (textNodeId, localOffset)。localOffset 必须被使用: 只按
+    // textNodeId 插入会把内联节点永远丢到该文本节点**末尾**, 光标落在长文本
+    // 中间时"插入不到光标位置" (与 InsertTextCommand 同语义: 文本中间需拆分)。
     const resolved = pool.resolveCharOffset(paraId, this.offset)
-    if (resolved) {
-      const idx = para.children.indexOf(resolved.textNodeId)
-      if (idx >= 0) pool.insertChild(paraId, node.id, idx + 1)
-      else pool.insertChild(paraId, node.id, para.children.length)
+    const target = resolved ? pool.nodes.get(resolved.textNodeId) : undefined
+    const targetIdx = resolved ? para.children.indexOf(resolved.textNodeId) : -1
+
+    if (resolved && targetIdx >= 0 && target && (target as unknown as { type?: string }).type === 'text') {
+      const textNode = target as unknown as TextNode
+      const localOffset = resolved.localOffset
+      if (localOffset <= 0) {
+        // 光标在该文本节点起始处 → 插到它之前 (不产生空文本节点)
+        pool.insertChild(paraId, node.id, targetIdx)
+      } else if (localOffset >= textNode.text.length) {
+        // 光标在该文本节点末尾 → 插到它之后
+        pool.insertChild(paraId, node.id, targetIdx + 1)
+      } else {
+        // 光标在文本中间 → 按偏移拆成左右两半, 内联节点落于其间
+        // (与 InsertControlCommand 控件落位同语义)
+        const before = textNode.text.slice(0, localOffset)
+        const after = textNode.text.slice(localOffset)
+        const afterNode = createTextNode(after, extractStyle(textNode))
+        pool.addNode(afterNode)
+        pool.updateNode(textNode.id, { text: before } as Partial<TextNode>)
+        pool.insertChildren(paraId, [node.id, afterNode.id], targetIdx + 1)
+      }
+    } else if (resolved && targetIdx >= 0) {
+      // 目标是内联非文本节点 (控件/图片/域): localOffset 0=前, 1=后
+      pool.insertChild(paraId, node.id, targetIdx + (resolved.localOffset >= 1 ? 1 : 0))
     } else {
+      // 空段落 / 越界 / 悬空引用 → 追加到末尾
       pool.insertChild(paraId, node.id, para.children.length)
     }
-    return { invalidation: 'paragraph' }
+    normalizeParagraph(para as unknown as Paragraph, pool)
+    // 光标移到内联节点「之后」(内联节点 = 1 原子字符, 与 InsertControlCommand 同
+    // 语义): 插入后继续打字应落在节点之后, 否则新字符会插到刚插入的域/图片之前。
+    return {
+      cursor: { paragraphPath: this.path, offset: this.offset + 1, visible: true },
+      invalidation: 'paragraph',
+    }
   }
 
   invert(_ctx: CommandContext): ICommand | null {
