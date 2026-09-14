@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import { documentApi, type DocumentListItem } from '@/services/api'
 import { formatDate, cn } from '@/lib/utils'
-import { GiteeRepoLink } from '@/components/common/GiteeRepoLink'
+import { RepoLinks } from '@/components/common/RepoLinks'
 import { MOCK_DOCUMENT_LIST } from '@/mocks/documents'
 
 export default function HomePage() {
@@ -81,7 +81,7 @@ export default function HomePage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <GiteeRepoLink />
+          <RepoLinks />
           <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700
                           flex items-center justify-center text-sm font-medium">
             U

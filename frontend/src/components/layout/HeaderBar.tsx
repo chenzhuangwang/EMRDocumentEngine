@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { useEditorStore, useUserStore, useUIStore } from '@/store'
 import { useEditor, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
-import { GiteeRepoLink } from '@/components/common/GiteeRepoLink'
+import { RepoLinks } from '@/components/common/RepoLinks'
 
 interface HeaderBarProps {
   onSave?: () => void
@@ -121,7 +121,7 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
           </div>
         )}
 
-        <GiteeRepoLink />
+        <RepoLinks />
 
         {/* 用户头像/菜单 */}
         {user ? (
