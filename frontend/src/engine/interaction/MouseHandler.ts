@@ -14,7 +14,7 @@ import type { TextMeasurer } from '../layout/text/TextMeasurer'
 import { screenToDoc, screenToPage, findPageByDocY, pageCenteringOffset } from '../layout/table/TableCoordUtil'
 import { getCellGridPosition, clampColumnPair } from '../document/table/TableOps'
 import type { ColumnBorderHit } from '../render/HitTestIndex'
-import { resolveParagraphRegion } from '../state/CaretScope'
+import { resolveParagraphRegion, hfBandEndCaret } from '../state/CaretScope'
 import { findControlItemEntryAt, findRuntimeControlHitAt } from './ControlHitTest'
 import type { RuntimeControlHit } from './ControlHitTest'
 import { controlVisualRecipe, controlVisualType } from '../document/control/ControlBox'
@@ -272,24 +272,33 @@ export class MouseHandler {
         this.editor.setHeaderFooterEditPage(hfHit.pageIndex)
         this.editor.setHeaderFooterEditActive(true, hfHit.section)
 
-        // 确保目标区域有段落 (无则创建) + 光标定位到第一个段落
+        // 确保目标区域有段落 (无则创建)
         // (先钉页再建段: 决定创建哪一个变体的段落, 契约 §7.9)
         const doc = this.editor.getDocument()
-        const paraId = this.editor.ensureHeaderFooterParagraph(hfHit.section, hfHit.pageIndex + 1)
+        this.editor.ensureHeaderFooterParagraph(hfHit.section, hfHit.pageIndex + 1)
+
+        // 光标落在该区域内容的末尾而不是开头 — 双击进入即可接着往后输入
+        // (落点解析: state/CaretScope.hfBandEndCaret, 变体经 §7.9 唯一解析器)
+        const caret = hfBandEndCaret(
+          doc, this.editor.getPool(), hfHit.section, hfHit.pageIndex + 1,
+        )
+        if (!caret) return
+        const { paraPath, offset } = caret
+
         const store = this.editor.getStore()
         store.setCursor({
-          paragraphPath: [doc.id, paraId],
-          offset: 0,
+          paragraphPath: [...paraPath],
+          offset,
           visible: true,
         })
         store.setSelection({
-          anchor: { paragraphPath: [doc.id, paraId], offset: 0, visible: false },
-          focus: { paragraphPath: [doc.id, paraId], offset: 0, visible: false },
+          anchor: { paragraphPath: [...paraPath], offset, visible: false },
+          focus: { paragraphPath: [...paraPath], offset, visible: false },
           active: false,
           granularity: 'character',
         })
-        this.anchorParaPath = [doc.id, paraId]
-        this.anchorOffset = 0
+        this.anchorParaPath = [...paraPath]
+        this.anchorOffset = offset
         // 重布局让新创建的页眉/页脚段落在 page.footerItems/page.headerItems 中出现
         this.editor.getDraw().recomputeLayout(this.editor.getPool())
         this.editor.getDraw().render(this.editor.getPool(), store.state.runtime)

@@ -21,7 +21,7 @@ import { SplitParagraphCommand } from '../command/commands/SplitParagraphCommand
 import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand'
 import { InsertNodesCommand } from '../command/commands/InsertNodesCommand'
 import { InsertControlCommand } from '../command/commands/InsertControlCommand'
-import { resolveParagraphRegion, resolveSiblingRange } from '../state/CaretScope'
+import { resolveParagraphRegion, resolveSiblingRange, hfBandEndCaret } from '../state/CaretScope'
 import { selectionSpine } from '../document/selection/SelectionCollector'
 import type { SerializedPara } from '../command/ClipboardManager'
 import { LayoutEngine } from '../layout/core/LayoutEngine'
@@ -557,5 +557,85 @@ describe('逐页页眉/页脚变体布局', () => {
       expect(textsOf(p.headerItems)).not.toContain('首页页眉')
       expect(textsOf(p.headerItems)).toContain('默认页眉')
     }
+  })
+})
+
+describe('双击进入页眉/页脚的初始落点 (hfBandEndCaret)', () => {
+  it('多段页脚 → 落在最后一段的末尾, 而非第一段开头', () => {
+    const { doc, pool, p1, p2 } = makeFooterDoc()
+    const caret = hfBandEndCaret(doc, pool, 'footer', 1)
+    expect(caret).toEqual({ paraPath: [doc.id, p2.id], offset: 'World'.length })
+    // 反向保护: 旧行为恒落第一段 offset 0
+    expect(caret!.paraPath[1]).not.toBe(p1.id)
+    expect(caret!.offset).not.toBe(0)
+  })
+
+  it('区域为空 → null (由调用方先建段落)', () => {
+    const doc = createDocument('hf-empty')
+    const pool = buildNodePool(
+      new Map<string, BaseNode>([[doc.id, doc as unknown as BaseNode]]), { body: doc.id },
+    )
+    expect(hfBandEndCaret(doc, pool, 'header', 1)).toBeNull()
+    expect(hfBandEndCaret(doc, pool, 'footer', 1)).toBeNull()
+  })
+
+  it('页眉与页脚各自独立 (band 维度不串)', () => {
+    const doc = createDocument('hf-both')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const h = createTextNode('H'); const hp = createParagraph([h.id])
+    const f = createTextNode('FOOTER'); const fp = createParagraph([f.id])
+    for (const n of [h, hp, f, fp]) all.set(n.id, n as unknown as BaseNode)
+    doc.body.children = []
+    doc.header = [hp.id]
+    doc.footer = [fp.id]
+    const pool = buildNodePool(all, { body: doc.id })
+
+    expect(hfBandEndCaret(doc, pool, 'header', 1))
+      .toEqual({ paraPath: [doc.id, hp.id], offset: 'H'.length })
+    expect(hfBandEndCaret(doc, pool, 'footer', 1))
+      .toEqual({ paraPath: [doc.id, fp.id], offset: 'FOOTER'.length })
+  })
+
+  it('首页变体开启 → 第 1 页落首页变体, 第 2 页回落默认变体 (契约 §7.9)', () => {
+    const { doc, pool } = makeVariantDoc({
+      differentFirstPage: true, header: '默认页眉', firstPageHeader: '首页页眉',
+    })
+    const first = hfBandEndCaret(doc, pool, 'header', 1)!
+    expect(first.paraPath[1]).toBe(doc.firstPageHeader![0])
+    expect(first.offset).toBe('首页页眉'.length)
+
+    const second = hfBandEndCaret(doc, pool, 'header', 2)!
+    expect(second.paraPath[1]).toBe(doc.header![0])
+    expect(second.offset).toBe('默认页眉'.length)
+  })
+
+  it('偶数页变体开启 → 偶页落偶数页变体, 奇页落默认变体', () => {
+    const { doc, pool } = makeVariantDoc({
+      differentOddEven: true, header: '奇数页页眉', evenPageHeader: '偶数页页眉',
+    })
+    expect(hfBandEndCaret(doc, pool, 'header', 2)!.paraPath[1]).toBe(doc.evenPageHeader![0])
+    expect(hfBandEndCaret(doc, pool, 'header', 1)!.paraPath[1]).toBe(doc.header![0])
+  })
+
+  it('段内含控件 → 按「原子 = 1 字符」计, 与点击命中 offset 语义一致', () => {
+    const doc = createDocument('hf-ctl-caret')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const el: ElementMeta = {
+      code: { internal: 'CTL_NAME', dataElement: 'DE99.99.001' }, name: '姓名',
+      format: { dataType: 'S1' },
+    }
+    // 占位符是 4 个字符 '[姓名]', 但光标语义下控件是原子 1 字符
+    const st = createSmartTextNode('[姓名]', el)
+    const p = createParagraph([st.id])
+    all.set(st.id, st as unknown as BaseNode)
+    all.set(p.id, p as unknown as BaseNode)
+    doc.body.children = []
+    doc.header = [p.id]
+    const pool = buildNodePool(all, { body: doc.id })
+
+    expect(hfBandEndCaret(doc, pool, 'header', 1))
+      .toEqual({ paraPath: [doc.id, p.id], offset: 1 })
   })
 })

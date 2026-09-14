@@ -18,8 +18,10 @@
 import type { NodePool } from '../document/core/NodePool'
 import type { DocumentTree } from '../document/core/DocumentModel'
 import {
-  resolveHfParagraphLocation, type HeaderFooterVariant,
+  resolveHfParagraphLocation, hfParagraphsForPage,
+  type HeaderFooterBand, type HeaderFooterVariant,
 } from '../document/core/HeaderFooterRegions'
+import { paragraphTextLength } from '../document/selection/SelectionCollector'
 
 // ---- 域类型 ----
 
@@ -251,6 +253,30 @@ export function resolveParagraphRegion(
   }
 
   return null
+}
+
+/**
+ * 双击进入页眉/页脚编辑时的初始光标落点 —— 该区域内容的末尾 (不是开头)。
+ *
+ * 页眉/页脚段落每页都有副本, 故必须先把「页码」解析成变体再取该变体的段落数组;
+ * 变体 → 数组的唯一映射在 HeaderFooterRegions (契约 §7.9), 此处不重复。
+ *
+ * 末尾偏移与点击命中共用同一 offset 语义: 段落内非文本内联节点 (控件 / 图片)
+ * 按「原子 = 1 字符」计 (与 interaction/hitTestHeaderFooter 的 computeOffsetInItems
+ * 一致), 故用 paragraphTextLength 即得到合法的末位偏移。
+ *
+ * 区域为空 → null (调用方负责先建段落, 见 Editor.ensureHeaderFooterParagraph)。
+ */
+export function hfBandEndCaret(
+  doc: DocumentTree,
+  pool: NodePool,
+  band: HeaderFooterBand,
+  pageNumber: number,
+): { paraPath: string[]; offset: number } | null {
+  const ids = hfParagraphsForPage(doc, band, pageNumber)
+  const paraId = ids[ids.length - 1]
+  if (!paraId) return null
+  return { paraPath: [doc.id, paraId], offset: paragraphTextLength(pool, paraId) }
 }
 
 /** 选区两段是否同容器 + 其兄弟/下标 (删除/并段跨段用, region 感知) */
