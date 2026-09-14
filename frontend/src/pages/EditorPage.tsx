@@ -49,19 +49,11 @@ export default function EditorPage() {
   const [loading, setLoading] = useState(false)
   const isNew = !id || id === 'new'
 
-  // 从后端加载文档 (非新建时); 后端不可用则回落到内置 Mock (见 src/mocks/documents.ts)
+  // 直接从内置 Mock 加载文档 (非新建时); 后端加载逻辑暂时不动 (见 src/mocks/documents.ts)
   useEffect(() => {
     if (isNew) return
     setLoading(true)
-    setLoading(false)
-    getMockDocumentDetail(id!)
-    return () => { /* 忽略 */ }
-    documentApi.getById(id!)
-      .then(res => res.data.data)
-      .catch(err => {
-        console.error('加载文档失败, 回落到 mock 文档:', err)
-        return getMockDocumentDetail(id!)
-      })
+    Promise.resolve(getMockDocumentDetail(id!))
       .then(detail => {
         // 无匹配 mock (或该条目无正文) → 保持原有空文档行为
         if (!detail?.content) return
