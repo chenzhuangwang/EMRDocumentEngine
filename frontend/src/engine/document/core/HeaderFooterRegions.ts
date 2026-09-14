@@ -1,3 +1,9 @@
+// Copyright (c) 2026 陈庄旺.
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MPL-2.0
+
 // ================================================================
 // HeaderFooterRegions — 页眉/页脚「变体 → 数组」与「段落归属」的唯一解析器
 // (契约 §7.9)

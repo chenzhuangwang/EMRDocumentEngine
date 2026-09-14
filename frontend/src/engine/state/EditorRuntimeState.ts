@@ -1,3 +1,9 @@
+// Copyright (c) 2026 陈庄旺.
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MPL-2.0
+
 // ================================================================
 // EditorRuntimeState — 运行时状态模型 (架构 §4.1, v20.34)
 //

@@ -1,3 +1,9 @@
+// Copyright (c) 2026 陈庄旺.
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MPL-2.0
+
 // ============================================================
 // Gitee 开源仓库入口
 // 首页顶栏与编辑器顶栏共用同一入口，避免 URL / 图标各写一份

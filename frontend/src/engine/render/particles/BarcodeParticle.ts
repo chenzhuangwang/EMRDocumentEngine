@@ -1,3 +1,9 @@
+// Copyright (c) 2026 陈庄旺.
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MPL-2.0
+
 // ============================================================
 // BarcodeParticle — 条形码/二维码渲染器 (R45, v6.0)
 //

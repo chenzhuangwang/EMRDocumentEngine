@@ -1,3 +1,9 @@
+// Copyright (c) 2026 陈庄旺.
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MPL-2.0
+
 // ============================================================
 // 列表功能单元测试
 // 覆盖: 列表模型 / 项目符号 / 编号格式化 / 编号计算 / 合并段保留
