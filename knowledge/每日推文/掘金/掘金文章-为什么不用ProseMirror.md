@@ -317,18 +317,18 @@ const LINE_END_FORBIDDEN = new Set([
 - [x] 未使用"国内首个 / 唯一 / 最强"等绝对化表述
 - [x] 未包含任何诱导 Star 的表述或渠道
 
-## 附件 B · 配图清单（发布前必须补齐）
+## 附件 B · 配图清单（按契约 §5.3.1 占位，发布前补齐）
 
-契约 §7.3 SOP 第 4 步要求"≥3 张真实截图或架构图，禁止纯文字长文"。
+契约 §7.3 SOP 第 4 步要求"≥3 张真实截图或架构图，禁止纯文字长文"。以下按 §5.3.1 给出占位（实况类=截图需求，示意/架构类=提示词或自绘要求），**不再以"⬜ 待制作"挂起**。
 
-| 编号 | 位置 | 素材 | 状态 |
-|---|---|---|---|
-| ① | 第三节末 | A4 入院记录编辑实况图 + 8 类控件渲染 | ⬜ 待制作（README 已有 `frontend/public/preview.png` 可用，建议重新截取含控件的实况） |
-| ② | 第六节 6.2 | 三层 Canvas 架构图 + ParticleRegistry 调度关系 | ⬜ 待制作 |
-| ③ | 第六节 6.4 | 避头尾前后对比示意图（错误断行 / 正确断行） | ⬜ 待制作（可由正文示例文本直接作图） |
-| ④ | 第九节 | 仓库首屏截图 | ⬜ 可选 |
+| 编号 | 位置 | 类型 | 素材 | 占位内容 | 状态 |
+|---|---|---|---|---|---|
+| ① | 第三节末 | 实况 | A4 入院记录编辑实况图 + 8 类控件渲染 | **截图需求**：同一屏需同时出现正文段落与 ≥2 个结构化控件（如体温、血压），并含页眉 / 页码；用红框高亮控件区域。基础可基于 `frontend/public/preview.png` 重截 | 🟡 需求已就位，待真实截图 |
+| ② | 第六节 6.2 | 架构图 | 三层 Canvas + ParticleRegistry 调度关系 | **自绘优先**；若仅作风格底图可文生图：`a layered 3-tier canvas rendering architecture diagram, static / content / interact layers stacked, particle registry dispatch arrows, flat technical blueprint style, deep blue and cyan, clean, no text, 16:9` | 🟡 提示词已就位，待出图 |
+| ③ | 第六节 6.4 | 示意 | 避头尾前后对比示意图 | **建议自绘**以保证字符位置准确；文生图兜底：`side-by-side comparison of Chinese line breaking, left panel wrong break with closing punctuation pushed to line start, right panel correct break, minimal flat style, light background, high contrast, 16:9` | 🟡 提示词已就位，待出图 |
+| ④ | 第九节 | 实况 | 仓库首屏截图 | **截图需求**：Gitee 仓库首页，含 Star 数与 README 首屏 | ⬜ 可选 |
 
-> 配图要求（契约 A.3）：必须为真实截图或自绘架构图，**不得使用与实际产品不符的示意图**。
+> **红线**（契约 §5.3.1 / 附录 A.3）：AI 生成图**只能用于示意 / 装饰**，不得冒充产品真实界面；①④ 必须为真实截图。
 
 ## 附件 C · 发布清单
 
