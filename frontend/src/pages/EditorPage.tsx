@@ -53,6 +53,9 @@ export default function EditorPage() {
   useEffect(() => {
     if (isNew) return
     setLoading(true)
+    setLoading(false)
+    getMockDocumentDetail(id!)
+    return () => { /* 忽略 */ }
     documentApi.getById(id!)
       .then(res => res.data.data)
       .catch(err => {
