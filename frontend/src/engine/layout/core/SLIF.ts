@@ -46,6 +46,12 @@ export interface SLIFItem {
   markerWidth?: number
   /** 多行文本域折行后的物理行 (textarea, 契约 §12.6 多行), 供 ControlParticle 逐行绘制 */
   controlLines?: string[]
+  /**
+   * 该控件框内文本可占的宽 (布局裁决, 契约 §12.8)。
+   * 既是折行口径, 也是 overlay 编辑面的宽度上限 —— 编辑面必须能在「盒还窄」
+   * (值未提交) 时知道最多能占多宽, 否则只能在占位符那么窄的列里折行。
+   */
+  wrapWidth?: number
   /** 域类型 (FieldNode.fieldType), 渲染时动态计算值 */
   fieldType?: string
   /** 所属表格 ID (由 getFlatPageItems 自动填充, 非表格项为 undefined) */

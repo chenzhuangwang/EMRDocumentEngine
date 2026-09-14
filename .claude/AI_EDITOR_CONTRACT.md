@@ -1995,7 +1995,10 @@ already uses:
       descent extends (rows × size) and the wrapped rows cannot
       collide with the following line;
     - the physical lines are carried as `control.lines` → SLIFItem
-      .controlLines, and the renderer draws one row per line.
+      .controlLines, and the renderer draws one row per line;
+    - the width the content may occupy is carried as `control.wrapWidth`
+      → SLIFItem.wrapWidth, so the overlay edit surface and the caret
+      geometry can reach the layout's decision without re-deriving it.
 
 A locked control is a BLOCK-like item: it carries
 `control.ownLine === true` and the line breaker MUST start it on a
@@ -2024,6 +2027,43 @@ MUST:
 - The render-side box geometry (computeControlBox, §12.3) already
   scales vertically with ascent/descent and therefore needs no
   change: a multi-row control is a taller box, not a wider one.
+- The paragraph CARET adjacent to a wrapped control MUST be a single
+  line high and land on the row that holds the value's end, not span
+  the whole box: caret height = one physical row, y = that row's top,
+  x = past the closing bracket of the last drawn row (for "after the
+  control") or the box's left edge (for "before"), reusing
+  computeFieldRegion's text-area geometry. Height taken from the
+  whole box (ascent+descent) makes the caret as tall as the entire
+  control and parks it on the box's right edge.
+- HIT geometry MUST follow what is drawn, not the reserved box. For a
+  wrapped brackets control the reserved box is as wide as the text
+  area, but each row only draws its own text (+ brackets) — and the
+  last row is normally SHORT. The blank area past a row's drawn
+  content belongs to the text cursor ("after the control"), not to the
+  control: hit-testing the whole rectangle makes it impossible to
+  click past the closing ']'. Rows are hit individually, with the row
+  height = the renderer's row pitch (font size). Bottom/right/top
+  solid shapes (textarea four-sided boxes, the affordance pinned to
+  the box's right edge, right-aligned blocks) keep whole-box hit
+  geometry.
+- The overlay edit surface (§12.6 seamless inline editing) MUST grow
+  with the draft instead of hiding it:
+    - WIDTH hugs the draft and is capped at the width the LAYOUT
+      grants the control's content (SLIFItem.wrapWidth, a layout
+      product, §7.4); past that the content wraps, using the SAME
+      wrap rule as layout (per-character 'break-all' — reuse
+      wrapControlText; an unbroken run of digits does not wrap under
+      the browser's default rules);
+    - HEIGHT is the wrapped row count × font size, so what is typed
+      stays visible and no scrollbar appears;
+    - the element type MUST NOT change as the draft grows (an
+      input↔textarea swap remounts the node and drops focus).
+  The cap MUST be the layout's granted width, NOT the committed box's
+  own width: an empty or short value has a box only as wide as its
+  placeholder, so capping there folds a long draft into a few-
+  character column. Conversely, letting the field grow to the draft's
+  measured width with no cap is what pushed the native input past the
+  page in the first place.
 - A control whose content FITS is untouched: same width, same line
   placement, no `ownLine`. The clamp is a fallback, not a new
   default.

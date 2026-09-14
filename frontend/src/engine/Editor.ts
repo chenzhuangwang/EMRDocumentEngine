@@ -2643,6 +2643,8 @@ export interface ControlEditTarget {
   writable: boolean
   masked: boolean
   minRows?: number
+  /** 框内文本可用宽 (契约 §12.8) — overlay 编辑面的宽度上限 */
+  availableWidth: number
 }
 
 /** IEditor 公共 API (SDK 集成面) */
