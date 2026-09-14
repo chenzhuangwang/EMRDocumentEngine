@@ -1,0 +1,15 @@
+{
+  "name": "emrdocument-engine-workspace",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Repo-level tooling only. Application code lives in frontend/ and backend/.",
+  "license": "MPL-2.0",
+  "author": "陈庄旺 <1665527118@qq.com>",
+  "type": "module",
+  "scripts": {
+    "headers:apply": "node scripts/apply-headers.mjs",
+    "headers:check": "node scripts/check-headers.mjs",
+    "verify:provenance": "node scripts/verify-provenance.mjs",
+    "archive:snapshot": "node scripts/archive-snapshot.mjs"
+  }
+}
