@@ -2,6 +2,8 @@
   "name": "emr-document-editor",
   "private": true,
   "version": "0.1.0",
+  "license": "MPL-2.0",
+  "author": "陈庄旺 <1665527118@qq.com>",
   "type": "module",
   "scripts": {
     "dev": "vite",

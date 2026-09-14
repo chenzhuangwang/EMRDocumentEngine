@@ -5,7 +5,7 @@
 **专业、高性能、可嵌入的电子病历（EMR）文档编辑引擎**
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-%E7%AB%8B%E5%8D%B3%E4%BD%93%E9%AA%8C-2563eb?style=flat-square&logo=vercel)](http://139.196.151.15/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-22c55e?style=flat-square)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-84cc16?style=flat-square)](#参与贡献)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178c6?style=flat-square&logo=typescript)](frontend/package.json)
 [![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react)](frontend/package.json)
@@ -224,7 +224,9 @@ EMRDocumentEngine/
 ├── output/                     # 项目文档（调研/PRD/架构/UIUX/规格）
 ├── knowledge/                  # 知识库
 ├── docker-compose.yml          # Docker 编排配置
-└── LICENSE                     # MIT 许可证
+├── LICENSE                     # MPL-2.0 许可证
+├── NOTICE                      # 版权与第三方声明
+└── IP-POLICY.md                # 知识产权保护策略
 ```
 
 ## 核心模块
@@ -375,7 +377,16 @@ fix: 修复多行文本光标寻址问题
 
 ## 许可证
 
-本项目基于 [MIT License](LICENSE) 开源协议。
+本项目基于 [MPL-2.0（Mozilla Public License 2.0）](LICENSE) 开源协议。
+
+用大白话说清楚边界：
+
+- ✅ **可以商用**：医院、企业、商业产品都能用，也可以与闭源系统集成
+- ✅ **可以修改、分发**：保留版权与许可声明即可
+- ⚠️ **改动要回馈**：如果你修改了**本项目已有的文件**，那些文件必须继续以 MPL-2.0 开源（你自己新增的文件可以另选协议）
+- ❌ 不提供任何担保
+
+完整条款见 [LICENSE](LICENSE)，版权与第三方声明见 [NOTICE](NOTICE)，知识产权保护策略见 [IP-POLICY.md](IP-POLICY.md)。
 
 ## 联系方式
 

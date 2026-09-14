@@ -371,3 +371,26 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
   This Source Code Form is "Incompatible With Secondary Licenses", as
   defined by the Mozilla Public License, v. 2.0.
+
+
+===============================================================================
+Copyright (c) 2026 陈庄旺
+===============================================================================
+
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+Source files in this repository carry the Exhibit A notice above in their
+file header, together with an "SPDX-License-Identifier: MPL-2.0" tag.
+
+The Exhibit B notice above is intentionally NOT applied to this Source Code
+Form. Accordingly, this Source Code Form is not "Incompatible With Secondary
+Licenses" and may be combined with Secondary Licenses as defined in section
+3.3 of the License. Keeping the code compatible with secondary licenses --
+GPL among them -- is a deliberate choice: it lets hospital and enterprise
+integrators embed this engine without hitting a legal-review dead end at the
+first license-compatibility question.
+
+See NOTICE for copyright and third-party component notices, and IP-POLICY.md
+for this project's intellectual-property protection policy.

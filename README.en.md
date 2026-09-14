@@ -213,7 +213,9 @@ EMRDocumentEngine/
 ├── output/                     # Project documents (research/PRD/architecture/UIUX/spec)
 ├── knowledge/                  # Knowledge base
 ├── docker-compose.yml          # Docker Compose configuration
-└── LICENSE                     # MIT License
+├── LICENSE                     # MPL-2.0 License
+├── NOTICE                      # Copyright and third-party notices
+└── IP-POLICY.md                # Intellectual property protection policy
 ```
 
 ## 🧩 Core Modules
@@ -411,7 +413,16 @@ Thank you for reading this far. Everyone who stops to contribute to an open-sour
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MPL-2.0 (Mozilla Public License 2.0)](LICENSE).
+
+In plain terms:
+
+- ✅ **Commercial use is allowed** — hospitals, enterprises and commercial products may use it, including integration with closed-source systems
+- ✅ **Modification and redistribution are allowed** — keep the copyright and license notices intact
+- ⚠️ **Modifications must be shared back** — if you modify **files that already exist in this project**, those files must remain open source under MPL-2.0 (files you add yourself may use any license)
+- ❌ No warranty of any kind
+
+Full terms: [LICENSE](LICENSE). Copyright and third-party notices: [NOTICE](NOTICE). Our IP protection policy: [IP-POLICY.md](IP-POLICY.md).
 
 ## 📞 Contact Information
 

@@ -1,0 +1,73 @@
+EMR Document Editor Engine (EMRDocumentEngine)
+Copyright (c) 2026 陈庄旺
+===============================================================================
+
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+SPDX-License-Identifier: MPL-2.0
+
+
+Repositories
+-------------------------------------------------------------------------------
+
+  origin  https://gitee.com/wangwang_1_1665527118/emrdocument-engine.git
+  mirror  https://github.com/chenzhuangwang/EMRDocumentEngine.git
+
+
+License history (and a correction)
+-------------------------------------------------------------------------------
+
+This project is licensed under MPL-2.0. The README previously described it
+as MIT-licensed, which was inaccurate. The record:
+
+  2026-07-17  README.md added describing the project as "MIT License".
+              No LICENSE file existed in the repository at that time.
+  2026-08-04  LICENSE added, containing the full text of the Mozilla
+              Public License, Version 2.0 (commit 3427bca). The README was
+              not updated at the same time, leaving the two in conflict.
+  2026-09-14  The conflict was resolved in favour of MPL-2.0 -- the
+              authoritative license text that has been in the repository
+              since 2026-08-04 and which every source file now declares in
+              its header.
+
+MPL-2.0 has therefore been the governing license text since 2026-08-04.
+The MIT statement was a README error, not a license grant: it was never
+backed by a LICENSE file, no release was ever published under it, and every
+commit in this repository to date was made by the copyright holder -- there
+are no third-party contributions requiring consent to this correction.
+
+The Exhibit B ("Incompatible With Secondary Licenses") notice is NOT applied
+to this Source Code Form. See LICENSE for the full statement and rationale.
+
+
+Third-party components
+-------------------------------------------------------------------------------
+
+No third-party source code is vendored into this repository. All third-party
+components are consumed as declared dependencies and remain under their own
+licenses:
+
+  Frontend runtime and build dependencies
+    Declared in frontend/package.json (React, Vite, TypeScript, Tailwind CSS,
+    Radix UI, Zustand, KaTeX, Yjs and others). Predominantly MIT and
+    Apache-2.0 licensed.
+
+  Backend runtime and build dependencies
+    Declared in backend/pom.xml (Spring Boot, MyBatis-Plus, JJWT,
+    springdoc-openapi and others). Predominantly Apache-2.0 licensed.
+
+Run `npm ls --all` in frontend/ or `mvn dependency:tree` in backend/ for the
+authoritative, versioned dependency list. The license texts of those
+components are not reproduced here; they are available from their respective
+upstream projects.
+
+
+Intellectual property policy
+-------------------------------------------------------------------------------
+
+See IP-POLICY.md for this project's layered protection policy, what it does
+and does not do, and how to verify an archive snapshot of the source.
+
+Contact: 1665527118@qq.com
