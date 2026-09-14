@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { documentApi, type DocumentListItem } from '@/services/api'
 import { formatDate, cn } from '@/lib/utils'
+import { GiteeRepoLink } from '@/components/common/GiteeRepoLink'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -36,7 +37,7 @@ export default function HomePage() {
       setDocuments([
         {
           id: 'doc_1',
-          title: '入院记录-张三',
+          title: '入院记录',
           status: 'draft',
           version: 3,
           createdBy: '李医生',
@@ -104,6 +105,7 @@ export default function HomePage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <GiteeRepoLink />
           <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700
                           flex items-center justify-center text-sm font-medium">
             U

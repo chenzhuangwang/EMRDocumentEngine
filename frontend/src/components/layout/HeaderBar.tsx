@@ -8,7 +8,6 @@ import {
   Undo2,
   Redo2,
   Users,
-  Share2,
   ChevronDown,
   User,
   FileText,
@@ -19,16 +18,16 @@ import {
 } from 'lucide-react'
 import { useEditorStore, useUserStore, useUIStore } from '@/store'
 import { useEditor, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
+import { GiteeRepoLink } from '@/components/common/GiteeRepoLink'
 
 interface HeaderBarProps {
   onSave?: () => void
-  onShare?: () => void
   onImportDocument?: () => void
   onFormat?: (action: string) => void
   onDocumentProperties?: () => void
 }
 
-export function HeaderBar({ onSave, onShare, onImportDocument, onFormat, onDocumentProperties }: HeaderBarProps) {
+export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProperties }: HeaderBarProps) {
   const saveStatus = useEditorStoreSnapshot((s) => s.saveStatus)
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
   const user = useUserStore((s) => s.user)
@@ -116,13 +115,7 @@ export function HeaderBar({ onSave, onShare, onImportDocument, onFormat, onDocum
           </div>
         )}
 
-        <button
-          className="toolbar-btn"
-          onClick={onShare}
-          title="分享"
-        >
-          <Share2 size={16} />
-        </button>
+        <GiteeRepoLink />
 
         {/* 用户头像/菜单 */}
         {user ? (
