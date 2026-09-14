@@ -1,3 +1,9 @@
+// Copyright (c) 2026 陈庄旺.
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MPL-2.0
+
 // ============================================================
 // 编辑器主页面 (ModelD)
 // ============================================================
@@ -30,6 +36,9 @@ import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
 import { templateImporter, isExternalTemplate, hfParagraphsForPage } from '@/engine'
 import { TOCGenerator } from '@/engine/render/TOCGenerator'
 import { buildExportHtml, buildExportText } from '@/lib/documentExport'
+import {
+  provenanceMetaTags, stampExportHtml, stampExportObject, stampExportText,
+} from '@/lib/provenance'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
 import type { EditorMode, ElementMeta } from '@/engine'
 
@@ -706,6 +715,8 @@ function EditorPageInner({
       // 与导入侧 stripWidgetDefaultLabels 对齐 (导入导出一致)。
       stripWidgetDefaultLabelsFromObject(serialized.templateDefinitions as Record<string, import('@/engine').TemplateDefinition> | undefined)
       serialized._toc = toc
+      // 取证溯源标识: 附加 _provenance 顶层字段 (与 _toc 同类, 加载侧容忍未知顶层字段)
+      stampExportObject(serialized)
       const json = JSON.stringify(serialized, null, 2)
       const blob = new Blob([json], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
@@ -714,13 +725,15 @@ function EditorPageInner({
       URL.revokeObjectURL(url)
     } else if (format === 'txt') {
       // 页眉 + 正文 + 页脚 (含 smarttext 显示值 / 域代码), 见 lib/documentExport
-      const blob = new Blob([buildExportText(doc, pool)], { type: 'text/plain' })
+      // stampExportText: 末尾追加不可见溯源标识 (不进入文档模型, 不改纯函数输出)
+      const blob = new Blob([stampExportText(buildExportText(doc, pool))], { type: 'text/plain' })
       const url = URL.createObjectURL(blob)
       const a = window.document.createElement('a')
       a.href = url; a.download = `document-${Date.now()}.txt`; a.click()
       URL.revokeObjectURL(url)
     } else if (format === 'html') {
-      const blob = new Blob([buildExportHtml(doc, pool)], { type: 'text/html' })
+      // stampExportHtml: head 内注入可读 meta, 正文末尾注入不可见溯源标识
+      const blob = new Blob([stampExportHtml(buildExportHtml(doc, pool))], { type: 'text/html' })
       const url = URL.createObjectURL(blob)
       const a = window.document.createElement('a')
       a.href = url; a.download = `document-${Date.now()}.html`; a.click()
@@ -911,7 +924,7 @@ function EditorPageInner({
           const pageImages = ed.preparePrintPages()
           const w = window.open('', '_blank', `width=${screen.width},height=${screen.height}`)
           if (!w) return
-          w.document.write('<html><head><title>打印</title><style>')
+          w.document.write(`<html><head><title>打印</title>${provenanceMetaTags()}<style>`)
           w.document.write('@page{size:A4;margin:0}body{margin:0;display:flex;flex-direction:column;align-items:center}')
           w.document.write('img{width:210mm;height:auto;page-break-after:always}img:last-child{page-break-after:auto}')
           w.document.write('</style></head><body>')
