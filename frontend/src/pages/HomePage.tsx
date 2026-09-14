@@ -36,8 +36,10 @@ export default function HomePage() {
   async function loadDocuments() {
     setLoading(true)
     try {
-      const res = await documentApi.list({ page: 1, size: 50 })
-      setDocuments(res.data.data.records)
+      // const res = await documentApi.list({ page: 1, size: 50 })
+      // setDocuments(res.data.data.records)
+      // 直接先用 Mock 数据
+      setDocuments(MOCK_DOCUMENT_LIST)
     } catch (err) {
       console.error('加载文档列表失败:', err)
       // 后端不可用: 使用 Mock 数据 (与 EditorPage 兜底同源, 见 src/mocks/documents.ts)
