@@ -15,6 +15,7 @@ import {
 import { documentApi, type DocumentListItem } from '@/services/api'
 import { formatDate, cn } from '@/lib/utils'
 import { GiteeRepoLink } from '@/components/common/GiteeRepoLink'
+import { MOCK_DOCUMENT_LIST } from '@/mocks/documents'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -33,39 +34,8 @@ export default function HomePage() {
       setDocuments(res.data.data.records)
     } catch (err) {
       console.error('加载文档列表失败:', err)
-      // 使用 Mock 数据
-      setDocuments([
-        {
-          id: 'doc_1',
-          title: '入院记录',
-          status: 'draft',
-          version: 3,
-          createdBy: '李医生',
-          updatedBy: '李医生',
-          createdAt: '2026-07-17 10:30:00',
-          updatedAt: '2026-07-17 14:20:00',
-        },
-        {
-          id: 'doc_2',
-          title: '病程记录-2026-07-16',
-          status: 'published',
-          version: 1,
-          createdBy: '王医生',
-          updatedBy: '王医生',
-          createdAt: '2026-07-16 09:00:00',
-          updatedAt: '2026-07-16 09:30:00',
-        },
-        {
-          id: 'doc_3',
-          title: '出院小结-李四',
-          status: 'draft',
-          version: 5,
-          createdBy: '李医生',
-          updatedBy: '赵医生',
-          createdAt: '2026-07-15 16:00:00',
-          updatedAt: '2026-07-17 11:00:00',
-        },
-      ])
+      // 后端不可用: 使用 Mock 数据 (与 EditorPage 兜底同源, 见 src/mocks/documents.ts)
+      setDocuments(MOCK_DOCUMENT_LIST)
     } finally {
       setLoading(false)
     }

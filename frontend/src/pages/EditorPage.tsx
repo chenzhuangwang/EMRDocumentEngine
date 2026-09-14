@@ -25,6 +25,7 @@ import { ControlChoiceDialog } from '@/components/dialogs/ControlChoiceDialog'
 import { initialConfigForCreate, controlFamilyOf } from '@/components/dialogs/controlConfigShared'
 import type { ControlConfigData } from '@/components/dialogs/controlConfigShared'
 import { documentApi, templateApi } from '@/services/api'
+import { getMockDocumentDetail } from '@/mocks/documents'
 import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
 import { templateImporter, isExternalTemplate, hfParagraphsForPage } from '@/engine'
 import { TOCGenerator } from '@/engine/render/TOCGenerator'
@@ -39,23 +40,27 @@ export default function EditorPage() {
   const [loading, setLoading] = useState(false)
   const isNew = !id || id === 'new'
 
-  // 从后端加载文档 (非新建时)
+  // 从后端加载文档 (非新建时); 后端不可用则回落到内置 Mock (见 src/mocks/documents.ts)
   useEffect(() => {
     if (isNew) return
     setLoading(true)
-    documentApi.getById(id!).then(res => {
-      const detail = res.data.data
-      if (detail) {
+    documentApi.getById(id!)
+      .then(res => res.data.data)
+      .catch(err => {
+        console.error('加载文档失败, 回落到 mock 文档:', err)
+        return getMockDocumentDetail(id!)
+      })
+      .then(detail => {
+        // 无匹配 mock (或该条目无正文) → 保持原有空文档行为
+        if (!detail?.content) return
         try {
           const parsed = JSON.parse(detail.content)
           // 打开旧文档同样清理库默认标签 (与导入/导出一致)
           stripWidgetDefaultLabelsFromObject((parsed as { templateDefinitions?: Record<string, import('@/engine').TemplateDefinition> }).templateDefinitions)
           setLoadedDoc(parsed)
         } catch { /* 忽略解析错误 */ }
-      }
-    }).catch(err => {
-      console.error('加载文档失败:', err)
-    }).finally(() => setLoading(false))
+      })
+      .finally(() => setLoading(false))
   }, [id]) // eslint-disable-line
 
   if (loading) {
