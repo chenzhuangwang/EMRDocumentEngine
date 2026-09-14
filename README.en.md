@@ -2,267 +2,313 @@
 
 > 🚀 Live Demo: <http://139.196.151.15/>
 
+<div align="center">
+
+<img src="frontend/public/preview.png" alt="EMR Document Editor Engine — admission record editing view" width="100%" />
+
+**Editing an admission record template**: true A4 pagination · header & footer · structured form controls (dropdown / radio / date / numeric)
+
+</div>
+
 ## 📋 Project Introduction
 
-The EMR Document Editor Engine is a professional Electronic Medical Record (EMR) document editing system, providing complete document creation, editing, template management, and collaboration features. The system adopts a separation of front-end and back-end architecture. The front-end is based on Canvas rendering technology for high-performance document editing, while the back-end is built with Spring Boot + MyBatis-Plus, providing RESTful APIs and WebSocket real-time collaboration support.
+The EMR Document Editor Engine is an electronic medical record (EMR) document editing system built for clinical scenarios, covering the full loop from document creation, structured editing and template management through to quality control. The project uses a separated front-end / back-end architecture:
+
+- **Front end**: a self-developed HTML5 Canvas rendering engine delivering high-performance document editing and true A4 typesetting.
+- **Back end**: Spring Boot + MyBatis-Plus, providing RESTful APIs, JWT authentication and WebSocket real-time communication infrastructure.
+- **Framework- and platform-agnostic runtime**: the editor engine decouples the host environment through the `EditorHost` capability interface (a six-tuple of text / font / surface / viewport / input / platform), so it can be embedded in any host — React, Vue, Electron, Web Workers — with zero browser globals in the engine source.
+
+## 🎮 Online Demo
+
+No local setup required — just open it and try:
+
+> **Demo: <http://139.196.151.15/>**
 
 ## ✨ Core Features
 
-- **Professional Document Editing**: Supports rich text editing, structured elements, formula entry, table processing, and other professional functions.
-- **Template System**: Provides flexible template categorization management, supporting both public and private templates.
-- **Pagination Preview**: Accurately reproduces A4 paper typesetting effects, supporting print preview.
-- **Permission Control**: Role-based access control (RBAC), supporting document annotations and modification trails.
-- **Real-time Collaboration**: WebSocket support for multi-user real-time collaborative editing.
-- **Version Management**: Complete historical version records, supporting version rollback.
-- **Data Validation**: Supports data validation for form elements and required field checks.
-- **Audit Trail**: Detailed recording of document operation logs to meet compliance requirements.
-- **Framework/Platform-Agnostic Runtime**: The editor engine decouples the host environment via the `EditorHost` capability interface (text/font/surface/viewport/input/platform), allowing it to be embedded in any host such as React, Vue, Electron, or Web Workers — with zero browser globals in the engine source.
+### 📝 Professional Document Editing
+
+- **Rich text formatting**: bold / italic / underline (single, double, wavy) / strikethrough / superscript / subscript / font family / font size / text color / highlight
+- **Paragraph layout**: left / center / right / justify, ordered and unordered lists (multi-level indent), heading levels, paragraph indent
+- **Tables**: insert tables, merge / split cells, add and remove rows and columns, repeat header rows across pages
+- **Professional elements**: images, dividers (4 styles), section breaks, headers and footers, footnotes, bookmarks and cross-references
+
+### 🏥 Structured Medical Record Capabilities
+
+- **Form controls**: 8 structured control types — single-line text, multi-line text, number, select, date, datetime, checkbox, radio
+- **Field codes**: 8 dynamic fields — page number, total pages, date, time, title, author, save date, print date
+- **Data validation**: value validation and required-field checks for form elements
+- **Quality control (QC)**: 6 built-in QC rules (title not empty / body not empty / no consecutive empty paragraphs / required SmartText / minimum character count / paragraph-count range), with scoring and graded results
+
+### 📄 Pagination & Rendering
+
+- **True typesetting**: reproduces A4 paper size, margins, orientation and pagination rules, with print preview
+- **Virtual scrolling**: only visible pages are rendered, so long documents scroll smoothly
+- **Incremental layout**: dirty-region tracking and layout caching — only the affected region is re-laid out after an edit
+- **Formula rendering**: LaTeX support via KaTeX
+
+### ⌨️ Editing Experience
+
+- **Undo / redo**: driven by the command pattern, 33 undoable command types, 500 ms typing coalescing
+- **Clipboard**: copy / cut / paste, with three paste modes — keep source formatting / match destination formatting / plain text
+- **Find & replace**: regex, whole-word and case-sensitive matching; replacements are undoable
+- **Auto save**: IndexedDB local storage, 3-second debounce, keeps the last 3 versions, supports crash recovery
+- **Auto correct**: 25 built-in medical abbreviation rules plus Chinese punctuation pairing
+- **Chinese IME**: full IME composition input support
+
+### 📚 Document Lifecycle
+
+- **Template system**: public / private template categories, one-click apply
+- **Document comparison**: visualize the differences between two versions
+- **Version management**: historical version records and rollback
+- **Audit trail**: complete operation logs (create / edit / delete / print / export / view)
+- **Permission control**: role-based access control, with annotations and modification trails
+- **Import & export**: export to JSON / TXT / HTML; import from JSON / HTML / Markdown / XML
+
+> See the [Roadmap](#-roadmap) at the end for PDF / DOCX export, HarfBuzz shaping, collaborative editing and more.
+
+## 🏗 Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────┐
+│             Browser (React 18 + TypeScript)             │
+│  ┌────────────────────────────────────────────────────┐ │
+│  │ UI layer: components / pages / store (Zustand)     │ │
+│  ├────────────────────────────────────────────────────┤ │
+│  │ Platform impl: Canvas / clipboard / IndexedDB      │ │
+│  ├────────────────────────────────────────────────────┤ │
+│  │ Editor engine engine/ — framework-agnostic         │ │
+│  │ document · layout · render · interaction · command │ │
+│  │ state · plugins · qc · security · loaders · i18n   │ │
+│  └────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────┘
+                    │  HTTP / WebSocket
+┌─────────────────────────────────────────────────────────┐
+│            Spring Boot 3.3 backend (Java 17)            │
+│  Controller → Service → Repository → MySQL / Redis      │
+│  Security(JWT) · WebSocket · Springdoc(Swagger)         │
+└─────────────────────────────────────────────────────────┘
+```
+
+The editor engine injects host capabilities through the `EditorHost` six-tuple (`text` / `font` / `surface` / `viewport` / `input` / `platform`); browser capabilities are injected into the engine via `platform/dom`, which keeps the engine framework- and platform-agnostic.
 
 ## 🛠 Tech Stack
 
-### Frontend Technologies
-- **Framework**: React 18 + TypeScript
-- **Build Tool**: Vite
-- **Styling Solution**: Tailwind CSS
-- **State Management**: Zustand
-- **UI Components**: Radix UI + Lucide icons
-- **HTTP Client**: Axios
-- **Rendering Engine**: Self-developed HTML5 Canvas renderer
-- **Real-time Collaboration**: Yjs + y-websocket
-- **Formula Rendering**: KaTeX
-- **Event System**: Custom event bus
+| Layer | Technology |
+|------|------|
+| Front-end framework | React 18 + TypeScript (strict mode) |
+| Build tool | Vite |
+| Styling | Tailwind CSS |
+| State management | Zustand |
+| UI components | Radix UI + Lucide icons |
+| Rendering engine | Self-developed HTML5 Canvas renderer |
+| HTTP client | Axios |
+| Real-time collaboration | Yjs + y-websocket (capability reserved) |
+| Formula rendering | KaTeX |
+| Back-end framework | Spring Boot 3.3 (Java 17) |
+| Data access | MyBatis-Plus |
+| Security | Spring Security + JWT |
+| Real-time communication | WebSocket |
+| Cache | Redis |
+| API docs | Springdoc OpenAPI (Swagger) |
+| Database | MySQL 8.0+ (H2 for tests) |
+| Testing | Vitest + Testing Library + Playwright |
 
-### Backend Technologies
-- **Runtime Environment**: Java 17+
-- **Framework**: Spring Boot 3.x
-- **Data Access**: MyBatis-Plus
-- **Security Framework**: Spring Security + JWT
-- **Real-time Communication**: WebSocket (Spring Boot)
-- **Cache**: Redis (spring-boot-starter-data-redis)
-- **API Docs**: Springdoc OpenAPI (Swagger)
-- **Database**: MySQL 8.0+ (H2 for tests)
-- **Utilities**: Lombok + Bean Validation
+## 🚀 Quick Start
+
+### Requirements
+
+- Node.js 18+
+- Java 17+
+- Maven 3.6+
+- MySQL 8.0+ (optional — a built-in H2 test environment is also available)
+- Redis (optional)
+
+### 1. Prepare the Database
+
+```sql
+CREATE DATABASE IF NOT EXISTS emr_editor
+  DEFAULT CHARACTER SET utf8mb4
+  DEFAULT COLLATE utf8mb4_unicode_ci;
+```
+
+### 2. Start the Backend
+
+Edit `backend/src/main/resources/application.yml` to configure the database connection:
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/emr_editor?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true
+    username: root
+    password: ${DB_PASSWORD:root}
+```
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+The backend starts at `http://localhost:8080`, with the Swagger docs at `http://localhost:8080/swagger-ui.html`.
+
+### 3. Start the Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The front end starts at `http://localhost:3001`; the dev server proxies `/api` and `/ws` to the backend.
+
+### 4. Production Build
+
+```bash
+cd frontend
+npm run build
+```
+
+### 🐳 Docker Deployment
+
+```bash
+docker-compose up -d
+```
 
 ## 📁 Project Structure
 
 ```
 EMRDocumentEngine/
-├── backend/                    # Backend Service
-│   ├── src/main/java/com/emr/
-│   │   ├── config/            # Configuration Classes (Security, WebSocket, MyBatis-Plus, etc.)
-│   │   ├── controller/        # Controller Layer
-│   │   ├── service/           # Business Logic Layer (incl. impl/)
-│   │   ├── entity/            # Entity Classes
-│   │   ├── repository/        # Data Access Layer
-│   │   ├── dto/               # Data Transfer Objects
-│   │   ├── util/              # Utility Classes
-│   │   └── websocket/         # WebSocket Real-time Collaboration
-│   └── resources/
-│       └── application.yml    # Application Configuration
-│
-├── frontend/                   # Frontend Application
-│   ├── src/
-│   │   ├── components/        # React Components
-│   │   │   ├── editor/        # Editor Core Components
-│   │   │   ├── layout/        # Layout Components
-│   │   │   ├── panels/        # Property Panels
-│   │   │   ├── sidebar/       # Sidebar
-│   │   │   ├── toolbar/       # Toolbar
-│   │   │   ├── dialogs/       # Dialogs
-│   │   │   ├── views/         # View Components
-│   │   │   └── ui/            # Base UI Components
-│   │   ├── engine/            # Editor Engine Core
-│   │   │   ├── Editor.ts              # Main Editor Class
-│   │   │   ├── EventBus.ts            # Event Bus
-│   │   │   ├── AutoSaveManager.ts     # Auto Save
-│   │   │   ├── DocumentDiffer.ts      # Document Diff
-│   │   │   ├── FindReplaceEngine.ts   # Find & Replace
-│   │   │   ├── command/               # Command System (undo/redo)
-│   │   │   ├── document/              # Document Model
-│   │   │   ├── host/                  # Host Capability Interface (EditorHost six-tuple)
-│   │   │   ├── render/                # Rendering Module
-│   │   │   ├── layout/                # Layout Engine
-│   │   │   ├── interaction/           # Interaction Handling
-│   │   │   ├── state/                 # State Management
-│   │   │   ├── plugins/               # Plugin System
-│   │   │   ├── qc/                    # Quality Control
-│   │   │   ├── security/              # Security Module
-│   │   │   ├── loaders/               # Loaders
-│   │   │   ├── i18n/                  # Internationalization
-│   │   │   └── __tests__/             # Engine Unit Tests
-│   │   ├── platform/          # Host Platform Implementation (browser capability injection)
-│   │   │   └── dom/           #   DOM Host (Canvas/clipboard/IndexedDB etc.)
-│   │   ├── pages/             # Page Components
-│   │   ├── services/          # API Services
-│   │   ├── store/             # Global State (Zustand)
-│   │   ├── lib/               # Utility Functions
-│   │   ├── App.tsx
-│   │   └── main.tsx
-│   ├── index.html
-│   ├── package.json
-│   ├── vite.config.ts
-│   ├── tailwind.config.ts
-│   ├── Dockerfile            # Frontend Containerization
-│   └── nginx.conf            # Nginx Configuration
-│
-├── output/                     # Document Output Directory
-│   ├── 1-research.md          # Research Report
-│   ├── 2-prd.md               # Product Requirement Document
-│   ├── 3-architecture.md      # Architecture Design Document
-│   ├── 4-uiux.md              # UI/UX Design Document
-│   └── 5-spec.md              # Technical Specification
-│
-├── knowledge/                  # Knowledge Base
-├── docker-compose.yml         # Docker Compose Configuration
-├── nginx.conf                 # Nginx Configuration
-├── LICENSE                    # MIT License
-└── README.md                  # Project Documentation
+├── backend/                    # Backend service (Spring Boot)
+│   └── src/main/java/com/emr/
+│       ├── config/             # Configuration (security, WebSocket, MyBatis-Plus)
+│       ├── controller/         # Controller layer
+│       ├── service/            # Business logic layer
+│       ├── entity/             # Entity classes
+│       ├── repository/         # Data access layer
+│       ├── dto/                # Data transfer objects
+│       ├── util/               # Utility classes
+│       └── websocket/          # WebSocket real-time collaboration
+├── frontend/                   # Front-end application
+│   └── src/
+│       ├── components/         # React components (editor/layout/panels/toolbar/...)
+│       ├── engine/             # Editor engine core (framework/platform agnostic)
+│       │   ├── document/       # Document model (ModelD tree + NodePool)
+│       │   ├── layout/         # Layout engine (line breaking/pagination/incremental/virtual viewport)
+│       │   ├── render/         # Rendering (three-layer Canvas + particle system)
+│       │   ├── interaction/    # Interaction (keyboard/mouse/IME/event bus)
+│       │   ├── command/        # Command system (undo/redo)
+│       │   ├── host/           # EditorHost capability interface
+│       │   ├── state/          # State management
+│       │   ├── plugins/        # Plugin system
+│       │   ├── qc/             # Quality control
+│       │   ├── security/       # Security (XSS protection)
+│       │   ├── loaders/        # Document loaders
+│       │   ├── i18n/           # Internationalization
+│       │   └── __tests__/      # Engine unit tests
+│       ├── platform/           # Host platform implementation (injects DOM capabilities into engine)
+│       ├── pages/              # Page components
+│       ├── services/           # API services
+│       ├── store/              # Global state (Zustand)
+│       └── lib/                # Utility functions
+├── output/                     # Project documents (research/PRD/architecture/UIUX/spec)
+├── knowledge/                  # Knowledge base
+├── docker-compose.yml          # Docker Compose configuration
+└── LICENSE                     # MIT License
 ```
-
-## 🚀 Quick Start
-
-### Environment Requirements
-
-- Node.js 18+
-- Java 17+
-- MySQL 8.0+
-
-### Backend Deployment
-
-1. **Create Database**
-
-```sql
-CREATE DATABASE emr_document_engine DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-2. **Configure Database Connection**
-
-Edit `backend/src/main/resources/application.yml`:
-
-```yaml
-spring:
-  datasource:
-    url: jdbc:mysql://localhost:3306/emr_document_engine?useSSL=false&serverTimezone=UTC
-    username: your_username
-    password: your_password
-```
-
-3. **Build and Run**
-
-```bash
-cd backend
-./mvnw spring-boot:run
-```
-
-The backend service will start at `http://localhost:8080`.
-
-### Frontend Deployment
-
-1. **Install Dependencies**
-
-```bash
-cd frontend
-npm install
-```
-
-2. **Start Development Server**
-
-```bash
-npm run dev
-```
-
-The frontend application will start at `http://localhost:3000`.
-
-3. **Production Build**
-
-```bash
-npm run build
-```
-
-## 📡 API Interfaces
-
-### Authentication Interfaces
-
-| Method | Path | Description |
-|------|------|------|
-| POST | `/api/v1/auth/login` | User Login |
-| POST | `/api/v1/auth/logout` | User Logout |
-| GET | `/api/v1/auth/me` | Get Current User Info |
-
-### Document Interfaces
-
-| Method | Path | Description |
-|------|------|------|
-| GET | `/api/v1/documents` | Get Document List (Paginated) |
-| POST | `/api/v1/documents` | Create New Document |
-| GET | `/api/v1/documents/{id}` | Get Document Details |
-| PUT | `/api/v1/documents/{id}` | Update Document |
-| DELETE | `/api/v1/documents/{id}` | Delete Document |
-
-### Template Interfaces
-
-| Method | Path | Description |
-|------|------|------|
-| GET | `/api/v1/templates` | Get Template List |
-| GET | `/api/v1/templates/{id}` | Get Template Details |
-| POST | `/api/v1/templates` | Create Template |
-| PUT | `/api/v1/templates/{id}` | Update Template |
-| DELETE | `/api/v1/templates/{id}` | Delete Template |
 
 ## 🧩 Core Modules
 
-### Frontend Editor Engine
+### Front-end Editor Engine
 
-The editor engine uses a modular design. Core components include:
+- **DocumentModel**: document data model, manages the document element tree and the NodePool
+- **Draw**: Canvas renderer, responsible for element visualization
+- **TextMeasurer**: text measurer, calculates text width and height
+- **HistoryManager / CommandUndoRedoStack**: history management, supporting undo / redo
+- **EventBus**: event bus handling inter-component communication
+- **KeyboardHandler / MouseHandler / IMEHandler**: input event handling
+- **LayoutEngine**: layout engine (line breaking / pagination / incremental / virtual viewport)
+- **EditorHost**: platform capability boundary (six-tuple), making the engine framework- and platform-agnostic
 
-- **DocumentModel**: Document data model, manages the document element tree.
-- **Draw**: Canvas renderer, responsible for element visualization.
-- **TextMeasurer**: Text measurer, calculates text width and height.
-- **HistoryManager**: History manager, supports undo/redo.
-- **EventBus**: Event bus, handles inter-component communication.
-- **EditorHost**: Platform capability boundary (six-tuple: `text/font/surface/viewport/input/platform`); browser capabilities are injected through it, making the engine framework- and platform-agnostic.
+### Back-end Service Layer
 
-### Backend Service Layer
+- **DocumentService**: document business logic
+- **TemplateService**: template business logic
+- **AuthService**: authentication and authorization service
+- **AuditLogRepository**: audit log data access
 
-- **DocumentService**: Document business logic processing.
-- **TemplateService**: Template business logic processing.
-- **AuthService**: Authentication and authorization service.
+## 📡 API Interfaces
+
+### Authentication
+
+| Method | Path | Description |
+|------|------|------|
+| POST | `/api/v1/auth/login` | User login |
+| POST | `/api/v1/auth/logout` | User logout |
+| GET | `/api/v1/auth/me` | Get current user info |
+
+### Documents
+
+| Method | Path | Description |
+|------|------|------|
+| GET | `/api/v1/documents` | List documents (paginated) |
+| POST | `/api/v1/documents` | Create a document |
+| GET | `/api/v1/documents/{id}` | Get document details |
+| PUT | `/api/v1/documents/{id}` | Update a document |
+| DELETE | `/api/v1/documents/{id}` | Delete a document |
+
+### Templates
+
+| Method | Path | Description |
+|------|------|------|
+| GET | `/api/v1/templates` | List templates |
+| GET | `/api/v1/templates/{id}` | Get template details |
+| POST | `/api/v1/templates` | Create a template |
+| PUT | `/api/v1/templates/{id}` | Update a template |
+| DELETE | `/api/v1/templates/{id}` | Delete a template |
 
 ## 📊 Database Schema
 
-| Table Name | Description |
+| Table | Description |
 |------|------|
-| `t_user` | User Information Table |
-| `t_document` | Document Master Table |
-| `t_template` | Template Table |
-| `t_annotation` | Annotation Table |
-| `t_audit_log` | Audit Log Table |
-| `t_document_version` | Document Version Table |
+| `t_user` | Users |
+| `t_document` | Documents |
+| `t_template` | Templates |
+| `t_annotation` | Annotations |
+| `t_audit_log` | Audit log |
+| `t_document_version` | Document versions |
 
-## 📝 Development Instructions
+## 📚 Project Documentation
 
-### AI-Assisted Development (Claude)
+- [Research report](output/1-research.md) — technology choices and competitive analysis
+- [Product requirements](output/2-prd.md) — functional requirements and user stories
+- [Architecture design](output/3-architecture.md) — system architecture and technical approach
+- [UI/UX design](output/4-uiux.md) — interface design and interaction specification
+- [Technical specification](output/5-spec.md) — detailed specification and task breakdown
 
-This project uses Claude for AI-assisted development. To constrain the AI's code behavior and ensure architectural boundaries are not broken, the repository maintains an "AI Editing Contract":
+## 📝 Development Guide
 
-- `.claude/CLAUDE.md`: The AI entry prompt, instructing the AI to read the contract before modifying `frontend/src/engine`.
-- `.claude/AI_EDITOR_CONTRACT.md`: The architectural invariant contract, defining the engine's mandatory boundaries — for example: the engine must not depend on React or browser globals, all document mutations must go through the Command system, every mutable fact must have a single owner, and the document model must not depend on layout/rendering.
+### AI-Assisted Development Contract
 
-When implementing, refactoring, or reviewing code, the AI must treat the contract as a hard constraint; if an invariant must be broken, the AI must first explain the reason, assess the impact, and obtain explicit authorization — never violating it silently.
+This project uses AI-assisted development. To constrain the AI's code behavior and keep the architectural boundaries intact, the repository maintains an "AI editing contract":
 
-### Frontend Development
+- `.claude/CLAUDE.md`: the AI entry prompt, instructing the AI to read the contract before modifying `frontend/src/engine`.
+- `.claude/AI_EDITOR_CONTRACT.md`: the architectural invariant contract, defining the engine's mandatory boundaries — for example: the engine must not depend on React or browser globals, all document mutations must go through the command system, every mutable fact must have a single owner, and the document model must not depend on layout / rendering.
 
-1. Editor engine core code is located in the `src/engine/` directory.
-2. React components are located in the `src/components/` directory.
-3. API services are defined in `src/services/api.ts`.
-4. Global state management is in `src/store/index.ts`.
+When implementing, refactoring or reviewing code, the AI must treat the contract as a hard constraint; if an invariant has to be broken, the AI must first explain why, assess the impact and obtain explicit authorization.
 
-### Backend Development
+### Code Standards
 
-1. Controller layer is located in the `controller/` directory.
-2. Business logic is implemented in the `service/` directory.
-3. Data access is through the `repository/` interface.
-4. Entity classes are defined in the `entity/` directory.
+- The front end uses TypeScript strict mode. Run `npm run test` (Vitest) and `npm run build` (which includes `tsc --noEmit` type checking) before committing.
+- The backend follows the Alibaba Java Development Manual.
+
+## 🗺 Roadmap
+
+| Capability | Description | Status |
+|------|------|------|
+| PDF / DOCX export | Complete the export matrix | Planned |
+| HarfBuzz text shaping | High-precision text measurement via WASM | Planned |
+| Collaborative editing | Yjs / WebSocket infrastructure is in place; editing stream not yet wired | Capability reserved |
+| E2E test suite | Playwright end-to-end regression tests | Planned |
 
 ## 🤝 Contributing
 
@@ -352,13 +398,6 @@ For example:
 feat: complete table editing — cell input, block-aware navigation
 fix: fix multi-line text caret positioning
 ```
-
-### Code Standards
-
-- The frontend uses TypeScript strict mode; run `npm run test` and `npm run build` before committing.
-- The backend follows the Alibaba Java Development Manual.
-- When adding or fixing functionality, please include corresponding unit tests where possible.
-- Keep your code style consistent with the surrounding code to make it easy for others to read.
 
 ### Community Guidelines
 
