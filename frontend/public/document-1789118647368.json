@@ -1,0 +1,2119 @@
+{
+  "type": "document",
+  "id": "nd_mtv3tzhg_3",
+  "title": "未命名文档",
+  "pageSetup": {
+    "width": 794,
+    "height": 1123,
+    "marginTop": 72,
+    "marginBottom": 72,
+    "marginLeft": 90,
+    "marginRight": 90,
+    "orientation": "portrait"
+  },
+  "body": {
+    "mode": "flow",
+    "children": [
+      "nd_mtv3tzhg_4",
+      "cmd_mtv3xyxr_3t",
+      "nd_mtv3xyxr_17",
+      "nd_mtwk8wxp_5",
+      "nd_mtv3zxlu_19",
+      "nd_mtv4057e_1b",
+      "nd_mtv40a55_1d",
+      "nd_mtvbblhs_7",
+      "nd_mtvbd6mt_g",
+      "nd_mtwadsfq_7",
+      "cmd_mtwafaun_s",
+      "nd_mtwafaun_19",
+      "nd_mtwkc3vr_1p",
+      "nd_mtwm6b3v_1w",
+      "nd_mtwm6bio_1x",
+      "nd_mtwm6bww_1y",
+      "nd_mtwm6cw8_1z",
+      "nd_mtwkc51y_1r",
+      "nd_mtwkc67c_1t",
+      "nd_mtwkd2i1_1x",
+      "nd_mtwkd6uv_20",
+      "nd_mtwkd87t_22"
+    ]
+  },
+  "header": [
+    "nd_mtv3u588_8",
+    "nd_mtv3u93d_9",
+    "nd_mtv3urx5_b"
+  ],
+  "footer": [
+    "nd_mtwqyp4k_6"
+  ],
+  "headerFooterConfig": {
+    "differentFirstPage": false,
+    "differentOddEven": false
+  },
+  "modelVersion": "4.5.0",
+  "nodes": {
+    "nd_mtv3tzhg_4": {
+      "type": "paragraph",
+      "id": "nd_mtv3tzhg_4",
+      "children": [],
+      "lineHeight": 2
+    },
+    "cmd_mtv3xyxr_3t": {
+      "type": "table",
+      "id": "cmd_mtv3xyxr_3t",
+      "columns": [
+        {
+          "width": 50,
+          "mode": "percentage"
+        },
+        {
+          "width": 50,
+          "mode": "percentage"
+        }
+      ],
+      "children": [
+        "cmd_mtv3xyxr_3u",
+        "cmd_mtv3xyxr_3x",
+        "cmd_mtv3xyxr_40",
+        "cmd_mtv3xyxr_43",
+        "nd_mtvbeazo_o"
+      ]
+    },
+    "cmd_mtv3xyxr_3u": {
+      "type": "row",
+      "id": "cmd_mtv3xyxr_3u",
+      "children": [
+        "cmd_mtv3xyxr_3v",
+        "cmd_mtv3xyxr_3w"
+      ],
+      "height": 24
+    },
+    "cmd_mtv3xyxr_3v": {
+      "type": "cell",
+      "id": "cmd_mtv3xyxr_3v",
+      "children": [
+        "nd_mtv3xyxr_r"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtv3xyxr_r": {
+      "type": "paragraph",
+      "id": "nd_mtv3xyxr_r",
+      "children": [
+        "nd_mtv3xyxr_q",
+        "nd_mtv9t084_7"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtv3xyxr_q": {
+      "type": "text",
+      "id": "nd_mtv3xyxr_q",
+      "text": "姓名："
+    },
+    "nd_mtv9t084_7": {
+      "type": "smarttext",
+      "id": "nd_mtv9t084_7",
+      "text": "[姓名]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "姓名",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "cmd_mtv3xyxr_3w": {
+      "type": "cell",
+      "id": "cmd_mtv3xyxr_3w",
+      "children": [
+        "nd_mtv3xyxr_t"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtv3xyxr_t": {
+      "type": "paragraph",
+      "id": "nd_mtv3xyxr_t",
+      "children": [
+        "nd_mtv3xyxr_s",
+        "nd_mtv9uxkp_c"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtv3xyxr_s": {
+      "type": "text",
+      "id": "nd_mtv3xyxr_s",
+      "text": "职业："
+    },
+    "nd_mtv9uxkp_c": {
+      "type": "smarttext",
+      "id": "nd_mtv9uxkp_c",
+      "text": "[职业]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "职业",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "cmd_mtv3xyxr_3x": {
+      "type": "row",
+      "id": "cmd_mtv3xyxr_3x",
+      "children": [
+        "cmd_mtv3xyxr_3y",
+        "cmd_mtv3xyxr_3z"
+      ],
+      "height": 24
+    },
+    "cmd_mtv3xyxr_3y": {
+      "type": "cell",
+      "id": "cmd_mtv3xyxr_3y",
+      "children": [
+        "nd_mtv3xyxr_v"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtv3xyxr_v": {
+      "type": "paragraph",
+      "id": "nd_mtv3xyxr_v",
+      "children": [
+        "nd_mtv3xyxr_u",
+        "nd_mtv9tciy_9"
+      ],
+      "indent": 24,
+      "lineHeight": 2
+    },
+    "nd_mtv3xyxr_u": {
+      "type": "text",
+      "id": "nd_mtv3xyxr_u",
+      "text": "性别："
+    },
+    "nd_mtv9tciy_9": {
+      "type": "smarttext",
+      "id": "nd_mtv9tciy_9",
+      "text": "[性别]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "性别",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "cmd_mtv3xyxr_3z": {
+      "type": "cell",
+      "id": "cmd_mtv3xyxr_3z",
+      "children": [
+        "nd_mtv3xyxr_x"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtv3xyxr_x": {
+      "type": "paragraph",
+      "id": "nd_mtv3xyxr_x",
+      "children": [
+        "nd_mtv3xyxr_w",
+        "nd_mtv9v3f0_d"
+      ],
+      "indent": 24,
+      "lineHeight": 2
+    },
+    "nd_mtv3xyxr_w": {
+      "type": "text",
+      "id": "nd_mtv3xyxr_w",
+      "text": "工作单位："
+    },
+    "nd_mtv9v3f0_d": {
+      "type": "smarttext",
+      "id": "nd_mtv9v3f0_d",
+      "text": "[工作单位]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "工作单位",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "cmd_mtv3xyxr_40": {
+      "type": "row",
+      "id": "cmd_mtv3xyxr_40",
+      "children": [
+        "cmd_mtv3xyxr_41",
+        "cmd_mtv3xyxr_42"
+      ],
+      "height": 24
+    },
+    "cmd_mtv3xyxr_41": {
+      "type": "cell",
+      "id": "cmd_mtv3xyxr_41",
+      "children": [
+        "nd_mtv3xyxr_z"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtv3xyxr_z": {
+      "type": "paragraph",
+      "id": "nd_mtv3xyxr_z",
+      "children": [
+        "nd_mtv3xyxr_y",
+        "nd_mtv9tjze_a"
+      ],
+      "indent": 24,
+      "lineHeight": 2
+    },
+    "nd_mtv3xyxr_y": {
+      "type": "text",
+      "id": "nd_mtv3xyxr_y",
+      "text": "年龄："
+    },
+    "nd_mtv9tjze_a": {
+      "type": "smarttext",
+      "id": "nd_mtv9tjze_a",
+      "text": "[年龄]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "年龄",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "cmd_mtv3xyxr_42": {
+      "type": "cell",
+      "id": "cmd_mtv3xyxr_42",
+      "children": [
+        "nd_mtv3xyxr_11"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtv3xyxr_11": {
+      "type": "paragraph",
+      "id": "nd_mtv3xyxr_11",
+      "children": [
+        "nd_mtv3xyxr_10",
+        "nd_mtv9vn0i_e"
+      ],
+      "indent": 24,
+      "lineHeight": 2
+    },
+    "nd_mtv3xyxr_10": {
+      "type": "text",
+      "id": "nd_mtv3xyxr_10",
+      "text": "住址："
+    },
+    "nd_mtv9vn0i_e": {
+      "type": "smarttext",
+      "id": "nd_mtv9vn0i_e",
+      "text": "[住址]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "住址",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "cmd_mtv3xyxr_43": {
+      "type": "row",
+      "id": "cmd_mtv3xyxr_43",
+      "children": [
+        "cmd_mtv3xyxr_44",
+        "cmd_mtv3xyxr_45"
+      ],
+      "height": 24
+    },
+    "cmd_mtv3xyxr_44": {
+      "type": "cell",
+      "id": "cmd_mtv3xyxr_44",
+      "children": [
+        "nd_mtv3xyxr_13"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtv3xyxr_13": {
+      "type": "paragraph",
+      "id": "nd_mtv3xyxr_13",
+      "children": [
+        "nd_mtv3xyxr_12",
+        "nd_mtv9uegq_b"
+      ],
+      "indent": 24,
+      "lineHeight": 2
+    },
+    "nd_mtv3xyxr_12": {
+      "type": "text",
+      "id": "nd_mtv3xyxr_12",
+      "text": "婚姻："
+    },
+    "nd_mtv9uegq_b": {
+      "type": "smarttext",
+      "id": "nd_mtv9uegq_b",
+      "text": "[婚姻]",
+      "element": {
+        "code": {
+          "internal": "CTL_RADIO",
+          "dataElement": "DE99.99.007"
+        },
+        "name": "婚姻",
+        "format": {
+          "dataType": "S1",
+          "enums": {
+            "multiple": false,
+            "data": [
+              {
+                "name": "已婚",
+                "value": "Y"
+              },
+              {
+                "name": "未婚",
+                "value": "N"
+              }
+            ]
+          }
+        }
+      },
+      "value": "N"
+    },
+    "cmd_mtv3xyxr_45": {
+      "type": "cell",
+      "id": "cmd_mtv3xyxr_45",
+      "children": [
+        "nd_mtv3xyxr_15"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtv3xyxr_15": {
+      "type": "paragraph",
+      "id": "nd_mtv3xyxr_15",
+      "children": [
+        "nd_mtv3xyxr_14",
+        "nd_mtv9vud6_f"
+      ],
+      "indent": 24,
+      "lineHeight": 2
+    },
+    "nd_mtv3xyxr_14": {
+      "type": "text",
+      "id": "nd_mtv3xyxr_14",
+      "text": "供史者（与患者关系）："
+    },
+    "nd_mtv9vud6_f": {
+      "type": "smarttext",
+      "id": "nd_mtv9vud6_f",
+      "text": "[与患者关系]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "与患者关系",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtvbeazo_o": {
+      "type": "row",
+      "id": "nd_mtvbeazo_o",
+      "children": [
+        "nd_mtvbeazo_k",
+        "nd_mtvbeazo_n"
+      ]
+    },
+    "nd_mtvbeazo_k": {
+      "type": "cell",
+      "id": "nd_mtvbeazo_k",
+      "children": [
+        "nd_mtvbeazo_j"
+      ]
+    },
+    "nd_mtvbeazo_j": {
+      "type": "paragraph",
+      "id": "nd_mtvbeazo_j",
+      "children": [
+        "nd_mtvbeazo_i",
+        "nd_mtw9xuh3_5"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtvbeazo_i": {
+      "type": "text",
+      "id": "nd_mtvbeazo_i",
+      "text": "民族："
+    },
+    "nd_mtw9xuh3_5": {
+      "type": "smarttext",
+      "id": "nd_mtw9xuh3_5",
+      "text": "[民族]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "民族",
+        "format": {
+          "dataType": "S1",
+          "enums": {
+            "data": [
+              {
+                "name": "汉族",
+                "value": "h"
+              },
+              {
+                "name": "满族",
+                "value": "m"
+              },
+              {
+                "name": "回族",
+                "value": "h"
+              },
+              {
+                "name": "维吾尔族",
+                "value": "w"
+              }
+            ]
+          }
+        }
+      },
+      "value": "w"
+    },
+    "nd_mtvbeazo_n": {
+      "type": "cell",
+      "id": "nd_mtvbeazo_n",
+      "children": [
+        "nd_mtvbeazo_m"
+      ]
+    },
+    "nd_mtvbeazo_m": {
+      "type": "paragraph",
+      "id": "nd_mtvbeazo_m",
+      "children": [
+        "nd_mtvbeazo_l",
+        "nd_mtvbfbjv_p"
+      ]
+    },
+    "nd_mtvbeazo_l": {
+      "type": "text",
+      "id": "nd_mtvbeazo_l",
+      "text": "记录日期："
+    },
+    "nd_mtvbfbjv_p": {
+      "type": "smarttext",
+      "id": "nd_mtvbfbjv_p",
+      "text": "[记录日期]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "记录日期",
+        "format": {
+          "dataType": "D"
+        }
+      }
+    },
+    "nd_mtv3xyxr_17": {
+      "type": "paragraph",
+      "id": "nd_mtv3xyxr_17",
+      "children": [
+        "nd_mtv3xyxr_16"
+      ],
+      "lineHeight": 1,
+      "indent": 24
+    },
+    "nd_mtv3xyxr_16": {
+      "type": "text",
+      "id": "nd_mtv3xyxr_16",
+      "text": ""
+    },
+    "nd_mtwk8wxp_5": {
+      "type": "paragraph",
+      "id": "nd_mtwk8wxp_5",
+      "children": [
+        "nd_mtwk8wxp_6",
+        "nd_mtv44tns_1f"
+      ],
+      "indent": 24,
+      "lineHeight": 2
+    },
+    "nd_mtwk8wxp_6": {
+      "type": "text",
+      "id": "nd_mtwk8wxp_6",
+      "text": "主诉："
+    },
+    "nd_mtv44tns_1f": {
+      "type": "smarttext",
+      "id": "nd_mtv44tns_1f",
+      "text": "[主诉]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "主诉",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtv3zxlu_19": {
+      "type": "paragraph",
+      "id": "nd_mtv3zxlu_19",
+      "children": [
+        "nd_mtv400lc_1a",
+        "nd_mtv451en_1g"
+      ],
+      "lineHeight": 2,
+      "indent": 24
+    },
+    "nd_mtv400lc_1a": {
+      "type": "text",
+      "id": "nd_mtv400lc_1a",
+      "text": "现病史：",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtv451en_1g": {
+      "type": "smarttext",
+      "id": "nd_mtv451en_1g",
+      "text": "[现病史]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "现病史",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtv4057e_1b": {
+      "type": "paragraph",
+      "id": "nd_mtv4057e_1b",
+      "children": [
+        "nd_mtv408jr_1c",
+        "nd_mtv458q7_1h"
+      ],
+      "lineHeight": 2,
+      "indent": 24
+    },
+    "nd_mtv408jr_1c": {
+      "type": "text",
+      "id": "nd_mtv408jr_1c",
+      "text": "既往史：",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtv458q7_1h": {
+      "type": "smarttext",
+      "id": "nd_mtv458q7_1h",
+      "text": "[既往史]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "既往史",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtv40a55_1d": {
+      "type": "paragraph",
+      "id": "nd_mtv40a55_1d",
+      "children": [
+        "nd_mtv40dwi_1e",
+        "nd_mtv45i9s_1i"
+      ],
+      "lineHeight": 2,
+      "indent": 24
+    },
+    "nd_mtv40dwi_1e": {
+      "type": "text",
+      "id": "nd_mtv40dwi_1e",
+      "text": "个人史：",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtv45i9s_1i": {
+      "type": "smarttext",
+      "id": "nd_mtv45i9s_1i",
+      "text": "[个人史]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "个人史",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtvbblhs_7": {
+      "type": "paragraph",
+      "id": "nd_mtvbblhs_7",
+      "children": [
+        "nd_mtvbc3y2_c"
+      ],
+      "indent": 0,
+      "firstLineIndent": 32,
+      "lineHeight": 2
+    },
+    "nd_mtvbc3y2_c": {
+      "type": "text",
+      "id": "nd_mtvbc3y2_c",
+      "text": "本人就病历记录所口述的全部告知内容均属真实，且已阅读并确认上述病历记录记载无误。如有不实告知，相应法律后果均有本人自行承担，医院不承担由于本人不实告知而引发的任何法律责任。\n",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtvbd6mt_g": {
+      "type": "paragraph",
+      "id": "nd_mtvbd6mt_g",
+      "children": [
+        "nd_mtvbd6mt_h"
+      ],
+      "indent": 0,
+      "lineHeight": 2
+    },
+    "nd_mtvbd6mt_h": {
+      "type": "text",
+      "id": "nd_mtvbd6mt_h",
+      "text": "患者签名：             病史提供者签名：         （与患者关系：         ）",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwadsfq_7": {
+      "type": "paragraph",
+      "id": "nd_mtwadsfq_7",
+      "children": [
+        "nd_mtwadwkg_8"
+      ],
+      "alignment": "center",
+      "indent": 0,
+      "lineHeight": 2
+    },
+    "nd_mtwadwkg_8": {
+      "type": "text",
+      "id": "nd_mtwadwkg_8",
+      "text": "体格检查",
+      "font": "SimSun",
+      "size": 16,
+      "bold": true
+    },
+    "cmd_mtwafaun_s": {
+      "type": "table",
+      "id": "cmd_mtwafaun_s",
+      "columns": [
+        {
+          "width": 123,
+          "mode": "fixed"
+        },
+        {
+          "width": 491,
+          "mode": "fixed"
+        }
+      ],
+      "children": [
+        "cmd_mtwafaun_t",
+        "cmd_mtwafaun_w",
+        "cmd_mtwafaun_z",
+        "cmd_mtwafaun_12",
+        "cmd_mtwafaun_15",
+        "cmd_mtwafaun_18",
+        "cmd_mtwafaun_1b",
+        "cmd_mtwafaun_1e",
+        "nd_mtwkb6j9_15",
+        "nd_mtwkba38_1c"
+      ]
+    },
+    "cmd_mtwafaun_t": {
+      "type": "row",
+      "id": "cmd_mtwafaun_t",
+      "children": [
+        "cmd_mtwafaun_u"
+      ],
+      "height": 24
+    },
+    "cmd_mtwafaun_u": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_u",
+      "children": [
+        "nd_mtwafaun_d",
+        "nd_mtwafaun_f"
+      ],
+      "colspan": 2
+    },
+    "nd_mtwafaun_d": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_d",
+      "children": [
+        "nd_mtwafaun_c"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_c": {
+      "type": "text",
+      "id": "nd_mtwafaun_c",
+      "text": ""
+    },
+    "nd_mtwafaun_f": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_f",
+      "children": [
+        "nd_mtwafaun_e",
+        "nd_mtwagwxq_1f",
+        "nd_mtwah475_1i",
+        "nd_mtwah475_1j",
+        "nd_mtwahae6_1m",
+        "nd_mtwahae6_1n",
+        "nd_mtwahj6n_1q",
+        "nd_mtwahj6n_1r",
+        "nd_mtwahohy_1u",
+        "nd_mtwahohy_1v"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_e": {
+      "type": "text",
+      "id": "nd_mtwafaun_e",
+      "text": ""
+    },
+    "nd_mtwagwxq_1f": {
+      "type": "text",
+      "id": "nd_mtwagwxq_1f",
+      "text": "体温",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwah475_1i": {
+      "type": "smarttext",
+      "id": "nd_mtwah475_1i",
+      "text": "[体温]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "体温",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtwah475_1j": {
+      "type": "text",
+      "id": "nd_mtwah475_1j",
+      "text": "℃     脉搏",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwahae6_1m": {
+      "type": "smarttext",
+      "id": "nd_mtwahae6_1m",
+      "text": "[脉搏]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "脉搏",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtwahae6_1n": {
+      "type": "text",
+      "id": "nd_mtwahae6_1n",
+      "text": "次/分    呼吸",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwahj6n_1q": {
+      "type": "smarttext",
+      "id": "nd_mtwahj6n_1q",
+      "text": "[呼吸]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "呼吸",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtwahj6n_1r": {
+      "type": "text",
+      "id": "nd_mtwahj6n_1r",
+      "text": "次/分    血压",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwahohy_1u": {
+      "type": "smarttext",
+      "id": "nd_mtwahohy_1u",
+      "text": "[血压]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "血压",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtwahohy_1v": {
+      "type": "text",
+      "id": "nd_mtwahohy_1v",
+      "text": "mmHg",
+      "font": "SimSun",
+      "size": 16
+    },
+    "cmd_mtwafaun_w": {
+      "type": "row",
+      "id": "cmd_mtwafaun_w",
+      "children": [
+        "cmd_mtwafaun_x",
+        "cmd_mtwafaun_y"
+      ],
+      "height": 24
+    },
+    "cmd_mtwafaun_x": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_x",
+      "children": [
+        "nd_mtwafaun_h"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtwafaun_h": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_h",
+      "children": [
+        "nd_mtwafaun_g",
+        "nd_mtwk9uin_a"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_g": {
+      "type": "text",
+      "id": "nd_mtwafaun_g",
+      "text": ""
+    },
+    "nd_mtwk9uin_a": {
+      "type": "text",
+      "id": "nd_mtwk9uin_a",
+      "text": "一般状况:",
+      "font": "SimSun",
+      "size": 16
+    },
+    "cmd_mtwafaun_y": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_y",
+      "children": [
+        "nd_mtwafaun_j"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtwafaun_j": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_j",
+      "children": [
+        "nd_mtwafaun_i",
+        "nd_mtwm1b3x_a"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_i": {
+      "type": "text",
+      "id": "nd_mtwafaun_i",
+      "text": ""
+    },
+    "nd_mtwm1b3x_a": {
+      "type": "text",
+      "id": "nd_mtwm1b3x_a",
+      "text": "发育良好，营养中等，神志清楚，体位自主，正常面容，表情安静，查体合作。",
+      "font": "SimSun",
+      "size": 16
+    },
+    "cmd_mtwafaun_z": {
+      "type": "row",
+      "id": "cmd_mtwafaun_z",
+      "children": [
+        "cmd_mtwafaun_10",
+        "cmd_mtwafaun_11"
+      ],
+      "height": 24
+    },
+    "cmd_mtwafaun_10": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_10",
+      "children": [
+        "nd_mtwafaun_l"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtwafaun_l": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_l",
+      "children": [
+        "nd_mtwafaun_k",
+        "nd_mtwk9z9h_e"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_k": {
+      "type": "text",
+      "id": "nd_mtwafaun_k",
+      "text": ""
+    },
+    "nd_mtwk9z9h_e": {
+      "type": "text",
+      "id": "nd_mtwk9z9h_e",
+      "text": "皮肤黏膜:",
+      "font": "SimSun",
+      "size": 16
+    },
+    "cmd_mtwafaun_11": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_11",
+      "children": [
+        "nd_mtwafaun_n"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtwafaun_n": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_n",
+      "children": [
+        "nd_mtwafaun_m",
+        "nd_mtwm1fx1_e"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_m": {
+      "type": "text",
+      "id": "nd_mtwafaun_m",
+      "text": ""
+    },
+    "nd_mtwm1fx1_e": {
+      "type": "text",
+      "id": "nd_mtwm1fx1_e",
+      "text": "颜色正常，温度正常，皮肤弹性良，无水肿，无皮疹，无瘀点，无紫癜，无皮下结节，无肿块，无蜘蛛痣，无肝掌，无溃疡，无瘢痕。",
+      "font": "SimSun",
+      "size": 16
+    },
+    "cmd_mtwafaun_12": {
+      "type": "row",
+      "id": "cmd_mtwafaun_12",
+      "children": [
+        "cmd_mtwafaun_13",
+        "cmd_mtwafaun_14"
+      ],
+      "height": 24
+    },
+    "cmd_mtwafaun_13": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_13",
+      "children": [
+        "nd_mtwafaun_p"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtwafaun_p": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_p",
+      "children": [
+        "nd_mtwafaun_o",
+        "nd_mtwka445_i"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_o": {
+      "type": "text",
+      "id": "nd_mtwafaun_o",
+      "text": ""
+    },
+    "nd_mtwka445_i": {
+      "type": "text",
+      "id": "nd_mtwka445_i",
+      "text": "淋 巴 结:",
+      "font": "SimSun",
+      "size": 16
+    },
+    "cmd_mtwafaun_14": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_14",
+      "children": [
+        "nd_mtwafaun_r"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtwafaun_r": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_r",
+      "children": [
+        "nd_mtwafaun_q",
+        "nd_mtwm1k1b_i"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_q": {
+      "type": "text",
+      "id": "nd_mtwafaun_q",
+      "text": ""
+    },
+    "nd_mtwm1k1b_i": {
+      "type": "text",
+      "id": "nd_mtwm1k1b_i",
+      "text": "浅表淋巴结未触及肿大。",
+      "font": "SimSun",
+      "size": 16
+    },
+    "cmd_mtwafaun_15": {
+      "type": "row",
+      "id": "cmd_mtwafaun_15",
+      "children": [
+        "cmd_mtwafaun_16",
+        "cmd_mtwafaun_17"
+      ],
+      "height": 24
+    },
+    "cmd_mtwafaun_16": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_16",
+      "children": [
+        "nd_mtwafaun_t"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtwafaun_t": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_t",
+      "children": [
+        "nd_mtwafaun_s",
+        "nd_mtwka8t1_m"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_s": {
+      "type": "text",
+      "id": "nd_mtwafaun_s",
+      "text": ""
+    },
+    "nd_mtwka8t1_m": {
+      "type": "text",
+      "id": "nd_mtwka8t1_m",
+      "text": "头部及其器官:",
+      "font": "SimSun",
+      "size": 16
+    },
+    "cmd_mtwafaun_17": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_17",
+      "children": [
+        "nd_mtwafaun_v"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtwafaun_v": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_v",
+      "children": [
+        "nd_mtwafaun_u",
+        "nd_mtwm1rvp_m"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_u": {
+      "type": "text",
+      "id": "nd_mtwafaun_u",
+      "text": ""
+    },
+    "nd_mtwm1rvp_m": {
+      "type": "text",
+      "id": "nd_mtwm1rvp_m",
+      "text": "头颅正常，无肿块，无压痛，无瘢痕，头发头发分布描述，眼睑正常，眼球正常，瞳孔形状等大正圆，直径（左侧2mm，右侧2mm），对光反射正常。巩膜无黄染。双耳无畸形，无分泌物，乳突无压痛，听力正常。鼻无畸形，无出血，无鼻中隔偏曲，鼻窦无压痛。牙齿无异常，牙龈未见异常，口唇颜色红润。舌苔舌苔情况，无溃疡，伸舌方向居中。咽部粘膜未见异常，扁桃体正常，未见充血、分泌物、假膜。喉发音清晰。",
+      "font": "SimSun",
+      "size": 16
+    },
+    "cmd_mtwafaun_18": {
+      "type": "row",
+      "id": "cmd_mtwafaun_18",
+      "children": [
+        "cmd_mtwafaun_19",
+        "cmd_mtwafaun_1a"
+      ],
+      "height": 24
+    },
+    "cmd_mtwafaun_19": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_19",
+      "children": [
+        "nd_mtwafaun_x"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtwafaun_x": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_x",
+      "children": [
+        "nd_mtwafaun_w",
+        "nd_mtwkaf9j_q"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_w": {
+      "type": "text",
+      "id": "nd_mtwafaun_w",
+      "text": ""
+    },
+    "nd_mtwkaf9j_q": {
+      "type": "text",
+      "id": "nd_mtwkaf9j_q",
+      "text": "颈   部:",
+      "font": "SimSun",
+      "size": 16
+    },
+    "cmd_mtwafaun_1a": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_1a",
+      "children": [
+        "nd_mtwafaun_z"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtwafaun_z": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_z",
+      "children": [
+        "nd_mtwafaun_y",
+        "nd_mtwm1y1d_q"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_y": {
+      "type": "text",
+      "id": "nd_mtwafaun_y",
+      "text": ""
+    },
+    "nd_mtwm1y1d_q": {
+      "type": "text",
+      "id": "nd_mtwm1y1d_q",
+      "text": "运动自如，未见颈静脉怒张，肝颈静脉回流征阴性，颈动脉搏动正常，气管居中，甲状腺未及肿大，质质地，无压痛，无结节，未触及震颤，未闻及血管杂音。颈部-其他",
+      "font": "SimSun",
+      "size": 16
+    },
+    "cmd_mtwafaun_1b": {
+      "type": "row",
+      "id": "cmd_mtwafaun_1b",
+      "children": [
+        "cmd_mtwafaun_1c",
+        "cmd_mtwafaun_1d"
+      ],
+      "height": 24
+    },
+    "cmd_mtwafaun_1c": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_1c",
+      "children": [
+        "nd_mtwafaun_11"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtwafaun_11": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_11",
+      "children": [
+        "nd_mtwafaun_10",
+        "nd_mtwkajhz_u"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_10": {
+      "type": "text",
+      "id": "nd_mtwafaun_10",
+      "text": ""
+    },
+    "nd_mtwkajhz_u": {
+      "type": "text",
+      "id": "nd_mtwkajhz_u",
+      "text": "胸   部:",
+      "font": "SimSun",
+      "size": 16
+    },
+    "cmd_mtwafaun_1d": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_1d",
+      "children": [
+        "nd_mtwafaun_13"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtwafaun_13": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_13",
+      "children": [
+        "nd_mtwafaun_12",
+        "nd_mtwm2vdm_u"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_12": {
+      "type": "text",
+      "id": "nd_mtwafaun_12",
+      "text": ""
+    },
+    "nd_mtwm2vdm_u": {
+      "type": "text",
+      "id": "nd_mtwm2vdm_u",
+      "text": "胸廓外形对称，乳房对称，无红肿，无溃疡，乳头无凹陷，未触及包块。未见肋间隙，胸壁无静脉曲张、皮下气肿，无胸壁压痛。肺脏和胸膜：双肺呼吸动度双侧呼吸动度，未见增强及减弱，无肋间隙增宽及变窄。语颤触觉语颤,无胸膜摩擦感,无皮下捻发音。呼吸音呼吸音，无啰音。可闻及部位及性质胸膜摩擦音。肺脏和胸膜-其他\n心脏：无心前区隆起，心尖搏动文本框，无震颤和心包摩擦感。\n叩诊心脏浊音界",
+      "font": "SimSun",
+      "size": 16
+    },
+    "cmd_mtwafaun_1e": {
+      "type": "row",
+      "id": "cmd_mtwafaun_1e",
+      "children": [
+        "cmd_mtwafaun_1f",
+        "cmd_mtwafaun_1g"
+      ],
+      "height": 24
+    },
+    "cmd_mtwafaun_1f": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_1f",
+      "children": [
+        "nd_mtwafaun_15"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtwafaun_15": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_15",
+      "children": [
+        "nd_mtwafaun_14",
+        "nd_mtwkaqyp_y"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_14": {
+      "type": "text",
+      "id": "nd_mtwafaun_14",
+      "text": ""
+    },
+    "nd_mtwkaqyp_y": {
+      "type": "text",
+      "id": "nd_mtwkaqyp_y",
+      "text": "腹   部:",
+      "font": "SimSun",
+      "size": 16
+    },
+    "cmd_mtwafaun_1g": {
+      "type": "cell",
+      "id": "cmd_mtwafaun_1g",
+      "children": [
+        "nd_mtwafaun_17"
+      ],
+      "colspan": 1,
+      "rowspan": 1
+    },
+    "nd_mtwafaun_17": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_17",
+      "children": [
+        "nd_mtwafaun_16",
+        "nd_mtwm30o8_y"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwafaun_16": {
+      "type": "text",
+      "id": "nd_mtwafaun_16",
+      "text": ""
+    },
+    "nd_mtwm30o8_y": {
+      "type": "text",
+      "id": "nd_mtwm30o8_y",
+      "text": "未触及包块。腹部平坦，未见皮疹、色素、瘢痕、及腹壁静脉曲张。未见局部隆起。腹软，无肌紧张，无压痛，无反跳痛，未触及包块。肝脏未触及，脾脏未触及。肝区叩击痛阴性，无肾区叩击痛，移动性浊音阴性。肠鸣音正常。未闻及振水音和血管杂音。腹部-其他",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwkb6j9_15": {
+      "type": "row",
+      "id": "nd_mtwkb6j9_15",
+      "children": [
+        "nd_mtwkb6j9_11",
+        "nd_mtwkb6j9_14"
+      ]
+    },
+    "nd_mtwkb6j9_11": {
+      "type": "cell",
+      "id": "nd_mtwkb6j9_11",
+      "children": [
+        "nd_mtwkb6j9_10"
+      ]
+    },
+    "nd_mtwkb6j9_10": {
+      "type": "paragraph",
+      "id": "nd_mtwkb6j9_10",
+      "children": [
+        "nd_mtwkb6j9_z",
+        "nd_mtwkbgj1_1g"
+      ]
+    },
+    "nd_mtwkb6j9_z": {
+      "type": "text",
+      "id": "nd_mtwkb6j9_z",
+      "text": ""
+    },
+    "nd_mtwkbgj1_1g": {
+      "type": "text",
+      "id": "nd_mtwkbgj1_1g",
+      "text": "脊   柱:",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwkb6j9_14": {
+      "type": "cell",
+      "id": "nd_mtwkb6j9_14",
+      "children": [
+        "nd_mtwkb6j9_13"
+      ]
+    },
+    "nd_mtwkb6j9_13": {
+      "type": "paragraph",
+      "id": "nd_mtwkb6j9_13",
+      "children": [
+        "nd_mtwkb6j9_12",
+        "nd_mtwm36fy_12"
+      ]
+    },
+    "nd_mtwkb6j9_12": {
+      "type": "text",
+      "id": "nd_mtwkb6j9_12",
+      "text": ""
+    },
+    "nd_mtwm36fy_12": {
+      "type": "text",
+      "id": "nd_mtwm36fy_12",
+      "text": "弯曲度正常，活动度活动度，无压痛，无叩击痛。叩击痛-其他",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwkba38_1c": {
+      "type": "row",
+      "id": "nd_mtwkba38_1c",
+      "children": [
+        "nd_mtwkba38_18",
+        "nd_mtwkba38_1b"
+      ]
+    },
+    "nd_mtwkba38_18": {
+      "type": "cell",
+      "id": "nd_mtwkba38_18",
+      "children": [
+        "nd_mtwkba38_17"
+      ]
+    },
+    "nd_mtwkba38_17": {
+      "type": "paragraph",
+      "id": "nd_mtwkba38_17",
+      "children": [
+        "nd_mtwkba38_16",
+        "nd_mtwkbsg5_1k"
+      ]
+    },
+    "nd_mtwkba38_16": {
+      "type": "text",
+      "id": "nd_mtwkba38_16",
+      "text": ""
+    },
+    "nd_mtwkbsg5_1k": {
+      "type": "text",
+      "id": "nd_mtwkbsg5_1k",
+      "text": "神经反射:",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwkba38_1b": {
+      "type": "cell",
+      "id": "nd_mtwkba38_1b",
+      "children": [
+        "nd_mtwkba38_1a"
+      ]
+    },
+    "nd_mtwkba38_1a": {
+      "type": "paragraph",
+      "id": "nd_mtwkba38_1a",
+      "children": [
+        "nd_mtwkba38_19",
+        "nd_mtwm3b79_16"
+      ]
+    },
+    "nd_mtwkba38_19": {
+      "type": "text",
+      "id": "nd_mtwkba38_19",
+      "text": ""
+    },
+    "nd_mtwm3b79_16": {
+      "type": "text",
+      "id": "nd_mtwm3b79_16",
+      "text": "浅反射（角膜反射、腹壁反射、提睾反射）正常，深反射（肱二头肌、肱三头肌、膝腱反射、跟腱反射）正常，Hoffmann征阴性，Babinski征阴性，Oppenheim征阴性，Gordon征阴性，Kernig征阴性，Brudzinski征阴性。",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwafaun_19": {
+      "type": "paragraph",
+      "id": "nd_mtwafaun_19",
+      "children": [
+        "nd_mtwafaun_18",
+        "nd_mtwkbypz_1o"
+      ],
+      "lineHeight": 2,
+      "alignment": "center"
+    },
+    "nd_mtwafaun_18": {
+      "type": "text",
+      "id": "nd_mtwafaun_18",
+      "text": ""
+    },
+    "nd_mtwkbypz_1o": {
+      "type": "text",
+      "id": "nd_mtwkbypz_1o",
+      "text": "专 科 情 况",
+      "font": "SimSun",
+      "size": 16,
+      "bold": true
+    },
+    "nd_mtwkc3vr_1p": {
+      "type": "paragraph",
+      "id": "nd_mtwkc3vr_1p",
+      "children": [
+        "nd_mtwm3ns6_1h",
+        "nd_mtwkc3vr_1q"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwm3ns6_1h": {
+      "type": "smarttext",
+      "id": "nd_mtwm3ns6_1h",
+      "text": "[专科情况]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "专科情况",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtwkc3vr_1q": {
+      "type": "text",
+      "id": "nd_mtwkc3vr_1q",
+      "text": "\n",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwm6b3v_1w": {
+      "type": "paragraph",
+      "id": "nd_mtwm6b3v_1w",
+      "children": [],
+      "lineHeight": 2
+    },
+    "nd_mtwm6bio_1x": {
+      "type": "paragraph",
+      "id": "nd_mtwm6bio_1x",
+      "children": [],
+      "lineHeight": 2
+    },
+    "nd_mtwm6bww_1y": {
+      "type": "paragraph",
+      "id": "nd_mtwm6bww_1y",
+      "children": [],
+      "lineHeight": 2
+    },
+    "nd_mtwm6cw8_1z": {
+      "type": "paragraph",
+      "id": "nd_mtwm6cw8_1z",
+      "children": [],
+      "lineHeight": 2
+    },
+    "nd_mtwkc51y_1r": {
+      "type": "paragraph",
+      "id": "nd_mtwkc51y_1r",
+      "children": [
+        "nd_mtwkc51y_1s"
+      ],
+      "alignment": "center",
+      "lineHeight": 2
+    },
+    "nd_mtwkc51y_1s": {
+      "type": "text",
+      "id": "nd_mtwkc51y_1s",
+      "text": "实验室及器械检查结果",
+      "font": "SimSun",
+      "size": 16,
+      "bold": true
+    },
+    "nd_mtwkc67c_1t": {
+      "type": "paragraph",
+      "id": "nd_mtwkc67c_1t",
+      "children": [
+        "nd_mtwm3toc_1l",
+        "nd_mtwm3pqi_1k"
+      ],
+      "lineHeight": 2
+    },
+    "nd_mtwm3toc_1l": {
+      "type": "smarttext",
+      "id": "nd_mtwm3toc_1l",
+      "text": "[检查结果]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "检查结果",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtwm3pqi_1k": {
+      "type": "text",
+      "id": "nd_mtwm3pqi_1k",
+      "text": ""
+    },
+    "nd_mtwkd2i1_1x": {
+      "type": "paragraph",
+      "id": "nd_mtwkd2i1_1x",
+      "children": [
+        "nd_mtwkd328_1z",
+        "nd_mtwm47to_1o",
+        "nd_mtwm47to_1p"
+      ],
+      "alignment": "right",
+      "lineHeight": 2
+    },
+    "nd_mtwkd328_1z": {
+      "type": "text",
+      "id": "nd_mtwkd328_1z",
+      "text": "初步诊断：",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwm47to_1o": {
+      "type": "smarttext",
+      "id": "nd_mtwm47to_1o",
+      "text": "[初步诊断]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "初步诊断",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtwm47to_1p": {
+      "type": "text",
+      "id": "nd_mtwm47to_1p",
+      "text": "\n",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwkd6uv_20": {
+      "type": "paragraph",
+      "id": "nd_mtwkd6uv_20",
+      "children": [
+        "nd_mtwkd6uv_21",
+        "nd_mtwm4fvx_1s"
+      ],
+      "alignment": "right",
+      "lineHeight": 2
+    },
+    "nd_mtwkd6uv_21": {
+      "type": "text",
+      "id": "nd_mtwkd6uv_21",
+      "text": "住院医师：",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwm4fvx_1s": {
+      "type": "smarttext",
+      "id": "nd_mtwm4fvx_1s",
+      "text": "[住院医师]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "住院医师",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtwkd87t_22": {
+      "type": "paragraph",
+      "id": "nd_mtwkd87t_22",
+      "children": [
+        "nd_mtwkd87t_23",
+        "nd_mtwm4kmv_1v"
+      ],
+      "alignment": "right",
+      "lineHeight": 2
+    },
+    "nd_mtwkd87t_23": {
+      "type": "text",
+      "id": "nd_mtwkd87t_23",
+      "text": "主治医师：",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwm4kmv_1v": {
+      "type": "smarttext",
+      "id": "nd_mtwm4kmv_1v",
+      "text": "[主治医师]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "主治医师",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtv3u588_8": {
+      "type": "paragraph",
+      "id": "nd_mtv3u588_8",
+      "children": [
+        "nd_mtv3u588_7"
+      ],
+      "alignment": "center",
+      "lineHeight": 1.15
+    },
+    "nd_mtv3u588_7": {
+      "type": "text",
+      "id": "nd_mtv3u588_7",
+      "text": "XX医院",
+      "size": 28
+    },
+    "nd_mtv3u93d_9": {
+      "type": "paragraph",
+      "id": "nd_mtv3u93d_9",
+      "children": [
+        "nd_mtv3ub1f_a"
+      ],
+      "alignment": "center",
+      "lineHeight": 1.15
+    },
+    "nd_mtv3ub1f_a": {
+      "type": "text",
+      "id": "nd_mtv3ub1f_a",
+      "text": "入院记录",
+      "font": "SimSun",
+      "size": 20
+    },
+    "nd_mtv3urx5_b": {
+      "type": "paragraph",
+      "id": "nd_mtv3urx5_b",
+      "children": [
+        "nd_mtv3uykc_c",
+        "nd_mtv3vmyn_d",
+        "nd_mtv3x9rf_p",
+        "nd_mtv3vmyn_e",
+        "nd_mtv3vu3a_f",
+        "nd_mtv3x6xd_o",
+        "nd_mtv3vu3a_g",
+        "nd_mtv3w1fz_h",
+        "nd_mtv3x4sa_n",
+        "nd_mtv3w1fz_i",
+        "nd_mtv3w8lk_j",
+        "nd_mtv3x2b1_m",
+        "nd_mtv3w8lk_k",
+        "nd_mtv3wh13_l"
+      ],
+      "alignment": "left",
+      "lineHeight": 1.15
+    },
+    "nd_mtv3uykc_c": {
+      "type": "text",
+      "id": "nd_mtv3uykc_c",
+      "text": "姓名：",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtv3vmyn_d": {
+      "type": "smarttext",
+      "id": "nd_mtv3vmyn_d",
+      "text": "[姓名]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "姓名",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtv3x9rf_p": {
+      "type": "text",
+      "id": "nd_mtv3x9rf_p",
+      "text": " "
+    },
+    "nd_mtv3vmyn_e": {
+      "type": "text",
+      "id": "nd_mtv3vmyn_e",
+      "text": "科室：",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtv3vu3a_f": {
+      "type": "smarttext",
+      "id": "nd_mtv3vu3a_f",
+      "text": "[科室]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "科室",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtv3x6xd_o": {
+      "type": "text",
+      "id": "nd_mtv3x6xd_o",
+      "text": "  "
+    },
+    "nd_mtv3vu3a_g": {
+      "type": "text",
+      "id": "nd_mtv3vu3a_g",
+      "text": "病区：",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtv3w1fz_h": {
+      "type": "smarttext",
+      "id": "nd_mtv3w1fz_h",
+      "text": "[病区]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "病区",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtv3x4sa_n": {
+      "type": "text",
+      "id": "nd_mtv3x4sa_n",
+      "text": "  "
+    },
+    "nd_mtv3w1fz_i": {
+      "type": "text",
+      "id": "nd_mtv3w1fz_i",
+      "text": "床号：",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtv3w8lk_j": {
+      "type": "smarttext",
+      "id": "nd_mtv3w8lk_j",
+      "text": "[床号]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "床号",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtv3x2b1_m": {
+      "type": "text",
+      "id": "nd_mtv3x2b1_m",
+      "text": "   "
+    },
+    "nd_mtv3w8lk_k": {
+      "type": "text",
+      "id": "nd_mtv3w8lk_k",
+      "text": "住院号：",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtv3wh13_l": {
+      "type": "smarttext",
+      "id": "nd_mtv3wh13_l",
+      "text": "[住院号]",
+      "element": {
+        "code": {
+          "internal": "CTL_INPUT",
+          "dataElement": "DE99.99.001"
+        },
+        "name": "住院号",
+        "format": {
+          "dataType": "S1"
+        }
+      }
+    },
+    "nd_mtwqyp4k_6": {
+      "type": "paragraph",
+      "id": "nd_mtwqyp4k_6",
+      "children": [
+        "nd_mtwqyp4k_5",
+        "nd_mtwr00l6_a",
+        "nd_mtwr08vs_b",
+        "nd_mtwr08vs_c",
+        "nd_mtwr0hqn_d",
+        "nd_mtwr0hqn_e"
+      ],
+      "alignment": "center"
+    },
+    "nd_mtwqyp4k_5": {
+      "type": "text",
+      "id": "nd_mtwqyp4k_5",
+      "text": ""
+    },
+    "nd_mtwr00l6_a": {
+      "type": "text",
+      "id": "nd_mtwr00l6_a",
+      "text": "第 ",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwr08vs_b": {
+      "type": "field",
+      "id": "nd_mtwr08vs_b",
+      "fieldType": "page_number",
+      "cachedValue": "[页码]"
+    },
+    "nd_mtwr08vs_c": {
+      "type": "text",
+      "id": "nd_mtwr08vs_c",
+      "text": " 页 共 ",
+      "font": "SimSun",
+      "size": 16
+    },
+    "nd_mtwr0hqn_d": {
+      "type": "field",
+      "id": "nd_mtwr0hqn_d",
+      "fieldType": "total_pages",
+      "cachedValue": "[总页数]"
+    },
+    "nd_mtwr0hqn_e": {
+      "type": "text",
+      "id": "nd_mtwr0hqn_e",
+      "text": " 页",
+      "font": "SimSun",
+      "size": 16
+    }
+  },
+  "templateDefinitions": {
+    "nd_mtv3vmyn_d": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv3vu3a_f": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv3w1fz_h": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv3w8lk_j": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv3wh13_l": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv44tns_1f": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv451en_1g": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv458q7_1h": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv45i9s_1i": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv9t084_7": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv9tciy_9": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv9tjze_a": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv9uegq_b": {
+      "controlType": "radio",
+      "tips": "单选框 (单选)",
+      "deletable": true
+    },
+    "nd_mtv9uxkp_c": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv9v3f0_d": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv9vn0i_e": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtv9vud6_f": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtvbfbjv_p": {
+      "controlType": "date",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtw9xuh3_5": {
+      "controlType": "select",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtwah475_1i": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtwahae6_1m": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtwahj6n_1q": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtwahohy_1u": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtwm3ns6_1h": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtwm3toc_1l": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtwm47to_1o": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtwm4fvx_1s": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    },
+    "nd_mtwm4kmv_1v": {
+      "controlType": "input",
+      "tips": "单行文本输入",
+      "deletable": true
+    }
+  },
+  "_toc": []
+}
