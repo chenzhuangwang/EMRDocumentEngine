@@ -39,6 +39,7 @@ function baseFacts(overrides: Partial<ContextFacts> = {}): ContextFacts {
     controlId: null,
     cellPosition: null,
     textHit: null,
+    tableGrowable: false,
     selection: makeSelection(false, 0, 0),
     ...overrides,
   }

@@ -32,6 +32,15 @@ function entryKinds(snapshot: EditorContextSnapshot): ('item' | 'separator')[] {
   return buildContextMenuModel(snapshot).entries.map((e) => e.kind)
 }
 
+/** 读取某条目的勾选态 (items() 会丢掉 checked) */
+function entryChecked(
+  snapshot: EditorContextSnapshot, id: ContextMenuActionId,
+): boolean | undefined {
+  return buildContextMenuModel(snapshot).entries
+    .filter((e): e is ContextMenuEntryItem => e.kind === 'item')
+    .find((e) => e.id === id)?.checked
+}
+
 const base = { pageIndex: 0, localX: 10, localY: 10 }
 
 function textSnapshot(coversSelection: boolean): EditorContextSnapshot {
@@ -41,10 +50,11 @@ function textSnapshot(coversSelection: boolean): EditorContextSnapshot {
   }
 }
 
-function cellSnapshot(coversSelection: boolean): EditorContextSnapshot {
+function cellSnapshot(coversSelection: boolean, tableGrowable = false): EditorContextSnapshot {
   return {
     ...base, kind: 'cell', tableId: 't1', row: 0, col: 1,
     paragraphId: 'p1', paragraphPath: ['doc', 'p1'], offset: 3, coversSelection,
+    tableGrowable,
   }
 }
 
@@ -84,15 +94,21 @@ describe('buildContextMenuModel 菜单条目 (P1-a)', () => {
     expect(list.find((i) => i.id === 'copy')?.enabled).toBe(true)
   })
 
-  it('cell 命中: 同样提供剪切/格式/段落/列表条目 + 删除行/删除列', () => {
+  it('cell 命中: 同样提供剪切/格式/段落/列表条目 + 删除行/删除列 + 可增长开关', () => {
     const list = items(cellSnapshot(false))
     expect(list.map((i) => i.id)).toEqual([
       'cut', 'copy', 'paste', 'delete',
       'deleteRow', 'deleteColumn',
+      'toggleTableGrowable',
       'bold', 'italic', 'underline', 'strikeout', 'clearFormat',
       'alignLeft', 'alignCenter', 'alignRight', 'alignJustify',
       'increaseIndent', 'decreaseIndent',
     ])
+  })
+
+  it('cell 命中: 「填写时可增长」勾选态跟随快照 (契约 §12.9)', () => {
+    expect(entryChecked(cellSnapshot(false, false), 'toggleTableGrowable')).toBe(false)
+    expect(entryChecked(cellSnapshot(false, true), 'toggleTableGrowable')).toBe(true)
   })
 
   it('blank: 仅粘贴, 无分隔符', () => {
@@ -103,7 +119,7 @@ describe('buildContextMenuModel 菜单条目 (P1-a)', () => {
 
   it('其余种类 (table/separator/sectionBreak/headerFooter): 空条目', () => {
     const others: EditorContextSnapshot[] = [
-      { ...base, kind: 'table', tableId: 't1' },
+      { ...base, kind: 'table', tableId: 't1', tableGrowable: false },
       { ...base, kind: 'separator', nodeId: 's1' },
       { ...base, kind: 'sectionBreak', nodeId: 'sb1' },
       { ...base, kind: 'headerFooterRegion', section: 'header' },

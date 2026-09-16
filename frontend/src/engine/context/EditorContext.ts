@@ -50,12 +50,16 @@ export interface CellContext extends ContextBase {
   paragraphPath: string[]
   offset: number
   coversSelection: boolean
+  /** 所在表是否声明「填写时可增长」(契约 §12.9) */
+  tableGrowable: boolean
 }
 
 /** 表格命中 (未定位到单元格文本, 如空单元格/单元格边距) */
 export interface TableContext extends ContextBase {
   kind: 'table'
   tableId: string
+  /** 该表是否声明「填写时可增长」(契约 §12.9) */
+  tableGrowable: boolean
 }
 
 /** 图片命中 */
@@ -132,6 +136,11 @@ export interface ContextFacts {
   controlId: string | null
   /** 表格单元格位置 (仅 cell 命中), 无则 null */
   cellPosition: CellPosition | null
+  /**
+   * 命中的表是否声明「填写时可增长」(契约 §12.9)。
+   * 本模块是纯函数, 该事实由边界 (Editor) 采集后传入。
+   */
+  tableGrowable: boolean
   /** 段落文本命中 (body 或 cell), 无则 null */
   textHit: TextHit | null
   /** 命中段落在其作用域内的有序兄弟段落 id (供跨段落选区覆盖判定), 无则 undefined */
@@ -242,11 +251,12 @@ export function buildContextSnapshot(facts: ContextFacts): EditorContextSnapshot
       paragraphPath: facts.textHit.paragraphPath,
       offset: facts.textHit.offset,
       coversSelection: isCoversPoint(facts.selection, facts.textHit, facts.siblings),
+      tableGrowable: facts.tableGrowable,
     }
   }
 
   if (facts.entryType === 'table' && facts.nodeId) {
-    return { ...base, kind: 'table', tableId: facts.nodeId }
+    return { ...base, kind: 'table', tableId: facts.nodeId, tableGrowable: facts.tableGrowable }
   }
   if (facts.entryType === 'image' && facts.nodeId) {
     return { ...base, kind: 'image', nodeId: facts.nodeId }

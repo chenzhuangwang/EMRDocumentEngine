@@ -2181,6 +2181,90 @@ Known limitations (recorded, NOT silently ignored):
     control-box concern, and it is NOT addressed here.
 
 ============================================================
+12.9 Table dynamic rows boundary
+============================================================
+
+A table may be declared GROWABLE at fill time: the template designer
+marks it, and the person filling the form appends rows on demand
+(PRD F8.2 表格动态行扩展).
+
+    Table.dynamicRows?: boolean     // document/core/DocumentModel.ts
+
+    - OPTIONAL, and absent means a fixed table. Every pre-4.6 document
+      therefore keeps exactly its old behavior.
+    - It is TABLE STATE, so its ONLY canonical home is the Table node in
+      DocumentModel (§7.3). It MUST NOT live in TemplateDefinitionStore
+      (§12.1 — that store is keyed by nodeId and serves SmartTextNode
+      CONTROLS; a table is not a control, so putting it there creates a
+      second source of truth, §12.7), and it MUST NOT live in
+      PresentationStyleStore (§2.2 — that is presentation, this is
+      behavior).
+
+The gate is consumed by the COMMAND LAYER, exactly like `deletable`
+(§12.1): the append-row command REJECTS a table whose dynamicRows is
+not true and returns without producing an undo entry. Hiding the UI
+affordance is a convenience, not the enforcement.
+
+UI SURFACES. The declaration is made at design time (the table-cell
+context menu toggles it) and is surfaced in three deliberately
+different ways:
+
+    edit / form           → an INTERACTIVE "+ 添加行" entry at the
+                            table's foot.
+    design                → a READ-ONLY "可增长" marker at the same
+                            place (pointer-events: none). NOT an
+                            affordance, and it MUST NOT be made
+                            clickable — design mode must not silently
+                            mutate the document.
+    readonly / clean / print → nothing.
+
+The design-time marker exists because otherwise the toggle has NO
+feedback in the very mode that sets it: the interactive entry is
+suppressed outside edit/form, so a designer checking the box would see
+nothing change and would have to switch modes to confirm it took. The
+marker reports the FACT ("this table is declared growable"); switching
+it stays on the context menu.
+
+APPEND SEMANTICS. Appending clones the LAST row's structure, because
+the F8.2 use case (a medication list, an examination list) is "the same
+fields, one more instance":
+
+  - each source cell yields one new cell; COLSPAN is preserved so the
+    grid stays aligned, ROWSPAN resets to 1 (a new last row cannot span
+    rows below it).
+  - text / field nodes are cloned with their style.
+  - a smarttext CONTROL is cloned as a NEW node carrying the same
+    ElementMeta and TemplateDefinition, but with `value` UNSET — a
+    fresh row is empty by construction (§12.6.1: undefined is the
+    canonical empty state). Copying the source value would silently
+    duplicate clinical data.
+  - a control whose definition has `single: true` is NOT cloned: that
+    flag means "at most one per document" (§12.1), so a second instance
+    is precisely what it forbids. The new row simply omits it.
+
+UNDO MUST COVER BOTH LAYERS. The append writes to the node pool AND to
+TemplateDefinitionStore (§12.1), and the latter is OUTSIDE the pool.
+A snapshot-based table command therefore CANNOT be reused here:
+TableStructureCommand clones the table SUBTREE, so its restore would
+rebuild the nodes and leave the cloned definitions behind as orphans.
+The append is a dedicated command with explicit forward/invert — the
+same shape as InsertControlCommand (§12.4), whose invert removes the
+node AND its store entry.
+
+FORMAT VERSION. A new persisted optional field is a format change:
+4.5.0 → 4.6.0, an explicit NO-OP migration (no rewrite, no backfill),
+the same convention as 4.3.0 → 4.4.0 and 4.4.0 → 4.5.0 (§14).
+CURRENT_SLIF_VERSION is NOT bumped (§26.13/§26.14).
+
+Known limitations (recorded, NOT silently ignored):
+
+  - a nested TABLE inside a cell, and inline nodes other than
+    text/smarttext/field (e.g. images), are NOT cloned into the new row.
+  - the appended row is always the LAST row. Inserting a plain empty row
+    in the middle remains the toolbar's existing insertRow, which does
+    not clone controls.
+
+============================================================
 13. DOCUMENT SERIALIZATION
 ============================================================
 
@@ -2241,6 +2325,11 @@ returns the document unchanged) — the same convention as the 4.3.0 →
 4.4.0 controlType bump. No data rewrite, no backfill: a pre-4.5
 document simply has no first/even variant content. CURRENT_SLIF_VERSION
 is NOT bumped by a document-format change (§26.13/§26.14).
+
+Table dynamic rows (§12.9) advanced the format from 4.5.0 to 4.6.0,
+again an explicit NO-OP step (4.5.0 → 4.6.0, breaking: false, upgrade
+returns the document unchanged). A pre-4.6 document has no
+Table.dynamicRows, so every table is fixed — exactly the old behavior.
 
 
 ============================================================

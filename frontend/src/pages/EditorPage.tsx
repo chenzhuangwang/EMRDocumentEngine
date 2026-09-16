@@ -16,6 +16,7 @@ import { DesignControlPalette } from '@/components/views/DesignControlPalette'
 import { DesignControlProperties } from '@/components/views/DesignControlProperties'
 import { EditorProvider, useEditorRef, useEditorReady, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { RuntimeControlOverlay } from '@/components/editor/RuntimeControlOverlay'
+import { TableGrowOverlay } from '@/components/editor/TableGrowOverlay'
 import { stripWidgetDefaultLabels, stripWidgetDefaultLabelsFromObject } from '@/platform/data/controlLibrary'
 import { useEditorContextMenu } from '@/components/editor/useEditorContextMenu'
 import { ContextMenu } from '@/components/editor/ContextMenu'
@@ -834,6 +835,7 @@ function EditorPageInner({
       />
       <DesignControlTooltip />
       <RuntimeControlOverlay canvasContainerRef={containerRef} />
+      <TableGrowOverlay />
       <ContextMenu
         open={contextMenu.open}
         x={contextMenu.x}

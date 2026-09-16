@@ -32,7 +32,7 @@ import type { EditorContextSnapshot } from '@/engine'
 
 export type ContextMenuActionId =
   | 'cut' | 'copy' | 'paste' | 'delete'
-  | 'deleteRow' | 'deleteColumn'
+  | 'deleteRow' | 'deleteColumn' | 'toggleTableGrowable'
   | 'bold' | 'italic' | 'underline' | 'strikeout' | 'clearFormat'
   | 'alignLeft' | 'alignCenter' | 'alignRight' | 'alignJustify'
   | 'increaseIndent' | 'decreaseIndent'
@@ -148,6 +148,13 @@ export function buildContextMenuModel(
           SEP,
           { kind: 'item', id: 'deleteRow', label: '删除行', enabled: true },
           { kind: 'item', id: 'deleteColumn', label: '删除列', enabled: true },
+          SEP,
+          // 可增长表开关 (契约 §12.9)。设计期属性, 但 cell 命中在全部模式可达 ——
+          // 真正的强制在命令层 (非可增长表 append 必被拒), 此处只提供入口。
+          {
+            kind: 'item', id: 'toggleTableGrowable', label: '填写时可增长',
+            enabled: true, checked: snapshot.tableGrowable,
+          },
           SEP,
           ...textFormatEntries(style),
           SEP,

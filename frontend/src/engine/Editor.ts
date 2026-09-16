@@ -10,7 +10,7 @@ import { createDocument, createParagraph, createTextNode, extractStyle, uniformT
 import { NodePool, buildNodePool } from './document/core/NodePool'
 import { serializeDocument } from './document/io/DocumentSerializer'
 import { loadDocumentFromObject } from './document/io/DocumentLoader'
-import type { FieldType } from './document/core/DocumentModel'
+import type { FieldType, Table } from './document/core/DocumentModel'
 import { Draw } from './render/Draw'
 import type { EditorHost } from './host/EditorHost'
 import { AutoSaveManager } from './AutoSaveManager'
@@ -65,6 +65,8 @@ import {
   SetPageSetupCommand, TableStructureCommand, EnsureHeaderFooterParagraphCommand,
   EnsureBodyParagraphCommand, RemoveNodesCommand,
 } from './command/commands/StructuralCommands'
+import { AppendTableRowCommand } from './command/commands/AppendTableRowCommand'
+import { SetTableGrowableCommand } from './command/commands/SetTableGrowableCommand'
 import { InsertImageCommand } from './command/commands/InsertImageCommand'
 import { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
 import type { ReplaceRejection } from './command/commands/ReplaceTextCommand'
@@ -662,6 +664,11 @@ export class Editor {
       }
     }
 
+    // 表格「填写时可增长」开关 (契约 §12.9) —— buildContextSnapshot 是纯函数,
+    // 该事实必须由边界采集后传入 (与 headerFooterSection / controlId 同旨)。
+    const tableHitId = cellPosition?.tableId ?? (entryType === 'table' ? nodeId : null)
+    const tableGrowable = tableHitId !== null && this.isTableGrowable(tableHitId)
+
     return buildContextSnapshot({
       nodeId,
       entryType,
@@ -672,6 +679,7 @@ export class Editor {
       controlId,
       cellPosition,
       textHit,
+      tableGrowable,
       siblings: this.resolveHitSiblings(textHit),
       selection: this.store.state.runtime.selection,
     })
@@ -984,6 +992,10 @@ export class Editor {
   /** 控件视口 Client 矩形 (契约 §12.6 运行时 overlay 定位) — 委托 Draw 几何 */
   getControlClientRect(nodeId: string): { left: number; top: number; width: number; height: number } | null {
     return this.draw.getControlClientRect(nodeId)
+  }
+  /** 表格整块客户区矩形 (契约 §12.9) — 供填写态在表尾挂「+ 添加行」入口 */
+  getTableClientRect(tableId: string): { left: number; top: number; width: number; height: number } | null {
+    return this.draw.getTableClientRect(tableId)
   }
   /** 控件无缝内联编辑目标 (契约 §12.6) — 文本内容区几何 + 同 Canvas 字体, 供 overlay 透明无框编辑 */
   getControlEditTarget(nodeId: string): ControlEditTarget | null {
@@ -1580,6 +1592,42 @@ export class Editor {
       (pool) => { deleteRow(pool, tableId, row); return true },
     ))
     this.clearTableSelectionState()
+  }
+
+  // ---- 可增长表 (契约 §12.9, PRD F8.2) ----
+
+  /** 该表是否声明了「填写时可增长」; 非表格 / 未知 id → false */
+  isTableGrowable(tableId: string): boolean {
+    const t = this.pool.nodes.get(tableId) as Table | undefined
+    return t?.type === NodeType.TABLE && t.dynamicRows === true
+  }
+
+  /** 切换「填写时可增长」(文档内容变更 → 经命令, 契约 §12.9) */
+  setTableGrowable(tableId: string, growable: boolean): void {
+    this.commandManager.execute(new SetTableGrowableCommand(
+      generateCommandId(), Date.now(), 'user', tableId, growable,
+    ))
+  }
+
+  /**
+   * 追加一行到可增长表末尾 (契约 §12.9) —— 克隆最后一行的结构**含控件**。
+   *
+   * 非可增长表由命令层拒绝, 不产生 undo 条目; 表为空 (无源行) 同样拒绝。
+   * 克隆出的控件是**新节点**且 value 为空, 且 single 唯一性控件不克隆。
+   */
+  appendTableRow(tableId: string): void {
+    this.commandManager.execute(new AppendTableRowCommand(
+      generateCommandId(), Date.now(), 'user', tableId,
+    ))
+  }
+
+  /** 文档中全部「可增长」表的 id (供填写态叠加层渲染「+ 添加行」入口) */
+  listGrowableTables(): string[] {
+    const ids: string[] = []
+    for (const [id, node] of this.pool.nodes) {
+      if (node.type === NodeType.TABLE && (node as Table).dynamicRows === true) ids.push(id)
+    }
+    return ids
   }
 
   /** 插入列 (选中单元格右侧) */

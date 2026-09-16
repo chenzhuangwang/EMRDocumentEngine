@@ -113,6 +113,12 @@ export function useEditorContextMenu(options?: UseEditorContextMenuOptions) {
         if (snap?.kind === 'cell') editor.deleteTableColumnAt(snap.tableId, snap.row, snap.col)
         break
       }
+      // 可增长表开关 (契约 §12.9): 切换写入文档 → 经命令
+      case 'toggleTableGrowable': {
+        const snap = state.snapshot
+        if (snap?.kind === 'cell') editor.setTableGrowable(snap.tableId, !snap.tableGrowable)
+        break
+      }
       // 文本格式 (P1-a)
       case 'bold': editor.toggleFormat({ bold: true }); break
       case 'italic': editor.toggleFormat({ italic: true }); break

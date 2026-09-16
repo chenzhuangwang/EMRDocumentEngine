@@ -236,6 +236,14 @@ export interface Table extends BaseNode {
   columns: ColumnDefinition[]
   children: readonly string[]
   pageBreak?: TablePageBreakRule
+  /**
+   * 填写时可增长 (契约 §12.9, 格式 4.6.0)。缺失 = 固定表 (旧行为)。
+   *
+   * 唯一 canonical home 就是这里 —— 不得放进 TemplateDefinitionStore
+   * (§12.1 那个 store 服务 SmartTextNode 控件, 表格不是控件) 或
+   * PresentationStyleStore (§2.2 那是表现层, 这是行为)。门控由命令层消费。
+   */
+  dynamicRows?: boolean
 }
 
 export interface ColumnDefinition {

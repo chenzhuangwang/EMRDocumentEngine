@@ -1290,6 +1290,50 @@ export class Draw {
   }
 
   /**
+   * 表格整块客户区矩形 (契约 §12.9) —— 供填写态在表尾挂「+ 添加行」入口。
+   *
+   * 跨页表在每页各有一个 item (LayoutEngine.createTableItemFromFragment),
+   * 取**最后一页**的那个 —— 追加行发生在表尾。坐标转换与
+   * getControlClientRect 同源, 不另立一套。
+   */
+  getTableClientRect(
+    tableId: string,
+  ): { left: number; top: number; width: number; height: number } | null {
+    if (this.pages.length === 0) return null
+
+    const viewportW = this.host.viewport.size().width
+    const scale = this.coordSystem.transform.scale
+    const pageWidth = this.pages[0]?.width || 794
+    const visiblePageW = pageWidth * scale
+    const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
+    const pageVerticalGap = this.renderer.getPageVerticalGap()
+    const scrollY = this.coordSystem.transform.scrollY
+    const surface = this.renderer.getInteractSurface()
+    const canvasRect = surface?.getBoundingClientRect() ?? { left: 0, top: 0 }
+
+    let box: { x: number; y: number; width: number; height: number } | null = null
+    for (let i = 0; i < this.pages.length; i++) {
+      const page = this.pages[i]
+      if (!page) continue
+      // 必须遍历 page.items 本体: getFlatPageItems 明确**剔除表格容器 item**
+      // (只展平 cell 内嵌项), 用展平列表永远匹配不到表。
+      for (const item of page.items) {
+        if (item.nodeId !== tableId || item.nodeType !== 'table') continue
+        const spY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
+        box = { x: item.x, y: spY + item.y, width: item.width, height: item.height }
+      }
+    }
+    if (!box) return null
+
+    return {
+      left: canvasRect.left + box.x * scale + offsetX,
+      top: canvasRect.top + box.y * scale,
+      width: box.width * scale,
+      height: box.height * scale,
+    }
+  }
+
+  /**
    * 获取 smarttext 控件的「无缝内联编辑目标」(契约 §12.6 运行时交互)。
    *
    * 与 getControlClientRect 同坐标转换, 但返回的是 **文本编辑内容区**

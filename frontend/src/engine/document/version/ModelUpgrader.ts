@@ -18,6 +18,7 @@
 //   v4.2.0 → v4.3.0  DocumentTree.metadata 收紧为 DocumentMetadata (白名单收口)
 //   v4.3.0 → v4.4.0  TemplateDefinition 新增可选字段 controlType (控件 widget 形态)
 //   v4.4.0 → v4.5.0  页眉页脚逐页变体 (firstPage/evenPage 段落数组, 契约 §7.9) — 显式 NO-OP
+//   v4.5.0 → v4.6.0  Table 新增可选字段 dynamicRows (填写时可增长, 契约 §12.9) — 显式 NO-OP
 //
 // 不实现 downgrade(): EMR 场景下不需要"用旧引擎开新文档"。
 // 详见 knowledge/document-version-system-design.md §4 决策 4。
@@ -224,6 +225,17 @@ modelUpgrader.register({
 modelUpgrader.register({
   from: { major: 4, minor: 4, patch: 0 },
   to: { major: 4, minor: 5, patch: 0 },
+  breaking: false,
+  upgrade(doc: DocumentTree): DocumentTree {
+    return doc
+  },
+})
+
+// v4.5→v4.6: Table 新增可选字段 dynamicRows (填写时可增长, 契约 §12.9)
+// 纯向后兼容: 字段可选, 缺失 ≡ 固定表 (即旧行为), 不重写、不回填。no-op。
+modelUpgrader.register({
+  from: { major: 4, minor: 5, patch: 0 },
+  to: { major: 4, minor: 6, patch: 0 },
   breaking: false,
   upgrade(doc: DocumentTree): DocumentTree {
     return doc
