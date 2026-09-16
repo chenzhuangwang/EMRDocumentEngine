@@ -92,22 +92,32 @@ export function QCResultPanel({ result, onIssueClick, onRecheck }: QCResultPanel
             <span className="text-xs">文书质控通过，无问题</span>
           </div>
         ) : (
-          issues.map((issue, idx) => (
-            <button
-              key={`${issue.ruleId}-${idx}`}
-              onClick={() => onIssueClick?.(issue)}
-              className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors flex items-start gap-2"
-            >
-              <span className={cn('mt-0.5 flex-shrink-0', SEVERITY_ICON[issue.severity].color)}>
-                {SEVERITY_ICON[issue.severity].icon}
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-gray-700 truncate">{issue.ruleName}</div>
-                <div className="text-[10px] text-gray-500 mt-0.5">{issue.message}</div>
-              </div>
-              <ChevronRight size={12} className="text-gray-300 flex-shrink-0 mt-0.5" />
-            </button>
-          ))
+          issues.map((issue, idx) => {
+            // 只有带定位的问题才能跳转 (契约 §12.2: 文档级规则无具体位置)。
+            // 无定位的条目不做成按钮 —— 点了没反应的控件比没有控件更误导。
+            const locatable = (issue.paragraphPath?.length ?? 0) > 0
+            return (
+              <button
+                key={`${issue.ruleId}-${idx}`}
+                onClick={() => { if (locatable) onIssueClick?.(issue) }}
+                disabled={!locatable}
+                title={locatable ? '跳转到该位置' : '文档级问题，无具体位置'}
+                className={cn(
+                  'w-full text-left px-4 py-2.5 transition-colors flex items-start gap-2',
+                  locatable ? 'hover:bg-gray-50' : 'cursor-default',
+                )}
+              >
+                <span className={cn('mt-0.5 flex-shrink-0', SEVERITY_ICON[issue.severity].color)}>
+                  {SEVERITY_ICON[issue.severity].icon}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-gray-700 truncate">{issue.ruleName}</div>
+                  <div className="text-[10px] text-gray-500 mt-0.5">{issue.message}</div>
+                </div>
+                {locatable && <ChevronRight size={12} className="text-gray-300 flex-shrink-0 mt-0.5" />}
+              </button>
+            )
+          })
         )}
       </div>
 

@@ -2014,6 +2014,17 @@ has exactly ONE canonical home, and that home is the document domain.
     (R70). An image watermark therefore round-trips: imageUrl/imageScale
     survive serialize → load.
 
+    setWatermark takes `WatermarkConfig | null`, and null REMOVES the
+    watermark (writes `watermark: undefined`; SetPageSetupCommand merges
+    with Object.assign, so the key is cleared and JSON round-trip drops
+    it). Removal is not optional: the watermark is DOCUMENT CONTENT, so a
+    write-only affordance would leave the user able to set but never
+    clear it — a half-connected feature. Editor.getWatermark() is the
+    matching reader, existing so the settings dialog can seed itself from
+    the CURRENT value instead of always re-offering the defaults (without
+    it, editing an existing watermark silently resets every field the
+    user did not touch).
+
 ------------------------------------------------------------
 12.7 Control Config Editing Boundary
 ------------------------------------------------------------

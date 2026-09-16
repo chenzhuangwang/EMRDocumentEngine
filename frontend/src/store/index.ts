@@ -48,13 +48,16 @@ export const useUserStore = create<UserState>((set) => ({
 
 // ---- UI 状态 ----
 
+/** 侧栏标签页 —— 单一定义, 避免状态字段与 setter 各写一份联合而漏改其一 */
+export type SidebarTab = 'templates' | 'elements' | 'pages' | 'comments' | 'qc'
+
 interface UIState {
   sidebarOpen: boolean
-  sidebarTab: 'templates' | 'elements' | 'pages' | 'comments'
+  sidebarTab: SidebarTab
 
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
-  setSidebarTab: (tab: 'templates' | 'elements' | 'pages' | 'comments') => void
+  setSidebarTab: (tab: SidebarTab) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({

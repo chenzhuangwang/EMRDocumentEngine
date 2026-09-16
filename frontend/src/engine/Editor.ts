@@ -25,6 +25,8 @@ import { MouseHandler } from './interaction/MouseHandler'
 import { FormatPainter } from './format/FormatPainter'
 import { scoreControls } from './evaluation/ControlScorer'
 import type { ScorableControl, ScoreResult } from './evaluation/ControlScorer'
+import { QCEngine } from './qc/QCEngine'
+import type { QCResult } from './qc/QCEngine'
 import type { ICommand } from './command/ICommand'
 import { generateCommandId } from './command/ICommand'
 import { InsertTextCommand } from './command/commands/InsertTextCommand'
@@ -170,6 +172,8 @@ export class Editor {
   private autoCorrect: AutoCorrectEngine
   private perfMetrics: PerformanceMetrics
   private pluginManager: PluginManager
+  /** 医学文书质控引擎 (契约 §12.2 特征隔离) — 由 Editor.runQC() 驱动 */
+  private qcEngine: QCEngine
   private readonly host: EditorHost
   private readonly fontManager: FontManager
   private readonly measurer: TextMeasurer
@@ -223,6 +227,7 @@ export class Editor {
     this.autoCorrect = new AutoCorrectEngine()
     this.perfMetrics = new PerformanceMetrics(host)
     this.pluginManager = new PluginManager()
+    this.qcEngine = new QCEngine()
     // 自动保存: 保存状态同步到 EditorStore
     this.autoSave.onSave((type) => {
       if (type === 'saving') this.store.setSaveStatus('saving')
@@ -2516,19 +2521,52 @@ export class Editor {
     return { chars, words, paragraphs, selectedChars, selectedWords }
   }
 
-  /** 设置数字水印 (R35) — 先应用渲染器, 再经 command 落盘 doc.pageSetup.watermark (§12.4) */
-  setWatermark(config: WatermarkConfig): void {
-    // 先更新渲染器水印状态, 使随后 command 触发的同步 document:changed render 显示新水印
+  /**
+   * 设置/清除数字水印 (R35, 契约 §12.4) —— 先应用渲染器, 再经 command 落盘
+   * `doc.pageSetup.watermark`。
+   *
+   * 传 null = 移除水印 (写 `watermark: undefined`; SetPageSetupCommand 走
+   * Object.assign, 键置 undefined 后 JSON 往返即"无水印")。没有这条路径的话
+   * 用户能设不能删 —— 水印是文档内容, 单向可写等于半接通。
+   */
+  setWatermark(config: WatermarkConfig | null): void {
+    // 先更新渲染器水印状态, 使随后 command 触发的同步 document:changed render 显示新状态
     this.draw.setWatermark(config)
     // 再经 SetPageSetupCommand 持久化 (undoable + dirty + serialize/load 往返)
     this.commandManager.execute(new SetPageSetupCommand(
       generateCommandId(), Date.now(), 'user',
-      { watermark: config },
+      { watermark: config ?? undefined },
     ))
   }
 
-  /** 自动更正: IME 输入后检测光标前文本是否需要替换 (R43) */
-  private applyAutoCorrect(paragraphPath: string[]): void {
+  /** 读取当前水印 (无则 undefined) —— 供设置对话框以现值为初值, 而非每次从默认值起 */
+  getWatermark(): WatermarkConfig | undefined {
+    return this.doc.pageSetup?.watermark
+  }
+
+  /**
+   * 运行医学文书质控 (契约 §12.2 特征隔离)。
+   *
+   * 只读派生: 读 doc + pool, 不写文档、不产生命令、不进 undo 栈 —— 与
+   * Editor.computeControlScore 同性质 (§12.6.2 layer E 同旨)。谁来跑、跑多频
+   * (防抖/提交前) 是调用方的策略, 引擎只提供一次纯查询。
+   *
+   * 注: QCResult.score 是**合规分** (100 减扣分), 与 ControlScorer 的量表分
+   * 是两套口径, 不得合并 (§7.5 / §12.6.2 layer E)。
+   */
+  runQC(): QCResult {
+    return this.qcEngine.check(this.doc, this.pool)
+  }
+
+  /**
+   * 光标处客户区矩形 —— 供 UI 滚动定位 (质控问题跳转 / 批注跳转)。
+   * 无光标或光标所在段落未布局 → null。
+   */
+  getCaretClientRect(): { left: number; top: number; width: number; height: number } | null {
+    return this.draw.getCaretClientRect(this.pool, this.store.state.runtime)
+  }
+
+  /** 自动更正: IME 输入后检测光标前文本是否需要替换 (R43) */  private applyAutoCorrect(paragraphPath: string[]): void {
     const paraId = paragraphPath[paragraphPath.length - 1]
     if (!paraId) return
 

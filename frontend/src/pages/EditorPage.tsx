@@ -24,6 +24,7 @@ import { ExportDialog } from '@/components/dialogs/ExportDialog'
 import { FindReplaceDialog } from '@/components/dialogs/FindReplaceDialog'
 import { PrintDialog } from '@/components/dialogs/PrintDialog'
 import { PageSetupDialog } from '@/components/dialogs/PageSetupDialog'
+import { WatermarkDialog } from '@/components/dialogs/WatermarkDialog'
 import { PasteSpecialDialog, type PasteFormat } from '@/components/dialogs/PasteSpecialDialog'
 import { BookmarkDialog } from '@/components/dialogs/BookmarkDialog'
 import { DocumentPropertiesDialog } from '@/components/dialogs/DocumentPropertiesDialog'
@@ -41,7 +42,11 @@ import {
   provenanceMetaTags, stampExportHtml, stampExportObject, stampExportText,
 } from '@/lib/provenance'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
-import type { EditorMode, ScoreResult } from '@/engine'
+import type { EditorMode, ScoreResult, WatermarkConfig } from '@/engine'
+import type { QCIssue, QCResult } from '@/engine/qc/QCEngine'
+
+/** 质控防抖窗口 —— 质控比字数统计贵得多, 不该跟着每次按键跑 */
+const QC_DEBOUNCE_MS = 600
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -133,6 +138,15 @@ function EditorPageInner({
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
   const [printOpen, setPrintOpen] = useState(false)
   const [pageSetupOpen, setPageSetupOpen] = useState(false)
+  /** 质控结果 (契约 §12.2) — 只读派生, null = 尚未检查 */
+  const [qcResult, setQcResult] = useState<QCResult | null>(null)
+  /**
+   * 水印对话框初值 —— 必须**开时快照进 state**, 不能每次 render 现算:
+   * 现算会给出新对象引用, 而对话框的 `useEffect([open, initialConfig])`
+   * 每次引用变化都会重置草稿, 把用户正在改的字段冲掉。
+   */
+  const [watermarkOpen, setWatermarkOpen] = useState(false)
+  const [watermarkInitial, setWatermarkInitial] = useState<WatermarkConfig | undefined>(undefined)
   const [pasteSpecialOpen, setPasteSpecialOpen] = useState(false)
   const [bookmarkOpen, setBookmarkOpen] = useState(false)
   const [documentPropertiesOpen, setDocumentPropertiesOpen] = useState(false)
@@ -272,7 +286,11 @@ function EditorPageInner({
   // 字数统计 + 段落样式 + 大纲 — 订阅 contentChange 事件
   useEffect(() => {
     const editor = editorRef.current
-    if (!editor) return
+    // 必须等 ready: EditorPageInner 是 EditorProvider 的**子组件**, 子 effect
+    // 先于父 effect 执行, 此刻 editorRef.current 仍为 null。少了 !ready 守卫,
+    // 这个 effect 会在 mount 时静默 return 且再不重跑 (editorRef 是稳定引用) ——
+    // 字数/大纲/量表分会永远停在初始值。与下方滚动同步 effect 同一坑。
+    if (!ready || !editor) return
     const update = () => {
       const wc = editor.getWordCount()
       setWordCount(wc.words)
@@ -316,7 +334,64 @@ function EditorPageInner({
     editor.on('contentChange', update)
     update() // 初始计算
     return () => { editor.off('contentChange', update) }
-  }, [editorRef])
+  }, [ready, editorRef])
+
+  /**
+   * 质控: contentChange 后**防抖**重算 (契约 §12.2)。
+   *
+   * 单独一个 effect 承载自己的防抖与清理 —— 与字数/大纲虽同频但语义独立,
+   * 且质控比字数贵得多, 不该跟着每次按键跑。首次挂载立即算一次, 避免面板
+   * 空着等用户先敲一下。
+   */
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!ready || !editor) return          // 同上: 必须等 EditorProvider 就绪
+    let timer: number | undefined
+    const run = () => setQcResult(editor.runQC())
+    const schedule = () => {
+      if (timer !== undefined) window.clearTimeout(timer)
+      timer = window.setTimeout(run, QC_DEBOUNCE_MS)
+    }
+    editor.on('contentChange', schedule)
+    run()
+    return () => {
+      editor.off('contentChange', schedule)
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [ready, editorRef])
+
+  /** 光标定位到指定位置并滚动使其可见 —— 质控问题与批注跳转共用同一机制 */
+  const revealLocation = useCallback((path: string[], offset: number) => {
+    const editor = editorRef.current
+    const container = containerRef.current
+    if (!editor || path.length === 0) return
+
+    editor.collapseSelectionToPoint(path, offset)
+    const rect = editor.getCaretClientRect()
+    if (rect && container) {
+      const cRect = container.getBoundingClientRect()
+      const bottom = rect.top + rect.height
+      const TOP_INSET = 80
+      const BOTTOM_INSET = 40
+      if (rect.top < cRect.top + TOP_INSET) {
+        container.scrollTop -= (cRect.top + TOP_INSET - rect.top)
+      } else if (bottom > cRect.bottom - BOTTOM_INSET) {
+        container.scrollTop += (bottom - (cRect.bottom - BOTTOM_INSET))
+      }
+    }
+    editor.focus()
+  }, [editorRef, containerRef])
+
+  /** 质控问题跳转 (契约 §12.2) */
+  const handleQcIssueClick = useCallback((issue: QCIssue) => {
+    if (issue.paragraphPath) revealLocation(issue.paragraphPath, 0)
+  }, [revealLocation])
+
+  /** 批注条目跳转 (此前该回调未接线, 点批注无反应) */
+  const handleSelectCommentThread = useCallback((threadId: string) => {
+    const thread = (editorRef.current?.getComments() ?? []).find((t) => t.id === threadId)
+    if (thread) revealLocation(thread.rangeStart.path, thread.rangeStart.offset)
+  }, [editorRef, revealLocation])
 
   /** 大纲点击: 跳转光标到目标段落 + 滚动到对应页面 */
   const handleOutlineClick = useCallback((item: OutlineItem) => {
@@ -804,8 +879,17 @@ function EditorPageInner({
       onExportClick={() => setExportOpen(true)}
       onPrint={() => setPrintOpen(true)}
       onPageSetup={() => setPageSetupOpen(true)}
+      onWatermark={() => {
+        // 以**现值为初值**打开 (没有水印则 undefined → 对话框用默认值)
+        setWatermarkInitial(editorRef.current?.getWatermark())
+        setWatermarkOpen(true)
+      }}
       commentThreads={(() => { const ed = editorRef.current; return ed ? ed.getComments() : [] })()}
+      onSelectCommentThread={handleSelectCommentThread}
       onAddCommentReply={(threadId, content) => editorRef.current?.addCommentReply(threadId, content)}
+      qcResult={qcResult}
+      onQcIssueClick={handleQcIssueClick}
+      onQcRecheck={() => setQcResult(editorRef.current?.runQC() ?? null)}
       onResolveCommentThread={(threadId) => {
         const ed = editorRef.current
         if (!ed) return
@@ -946,6 +1030,14 @@ function EditorPageInner({
           if (ed) ed.applyPageSetup(values)
           setPageSetupOpen(false)
         }}
+      />
+      <WatermarkDialog
+        open={watermarkOpen}
+        onClose={() => setWatermarkOpen(false)}
+        initialConfig={watermarkInitial}
+        onApply={(config) => { editorRef.current?.setWatermark(config) }}
+        // 仅当文档已有水印时提供移除入口 (契约 §12.4: 文档内容不可只写不删)
+        onRemove={watermarkInitial ? () => { editorRef.current?.setWatermark(null) } : undefined}
       />
       <PasteSpecialDialog
         open={pasteSpecialOpen}

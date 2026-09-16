@@ -42,6 +42,16 @@ export interface QCIssue {
   paragraphPath?: string[]
 }
 
+/**
+ * 规则求值的不通过结果 (契约 §12.2)。能定位的规则必须填 nodeId/paragraphPath
+ * —— 面板的「点击问题 → 跳转」依赖它; 文档级规则 (标题/字数/段落数) 无具体
+ * 位置, 返回空对象是有意的, 不是漏填。
+ */
+export interface QCIssueLocation {
+  nodeId?: string
+  paragraphPath?: string[]
+}
+
 export interface QCResult {
   documentId: string
   /** 总评分 (0-100) */
@@ -119,9 +129,11 @@ export class QCEngine {
    */
   check(doc: DocumentTree, pool: NodePool, _options?: { timeout?: number }): QCResult {
     const issues: QCIssue[] = []
+    // 定位索引一次构建, 供各规则共用 (避免逐规则全池扫描)
+    const paraOf = this.buildParagraphIndex(doc, pool)
 
     for (const rule of this.rules) {
-      const result = this.evaluateRule(rule, doc, pool)
+      const result = this.evaluateRule(rule, doc, pool, paraOf)
       if (result) issues.push(result)
     }
 
@@ -152,35 +164,73 @@ export class QCEngine {
 
   // ---- 内部 ----
 
-  private evaluateRule(rule: QCRule, doc: DocumentTree, pool: NodePool): QCIssue | null {
-    const ok = this.execCheck(rule.check, doc, pool)
-    if (ok) return null
+  private evaluateRule(
+    rule: QCRule, doc: DocumentTree, pool: NodePool, paraOf: ReadonlyMap<string, string>,
+  ): QCIssue | null {
+    const fail = this.execCheck(rule.check, doc, pool, paraOf)
+    if (!fail) return null
 
     return {
       ruleId: rule.id,
       ruleName: rule.name,
       severity: rule.severity,
       message: rule.description,
+      ...fail,
     }
   }
 
-  private execCheck(expr: string, doc: DocumentTree, pool: NodePool): boolean {
+  /**
+   * 子节点 id → 所属段落 id —— 供问题定位 (契约 §12.2: 问题条目必须能跳转)。
+   * 一次构建供各规则共用; 下钻块级容器 (table → row → cell → paragraph) 与
+   * 页眉/页脚各变体 (§7.9)。
+   */
+  private buildParagraphIndex(doc: DocumentTree, pool: NodePool): Map<string, string> {
+    const map = new Map<string, string>()
+    const visit = (ids: readonly string[]): void => {
+      for (const id of ids) {
+        const node = pool.nodes.get(id) as { type?: string; children?: readonly string[] } | undefined
+        if (!node?.children) continue
+        if (node.type === NodeType.PARAGRAPH) {
+          map.set(id, id)
+          for (const cid of node.children) map.set(cid, id)
+        } else {
+          visit(node.children)
+        }
+      }
+    }
+    visit(doc.body.children)
+    for (const band of hfContainers(doc)) visit(band)
+    return map
+  }
+
+  /**
+   * 求值一条规则。**null = 通过**, 返回对象 = 不通过 (并尽量带定位)。
+   *
+   * 定位不是装饰: 面板的「点击问题 → 跳到位置」全靠它。文档级规则
+   * (标题/正文存在/字数/段落数) 无具体位置, 返回空对象 —— 这是有意的,
+   * 不是忘了填。
+   */
+  private execCheck(
+    expr: string, doc: DocumentTree, pool: NodePool, paraOf: ReadonlyMap<string, string>,
+  ): QCIssueLocation | null {
     const [func, ...args] = expr.split(':')
 
     switch (func) {
       case 'required_not_empty': {
         const field = args[0]
-        if (field === 'title') return !!(doc as unknown as Record<string, unknown>)[field]
-        return true
+        if (field === 'title') {
+          return (doc as unknown as Record<string, unknown>)[field] ? null : {}
+        }
+        return null
       }
       case 'field_exists': {
         const path = args[0]?.split('.') || []
         let val: unknown = doc
         for (const key of path) {
           if (val && typeof val === 'object') val = (val as Record<string, unknown>)[key]
-          else return false
+          else return {}
         }
-        return Array.isArray(val) ? val.length > 0 : !!val
+        return (Array.isArray(val) ? val.length > 0 : !!val) ? null : {}
       }
       case 'no_consecutive_empty_paragraphs': {
         // 覆盖正文 + 页眉/页脚全部变体 (契约 §7.9); lastEmpty 按容器重置
@@ -197,20 +247,24 @@ export class QCEngine {
                 const n = pool.nodes.get(cid) as { text?: string } | undefined
                 return !n?.text
               })
-            if (isEmpty && lastEmpty) return false
+            // 报后一个空段 (用户看到"多余的那一个")
+            if (isEmpty && lastEmpty) return { paragraphPath: [doc.id, childId] }
             lastEmpty = isEmpty
           }
         }
-        return true
+        return null
       }
       case 'smarttext_required_not_empty': {
         for (const [, node] of pool.nodes) {
-          if (node.type === NodeType.SMART_TEXT) {
-            const st = node as SmartTextNode
-            if (!isControlValueComplete(st.value, st.element)) return false
-          }
+          if (node.type !== NodeType.SMART_TEXT) continue
+          const st = node as SmartTextNode
+          if (isControlValueComplete(st.value, st.element)) continue
+          const paraId = paraOf.get(st.id)
+          return paraId
+            ? { nodeId: st.id, paragraphPath: [doc.id, paraId] }
+            : { nodeId: st.id }
         }
-        return true
+        return null
       }
       case 'min_chars': {
         const min = parseInt(args[0], 10) || 0
@@ -224,16 +278,16 @@ export class QCEngine {
             }
           }
         }
-        return count >= min
+        return count >= min ? null : {}
       }
       case 'paragraph_count': {
         const min = parseInt(args[0], 10) || 1
         const max = parseInt(args[1], 10) || 500
         const count = doc.body.children.length
-        return count >= min && count <= max
+        return count >= min && count <= max ? null : {}
       }
       default:
-        return true // 未知规则不报错
+        return null // 未知规则不报错
     }
   }
 }

@@ -20,12 +20,15 @@ import {
   Image,
   ListTree,
   MessageSquare,
+  ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store'
 import { OutlineNav, type OutlineItem } from '@/components/sidebar/OutlineNav'
 import { CommentPanel } from '@/components/panels/CommentPanel'
+import { QCResultPanel } from '@/components/panels/QCResultPanel'
 import type { CommentThread } from '@/engine/document/core/DocumentModel'
+import type { QCIssue, QCResult } from '@/engine/qc/QCEngine'
 
 interface SidebarProps {
   templates?: TemplateCategory[]
@@ -44,6 +47,12 @@ interface SidebarProps {
   onSelectCommentThread?: (threadId: string) => void
   onResolveCommentThread?: (threadId: string) => void
   onAddCommentReply?: (threadId: string, content: string) => void
+  /** 质控结果 (契约 §12.2；null = 尚未检查) */
+  qcResult?: QCResult | null
+  /** 点击质控问题 → 跳转到所在位置 */
+  onQcIssueClick?: (issue: QCIssue) => void
+  /** 重新运行质控 */
+  onQcRecheck?: () => void
 }
 
 interface TemplateCategory {
@@ -55,6 +64,7 @@ export function Sidebar({
   templates = [], onTemplateSelect, onNewTemplate, onElementClick,
   outlineItems = [], activeOutlineId, onOutlineClick,
   commentThreads = [], onSelectCommentThread, onResolveCommentThread, onAddCommentReply,
+  qcResult = null, onQcIssueClick, onQcRecheck,
 }: SidebarProps) {
   const sidebarTab = useUIStore((s) => s.sidebarTab)
   const setSidebarTab = useUIStore((s) => s.setSidebarTab)
@@ -87,9 +97,16 @@ export function Sidebar({
           icon={<MessageSquare size={14} />}
           label="批注"
         />
+        <SidebarTab
+          active={sidebarTab === 'qc'}
+          onClick={() => setSidebarTab('qc')}
+          icon={<ShieldCheck size={14} />}
+          label="质控"
+        />
       </div>
 
-      {/* 搜索 */}
+      {/* 搜索 — 仅模板/元素两个列表页需要 (质控/大纲/批注无"搜索"语义) */}
+      {(sidebarTab === 'templates' || sidebarTab === 'elements') && (
       <div className="p-3">
         <div className="flex items-center gap-2 px-2 py-1.5 bg-gray-50 rounded-md border border-gray-200">
           <Search size={14} className="text-gray-400 flex-shrink-0" />
@@ -100,6 +117,7 @@ export function Sidebar({
           />
         </div>
       </div>
+      )}
 
       {/* 内容区域 */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin px-2 pb-4">
@@ -124,6 +142,13 @@ export function Sidebar({
             onSelectThread={onSelectCommentThread}
             onResolveThread={onResolveCommentThread}
             onAddReply={onAddCommentReply}
+          />
+        )}
+        {sidebarTab === 'qc' && (
+          <QCResultPanel
+            result={qcResult}
+            onIssueClick={onQcIssueClick}
+            onRecheck={onQcRecheck}
           />
         )}
       </div>

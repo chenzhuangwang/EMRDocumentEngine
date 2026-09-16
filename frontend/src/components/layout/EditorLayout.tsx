@@ -18,6 +18,7 @@ import { useEditorStore, useUIStore } from '@/store'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
 import type { CommentThread } from '@/engine/document/core/DocumentModel'
 import type { EditorMode, ScoreResult } from '@/engine'
+import type { QCIssue, QCResult } from '@/engine/qc/QCEngine'
 
 interface EditorLayoutProps {
   children: ReactNode
@@ -29,6 +30,8 @@ interface EditorLayoutProps {
   onExportClick?: () => void
   onPrint?: () => void
   onPageSetup?: () => void
+  /** 水印设置 (契约 §12.4) */
+  onWatermark?: () => void
   wordCount?: number
   pageIndex?: number
   pageCount?: number
@@ -49,6 +52,10 @@ interface EditorLayoutProps {
   onSelectCommentThread?: (threadId: string) => void
   onResolveCommentThread?: (threadId: string) => void
   onAddCommentReply?: (threadId: string, content: string) => void
+  /** 质控结果 (契约 §12.2) */
+  qcResult?: QCResult | null
+  onQcIssueClick?: (issue: QCIssue) => void
+  onQcRecheck?: () => void
   /** 阅读模式 (R40) */
   readingMode?: boolean
   /** 当前编辑模式 */
@@ -69,6 +76,7 @@ export function EditorLayout({
   onExportClick,
   onPrint,
   onPageSetup,
+  onWatermark,
   wordCount = 0,
   pageIndex = 1,
   pageCount = 1,
@@ -85,6 +93,9 @@ export function EditorLayout({
   onSelectCommentThread,
   onResolveCommentThread,
   onAddCommentReply,
+  qcResult,
+  onQcIssueClick,
+  onQcRecheck,
   readingMode = false,
   mode,
   onModeChange,
@@ -113,6 +124,7 @@ export function EditorLayout({
         onExportClick={onExportClick}
         onPrint={onPrint}
         onPageSetup={onPageSetup}
+        onWatermark={onWatermark}
       />
       )}
 
@@ -130,6 +142,9 @@ export function EditorLayout({
             onSelectCommentThread={onSelectCommentThread}
             onResolveCommentThread={onResolveCommentThread}
             onAddCommentReply={onAddCommentReply}
+            qcResult={qcResult}
+            onQcIssueClick={onQcIssueClick}
+            onQcRecheck={onQcRecheck}
           />
         )}
 

@@ -19,6 +19,7 @@ import {
   Clock, User, Highlighter, Bookmark,
   Combine, Ungroup,
   Rows3, Rows, Columns3, Columns,
+  Droplets,
 } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { cn } from '@/lib/utils'
@@ -32,6 +33,8 @@ interface ToolbarProps {
   onExportClick?: () => void
   onPrint?: () => void
   onPageSetup?: () => void
+  /** 水印设置 (契约 §12.4) */
+  onWatermark?: () => void
 }
 
 // ---- 常量 ----
@@ -68,7 +71,7 @@ interface ControlItem {
 }
 
 // ================================================================
-export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetup }: ToolbarProps) {
+export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetup, onWatermark }: ToolbarProps) {
   const paraStyle = useEditorStoreSnapshot((s) => s.paragraphStyle)
   const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
   const canUndo = useEditorStoreSnapshot((s) => s.runtime.history.canUndo)
@@ -257,6 +260,9 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
       <ToolbarGroup>
         <ToolbarButton title="页面设置" onClick={onPageSetup}>
           <Settings size={16} />
+        </ToolbarButton>
+        <ToolbarButton title="水印" onClick={onWatermark}>
+          <Droplets size={16} />
         </ToolbarButton>
         <ToolbarButton title="打印" onClick={onPrint}>
           <Printer size={16} />

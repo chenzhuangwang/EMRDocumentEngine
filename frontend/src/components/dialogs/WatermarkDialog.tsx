@@ -9,11 +9,14 @@
 //
 // 配置: 文字/字号/颜色/透明度/旋转/间距/类型
 // 调用 Editor.setWatermark() 应用到 Canvas
+//
+// onRemove 由调用方**仅在当前文档已有水印时**传入 —— 水印是文档内容
+// (契约 §12.4), 只能设不能删等于半接通, 所以移除入口与设置入口必须同在。
 // ============================================================
 
 import { useState, useEffect } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { X, Type, Palette, RotateCw } from 'lucide-react'
+import { X, Type, Palette, RotateCw, Trash2 } from 'lucide-react'
 import type { WatermarkConfig } from '@/engine'
 
 interface WatermarkDialogProps {
@@ -21,6 +24,8 @@ interface WatermarkDialogProps {
   onClose: () => void
   initialConfig?: Partial<WatermarkConfig>
   onApply?: (config: WatermarkConfig) => void
+  /** 移除当前水印 (契约 §12.4)。仅当文档已有水印时由调用方传入 */
+  onRemove?: () => void
 }
 
 const DEFAULTS: WatermarkConfig = {
@@ -35,7 +40,7 @@ const DEFAULTS: WatermarkConfig = {
   imageScale: 0.4,
 }
 
-export function WatermarkDialog({ open, onClose, initialConfig, onApply }: WatermarkDialogProps) {
+export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemove }: WatermarkDialogProps) {
   const [config, setConfig] = useState<WatermarkConfig>({ ...DEFAULTS, ...initialConfig })
 
   useEffect(() => { if (open) setConfig({ ...DEFAULTS, ...initialConfig }) }, [open, initialConfig])
@@ -129,7 +134,18 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply }: Water
             </Field>
           </div>
 
-          <div className="flex flex-shrink-0 justify-end gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+          <div className="flex flex-shrink-0 items-center justify-end gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+            {/* 移除只在已有水印时出现 (调用方传入 onRemove) —— 与"应用"同处, 不留单向入口 */}
+            {onRemove && (
+              <button
+                onClick={() => { onRemove(); onClose() }}
+                className="mr-auto flex items-center gap-1 px-2 py-1.5 text-xs text-red-600 rounded hover:bg-red-50"
+                title="删除本文档的水印"
+              >
+                <Trash2 size={12} />
+                移除水印
+              </button>
+            )}
             <button onClick={onClose} className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800">取消</button>
             <button
               onClick={() => { onApply?.(config); onClose() }}
