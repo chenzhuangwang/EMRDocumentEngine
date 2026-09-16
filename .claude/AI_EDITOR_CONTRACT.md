@@ -1637,10 +1637,23 @@ The engine API:
         definition?: TemplateDefinition,
     ): void
 
+    Editor.getElement(nodeId: string): ElementMeta | undefined
+
 Home: the command lives in engine/command/commands/. The UI
 (design-mode control properties panel) reads getControlDefinition,
 edits the full definition, and writes setControlDefinition; it never
 mutates the store directly.
+
+getElement is the READ accessor for the SEMANTIC layer (ElementMeta,
+§2.1), completing the by-nodeId read family alongside
+getControlValue / getControlDefinition. It exists so the UI never has
+to reach through Editor.getPool() and cast a raw node to read
+.element — a public API may be public and still be a boundary
+violation to read through. It is read-only and returns undefined for
+a non-smarttext or unknown nodeId. render/Draw keeps its own private
+elementOf callback: Draw holds an independent pool reference, and
+routing it through Editor would create an Editor↔Draw coupling that
+§19 exists to prevent.
 
 ------------------------------------------------------------
 12.6 Runtime Control Value Contract
@@ -1731,7 +1744,7 @@ VR-14. SmartText remains an atomic document node; runtime interaction
        it. (MUST)
 VR-15. controlType MUST NOT be inferred from dataType or enums. (MUST)
 
-Field participation (four layers — each field belongs to exactly one):
+Field participation (five layers — each field belongs to exactly one):
 
     A. P3 Value Type Validation  (inside validateControlValue, §12.6.3):
          dataType, enums, enums.multiple, enums.editable,
@@ -1772,10 +1785,37 @@ Field participation (four layers — each field belongs to exactly one):
          exclusive    — imported / preserved / displayed; runtime
                         semantics unknown, do not guess.
 
+    E. Read-only Derived Semantics (no value semantics, no writes):
+         ElementEnumOption.numericValue — the numeric weight an enum
+                        option carries (score / severity / weight),
+                        e.g. a clinical rating scale. It is
+                        DERIVED-DATA ONLY: a read-only evaluator
+                        (ControlScorer, engine/evaluation/) sums the
+                        numericValue of the currently selected options
+                        into a document-level scale score. An option
+                        without numericValue contributes nothing — no
+                        implicit zero, no error.
+                        numericValue MUST NOT enter layer A or layer B:
+                        validateControlValue never sees it, and
+                        SetControlValueCommand MUST NOT grow scoring
+                        logic. It is also NOT a value — it never appears
+                        in SmartTextNode.value (VR-1) and is never a
+                        candidate in the sense of VR-6/VR-9.
+                        A scale score is NOT QCResult.score: the latter
+                        is a COMPLIANCE score (100 minus penalties,
+                        qc/QCEngine). The two are different facts with
+                        different owners and MUST NOT be merged or
+                        stored in one field (§7.5).
+                        The numericValue FIELD persists in
+                        ElementFormat.enums.data like any other enum
+                        option field (layer D keeps enums itself); only
+                        the derived SCORE is runtime-only.
+
     SetControlValueCommand owns ONLY layers A and B. It answers "is
     this a legal runtime value, and may it be written?" — nothing else.
     It MUST NOT grow required / dictionary-resolution / business / QC
-    checks (layer C) or presentation concerns (layer D).
+    checks (layer C), presentation concerns (layer D), or scoring /
+    numericValue aggregation (layer E).
 
 ------------------------------------------------------------
 12.6.3 validateControlValue (design — LANDED)
@@ -1879,6 +1919,58 @@ independent (§27–§29), and lives in the document domain
     single-select string with strict membership. Inline enums take
     precedence over dictionary when both are present. Candidates are
     runtime-only and NOT serialized; the reference persists verbatim.
+
+    "PRESENT" MEANS THE KEY EXISTS, NOT THAT IT HAS CONTENT. Both the
+    validator (document/control/ControlValue.ts) and the snapshot
+    projection (Editor.getControlSnapshot) select the candidate source
+    with `format.enums !== undefined ? format.enums.data :
+    dictionaryCandidates`. A present-but-empty enums object (e.g.
+    `{ data: [] }` or `{ data: undefined }`) therefore SUPPRESSES the
+    dictionary — the binding silently never resolves.
+
+    Consequence for producers: a writer that intends "candidates come
+    from the dictionary" MUST NOT emit the enums key at all. The
+    control-configuration dialogs (§12.7) follow this: a select with no
+    inline options but a bound dictionary omits enums entirely. Emitting
+    an empty enums object alongside a dictionary reference is a defect,
+    not a no-op.
+
+    Consequence for scope: dictionary binding is only meaningful where a
+    control can have NO inline enums — i.e. the select (下拉) form.
+    radio/checkbox are defined by their inline candidate set, so a
+    dictionary bound to them is permanently inert. The design-time UI
+    MUST NOT offer the binding there.
+
+    INJECTION SEAM. The provider enters the Editor through ONE
+    explicit setter, called by the platform/UI boundary after the
+    Editor is constructed — the same shape as the async-pre-resolve →
+    synchronous-inject model above:
+
+        Editor.setDictionaries(provider: DictionaryProvider | null): void
+
+    Candidates are runtime-only state with an owner OUTSIDE the
+    document (§7.5): loading a different document MUST NOT clear them.
+    Therefore Editor.setDocument's stores argument replaces the
+    provider ONLY when the caller passes one explicitly:
+
+        stores?.dictionaries !== undefined → replace
+        stores?.dictionaries === undefined → KEEP the current provider
+
+    (The previous unconditional `?? null` was the drift reversed here:
+    it silently discarded an injected provider on every document load,
+    because the React boundary calls setDocument(doc) without stores.)
+
+    A platform implementation MUST live in platform/ (§27 dependency
+    direction: platform → engine). The engine never ships dictionary
+    DATA; a static sample catalog in platform/data is a legitimate
+    boundary implementation, exactly like platform/data/controlLibrary.
+
+    UI consumption note: template designers must be able to SET
+    ElementFormat.dictionary, not just have the engine resolve it. The
+    reference is an ElementFormat field (§12.6.2 layer D), so it is
+    written through the control-configuration path (§12.7,
+    UpdateControlElementCommand) — NOT through TemplateDefinition
+    (§12.1's eight design-time fields do not include it).
 
 ------------------------------------------------------------
 12.4 Watermark ownership boundary

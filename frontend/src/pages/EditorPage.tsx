@@ -40,7 +40,7 @@ import {
   provenanceMetaTags, stampExportHtml, stampExportObject, stampExportText,
 } from '@/lib/provenance'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
-import type { EditorMode, ElementMeta } from '@/engine'
+import type { EditorMode, ScoreResult } from '@/engine'
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -137,6 +137,8 @@ function EditorPageInner({
   const [documentPropertiesOpen, setDocumentPropertiesOpen] = useState(false)
   const [tableInsertOpen, setTableInsertOpen] = useState(false)
   const [wordCount, setWordCount] = useState(0)
+  /** 控件量表评分 (契约 §12.6.2 layer E) — 只读派生, 随 contentChange 重算 */
+  const [scaleScore, setScaleScore] = useState<ScoreResult | null>(null)
   const [pageCount, setPageCount] = useState(1)
   const [currentPageIndex, setCurrentPageIndex] = useState(0)
   const [findMatchCount, setFindMatchCount] = useState(0)
@@ -274,6 +276,8 @@ function EditorPageInner({
       const wc = editor.getWordCount()
       setWordCount(wc.words)
       setPageCount(editor.getDraw().getPages().length)
+      // 量表评分 (§12.6.2 layer E): 只读派生, 与字数同频重算, 不产生命令
+      setScaleScore(editor.computeControlScore())
 
       // 大纲: 提取所有 outlineLevel > 0 的标题段落
       const doc = editor.getDocument()
@@ -809,6 +813,7 @@ function EditorPageInner({
         ed.resolveComment(threadId, t?.status !== 'resolved')
       }}
       wordCount={wordCount}
+      scaleScore={scaleScore}
       pageCount={pageCount}
       pageIndex={currentPageIndex + 1}
       scale={zoom}
@@ -861,11 +866,11 @@ function EditorPageInner({
       {controlEdit.open && (() => {
         const ed = editorRef.current
         if (!ed) return null
-        const node = ed.getPool()?.nodes.get(controlEdit.nodeId) as { type?: string; element?: ElementMeta } | undefined
-        if (!node || node.type !== 'smarttext' || !node.element) return null
+        const element = ed.getElement(controlEdit.nodeId)
+        if (!element) return null
         const definition = ed.getControlDefinition(controlEdit.nodeId)
-        const family = controlFamilyOf(node.element, definition)
-        const initial = { element: node.element, definition }
+        const family = controlFamilyOf(element, definition)
+        const initial = { element, definition }
         return family === 'choice' ? (
           <ControlChoiceDialog open mode="edit" initial={initial} onClose={closeControlEdit} onApply={applyControlEdit} />
         ) : (

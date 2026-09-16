@@ -18,8 +18,11 @@ import {
 import type { ExportPool } from '../documentExport'
 import {
   createDocument, createParagraph, createTextNode, createSmartTextNode, createFieldNode,
+  createTable, createTableRow, createTableCell,
 } from '@/engine/document/factory/ElementFormatter'
-import type { DocumentTree, BaseNode, ElementMeta } from '@/engine/document/core/DocumentModel'
+import type {
+  DocumentTree, BaseNode, ElementMeta, TableCell,
+} from '@/engine/document/core/DocumentModel'
 
 const NOW = new Date('2026-09-11T10:30:00')
 
@@ -72,6 +75,50 @@ function addField(built: Built, paraId: string, fieldType: 'page_number' | 'docu
   ;(built.pool.nodes as Map<string, unknown>).set(fld.id, fld)
   const para = built.pool.nodes.get(paraId) as unknown as { children: string[] }
   para.children = [...para.children, fld.id]
+}
+
+/**
+ * 在 doc/pool 追加一张表格 (并置于正文末尾), 返回 table id。
+ * rows 为「实际存在的单元格」文本矩阵 —— 合并行只写它应有的单元格数,
+ * colspan/rowspan 经 cellOpts 指定 (与池中真实形状一致)。
+ */
+function addTable(
+  built: Built,
+  rows: string[][],
+  cellOpts?: (r: number, c: number) => Partial<TableCell>,
+): string {
+  const nodes = built.pool.nodes as Map<string, unknown>
+  const tableRows = rows.map((cells, r) => {
+    const rowCells = cells.map((text, c) => {
+      const tn = createTextNode(text)
+      const p = createParagraph([tn.id])
+      nodes.set(tn.id, tn as unknown as BaseNode)
+      nodes.set(p.id, p as unknown as BaseNode)
+      const cell = createTableCell([p.id], cellOpts?.(r, c))
+      nodes.set(cell.id, cell as unknown as BaseNode)
+      return cell
+    })
+    const row = createTableRow(rowCells)
+    nodes.set(row.id, row as unknown as BaseNode)
+    return row
+  })
+  const table = createTable(
+    Array.from({ length: rows[0]?.length ?? 0 }, () => ({ width: 100 })),
+    tableRows,
+  )
+  nodes.set(table.id, table as unknown as BaseNode)
+  built.doc.body.children = [...built.doc.body.children, table.id]
+  return table.id
+}
+
+/** 表格第一行各单元格内首个段落的 id (供在单元格里插 smarttext/域) */
+function firstRowCellParagraphs(built: Built, tableId: string): string[] {
+  const nodes = built.pool.nodes
+  const table = nodes.get(tableId) as unknown as { children: string[] }
+  const row = nodes.get(table.children[0]) as unknown as { children: string[] }
+  return row.children.map(
+    cid => (nodes.get(cid) as unknown as { children: string[] }).children[0],
+  )
 }
 
 describe('TXT 导出 — 页眉/页脚必须出现', () => {
@@ -228,5 +275,106 @@ describe('列表标记与既有行为保持一致', () => {
     expect(lines[0]).toContain(getListMarker({ type: 'ordered', level: 1 }, 1))
     expect(lines[1]).toContain(getListMarker({ type: 'ordered', level: 1 }, 2))
     expect(lines[2]).toContain(getListMarker({ type: 'ordered', level: 1 }, 1))
+  })
+})
+
+describe('表格导出 — 内容进入导出且不留静默空行', () => {
+  it('TXT: 表格内容出现, 且不再产出空行', () => {
+    const b = build({ body: ['前'] })
+    const tableId = addTable(b, [['A', 'B'], ['C', 'D']])
+    b.doc.body.children = [tableId, ...b.doc.body.children.filter(id => id !== tableId)]
+    // 旧行为: 表格闯过段落闸门 → 被逐行 id 遍历 → 静默产出一个空行
+    expect(buildExportText(b.doc, b.pool, NOW)).toBe('A\tB\nC\tD\n前')
+  })
+
+  it('TXT: 单元格以制表符分隔, 行以换行分隔', () => {
+    const b = build({ body: [] })
+    addTable(b, [['姓名', '张三'], ['性别', '男']])
+    expect(buildExportText(b.doc, b.pool, NOW).split('\n'))
+      .toEqual(['姓名\t张三', '性别\t男'])
+  })
+
+  it('TXT: 表格内 smarttext 与正文同源 (取显示值)', () => {
+    const b = build({ body: [] })
+    const tableId = addTable(b, [['', '']])
+    addSmartText(b, firstRowCellParagraphs(b, tableId)[0], '[姓名]', '张三')
+    expect(buildExportText(b.doc, b.pool, NOW)).toBe('张三\t')
+  })
+
+  it('TXT: colspan 的从属列留空, 不重复父值 (保持列对齐)', () => {
+    const b = build({ body: [] })
+    addTable(b, [['合并'], ['甲', '乙']], (r) => (r === 0 ? { colspan: 2 } : {}))
+    expect(buildExportText(b.doc, b.pool, NOW).split('\n'))
+      .toEqual(['合并\t', '甲\t乙'])
+  })
+
+  it('TXT: rowspan 覆盖的后续行留空, 不重复父值', () => {
+    const b = build({ body: [] })
+    addTable(
+      b,
+      [['跨行', '甲'], ['乙']],
+      (r, c) => (r === 0 && c === 0 ? { rowspan: 2 } : {}),
+    )
+    expect(buildExportText(b.doc, b.pool, NOW).split('\n'))
+      .toEqual(['跨行\t甲', '\t乙'])
+  })
+
+  it('空表格既不产出空行 (TXT) 也不产出空表标记 (HTML)', () => {
+    const b = build({ body: ['前'] })
+    const tableId = addTable(b, [])
+    b.doc.body.children = [tableId, ...b.doc.body.children.filter(id => id !== tableId)]
+    expect(buildExportText(b.doc, b.pool, NOW)).toBe('前')
+    expect(buildExportHtml(b.doc, b.pool, NOW)).not.toContain('<table>')
+  })
+
+  it('HTML: 产出 <table>/<tr>/<td> 结构', () => {
+    const b = build({ body: [] })
+    addTable(b, [['A', 'B']])
+    expect(buildExportHtml(b.doc, b.pool, NOW))
+      .toContain('<table><tr><td>A</td><td>B</td></tr></table>')
+  })
+
+  it('HTML: colspan 以属性表达, 从属位置不产出 <td>', () => {
+    const b = build({ body: [] })
+    addTable(b, [['合并'], ['甲', '乙']], (r) => (r === 0 ? { colspan: 2 } : {}))
+    const html = buildExportHtml(b.doc, b.pool, NOW)
+    expect(html).toContain('<td colspan="2">合并</td>')
+    expect(html).not.toContain('<td></td>')
+  })
+
+  it('HTML: rowspan 以属性表达', () => {
+    const b = build({ body: [] })
+    addTable(b, [['跨行', '甲'], ['乙']], (r, c) => (r === 0 && c === 0 ? { rowspan: 2 } : {}))
+    expect(buildExportHtml(b.doc, b.pool, NOW)).toContain('<td rowspan="2">跨行</td>')
+  })
+
+  it('HTML: isHeader 单元格产出 <th>', () => {
+    const b = build({ body: [] })
+    addTable(b, [['表头', '值']], () => ({ isHeader: true }))
+    expect(buildExportHtml(b.doc, b.pool, NOW)).toContain('<th>表头</th><th>值</th>')
+  })
+
+  it('HTML: 单元格内保留 bold run, 且内容被转义', () => {
+    const b = build({ body: [] })
+    const tableId = addTable(b, [['a<b']])
+    const tn = createTextNode('粗', { bold: true })
+    const paraId = firstRowCellParagraphs(b, tableId)[0]
+    ;(b.pool.nodes as Map<string, unknown>).set(tn.id, tn as unknown as BaseNode)
+    const para = b.pool.nodes.get(paraId) as unknown as { children: string[] }
+    para.children = [...para.children, tn.id]
+    const html = buildExportHtml(b.doc, b.pool, NOW)
+    expect(html).toContain('a&lt;b')
+    expect(html).toContain('<strong>粗</strong>')
+  })
+
+  it('页眉区域的表格同样参与导出', () => {
+    const b = build({ body: ['正文'], header: ['页眉'] })
+    const tableId = addTable(b, [['页眉表', '格']])
+    // addTable 追加在正文, 移到页眉以验证该路径
+    b.doc.body.children = b.doc.body.children.filter(id => id !== tableId)
+    b.doc.header = [...b.doc.header!, tableId]
+    const txt = buildExportText(b.doc, b.pool, NOW)
+    expect(txt).toContain('页眉表\t格')
+    expect(txt.indexOf('页眉表')).toBeGreaterThan(txt.indexOf('页眉'))
   })
 })

@@ -1450,8 +1450,8 @@ export class Draw {
 
   getScale(): number { return this.coordSystem.transform.scale }
 
-  /** 设置数字水印 (R35) */
-  setWatermark(config: WatermarkConfig): void {
+  /** 设置/清除数字水印 (R35); 传 null 清除 (换到无水印文档时用) */
+  setWatermark(config: WatermarkConfig | null): void {
     this.renderer.prepareWatermark(config)
   }
 

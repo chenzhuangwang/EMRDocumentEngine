@@ -23,6 +23,8 @@ import { InputComposer } from './interaction/IMEHandler'
 import { KeyboardHandler } from './interaction/KeyboardHandler'
 import { MouseHandler } from './interaction/MouseHandler'
 import { FormatPainter } from './format/FormatPainter'
+import { scoreControls } from './evaluation/ControlScorer'
+import type { ScorableControl, ScoreResult } from './evaluation/ControlScorer'
 import type { ICommand } from './command/ICommand'
 import { generateCommandId } from './command/ICommand'
 import { InsertTextCommand } from './command/commands/InsertTextCommand'
@@ -908,6 +910,44 @@ export class Editor {
     return node && node.type === NodeType.SMART_TEXT ? node.value : undefined
   }
   /**
+   * 读取控件语义层 ElementMeta (契约 §12.5) —— 与 getControlValue /
+   * getControlDefinition 同族的 by-nodeId 只读访问器, 供 UI 免于
+   * 经 getPool() 裸强转读节点再取 .element。非 smarttext / 缺失 → undefined。
+   */
+  getElement(nodeId: string): ElementMeta | undefined {
+    const node = this.pool.nodes.get(nodeId) as SmartTextNode | undefined
+    return node && node.type === NodeType.SMART_TEXT ? node.element : undefined
+  }
+  /**
+   * 文档级控件量表评分 (契约 §12.6.2 layer E) — 只读派生, 不产生命令,
+   * 无 undo 影响, 不写文档。
+   *
+   * 候选集按 §12.6.4 优先级解析 (inline enums 存在则用其 data, 否则用
+   * DictionaryProvider), 与 getControlSnapshot 同源判定 —— 评分与交互看到
+   * 的是同一套候选, 不会出现"能选但不算分"的错位。
+   *
+   * 注意: 这不是 QCResult.score (合规分, 100 减扣分); 两者语义不同,
+   * 不得合并 (§7.5)。
+   */
+  computeControlScore(): ScoreResult {
+    const controls: ScorableControl[] = []
+    for (const [, node] of this.pool.nodes) {
+      if (node.type !== NodeType.SMART_TEXT) continue
+      const st = node as SmartTextNode
+      const format = st.element?.format
+      const inlineEnums = format?.enums
+      const dictionaryId = format?.dictionary
+      const dictionaryCandidates = dictionaryId ? this.dictionaries?.resolve(dictionaryId) : undefined
+      controls.push({
+        nodeId: st.id,
+        name: st.element?.name ?? '',
+        value: st.value,
+        candidates: inlineEnums !== undefined ? inlineEnums.data : dictionaryCandidates,
+      })
+    }
+    return scoreControls(controls)
+  }
+  /**
    * 读取控件运行时快照 (契约 §12.6) — overlay 渲染/交互投影。
    * 非 smarttext 节点返回 null。字段正交, 无反向推导。
    */
@@ -1230,14 +1270,18 @@ export class Editor {
     // 优先级: 显式 stores (外部模板路径) > 加载器从 doc 顶层字段读回 (引擎序列化格式, 契约 §12.1)
     this.templateDefinitions = stores?.templateDefinitions ?? loaded.templateDefinitions ?? null
     this.presentationStyles = stores?.presentationStyles ?? loaded.presentationStyles ?? null
-    this.dictionaries = stores?.dictionaries ?? null
+    // dictionaries 是 runtime-only 候选源, **不在** document artifact 里 (契约
+    // §12.6.4: 只有 id 引用随 ElementFormat 持久化)。因此它没有「从 doc 读回」
+    // 这条兜底路径, 不能用 `?? null`: 那样每次换文档都会把已注入的 provider 抹掉
+    // (React 边界调 setDocument(doc) 时不传 stores)。仅在显式传入时替换。
+    if (stores?.dictionaries !== undefined) this.dictionaries = stores.dictionaries
     this.draw.setDocument(doc, this.pool, this.presentationStyles, this.templateDefinitions)
     this.draw.recomputeLayout(this.pool)
 
-    // 自动应用文档水印 (R70) — 用 document 域类型直接读取, 契约 §12.4
-    if (doc.pageSetup?.watermark) {
-      this.draw.setWatermark(doc.pageSetup.watermark)
-    }
+    // 自动应用文档水印 (R70) — 用 document 域类型直接读取, 契约 §12.4。
+    // 必须显式 else 清除: 水印是 document content (§12.4), 换到无水印文档时
+    // 若不清除, 上一份文档的水印会留在渲染器上 (watermarkConfig 是渲染守卫)。
+    this.draw.setWatermark(doc.pageSetup?.watermark ?? null)
 
     const cursorPath = doc.body.children.length > 0
       ? [doc.id, doc.body.children[0]]
@@ -1245,6 +1289,19 @@ export class Editor {
     this.store.setCursor({ paragraphPath: cursorPath, offset: 0, visible: true })
     this.draw.render(this.pool, this.store.state.runtime)
     this.notifyListeners('contentChange', doc)
+  }
+
+  /**
+   * 注入/替换外部码表候选源 (契约 §12.6.4 注入缝)。
+   *
+   * 由 platform/UI 在 Editor 构造后调用 —— 候选在边界预解析, 引擎值写入
+   * 路径只做同步查找 (VR-7)。传 null 显式清空 (退回全部自由文本)。
+   *
+   * 候选是 runtime-only 状态且 owner 在文档之外: setDocument 换文档**不会**
+   * 重置它, 只有再次调用本方法才替换 (见 setDocument 处的注释)。
+   */
+  setDictionaries(provider: DictionaryProvider | null): void {
+    this.dictionaries = provider
   }
 
   /**
@@ -2657,6 +2714,7 @@ export interface ControlEditTarget {
 export interface IEditor {
   getDocument(): DocumentTree
   setDocument(doc: DocumentTree): void
+  setDictionaries(provider: DictionaryProvider | null): void
   execCommand(command: ICommand): void
   undo(): void; redo(): void
   canUndo(): boolean; canRedo(): boolean
@@ -2670,6 +2728,8 @@ export interface IEditor {
   setControlValue(nodeId: string, value: ControlValue | undefined): ControlValueValidationResult
   getControlValue(nodeId: string): ControlValue | undefined
   getControlSnapshot(nodeId: string): ControlSnapshot | null
+  getElement(nodeId: string): ElementMeta | undefined
+  computeControlScore(): ScoreResult
   getControlClientRect(nodeId: string): { left: number; top: number; width: number; height: number } | null
   getControlEditTarget(nodeId: string): ControlEditTarget | null
   getRegionControlIds(anchorNodeId: string): string[]

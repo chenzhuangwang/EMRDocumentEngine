@@ -17,6 +17,7 @@
 //   v4.1.0 → v4.2.0  SmartTextNode 新增可选字段 value (运行时值)
 //   v4.2.0 → v4.3.0  DocumentTree.metadata 收紧为 DocumentMetadata (白名单收口)
 //   v4.3.0 → v4.4.0  TemplateDefinition 新增可选字段 controlType (控件 widget 形态)
+//   v4.4.0 → v4.5.0  页眉页脚逐页变体 (firstPage/evenPage 段落数组, 契约 §7.9) — 显式 NO-OP
 //
 // 不实现 downgrade(): EMR 场景下不需要"用旧引擎开新文档"。
 // 详见 knowledge/document-version-system-design.md §4 决策 4。

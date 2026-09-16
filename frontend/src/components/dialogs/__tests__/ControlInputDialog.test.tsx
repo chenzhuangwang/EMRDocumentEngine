@@ -125,3 +125,112 @@ describe('ControlInputDialog — 日期时间形态', () => {
     expect(payload.definition?.controlType).toBe('datetime')
   })
 })
+
+// ================================================================
+// 数据绑定 (外部码表, 契约 §12.6.4)
+//
+// 关键不变式: 候选来源判定看 enums 键**是否存在**, 不看内容
+// (ControlValue.ts:117)。所以「无 inline 候选 + 已绑码表」时必须不写
+// enums 键 —— 写个空 enums 对象会让码表永远走不到 (绑定静默失效)。
+// ================================================================
+
+const DICT_ID = 'ab000000a1b2c3d4e5f60718293a4b5c'
+const SELECT_EL: ElementMeta = {
+  code: { internal: 'CTL_SELECT', dataElement: 'DE99.99.004' }, name: '下拉',
+  format: { dataType: 'S1', enums: { data: [{ name: '轻度', value: 'mild' }] } },
+}
+const SELECT_DEF: TemplateDefinition = { controlType: 'select', label: '下拉：', editable: true }
+
+function renderSelect() {
+  const onApply = vi.fn()
+  const onClose = vi.fn()
+  render(<ControlInputDialog open mode="edit" initial={{ element: SELECT_EL, definition: SELECT_DEF }} onClose={onClose} onApply={onApply} />)
+  fireEvent.click(screen.getByRole('tab', { name: '数据绑定' }))
+  return { onApply }
+}
+
+describe('ControlInputDialog — 数据绑定 (码表)', () => {
+  it('下拉 + 清空 inline 候选 + 绑码表 → payload 含 dictionary 且不含 enums 键', () => {
+    const { onApply } = renderSelect()
+    // 清掉唯一的 inline 候选项
+    fireEvent.change(screen.getByPlaceholderText('名称'), { target: { value: '' } })
+    fireEvent.change(screen.getByPlaceholderText('值'), { target: { value: '' } })
+    fireEvent.change(screen.getByPlaceholderText('32 位 hex'), { target: { value: DICT_ID } })
+    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+
+    const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
+    expect(payload.element.format?.dictionary).toBe(DICT_ID)
+    // 关键: 不能留下空 enums 对象, 否则码表永远解析不到
+    expect(Object.prototype.hasOwnProperty.call(payload.element.format, 'enums')).toBe(false)
+  })
+
+  it('下拉 + 有 inline 候选 + 绑码表 → 两者并存 (inline 恒优先, 码表不生效)', () => {
+    const { onApply } = renderSelect()
+    fireEvent.change(screen.getByPlaceholderText('32 位 hex'), { target: { value: DICT_ID } })
+    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+
+    const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
+    expect(payload.element.format?.dictionary).toBe(DICT_ID)
+    expect(payload.element.format?.enums?.data).toEqual([{ name: '轻度', value: 'mild' }])
+  })
+
+  it('从初始 element 回读已有 dictionary 到 draft', () => {
+    const onApply = vi.fn()
+    const onClose = vi.fn()
+    const withDict: ElementMeta = {
+      ...SELECT_EL,
+      format: { dataType: 'S1', dictionary: DICT_ID },
+    }
+    render(<ControlInputDialog open mode="edit" initial={{ element: withDict, definition: SELECT_DEF }} onClose={onClose} onApply={onApply} />)
+    fireEvent.click(screen.getByRole('tab', { name: '数据绑定' }))
+    expect((screen.getByPlaceholderText('32 位 hex') as HTMLInputElement).value).toBe(DICT_ID)
+  })
+
+  it('清空按钮 → 解绑 (payload 无 dictionary)', () => {
+    const onApply = vi.fn()
+    const onClose = vi.fn()
+    const withDict: ElementMeta = { ...SELECT_EL, format: { dataType: 'S1', dictionary: DICT_ID } }
+    render(<ControlInputDialog open mode="edit" initial={{ element: withDict, definition: SELECT_DEF }} onClose={onClose} onApply={onApply} />)
+    fireEvent.click(screen.getByRole('tab', { name: '数据绑定' }))
+    fireEvent.click(screen.getByRole('button', { name: '清空' }))
+    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+
+    const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
+    expect(payload.element.format?.dictionary).toBeUndefined()
+  })
+
+  it('非下拉形态 → 数据绑定 tab 只给说明, 不提供绑定控件', () => {
+    renderDialog()   // 初始 controlType 'input' → kind S1
+    fireEvent.click(screen.getByRole('tab', { name: '数据绑定' }))
+    expect(screen.queryByPlaceholderText('32 位 hex')).toBeNull()
+    expect(screen.getByText(/仅「下拉」形态可绑定外部码表/)).toBeTruthy()
+  })
+
+  it('显式把下拉改成纯文本 → 清除码表绑定 (形态编辑不残留死引用)', () => {
+    const onApply = vi.fn()
+    const onClose = vi.fn()
+    const withDict: ElementMeta = { ...SELECT_EL, format: { dataType: 'S1', dictionary: DICT_ID } }
+    render(<ControlInputDialog open mode="edit" initial={{ element: withDict, definition: SELECT_DEF }} onClose={onClose} onApply={onApply} />)
+    fireEvent.click(screen.getByRole('tab', { name: '格式' }))
+    fireEvent.click(screen.getByText('纯文本', { selector: 'button' }))
+    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+
+    const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
+    expect(payload.element.format?.dictionary).toBeUndefined()
+  })
+
+  it('未改形态的 legacy 控件 → 不清除既有码表绑定 (打开即应用不丢引用)', () => {
+    const onApply = vi.fn()
+    const onClose = vi.fn()
+    // controlType undefined + 无 enums → kindFrom 推回 S1, 但形态并未被编辑
+    const legacy: ElementMeta = {
+      code: { internal: 'CTL_LEGACY', dataElement: 'DE99.99.009' }, name: '遗留',
+      format: { dataType: 'S1', dictionary: DICT_ID },
+    }
+    render(<ControlInputDialog open mode="edit" initial={{ element: legacy, definition: undefined }} onClose={onClose} onApply={onApply} />)
+    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+
+    const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
+    expect(payload.element.format?.dictionary).toBe(DICT_ID)
+  })
+})

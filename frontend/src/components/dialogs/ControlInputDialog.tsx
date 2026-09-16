@@ -21,7 +21,7 @@ import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { controlTypeForDataType } from '@/engine'
 import type { ElementMeta, ElementEnumOption, TemplateDefinition } from '@/engine'
-import { cleanDefinition, cloneData, CodeBadge, Field, NumField, TextField, ToggleField, inputCls } from './controlConfigShared'
+import { cleanDefinition, cloneData, CodeBadge, DictionaryField, Field, NumField, TextField, ToggleField, inputCls } from './controlConfigShared'
 import type { ControlConfigData } from './controlConfigShared'
 
 /** 输入域形态: 纯文本/数字/日期/日期时间/下拉 (下拉=select; 日期时间=DT) */
@@ -47,6 +47,7 @@ const TABS = [
   { id: 'general', label: '常规' },
   { id: 'format', label: '格式' },
   { id: 'validate', label: '校验' },
+  { id: 'binding', label: '数据绑定' },
   { id: 'other', label: '其他' },
 ] as const
 type TabId = (typeof TABS)[number]['id']
@@ -71,6 +72,8 @@ interface Draft {
   single: boolean
   options: OptionDraft[]
   multiple: boolean
+  /** 外部码表引用 (ElementFormat.dictionary, 契约 §12.6.4) — 仅下拉形态可绑 */
+  dictionary: string
 }
 
 function kindFrom(el: ElementMeta | undefined, def: TemplateDefinition | undefined): InputKind {
@@ -107,6 +110,7 @@ function draftFrom(initial: ControlConfigData): Draft {
     single: def?.single === true,
     options: opts,
     multiple: fmt?.enums?.multiple === true,
+    dictionary: fmt?.dictionary ?? '',
   }
 }
 
@@ -137,6 +141,8 @@ export function ControlInputDialog({
 
     const fmt: NonNullable<ElementMeta['format']> = el.format ? cloneData(el.format) : {} as NonNullable<ElementMeta['format']>
 
+    const typeChanged = draft.kind !== kindFrom(initial.element, initial.definition)
+
     if (draft.kind === 'select') {
       fmt.dataType = 'S1'
       const data: ElementEnumOption[] = draft.options
@@ -147,7 +153,18 @@ export function ControlInputDialog({
           if (typeof o.numericValue === 'number' && Number.isFinite(o.numericValue)) opt.numericValue = o.numericValue
           return opt
         })
-      fmt.enums = { multiple: draft.multiple ? true : undefined, data }
+      // 外部码表引用 (契约 §12.6.4) —— 空串 = 不绑定 (不写空键)
+      const dictionaryId = draft.dictionary.trim()
+      fmt.dictionary = dictionaryId || undefined
+      // 候选来源判定看 enums 键**是否存在**, 不看内容 (ControlValue.ts:117
+      // `enums !== undefined ? enums.data : dictionaryCandidates`)。所以
+      // 「未填 inline 候选 + 已绑码表」时必须**不写** enums —— 写一个空
+      // enums 对象会让码表永远走不到, 即绑定静默失效。
+      if (data.length === 0 && dictionaryId !== '') {
+        delete fmt.enums
+      } else {
+        fmt.enums = { multiple: draft.multiple ? true : undefined, data }
+      }
       delete fmt.showType
       delete fmt.scale
       delete fmt.minLength
@@ -155,6 +172,9 @@ export function ControlInputDialog({
     } else {
       fmt.dataType = draft.kind
       delete fmt.enums
+      // 仅在**显式改过形态**时清除码表绑定: 否则打开一份带 dictionary 的旧文档
+      // (legacy controlType undefined, kindFrom 推回 S1) 点「应用」会静默丢引用。
+      if (typeChanged) delete fmt.dictionary
       fmt.showType = draft.kind === 'N' ? draft.showType : undefined
       fmt.scale = draft.kind === 'N' ? draft.scale : undefined
       fmt.minLength = draft.kind === 'S1' ? draft.minLength : undefined
@@ -166,7 +186,6 @@ export function ControlInputDialog({
     const initialFamilyIsInput =
       initialFamily === 'input' || initialFamily === 'number' || initialFamily === 'date' ||
       initialFamily === 'datetime' || initialFamily === 'select'
-    const typeChanged = draft.kind !== kindFrom(initial.element, initial.definition)
     let controlType: TemplateDefinition['controlType']
     if (draft.kind === 'select') {
       controlType = 'select'
@@ -304,6 +323,23 @@ export function ControlInputDialog({
                 )}
                 {draft.kind === 'DT' && (
                   <p className="text-xs text-gray-400">日期时间按 YYYY-MM-DD HH:mm:ss 存储与校验。</p>
+                )}
+              </Tabs.Content>
+
+              {/* 数据绑定 */}
+              <Tabs.Content forceMount value="binding" className="space-y-3">
+                {draft.kind === 'select' ? (
+                  <DictionaryField
+                    value={draft.dictionary}
+                    onChange={(v) => patch({ dictionary: v })}
+                    inlineEnumsPresent={draft.options.some((o) => o.value !== '' || o.name !== '')}
+                  />
+                ) : (
+                  <p className="text-xs text-gray-400">
+                    仅「下拉」形态可绑定外部码表 —— 它是 format.dictionary 唯一有意义的落点
+                    (单选/复选的候选恒为内置项，会覆盖码表)。当前形态为「{kindLabel}」，
+                    请先在「格式」页切换为「下拉」。
+                  </p>
                 )}
               </Tabs.Content>
 

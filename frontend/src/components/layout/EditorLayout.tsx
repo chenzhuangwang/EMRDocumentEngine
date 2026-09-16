@@ -17,7 +17,7 @@ import { StatusBar } from './StatusBar'
 import { useEditorStore, useUIStore } from '@/store'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
 import type { CommentThread } from '@/engine/document/core/DocumentModel'
-import type { EditorMode } from '@/engine'
+import type { EditorMode, ScoreResult } from '@/engine'
 
 interface EditorLayoutProps {
   children: ReactNode
@@ -55,6 +55,8 @@ interface EditorLayoutProps {
   mode?: EditorMode
   /** 模式切换回调 */
   onModeChange?: (mode: EditorMode) => void
+  /** 控件量表评分 (契约 §12.6.2 layer E, 只读派生) */
+  scaleScore?: ScoreResult | null
 }
 
 export function EditorLayout({
@@ -86,6 +88,7 @@ export function EditorLayout({
   readingMode = false,
   mode,
   onModeChange,
+  scaleScore,
 }: EditorLayoutProps) {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen) && !readingMode
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
@@ -145,6 +148,7 @@ export function EditorLayout({
             onToggleInvisible={onToggleInvisible}
             mode={mode}
             onModeChange={onModeChange}
+            scaleScore={scaleScore}
           />
           )}
         </div>

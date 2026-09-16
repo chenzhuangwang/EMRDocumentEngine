@@ -19,6 +19,7 @@
 
 import type { ReactNode } from 'react'
 import { controlWidgetById } from '@/platform/data/controlLibrary'
+import { DICTIONARY_CATALOG } from '@/platform/data/dictionaryCatalog'
 import type {
   ElementFormat, ElementMeta, ElementEnumOption, TemplateDefinition,
 } from '@/engine'
@@ -162,6 +163,93 @@ export function isTextDataType(dt: ElementFormat['dataType']): boolean {
 }
 export function isMultiTextDataType(dt: ElementFormat['dataType']): boolean {
   return dt === 'S2' || dt === 'S3'
+}
+
+// ---- 数据绑定 (码表) ----
+
+/**
+ * 码表绑定只在**下拉 (select)** 形态开放。
+ *
+ * 为什么不是「枚举族全开放」: radio/checkbox 按定义靠 inline 候选集工作，
+ * 而 §12.6.4 规定 inline enums 恒优先 —— 给它们绑码表等于发布一个可证明
+ * 不生效的控件。select 则可以「无 inline 候选、候选全来自码表」, 是
+ * format.dictionary 唯一有意义的落点。
+ *
+ * 也不把码表开放给纯文本 S1: 绑定会让控件变成 enum-backed (VR-9 严格
+ * 成员校验), 那是**交互形态**的改变; 由「绑定码表」隐式推导出 select
+ * 等于让 controlType 从数据推导, 与 VR-15 冲突。
+ */
+
+/** 码表 id 形状 (契约 §12.6.4: 32 位 hex)。格式不合规不阻断保存, 只提示。 */
+export function isDictionaryIdLike(id: string): boolean {
+  return /^[0-9a-f]{32}$/.test(id)
+}
+
+/**
+ * 码表绑定字段：已加载码表下拉 + 手动粘贴 id + 清空。
+ *
+ * 候选值来源是平台侧目录 (platform/data), 与注入给 Editor 的
+ * DictionaryStore 同源 —— 这里只呈现「可绑定什么」, 解析仍由引擎在
+ * 命令边界走 DictionaryProvider (§12.6.4)。
+ */
+export function DictionaryField({
+  value, onChange, inlineEnumsPresent,
+}: {
+  value: string
+  onChange: (v: string) => void
+  /** 控件自身已声明 inline 候选 → 码表恒被覆盖 (§12.6.4), 提示死数据 */
+  inlineEnumsPresent?: boolean
+}) {
+  const known = DICTIONARY_CATALOG.some((e) => e.id === value)
+  return (
+    <div className="space-y-3">
+      <Field label="码表 (外部候选源)">
+        <select
+          className={inputCls}
+          value={known ? value : ''}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          <option value="">未绑定</option>
+          {DICTIONARY_CATALOG.map((e) => (
+            <option key={e.id} value={e.id}>{e.name}</option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="码表 id (可手动粘贴)">
+        <div className="flex items-center gap-2">
+          <input
+            className={inputCls}
+            value={value}
+            placeholder="32 位 hex"
+            onChange={(e) => onChange(e.target.value.trim())}
+          />
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            disabled={value === ''}
+            className="flex-shrink-0 text-xs text-gray-500 hover:text-red-500 disabled:text-gray-300"
+          >
+            清空
+          </button>
+        </div>
+      </Field>
+
+      {value !== '' && !isDictionaryIdLike(value) && (
+        <p className="text-xs text-amber-600">
+          id 不是 32 位 hex。引用会按原样持久化，但平台侧可能解析不出候选 —— 此时控件退回自由文本 (VR-7)。
+        </p>
+      )}
+      {value !== '' && inlineEnumsPresent === true && (
+        <p className="text-xs text-amber-600">
+          该控件已声明内置候选项。内置候选恒优先于码表 (契约 §12.6.4)，此绑定当前不生效。
+        </p>
+      )}
+      <p className="text-xs text-gray-400">
+        候选由平台预加载后注入编辑器；未加载时控件按自由文本处理，不报错。
+      </p>
+    </div>
+  )
 }
 
 export type { ElementEnumOption }

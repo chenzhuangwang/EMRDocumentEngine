@@ -8,11 +8,11 @@
 // 状态栏
 // ============================================================
 
-import { FileText, Type, Wifi, WifiOff, Minus, Plus, Pilcrow } from 'lucide-react'
+import { FileText, Type, Wifi, WifiOff, Minus, Plus, Pilcrow, Activity } from 'lucide-react'
 import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { cn, formatWordCount } from '@/lib/utils'
 import { ModeSwitcher } from '@/components/views/ModeSwitcher'
-import type { EditorMode } from '@/engine'
+import type { EditorMode, ScoreResult } from '@/engine'
 
 interface StatusBarProps {
   pageIndex?: number
@@ -31,6 +31,11 @@ interface StatusBarProps {
   mode?: EditorMode
   /** 模式切换回调 */
   onModeChange?: (mode: EditorMode) => void
+  /**
+   * 控件量表评分 (契约 §12.6.2 layer E) — 只读派生。
+   * 无控件携带 numericValue 时不渲染, 现有文档不受影响。
+   */
+  scaleScore?: ScoreResult | null
 }
 
 export function StatusBar({
@@ -44,6 +49,7 @@ export function StatusBar({
   onToggleInvisible,
   mode,
   onModeChange,
+  scaleScore,
 }: StatusBarProps) {
   const saveStatus = useEditorStoreSnapshot((s) => s.saveStatus)
 
@@ -74,6 +80,21 @@ export function StatusBar({
           <Type size={12} />
           <span>{formatWordCount(wordCount)} 字</span>
         </div>
+
+        {/* 控件量表评分 (§12.6.2 layer E) — 与质控合规分是两回事, 故独立标注 */}
+        {scaleScore !== null && scaleScore !== undefined && scaleScore.counted > 0 && (
+          <div
+            className="flex items-center gap-1.5"
+            title={
+              `量表评分 ${scaleScore.total} 分（由 ${scaleScore.counted} 个控件的选项数值汇总，只读派生）\n` +
+              `与「文书质控合规分」是两套独立口径，不互相换算。` +
+              (scaleScore.uncounted > 0 ? `\n另有 ${scaleScore.uncounted} 个控件已填但候选项未配数值，未计入。` : '')
+            }
+          >
+            <Activity size={12} />
+            <span>{scaleScore.total} 分</span>
+          </div>
+        )}
       </div>
 
       {/* 中间: 缩放控制 */}

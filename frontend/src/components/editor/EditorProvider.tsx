@@ -11,6 +11,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Editor, createDefaultRuntimeState, type DocumentTree, type EditorStore, type EditorStoreState } from '@/engine'
 import { createDomEditorHost } from '@/platform/dom'
+import { createDictionaryStore } from '@/platform/data/dictionaryStore'
 
 // 创建浏览器宿主 — 平台能力注入点 (契约 §27 / §29)。
 // 构造无 DOM 副作用, 模块加载时安全创建; surface 在 Editor 创建前 mount 到容器。
@@ -62,6 +63,10 @@ export function EditorProvider({ children, containerRef, document }: EditorProvi
     domHost.surface.mount(containerRef.current)
     domHost.input.mount(containerRef.current)
     const editor = new Editor(domHost, document)
+    // 注入外部码表候选源 (契约 §12.6.4 注入缝)。候选是 runtime-only 且
+    // owner 在文档之外 —— 必须在构造后、setDocument 前注入; setDocument
+    // 换文档不会重置它 (Editor.setDocument 里已改为「仅显式传入才替换」)。
+    editor.setDictionaries(createDictionaryStore())
     editorRef.current = editor
     setStore(editor.getStore())
     setReady(true)

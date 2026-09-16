@@ -22,18 +22,17 @@ import type { Editor } from '@/engine'
 import type { TemplateDefinition } from '@/engine/template/TemplateDefinition'
 import type { ElementMeta } from '@/engine/document/core/DocumentModel'
 
-/** 最小 mock Editor: 面板只消费 getControlDefinition / setControlDefinition / getPool */
+/** 最小 mock Editor: 面板只消费 getElement / getControlDefinition / setControlDefinition */
 function makeEditor(def: TemplateDefinition | undefined, element: ElementMeta | undefined) {
   const setControlDefinition = vi.fn()
   const getControlDefinition = vi.fn(() => def)
-  const nodes = new Map<string, { element?: ElementMeta; type?: string }>()
-  if (element) nodes.set('st-1', { element, type: 'smarttext' })
+  const getElement = vi.fn(() => element)
   const editor = {
     getControlDefinition,
     setControlDefinition,
-    getPool: () => ({ nodes }),
+    getElement,
   } as unknown as Editor
-  return { editor, setControlDefinition, getControlDefinition }
+  return { editor, setControlDefinition, getControlDefinition, getElement }
 }
 
 /** 渲染在设计模式 + 选中 st-1 的面板 */

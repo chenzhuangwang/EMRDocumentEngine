@@ -178,6 +178,10 @@ export type { DiffResult, DiffOperation, TextChange } from './DocumentDiffer'
 export { QCEngine } from './qc/QCEngine'
 export type { QCRule, QCIssue, QCResult, QCSeverity, QCGrade } from './qc/QCEngine'
 
+// 控件量表评分 (契约 §12.6.2 layer E — 只读派生语义)
+export { scoreControls } from './evaluation/ControlScorer'
+export type { ScorableControl, ControlScoreItem, ScoreResult } from './evaluation/ControlScorer'
+
 // ---- TemplateDefinition (契约 §12.1) ----
 export { TemplateDefinitionStore } from './template/TemplateDefinition'
 export type { TemplateDefinition, TemplateDefinitionMap, ControlType } from './template/TemplateDefinition'

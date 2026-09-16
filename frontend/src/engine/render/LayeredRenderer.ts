@@ -193,11 +193,16 @@ export class LayeredRenderer {
 
   // ---- 水印 ----
 
-  prepareWatermark(wm: WatermarkConfig): void {
+  /**
+   * 应用/清除水印。传 null 表示「本文档无水印」—— 必须显式清除,
+   * 否则换到无水印文档时上一份的水印会残留 (watermarkConfig 是渲染守卫)。
+   */
+  prepareWatermark(wm: WatermarkConfig | null): void {
     this.watermarkConfig = wm
     this.watermarkPattern = null
     this.watermarkImage = null
 
+    if (!wm) return
     if (wm.type === 'tile') {
       this.prepareTileWatermark(wm)
     } else if (wm.type === 'image' && wm.imageUrl) {

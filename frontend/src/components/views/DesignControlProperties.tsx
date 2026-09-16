@@ -25,7 +25,6 @@ import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { useEditorRef, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import type { TemplateDefinition } from '@/engine/template/TemplateDefinition'
-import type { ElementMeta } from '@/engine/document/core/DocumentModel'
 import { controlTypeDisplayName, semanticIdentityOf } from './controlDisplay'
 
 type StringField = 'label' | 'tips' | 'prefix' | 'suffix'
@@ -85,9 +84,7 @@ export function DesignControlProperties() {
   if (!editor) return null
 
   // 选中控件语义 (element) — 供标题 + 只读语义身份卡
-  const node = editor.getPool().nodes.get(selectedId) as
-    { element?: ElementMeta } | undefined
-  const element = node?.element
+  const element = editor.getElement(selectedId)
   const title = element?.name ?? '控件'
   const identity = semanticIdentityOf(element)
 

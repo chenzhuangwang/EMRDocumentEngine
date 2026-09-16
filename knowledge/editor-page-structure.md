@@ -3,6 +3,8 @@
 > 路由: `/editor/:id` (如 `/editor/doc_1`)
 > 分析日期: 2026-07-31
 > 入口组件: [frontend/src/pages/EditorPage.tsx](../frontend/src/pages/EditorPage.tsx)
+>
+> **复核修订**：2026-09-16 @ `090fd3e` — 本文是 2026-07-31 的快照，**正文其余条目未逐条复核**；本次仅校正「属性面板」同源 4 处（布局图第三列 / 组件树 / 组件表 / 文件清单）。已知其余可疑条目：Toolbar「格式化 action 仅 undo/redo 接线」、ExportDialog「JSON 导出对话框」、StatusBar「数据均为静态占位」——引用前请对代码复核。
 
 ---
 
@@ -34,17 +36,17 @@
 | | [列表][有序列表][减少缩进][增加缩进]                      |
 |                                    [打印] [导出v]         |
 +---------------+----------------------+--------------------+
-| Sidebar       |  Canvas 编辑区        | PropertiesPanel    |
-| (w-sidebar    |  (flex-1)            | (w-properties      |
-|  = 240px)     |  bg-[#E5E7EB]        |  = 280px)          |
-|               |                      | 默认关闭            |
+| Sidebar       |  Canvas 编辑区        | (无固定右栏)        |
+| (w-sidebar    |  (flex-1)            | 控件属性改走        |
+|  = 240px)     |  bg-[#E5E7EB]        | DesignControl-     |
+|               |                      | Properties         |
 | [模板][元素]   |  Canvas 三层渲染      |                    |
-| [页面] (Tab)  |  - static (z:1)      | 选中元素后滑出:      |
-|               |  - content (z:2)     |  - 元素类型         |
-| [搜索...]     |  - interact (z:3)    |  - 控件属性         |
-|               |                      |  - 校验规则         |
-| 医疗文书:      |  隐藏 textarea       |  - 数据绑定         |
-|  - 入院记录    |  (聚焦接收键盘/IME)   |                    |
+| [页面] (Tab)  |  - static (z:1)      | 或设计模式右键      |
+|               |  - content (z:2)     | 「属性」弹框         |
+| [搜索...]     |  - interact (z:3)    | (完整语义层)        |
+|               |                      | 文档级走            |
+| 医疗文书:      |  隐藏 textarea       | DocumentProperties- |
+|  - 入院记录    |  (聚焦接收键盘/IME)   | Dialog              |
 |  - 病程记录    |                      |                    |
 |  - 出院小结    |                      |                    |
 |  - 会诊记录    |                      |                    |
@@ -89,7 +91,7 @@ EditorPage
 │           │   ├── Canvas content 层
 │           │   ├── Canvas interact 层
 │           │   └── hidden <textarea> (IME)
-│           ├── PropertiesPanel (右侧滑出)
+│           ├── DesignControlProperties (设计态选中控件时就地浮层)
 │           └── StatusBar
 └── ExportDialog (模态框)
 ```
@@ -104,7 +106,7 @@ EditorPage
 | **Toolbar** | `components/layout/Toolbar.tsx` | 字体/字号/加粗/斜体/颜色/对齐/列表/表格/图片/打印/导出 下拉菜单 | UI 完整，格式化 action 仅 undo/redo 接线，其余标记 TODO |
 | **Sidebar** | `components/layout/Sidebar.tsx` | 模板列表 + 元素面板 + 页面缩略图 三个 Tab | UI 完整，模板为 Mock 硬编码数据 |
 | **Canvas** | `engine/render/Draw.ts` | Canvas 2D 渲染引擎 + LayoutEngine 排版 + LayeredRenderer 三层渲染 | 核心引擎已接线，支持 A4 页面渲染 |
-| **PropertiesPanel** | `components/layout/PropertiesPanel.tsx` | 元素属性编辑 (类型/校验规则/数据绑定) | 默认关闭，选中元素后右侧滑出 |
+| **DesignControlProperties** | `components/views/DesignControlProperties.tsx` | 设计态选中控件后就地编辑 7 个 TemplateDefinition 字段（label/tips/prefix/suffix/deletable/editable/single）；controlType 与语义身份只读 | 选中控件浮现。原 `components/layout/PropertiesPanel.tsx` **已不存在**；完整语义层走设计模式右键「属性」→ ControlInputDialog / ControlChoiceDialog（契约 §12.7） |
 | **StatusBar** | `components/layout/StatusBar.tsx` | 页码/字数/保存状态/在线状态 | 数据均为静态占位 (页码 1/1，字数 0) |
 | **ExportDialog** | `components/dialogs/ExportDialog.tsx` | JSON 导出对话框 | 功能完整 |
 
@@ -218,7 +220,8 @@ IME 中文输入:
 |----|----------|
 | 入口 | [frontend/src/App.tsx](../frontend/src/App.tsx) |
 | 页面 | [frontend/src/pages/EditorPage.tsx](../frontend/src/pages/EditorPage.tsx) |
-| 布局 | [EditorLayout.tsx](../frontend/src/components/layout/EditorLayout.tsx), [HeaderBar.tsx](../frontend/src/components/layout/HeaderBar.tsx), [Toolbar.tsx](../frontend/src/components/layout/Toolbar.tsx), [Sidebar.tsx](../frontend/src/components/layout/Sidebar.tsx), [StatusBar.tsx](../frontend/src/components/layout/StatusBar.tsx), [PropertiesPanel.tsx](../frontend/src/components/layout/PropertiesPanel.tsx) |
+| 布局 | [EditorLayout.tsx](../frontend/src/components/layout/EditorLayout.tsx), [HeaderBar.tsx](../frontend/src/components/layout/HeaderBar.tsx), [Toolbar.tsx](../frontend/src/components/layout/Toolbar.tsx), [Sidebar.tsx](../frontend/src/components/layout/Sidebar.tsx), [StatusBar.tsx](../frontend/src/components/layout/StatusBar.tsx) |
+| 属性编辑 | [DesignControlProperties.tsx](../frontend/src/components/views/DesignControlProperties.tsx)（设计期就地）, [ControlInputDialog.tsx](../frontend/src/components/dialogs/ControlInputDialog.tsx) / [ControlChoiceDialog.tsx](../frontend/src/components/dialogs/ControlChoiceDialog.tsx)（右键「属性」）, [DocumentPropertiesDialog.tsx](../frontend/src/components/dialogs/DocumentPropertiesDialog.tsx)（文档级） |
 | 编辑器桥接 | [EditorProvider.tsx](../frontend/src/components/editor/EditorProvider.tsx) |
 | 引擎 | [Editor.ts](../frontend/src/engine/Editor.ts), [Draw.ts](../frontend/src/engine/render/Draw.ts), [LayeredRenderer.ts](../frontend/src/engine/render/LayeredRenderer.ts) |
 | 输入 | [KeyboardHandler.ts](../frontend/src/engine/interaction/KeyboardHandler.ts), [IMEHandler.ts](../frontend/src/engine/interaction/IMEHandler.ts) |
