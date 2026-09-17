@@ -43,6 +43,7 @@ import { textParticle, separatorParticle, listParticle, fieldParticle } from './
 import { buildCellGrid } from '../document/table/TableOps'
 import { flattenTextContainers, regionIdOf, selectionSpine, paragraphTextLength } from '../document/selection/SelectionCollector'
 import { COMMENT_HIGHLIGHT } from './particles/CommentParticle'
+import { safeRenderParticle } from '../ErrorRecovery'
 import { resolveHfParagraphLocation } from '../document/core/HeaderFooterRegions'
 import { resolveFieldText as formatFieldText } from '../document/factory/FieldFormatter'
 
@@ -629,7 +630,7 @@ export class Draw {
 
         // --- 正文 ---
         for (const item of page.items) {
-          this.renderBodyItem(ctx, item, pageY, i, contentWidth)
+          safeRenderParticle(() => this.renderBodyItem(ctx, item, pageY, i, contentWidth), item.nodeId)
         }
 
         // ================================================================
@@ -1216,26 +1217,42 @@ export class Draw {
     showInvisible: boolean = this._showInvisible,
   ): void {
     for (const item of items) {
-      if (item.type === 'image') {
-        const imgUrl = this.resolveImageUrl(item)
-        if (imgUrl) {
-          this.renderImage(ctx, imgUrl, item.x, pageY + item.y, item.width, item.height)
-        }
-        continue
+      // 按**节点**兜错 (ErrorRecovery Level 1): 单个节点渲染失败只丢它自己,
+      // 不让整帧渲染中断 —— 渲染路径此前完全没有 try/catch。
+      safeRenderParticle(
+        () => this.renderOneItem(ctx, item, pageY, pageIndex, showInvisible),
+        item.nodeId,
+      )
+    }
+  }
+
+  /** 渲染单个 item (页眉/页脚/正文共用); 由 renderParticleItems 逐项安全包裹 */
+  private renderOneItem(
+    ctx: CanvasRenderingContext2D,
+    item: SLIFItem,
+    pageY: number,
+    pageIndex: number,
+    showInvisible: boolean,
+  ): void {
+    if (item.type === 'image') {
+      const imgUrl = this.resolveImageUrl(item)
+      if (imgUrl) {
+        this.renderImage(ctx, imgUrl, item.x, pageY + item.y, item.width, item.height)
       }
-      // 文本/域代码 — 通过 Registry 调度 (含列表标记)
-      const textRenderer = particleRegistry.get(item.nodeType || item.type)
-      if (textRenderer) {
-        textRenderer.render(ctx, { ...item, text: this.resolveFieldText(item, pageIndex) }, item.x, pageY + item.y, {
-          showInvisible,
-          pageIndex,
-          presentationStyleOf: this.presentationStyleOf,
-          templateDefinitionOf: this.templateDefinitionOf,
-          elementOf: this.elementOf,
-          controlValueOf: this.controlValueOf,
-          activeControlId: this.activeControlNodeId,
-        })
-      }
+      return
+    }
+    // 文本/域代码 — 通过 Registry 调度 (含列表标记)
+    const textRenderer = particleRegistry.get(item.nodeType || item.type)
+    if (textRenderer) {
+      textRenderer.render(ctx, { ...item, text: this.resolveFieldText(item, pageIndex) }, item.x, pageY + item.y, {
+        showInvisible,
+        pageIndex,
+        presentationStyleOf: this.presentationStyleOf,
+        templateDefinitionOf: this.templateDefinitionOf,
+        elementOf: this.elementOf,
+        controlValueOf: this.controlValueOf,
+        activeControlId: this.activeControlNodeId,
+      })
     }
   }
 
@@ -1700,7 +1717,10 @@ export class Draw {
 
     // --- 正文 (含表格/脚注; separator 可用宽与旧打印行为保持一致) ---
     for (const item of page.items) {
-      this.renderBodyItem(ctx, item, 0, pageIndex, pageWidth - item.x - 90, false)
+      safeRenderParticle(
+        () => this.renderBodyItem(ctx, item, 0, pageIndex, pageWidth - item.x - 90, false),
+        item.nodeId,
+      )
     }
 
     // --- 页脚分隔线 + 页脚 ---

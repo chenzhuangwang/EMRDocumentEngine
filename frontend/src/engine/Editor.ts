@@ -46,7 +46,7 @@ import { FontManager } from './layout/text/FontManager'
 import { TextMeasurer } from './layout/text/TextMeasurer'
 import { resolveCellPosition, getCaretScope, resolveParagraphRegion, resolveSiblingRange } from './state/CaretScope'
 import type { CellPosition } from './state/CaretScope'
-import { screenToDoc, findPageByDocY, pageCenteringOffset } from './layout/table/TableCoordUtil'
+import { screenToDoc, findPageByDocY, pageCenteringOffset, getTotalDocHeight as docHeightOf } from './layout/table/TableCoordUtil'
 import { findControlItemAt } from './interaction/ControlHitTest'
 import { buildContextSnapshot } from './context/EditorContext'
 import type { EditorContextSnapshot } from './context/EditorContext'
@@ -374,15 +374,16 @@ export class Editor {
   }
 
   /** 获取文档总高度 (CSS pixels, 供滚动 spacer 使用) — 含分页间隙 */
+  /**
+   * 文档总高度 (含分页间隙) —— 委托 TableCoordUtil.getTotalDocHeight。
+   *
+   * 此方法原先**内联重写了同一个公式**, 而 LayeredRenderer 用的是共享工具 ——
+   * 两份实现会各自漂移。现在单一来源 (工具函数)。
+   */
   getTotalDocHeight(): number {
     const pages = this.draw.getPages()
     if (pages.length === 0) return 0
-    const gap = this.draw.getPageVerticalGap()
-    if (gap === 0) return pages.length * pages[0].height
-    // 含间隙的总高度 = sum(pageHeight) + (N-1) * gap
-    let total = 0
-    for (const p of pages) total += p.height
-    return total + (pages.length - 1) * gap
+    return docHeightOf(pages, this.draw.getPageVerticalGap())
   }
 
   /** 外部滚动同步 → 反偏移画布 + 更新 scrollY + 重渲染 */
@@ -859,8 +860,6 @@ export class Editor {
   }
   /** 设计模式选中的控件节点 id (契约 §12.3), 无选中为 null */
   getSelectedControlId(): string | null { return this.store.state.designSelectedControlId }
-  /** 设计模式悬停的控件节点 id (契约 §12.3), 无悬停为 null */
-  getHoveredControlId(): string | null { return this.store.state.designHoveredControlId }
   /** 选中/清除控件 (设计模式, 契约 §12.3) — null 清除选中, 同步 Draw 高亮并重绘 */
   selectControl(nodeId: string | null): void {
     this.store.setDesignSelectedControlId(nodeId)
@@ -1489,9 +1488,11 @@ export class Editor {
     this.draw.render(this.pool, this.store.state.runtime)
   }
 
-  get selectedTableId(): string | null { return this._selectedTableId }
-  get selectedCellRow(): number { return this._selectedCellRow }
-  get selectedCellCol(): number { return this._selectedCellCol }
+  /**
+   * 单元格框选矩形 (交互层读: 合并/拆分/增删行列都在 Editor 内部消费它)。
+   * 注: 表格的"当前选中表/行/列"不再对外暴露 —— UI 一律读
+   * resolveContextAt() 的 cellPosition 快照 (与右键菜单同源)。
+   */
   get cellRange(): CellRange | null { return this._cellRange }
 
   /** 同步框选到 Draw + 重渲染 */
@@ -2222,11 +2223,6 @@ export class Editor {
     this.commandManager.execute(cmd)
   }
 
-  /** 格式刷: 复制光标处文本样式 (TASK-472) — 委托 FormatPainter (§11.2) */
-  copyFormatPainterStyle(): Record<string, unknown> | null {
-    return this.formatPainter.copyStyle()
-  }
-
   /** 格式刷: 激活/取消 — 委托 FormatPainter, 状态同步到 EditorStore (canonical owner, §7.2) */
   setFormatPainterActive(active: boolean): void {
     this.formatPainter.setActive(active)
@@ -2234,11 +2230,6 @@ export class Editor {
 
   /** 格式刷是否激活 */
   get isFormatPainterActive(): boolean { return this.formatPainter.isActive }
-
-  /** 格式刷: 将样式应用到目标段落的所有文本节点 (TASK-472) — 委托 FormatPainter */
-  applyFormatPainter(paraId: string, style: Record<string, unknown>): void {
-    this.formatPainter.applyToParagraph(paraId, style)
-  }
 
   /** 设置光标/选区段落的格式 (对齐/缩进/列表) — v20.35 支持跨段落选区 */
   setParagraphStyle(style: Partial<import('./document/core/DocumentModel').ParagraphStyle>): void {
