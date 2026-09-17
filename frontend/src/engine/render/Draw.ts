@@ -1246,7 +1246,13 @@ export class Draw {
   getCoordinateSystem(): CoordinateSystem { return this.coordSystem }
   getHitTestIndex(): HitTestIndex { return this.hitTestIndex }
   getPages(): SLIFPage[] { return this.pages }
-
+  /**
+   * 段落 id → 页下标 (0-based) —— 供 UI 显示"目标在第几页"(书签/交叉引用目标列表)。
+   * 未布局 / 段落不在任何页 → undefined。
+   */
+  getParagraphPageIndex(paraId: string): number | undefined {
+    return this.layoutEngine.getParaPageMap().get(paraId)
+  }
   hitTest(docX: number, docY: number, pageIndex: number): string | null {
     return this.hitTestIndex.hitTest(docX, docY, pageIndex)
   }

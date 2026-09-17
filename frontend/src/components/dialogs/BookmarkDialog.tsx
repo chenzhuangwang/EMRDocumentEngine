@@ -35,6 +35,12 @@ interface BookmarkDialogProps {
 
 type TabId = 'bookmark' | 'crossref'
 
+/**
+ * 交叉引用格式。`label` 是历史唯一形态 (纯书签名, 不含页码);
+ * 另两种携带占位符, 由 LayoutEngine 在排版期展开为真实页码/编号 (契约 §12.2)。
+ */
+type RefFormat = 'label' | 'page' | 'labelPage'
+
 // ---- 组件 ----
 
 export function BookmarkDialog({
@@ -45,6 +51,8 @@ export function BookmarkDialog({
   const [name, setName] = useState('')
   const [filter, setFilter] = useState('')
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null)
+  /** 交叉引用格式 —— 决定 displayText 是否携带 {page}/{number} 占位符 */
+  const [refFormat, setRefFormat] = useState<RefFormat>('label')
 
   const filtered = filter
     ? targets.filter(t => t.label.includes(filter) || t.id.includes(filter))
@@ -61,7 +69,14 @@ export function BookmarkDialog({
     if (!selectedTarget) return
     const target = targets.find(t => t.id === selectedTarget)
     if (!target) return
-    onInsertCrossReference?.(target.id, target.type, target.label)
+    // 脚注解析的是 {number} (编号), 其余是 {page} (页码)
+    const ph = target.type === 'footnote' ? '{number}' : '{page}'
+    const pageText = target.type === 'footnote' ? `脚注 ${ph}` : `第 ${ph} 页`
+    const displayText =
+      refFormat === 'page' ? pageText
+        : refFormat === 'labelPage' ? `${target.label}（${pageText}）`
+          : target.label
+    onInsertCrossReference?.(target.id, target.type, displayText)
     setSelectedTarget(null)
     onClose()
   }
@@ -132,6 +147,22 @@ export function BookmarkDialog({
               </div>
             ) : (
               <div className="space-y-3">
+                {/* 引用格式: 决定 displayText 里是否带 {page} 占位符 —— 带占位符时
+                    由 LayoutEngine 在排版期展开为真实页码 (契约 §12.2) */}
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">引用格式</label>
+                  <select
+                    value={refFormat}
+                    onChange={(e) => setRefFormat(e.target.value as RefFormat)}
+                    className="w-full text-sm px-3 py-2 border border-gray-200 rounded-md bg-white
+                               focus:outline-none focus:border-blue-400"
+                  >
+                    <option value="label">书签名 / 标题（不带页码）</option>
+                    <option value="page">第 {"{page}"} 页</option>
+                    <option value="labelPage">书签名（第 {"{page}"} 页）</option>
+                  </select>
+                </div>
+
                 {/* 搜索过滤 */}
                 <input
                   type="text"

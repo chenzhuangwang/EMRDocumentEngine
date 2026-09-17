@@ -38,6 +38,8 @@ import { representativeFieldText, type FieldReserveContext } from '../../documen
 import { MergeMatrix } from '../../document/table/MergeMatrix'
 import { FootnoteLayout } from '../footnote/FootnoteLayout'
 import { ListParticle } from '../../render/particles/ListParticle'
+import { BookmarkRenderer } from '../../render/BookmarkRenderer'
+import { getFlatPageItems } from './SLIF'
 import { createTablePaginator } from '../table/TablePaginator'
 import type { TableFragment } from '../table/TablePaginator'
 
@@ -94,6 +96,17 @@ export class LayoutEngine {
    */
   private fieldReserveCtx: FieldReserveContext = { totalPagesHint: 1 }
 
+  /**
+   * 段落 id → 页下标 (0-based), 由**上一轮**布局结果构建 —— 供交叉引用解析
+   * 「目标在第几页」。与 fieldReserveCtx.totalPagesHint 同理: 页码依赖分页,
+   * 分页又依赖文本长度, 一轮之内取不到最终值。无交叉引用占位符时本字段不更新,
+   * 行为与历史实现逐字节相同。
+   */
+  private lastParaPageMap: Map<string, number> = new Map()
+
+  /** 交叉引用解析器 (书签/标题 → 页码, 脚注 → 编号) */
+  private readonly bookmarks = new BookmarkRenderer()
+
   constructor(eventBus: EventBus, measurer: TextMeasurer) {
     this.eventBus = eventBus
     this.measurer = measurer
@@ -114,12 +127,29 @@ export class LayoutEngine {
   fullLayout(doc: DocumentTree, pool: NodePool): LayoutResult {
     const hint = Math.max(1, this.pages.length)
     let pages = this.layoutOnce(doc, pool, hint)
-    if (String(hint).length !== String(Math.max(1, pages.length)).length) {
+    const pageDigitsChanged = String(hint).length !== String(Math.max(1, pages.length)).length
+    // 交叉引用的 {page} 取自**上一轮**布局 (与 totalPagesHint 同思路: 页码依赖
+    // 分页, 分页又依赖文本长度)。含占位符时必须再排一轮, 否则首轮只能填 '?'。
+    const needsXrefPass = hasCrossRefPlaceholder(pool)
+    if (pageDigitsChanged || needsXrefPass) {
+      if (needsXrefPass) this.lastParaPageMap = buildParaPageMap(pages, pool)
       pages = this.layoutOnce(doc, pool, Math.max(1, pages.length))
     }
     this.pages = pages
+    // 段落→页映射总是刷新: O(N) 只读派生, 不参与布局输出 (无行为变化), 但书签
+    // 对话框与交叉引用都按它显示"第几页"。上面 needsXrefPass 时已建过一次, 这里
+    // 用最终 pages 再建一次 —— 多一次 O(N) 换取"永不过期"的简单性。
+    this.lastParaPageMap = buildParaPageMap(pages, pool)
     this.eventBus.emit('layout:changed', pages)
     return pages
+  }
+
+  /**
+   * 段落 id → 页下标 (0-based) 的只读快照 —— 供 UI 显示"目标在第几页"
+   * (书签/交叉引用目标列表)。派生数据: 每次布局刷新, 不是文档内容。
+   */
+  getParaPageMap(): ReadonlyMap<string, number> {
+    return this.lastParaPageMap
   }
 
   /** 单轮布局 (无副作用: 不写 this.pages / 不发事件) */
@@ -245,9 +275,12 @@ export class LayoutEngine {
           const childType = (child as unknown as Record<string, unknown>).type as string
           if (childType === 'text' || childType === 'smarttext' || childType === 'cross_reference') {
             const tn = child as unknown as TextNode
-            // 交叉引用节点使用 displayText
+            // 交叉引用节点使用 displayText (展开 {page}/{number}, 见 resolveCrossRefDisplay)
             const textVal = childType === 'cross_reference'
-              ? ((child as unknown as { displayText: string }).displayText || tn.text || '?')
+              ? this.resolveCrossRefDisplay(
+                  child as unknown as { id: string; refType: string; targetRef: string; displayText?: string; text?: string },
+                  doc, pool,
+                )
               : childType === 'smarttext'
                 ? controlValueDisplay((child as SmartTextNode).element, (child as SmartTextNode).value, tn.text)
                 : tn.text
@@ -1299,8 +1332,78 @@ export class LayoutEngine {
     Object.assign(this.config, config)
   }
 
+  /**
+   * 交叉引用的显示文本 —— 展开 {page}/{number} 占位符 (契约 §12.2 特征隔离)。
+   *
+   * 页码取自**上一轮**布局 (this.lastParaPageMap): 首轮为空 → 填 '?', 由
+   * fullLayout 的第二轮修正 (文档含占位符时 fullLayout 必再排一轮)。无占位符
+   * 时原样返回, 既有文档行为零变化。
+   *
+   * 此前 BookmarkRenderer.resolveReferences 从不被调用, 于是「见第 {page} 页」
+   * 这类引用一律显示字面占位符 —— 这是接线审计 P1 的第一条。
+   */
+  private resolveCrossRefDisplay(
+    node: { id: string; refType: string; targetRef: string; displayText?: string; text?: string },
+    doc: DocumentTree,
+    pool: NodePool,
+  ): string {
+    const raw = node.displayText || node.text || '?'
+    if (!raw.includes('{page}') && !raw.includes('{number}')) return raw
+    const resolved = this.bookmarks.resolveOne(
+      node.id, node.refType, node.targetRef, raw, doc, pool, '', this.lastParaPageMap,
+    )
+    return resolved?.displayText ?? raw
+  }
+
   /** 注入内联渲染预留宽信息源 (契约 §12.6), null 清除 (缺省行为不变)。 */
   setControlInfoOf(fn: ((nodeId: string) => InlineControlInfo | undefined) | null): void {
     this.controlInfoOf = fn
   }
+}
+
+// ---- 交叉引用解析的模块级助手 ----
+
+/**
+ * 段落 id → 页下标 (0-based), 由一轮布局结果构建。
+ *
+ * 先建 `子节点 id → 所属段落` 索引 (O(N)), 再按页扫描 item —— 整体线性。
+ * 不要写成「每个 item 遍历全池找所属段落」(那是 O(P×I×N), EditorPage 的大纲
+ * 映射就是这么写的, 大文档下很慢)。嵌套容器 (table→row→cell→paragraph) 由
+ * getFlatPageItems 展平后自然覆盖。
+ */
+function buildParaPageMap(pages: SLIFPage[], pool: NodePool): Map<string, number> {
+  const paraOf = new Map<string, string>()
+  for (const [, node] of pool.nodes) {
+    if (node.type !== 'paragraph') continue
+    const p = node as unknown as { id: string; children?: readonly string[] }
+    paraOf.set(p.id, p.id)
+    for (const cid of p.children ?? []) {
+      if (!paraOf.has(cid)) paraOf.set(cid, p.id)
+    }
+  }
+  const map = new Map<string, number>()
+  for (let i = 0; i < pages.length; i++) {
+    for (const item of getFlatPageItems(pages[i])) {
+      const paraId = paraOf.get(item.nodeId)
+      // 取首次出现: 跨页段落以起始页为准
+      if (paraId && !map.has(paraId)) map.set(paraId, i)
+    }
+  }
+  return map
+}
+
+/**
+ * 文档是否含**需要解析**的交叉引用 (displayText 里带 {page}/{number} 占位符)。
+ *
+ * 仅这一种情况才需要额外一轮布局: 没有占位符时(历史文档的纯书签名引用)
+ * 解析结果是恒等的, 多排一轮纯属浪费 —— 也保证既有文档行为逐字节不变。
+ */
+function hasCrossRefPlaceholder(pool: NodePool): boolean {
+  for (const [, node] of pool.nodes) {
+    if (node.type !== 'cross_reference') continue
+    const ref = node as unknown as { displayText?: string }
+    const t = ref.displayText
+    if (typeof t === 'string' && (t.includes('{page}') || t.includes('{number}'))) return true
+  }
+  return false
 }

@@ -1762,10 +1762,25 @@ export class Editor {
   /** 获取文档中所有书签/标题/脚注目标 (供 BookmarkDialog 使用) */
   getBookmarkTargets(): { id: string; label: string; type: 'heading' | 'bookmark' | 'footnote'; pageHint?: number }[] {
     const targets: { id: string; label: string; type: 'heading' | 'bookmark' | 'footnote'; pageHint?: number }[] = []
+    // pageHint 是 1-based 页号 (对话框显示 p.N); 布局未就绪时为 undefined, 由 UI 自行省略
+    const pageOf = (paraId: string): number | undefined => {
+      const idx = this.draw.getParagraphPageIndex(paraId)
+      return idx === undefined ? undefined : idx + 1
+    }
+    /** 任意节点 id → 其所属段落的页号 (getParaPageMap 的键只有段落 id) */
+    const pageOfNode = (nodeId: string): number | undefined => {
+      const para = this.findParagraphContaining(nodeId)
+      const paraId = typeof para === 'string' ? para : para?.id
+      return paraId ? pageOf(paraId) : undefined
+    }
     for (const [, node] of this.pool.nodes) {
       if (node.type === 'bookmark') {
-        const bm = node as unknown as { id: string; name: string }
-        targets.push({ id: bm.id, label: bm.name || bm.id, type: 'bookmark' })
+        const bm = node as unknown as { id: string; name: string; targetId?: string }
+        // 书签锚在 targetId 上 (可能是文本节点), 故先解析到所属段落再取页
+        targets.push({
+          id: bm.id, label: bm.name || bm.id, type: 'bookmark',
+          pageHint: bm.targetId ? pageOfNode(bm.targetId) : undefined,
+        })
       } else if (node.type === 'paragraph') {
         const p = node as unknown as { id: string; outlineLevel?: number; children?: readonly string[] }
         if (p.outlineLevel && p.outlineLevel > 0) {
@@ -1773,11 +1788,15 @@ export class Editor {
             const cn = this.pool.nodes.get(cid) as { text?: string } | undefined
             return cn?.text || ''
           }).join('') || `标题${p.outlineLevel}`
-          targets.push({ id: p.id, label: text, type: 'heading' })
+          targets.push({ id: p.id, label: text, type: 'heading', pageHint: pageOf(p.id) })
         }
       } else if (node.type === 'footnote_content') {
-        const fn = node as unknown as { id: string }
-        targets.push({ id: fn.id, label: `脚注 ${fn.id.slice(-4)}`, type: 'footnote' })
+        const fn = node as unknown as { id: string; children?: readonly string[] }
+        // 脚注正文的 children 是段落 id; 取首个段落所在页
+        targets.push({
+          id: fn.id, label: `脚注 ${fn.id.slice(-4)}`, type: 'footnote',
+          pageHint: fn.children?.[0] ? pageOf(fn.children[0]) : undefined,
+        })
       }
     }
     return targets
