@@ -150,8 +150,20 @@ export class LayeredRenderer {
 
   // ---- 静态层 ----
 
-  /** 渲染静态层 — ctx 变换由调用方 (Draw.render) 控制 */
-  renderStatic(pages: SLIFPage[], visibleRange: { start: number; end: number }, scrollOffset: number = 0): void {
+  /**
+   * 渲染静态层 — ctx 变换由调用方 (Draw.render) 控制。
+   *
+   * `decoratePage` 是每页的静态层叠加钩子 (页面背景/水印之后, 页角标记之前):
+   * 调用方用它画批注高亮等"属于内容但必须垫在文字之下"的东西 —— 静态层在
+   * 内容层之下, 所以这里画的东西会正确地垫在文字后面。渲染器本身不认文档
+   * 模型, 故以回调注入而非传入 pool/comments。
+   */
+  renderStatic(
+    pages: SLIFPage[],
+    visibleRange: { start: number; end: number },
+    scrollOffset: number = 0,
+    decoratePage?: (ctx: CanvasRenderingContext2D, page: SLIFPage, pageIndex: number, pageY: number) => void,
+  ): void {
     const ctx = this.ctxs.static!
     const dpr = this.coordSystem.transform.dpr
     ctx.clearRect(0, 0, this.layers.static!.width / dpr, this.layers.static!.height / dpr)
@@ -187,6 +199,9 @@ export class LayeredRenderer {
 
       // 页面四角L标记 — 统一常量, 右上/右下用镜像变换
       drawPageCornerMarks(ctx, pageY, page.width, page.height)
+
+      // 调用方叠加 (批注高亮等): 画在页面背景/水印之上、文字之下 (静态层在内容层下)
+      if (decoratePage) decoratePage(ctx, page, i, pageY)
     }
     ctx.restore()
   }

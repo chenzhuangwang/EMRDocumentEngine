@@ -47,6 +47,10 @@ interface SidebarProps {
   onSelectCommentThread?: (threadId: string) => void
   onResolveCommentThread?: (threadId: string) => void
   onAddCommentReply?: (threadId: string, content: string) => void
+  /** 新建批注 (返回 false = 锚定失败, 面板据此提示) */
+  onNewComment?: (content: string) => boolean
+  /** 读取批注锚定的文字摘录 */
+  getCommentExcerpt?: (threadId: string) => string
   /** 质控结果 (契约 §12.2；null = 尚未检查) */
   qcResult?: QCResult | null
   /** 点击质控问题 → 跳转到所在位置 */
@@ -64,6 +68,7 @@ export function Sidebar({
   templates = [], onTemplateSelect, onNewTemplate, onElementClick,
   outlineItems = [], activeOutlineId, onOutlineClick,
   commentThreads = [], onSelectCommentThread, onResolveCommentThread, onAddCommentReply,
+  onNewComment, getCommentExcerpt,
   qcResult = null, onQcIssueClick, onQcRecheck,
 }: SidebarProps) {
   const sidebarTab = useUIStore((s) => s.sidebarTab)
@@ -142,6 +147,8 @@ export function Sidebar({
             onSelectThread={onSelectCommentThread}
             onResolveThread={onResolveCommentThread}
             onAddReply={onAddCommentReply}
+            onNewComment={onNewComment}
+            getThreadExcerpt={getCommentExcerpt}
           />
         )}
         {sidebarTab === 'qc' && (

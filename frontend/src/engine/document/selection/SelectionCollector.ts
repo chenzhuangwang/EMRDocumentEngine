@@ -62,8 +62,37 @@ export function paragraphTextLength(pool: NodePool, paraId: string): number {
   return len
 }
 
-/** 收集段落 [start,end) 内重叠的所有文本节点 id (end 可为 INF) */
-export function collectTextNodeIds(
+/**
+ * 读取段落 [start,end) 区间内的纯文本 —— 供批注锚定摘录等 UI 展示。
+ * 字符计数口径与 paragraphTextLength 一致 (文本计 length, 非文本内联计 1
+ * 但**不产出字符**), 否则摘录会与光标/范围解析错位。
+ */
+export function paragraphTextInRange(
+  pool: NodePool, paraId: string, start: number, end: number,
+): string {
+  const para = pool.nodes.get(paraId)
+  if (!para || para.type !== NodeType.PARAGRAPH) return ''
+  const children = (para as { children?: readonly string[] }).children
+  if (!children) return ''
+
+  let offset = 0
+  let out = ''
+  for (const childId of children) {
+    const node = pool.nodes.get(childId)
+    const isText = node?.type === NodeType.TEXT
+    const len = isText ? (node as TextNode).text.length : 1
+    const nodeStart = offset
+    const nodeEnd = offset + len
+    offset = nodeEnd
+    if (!isText) continue                              // 原子内联不产出字符
+    if (nodeEnd <= start || nodeStart >= end) continue  // 与区间无交
+    const text = (node as TextNode).text
+    out += text.slice(Math.max(0, start - nodeStart), Math.min(len, end - nodeStart))
+  }
+  return out
+}
+
+/** 收集段落 [start,end) 内重叠的所有文本节点 id (end 可为 INF) */export function collectTextNodeIds(
   pool: NodePool, paraId: string, start: number, end: number,
 ): string[] {
   const ids: string[] = []

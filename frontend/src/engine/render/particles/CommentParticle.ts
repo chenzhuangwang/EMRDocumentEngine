@@ -9,13 +9,19 @@
 //
 // 在文档正文中渲染批注标记 (淡黄高亮背景 + 边距批注图标)
 // 实现 IParticle 接口
+//
+// ⚠ 当前**未接入渲染管线**: particleRegistry 未注册 'comment', 且布局不为
+// comment_marker 产出 SLIF item —— 即本文件的 render() 不会被调用。批注高亮
+// 的实际绘制在 Draw.drawCommentHighlightsForPage (按 doc.comments 的 range
+// 逐 item 解析, 屏幕与打印两条路径共用)。本模块保留为公开导出 (engine/
+// index.ts 再导出 createCommentParticle), 颜色常量由 Draw 引用以保持单一来源。
 // ============================================================
 
 import type { IParticle, RenderOptions } from './IParticle'
 import type { SLIFItem } from '../../layout/core/SLIF'
 
-/** 批注高亮颜色 */
-const COMMENT_HIGHLIGHT = 'rgba(255, 230, 100, 0.45)'
+/** 批注高亮颜色 (Draw 的批注高亮 pass 复用此常量, 保持单一来源) */
+export const COMMENT_HIGHLIGHT = 'rgba(255, 230, 100, 0.45)'
 /** 批注图标颜色 */
 const COMMENT_ICON_COLOR = '#D97706'
 

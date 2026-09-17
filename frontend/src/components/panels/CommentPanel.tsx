@@ -12,7 +12,7 @@
 // ============================================================
 
 import { useState } from 'react'
-import { MessageSquare, Check, Reply, ChevronDown, X } from 'lucide-react'
+import { MessageSquare, Check, Reply, ChevronDown, X, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CommentThread } from '@/engine/document/core/DocumentModel'
 
@@ -25,6 +25,13 @@ interface CommentPanelProps {
   onResolveThread?: (threadId: string) => void
   onAddReply?: (threadId: string, content: string) => void
   onClose?: () => void
+  /**
+   * 新建批注。**返回 false 表示锚定失败** (无选区且无光标, 或选区跨段落) ——
+   * 面板据此显示提示。做成返回值而不是 void, 是为了不出现"点了没反应"。
+   */
+  onNewComment?: (content: string) => boolean
+  /** 读取某条批注锚定的文字摘录 (列表里显示"这条批注标的是哪段字") */
+  getThreadExcerpt?: (threadId: string) => string
 }
 
 type FilterMode = 'all' | 'open' | 'resolved'
@@ -38,10 +45,26 @@ export function CommentPanel({
   onResolveThread,
   onAddReply,
   onClose,
+  onNewComment,
+  getThreadExcerpt,
 }: CommentPanelProps) {
   const [filter, setFilter] = useState<FilterMode>('open')
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set())
   const [replyText, setReplyText] = useState<Record<string, string>>({})
+  /** 新建批注的内联输入 (R32 补: 此前面板只有列表, 无任何创建入口) */
+  const [newOpen, setNewOpen] = useState(false)
+  const [newText, setNewText] = useState('')
+  const [newError, setNewError] = useState<string | null>(null)
+
+  const submitNew = () => {
+    const content = newText.trim()
+    if (content === '' || !onNewComment) return
+    if (onNewComment(content)) {
+      setNewText(''); setNewOpen(false); setNewError(null)
+    } else {
+      setNewError('请先在文档中选中同一段落内的文字（或把光标放到要批注的位置）')
+    }
+  }
 
   const toggleExpand = (threadId: string) => {
     setExpandedThreads(prev => {
@@ -79,6 +102,19 @@ export function CommentPanel({
           <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
             {counts.open}
           </span>
+          {onNewComment && (
+            <button
+              onClick={() => { setNewOpen(v => !v); setNewError(null) }}
+              title="在文档中选中文字后新建批注"
+              className={cn(
+                'ml-1 flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded transition-colors',
+                newOpen ? 'bg-blue-50 text-blue-700' : 'text-blue-600 hover:bg-blue-50',
+              )}
+            >
+              <Plus size={12} />
+              新建
+            </button>
+          )}
         </div>
         {onClose && (
           <button
@@ -108,6 +144,42 @@ export function CommentPanel({
         ))}
       </div>
 
+      {/* 新建批注 (R32 补): 锚点取文档当前选区/光标, 故输入框只收内容 */}
+      {newOpen && onNewComment && (
+        <div className="px-4 py-2 border-b border-gray-100 bg-blue-50/40">
+          <textarea
+            autoFocus
+            value={newText}
+            onChange={(e) => { setNewText(e.target.value); setNewError(null) }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitNew() }
+              if (e.key === 'Escape') { setNewOpen(false); setNewText(''); setNewError(null) }
+            }}
+            rows={2}
+            placeholder="批注内容…（Enter 提交，Shift+Enter 换行）"
+            className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded resize-none
+                       focus:outline-none focus:border-blue-400 bg-white"
+          />
+          {newError && <p className="mt-1 text-[10px] text-amber-600">{newError}</p>}
+          <div className="flex justify-end gap-1 mt-1">
+            <button
+              onClick={() => { setNewOpen(false); setNewText(''); setNewError(null) }}
+              className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded"
+            >
+              取消
+            </button>
+            <button
+              onClick={submitNew}
+              disabled={newText.trim() === ''}
+              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700
+                         disabled:opacity-40 disabled:cursor-default"
+            >
+              添加批注
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 批注列表 */}
       <div className="flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
@@ -121,6 +193,7 @@ export function CommentPanel({
               const isExpanded = expandedThreads.has(thread.id)
               const isActive = thread.id === activeThreadId
               const lastEntry = thread.comments[thread.comments.length - 1]
+              const excerpt = getThreadExcerpt?.(thread.id) ?? ''
 
               return (
                 <div
@@ -153,6 +226,12 @@ export function CommentPanel({
                       <p className="text-xs text-gray-600 mt-1 line-clamp-2 ml-[18px]">
                         {lastEntry?.content || '(无内容)'}
                       </p>
+                      {/* 锚定摘录: 没有它, 列表里看不出这条批注标的是哪段字 */}
+                      {excerpt && (
+                        <p className="text-[10px] text-gray-400 mt-0.5 ml-[18px] truncate">
+                          锚定：「{excerpt}」
+                        </p>
+                      )}
                     </div>
 
                     {thread.status !== 'resolved' && (

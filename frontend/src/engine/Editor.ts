@@ -54,7 +54,7 @@ import { insertRow, deleteRow, insertColumn, deleteColumn, resizeColumn, getCell
 import type { CellRange } from './document/table/TableOps'
 import {
   collectTextNodeIds, collectSelectionSegments,
-  paragraphTextLength, findFirstTextNodeInRange,
+  paragraphTextLength, paragraphTextInRange, findFirstTextNodeInRange,
   flattenTextContainers, selectionSpine, regionSpine,
 } from './document/selection/SelectionCollector'
 import type { FormatRange } from './document/selection/SelectionCollector'
@@ -1784,26 +1784,40 @@ export class Editor {
   }
 
   /** 创建批注 — 在当前选区/光标位置创建 CommentMarker */
-  createComment(content: string): void {
-    const cursor = this.store.state.runtime.cursor
-    if (cursor.paragraphPath.length === 0) return
+  /**
+   * 新建批注 (契约 §12.2 特征隔离)。
+   *
+   * 锚定范围:
+   *   - 有选区 → 选区内 `[min(offset), max(offset))`, **限定在同一段落**。
+   *     跨段落选区被拒绝 (返回 false): 批注高亮按段落内 item 绘制, 跨段/跨页
+   *     范围既画不出也读不清; 与其静默缩到某个猜测的段落, 不如让 UI 提示
+   *     用户重新选择。
+   *   - 无选区 → 光标前一个字符 (原实现唯一形态 —— 它使批注**永远只标 1 个
+   *     字符**, 这是本 API 从无 UI 调用所以一直没暴露的原因)。
+   *
+   * @returns 是否真的创建。无光标、无选区、或跨段落选区 → false,
+   *          由 UI 给出反馈而不是静默无反应。
+   */
+  createComment(content: string): boolean {
+    const anchor = this.resolveCommentAnchor()
+    if (!anchor) return false
 
     const markerId = generateCommandId()
     const threadId = generateCommandId()
     const ts = Date.now()
+    const rangeStart = { path: [...anchor.path], offset: anchor.start }
+    const rangeEnd = { path: [...anchor.path], offset: anchor.end }
+
     this.commandManager.execute(new CreateCommentCommand(
       generateCommandId(), Date.now(), 'user',
-      cursor.paragraphPath, cursor.offset,
+      anchor.path, anchor.end,
       () => ({
         type: 'comment_marker' as const, id: markerId,
-        threadId,
-        rangeStart: { path: [...cursor.paragraphPath], offset: Math.max(0, cursor.offset - 1) },
-        rangeEnd: { path: [...cursor.paragraphPath], offset: cursor.offset },
+        threadId, rangeStart, rangeEnd,
       } as unknown as BaseNode),
       () => ({
         id: threadId,
-        rangeStart: { path: [...cursor.paragraphPath], offset: Math.max(0, cursor.offset - 1) },
-        rangeEnd: { path: [...cursor.paragraphPath], offset: cursor.offset },
+        rangeStart, rangeEnd,
         author: 'user',
         createdAt: ts,
         status: 'open' as const,
@@ -1812,6 +1826,49 @@ export class Editor {
         comments: [{ id: generateCommandId(), author: 'user', createdAt: ts, content }],
       }),
     ))
+    return true
+  }
+
+  /**
+   * 批注锚定范围。返回 null = 当前状态无法锚定 (无光标 / 跨段落选区)。
+   * 跨段落不做"猜一个段落"的降级 —— 那是静默错锚。
+   */
+  private resolveCommentAnchor(): { path: string[]; start: number; end: number } | null {
+    const sel = this.store.state.runtime.selection
+
+    if (sel.active) {
+      const a = sel.anchor
+      const f = sel.focus
+      const samePara = a.paragraphPath.length === f.paragraphPath.length &&
+        a.paragraphPath.every((p, i) => p === f.paragraphPath[i])
+      if (!samePara) return null
+      const start = Math.min(a.offset, f.offset)
+      const end = Math.max(a.offset, f.offset)
+      if (start < end) return { path: [...a.paragraphPath], start, end }
+    }
+
+    const cursor = this.store.state.runtime.cursor
+    if (cursor.paragraphPath.length === 0) return null
+    return {
+      path: [...cursor.paragraphPath],
+      start: Math.max(0, cursor.offset - 1),
+      end: cursor.offset,
+    }
+  }
+
+  /**
+   * 批注锚定的文字摘录 —— 面板用它显示"这条批注标的是哪段字"。
+   * 文档内高亮之外的单源展示: 批注创建后若只看列表, 用户无从知道它锚在哪。
+   */
+  getCommentExcerpt(threadId: string): string {
+    const thread = (this.doc.comments || []).find((t) => t.id === threadId)
+    if (!thread) return ''
+    const { path, offset } = thread.rangeStart
+    const paraId = path[path.length - 1]
+    const end = thread.rangeEnd.path[thread.rangeEnd.path.length - 1] === paraId
+      ? thread.rangeEnd.offset
+      : paragraphTextLength(this.pool, paraId)
+    return paragraphTextInRange(this.pool, paraId, offset, end).trim()
   }
 
   /** 获取批注列表 */

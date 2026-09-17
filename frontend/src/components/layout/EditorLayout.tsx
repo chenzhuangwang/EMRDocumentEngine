@@ -52,6 +52,10 @@ interface EditorLayoutProps {
   onSelectCommentThread?: (threadId: string) => void
   onResolveCommentThread?: (threadId: string) => void
   onAddCommentReply?: (threadId: string, content: string) => void
+  /** 新建批注 (返回 false = 锚定失败) */
+  onNewComment?: (content: string) => boolean
+  /** 读取批注锚定的文字摘录 */
+  getCommentExcerpt?: (threadId: string) => string
   /** 质控结果 (契约 §12.2) */
   qcResult?: QCResult | null
   onQcIssueClick?: (issue: QCIssue) => void
@@ -93,6 +97,8 @@ export function EditorLayout({
   onSelectCommentThread,
   onResolveCommentThread,
   onAddCommentReply,
+  onNewComment,
+  getCommentExcerpt,
   qcResult,
   onQcIssueClick,
   onQcRecheck,
@@ -142,6 +148,8 @@ export function EditorLayout({
             onSelectCommentThread={onSelectCommentThread}
             onResolveCommentThread={onResolveCommentThread}
             onAddCommentReply={onAddCommentReply}
+            onNewComment={onNewComment}
+            getCommentExcerpt={getCommentExcerpt}
             qcResult={qcResult}
             onQcIssueClick={onQcIssueClick}
             onQcRecheck={onQcRecheck}

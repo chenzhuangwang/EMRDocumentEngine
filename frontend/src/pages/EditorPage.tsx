@@ -890,6 +890,9 @@ function EditorPageInner({
       qcResult={qcResult}
       onQcIssueClick={handleQcIssueClick}
       onQcRecheck={() => setQcResult(editorRef.current?.runQC() ?? null)}
+      // 批注创建: 锚点取文档当前选区/光标, 返回 false 时面板显示提示
+      onNewComment={(content) => editorRef.current?.createComment(content) ?? false}
+      getCommentExcerpt={(threadId) => editorRef.current?.getCommentExcerpt(threadId) ?? ''}
       onResolveCommentThread={(threadId) => {
         const ed = editorRef.current
         if (!ed) return

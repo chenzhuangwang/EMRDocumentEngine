@@ -41,7 +41,8 @@ import { createBarcodeParticle } from './particles/BarcodeParticle'
 import { particleRegistry } from './particles/ParticleRegistry'
 import { textParticle, separatorParticle, listParticle, fieldParticle } from './particles/ParticleAdapters'
 import { buildCellGrid } from '../document/table/TableOps'
-import { flattenTextContainers, regionIdOf, selectionSpine } from '../document/selection/SelectionCollector'
+import { flattenTextContainers, regionIdOf, selectionSpine, paragraphTextLength } from '../document/selection/SelectionCollector'
+import { COMMENT_HIGHLIGHT } from './particles/CommentParticle'
 import { resolveHfParagraphLocation } from '../document/core/HeaderFooterRegions'
 import { resolveFieldText as formatFieldText } from '../document/factory/FieldFormatter'
 
@@ -219,6 +220,66 @@ export class Draw {
   }
 
   // ================================================================
+  /**
+   * 批注高亮 (契约 §12.2) —— 按 doc.comments 的 range 逐 item 解析并填充。
+   *
+   * 为什么不用 CommentParticle: particleRegistry 未注册 'comment', 且布局不为
+   * comment_marker 产出 SLIF item —— 那个粒子的 render() 实际不会被调用。这里
+   * 直接从 doc.comments 解析, 屏幕 (静态层) 与打印 (renderPageToContext) 共用
+   * 同一实现, 保证两边一致 (契约 §12: 打印是文档投影, 必须包含屏幕上的一切)。
+   *
+   * 字符定位口径必须与 computeCaretPos 一致 (文本计 text.length、原子内联计 1
+   * 且不产出字符; 逐字符宽度用 cumulativeWidthUpTo), 否则高亮会与光标错位。
+   */
+  private drawCommentHighlightsForPage(
+    ctx: CanvasRenderingContext2D, page: SLIFPage, pageY: number,
+  ): void {
+    const threads = this.document?.comments
+    const pool = this.pool
+    if (!threads || threads.length === 0 || !pool) return
+
+    ctx.save()
+    ctx.fillStyle = COMMENT_HIGHLIGHT
+    for (const thread of threads) {
+      const startPara = thread.rangeStart.path[thread.rangeStart.path.length - 1]
+      const endPara = thread.rangeEnd.path[thread.rangeEnd.path.length - 1]
+      const para = pool.nodes.get(startPara) as { type?: string; children?: readonly string[] } | undefined
+      if (!para?.children) continue
+
+      const start = thread.rangeStart.offset
+      // 跨段落范围 (本 API 已不产出, 但历史/导入数据可能有): 画到该段末尾
+      const end = endPara === startPara
+        ? thread.rangeEnd.offset
+        : paragraphTextLength(pool, startPara)
+      if (end <= start) continue
+
+      let charCount = 0
+      for (const item of getFlatPageItems(page)) {
+        if (!para.children.includes(item.nodeId)) continue
+        const isAtomic = item.nodeType === 'smarttext' || item.nodeType === 'image' ||
+          item.nodeType === 'field' || item.nodeType === 'cross_reference' ||
+          item.nodeType === 'footnote_ref' || item.nodeType === 'bookmark'
+        const unitLen = isAtomic ? 1 : (item.text?.length || 0)
+        const itemStart = charCount
+        charCount += unitLen
+        if (isAtomic || unitLen === 0) continue       // 原子内联无文字可高亮
+        const from = Math.max(start, itemStart)
+        const to = Math.min(end, itemStart + unitLen)
+        if (from >= to) continue
+        const fontSpec = {
+          font: item.font || 'SimSun', size: item.size || 16,
+          bold: item.bold, italic: item.italic,
+        }
+        const x0 = item.x + cumulativeWidthUpTo(item.text || '', from - itemStart, fontSpec, this.measurer)
+        const x1 = item.x + cumulativeWidthUpTo(item.text || '', to - itemStart, fontSpec, this.measurer)
+        if (x1 > x0) {
+          ctx.fillRect(x0, pageY + item.y, x1 - x0, item.ascent + item.descent)
+        }
+      }
+    }
+    ctx.restore()
+  }
+
   // 光标坐标计算 — 共享方法, render() 和 getCaretClientRect() 复用
   //
   // 支持正文 body items + 页眉 headerItems + 页脚 footerItems
@@ -508,7 +569,9 @@ export class Draw {
         sctx.setTransform(scale * dpr, 0, 0, scale * dpr, physOffsetX, 0)
       }
     }
-    this.renderer.renderStatic(this.pages, visible, scrollOffset)
+    this.renderer.renderStatic(this.pages, visible, scrollOffset, (ctx, page, _i, pageY) => {
+      this.drawCommentHighlightsForPage(ctx, page, pageY)
+    })
 
     // --- 内容层: 文本粒子 + 分隔线 + 页眉页脚 ---
     const ctx = this.renderer.getContentCtx()
@@ -1625,6 +1688,9 @@ export class Draw {
       this.renderParticleItems(ctx, page.headerItems, 0, pageIndex, false)
     }
     this.drawHfSeparator(ctx, pageWidth, headerH)
+
+    // --- 批注高亮: 必须在正文之前画 (同一 ctx 上文字会盖住它), 契约 §12.2 ---
+    this.drawCommentHighlightsForPage(ctx, page, 0)
 
     // --- 正文 (含表格/脚注; separator 可用宽与旧打印行为保持一致) ---
     for (const item of page.items) {
