@@ -6,6 +6,7 @@
 
 import type { DocumentTree, BaseNode, Paragraph, ImageNode, HeaderFooterConfig, ElementMeta, WatermarkConfig, DocumentMetadata } from './document/core/DocumentModel'
 import { DEFAULT_HEADER_FOOTER_CONFIG } from './document/core/DocumentModel'
+import { safeLoadDocument } from './ErrorRecovery'
 import { createDocument, createParagraph, createTextNode, extractStyle, uniformTextStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent } from './document/factory/ElementFormatter'
 import { NodePool, buildNodePool } from './document/core/NodePool'
 import { serializeDocument } from './document/io/DocumentSerializer'
@@ -1291,16 +1292,31 @@ export class Editor {
     // 确保 header/footer 字段存在 (兼容旧版文档数据)
     if (!doc.header) doc.header = []
     if (!doc.footer) doc.footer = []
+
+    // 文档进入引擎的唯一咽喉 (API / 文件导入 / 模板都走这里)。
+    // 坏数据在这儿被兜住: 回落到空白文档 + 上报, 而不是让异常冒到调用方 ——
+    // 那正是"一次异常拖垮整份病历"的来源 (ErrorRecovery Level 3)。
+    // 回落用的空白文档由 createDocument() 现造, **不另抄一份默认值**: 抄一份
+    // 就等于给 DocumentModel 的默认形状留了第二个会漂移的事实源。
+    const loaded = safeLoadDocument(
+      () => ({ doc, result: loadDocumentFromObject(doc, { extraNodes: nodes }) }),
+      () => {
+        const blank = createDocument(doc.title || '恢复的文档')
+        return { doc: blank, result: loadDocumentFromObject(blank) }
+      },
+    )
+    doc = loaded.value.doc
+    const loadResult = loaded.value.result
+
     this.doc = doc
     // EditorStore.document 是 canonical DocumentTree 的**引用视图** (契约 §7.2):
     // 唯一写入方就是这里 — 换文档时必须替换引用, 否则 UI 侧读到上一份文档。
     this.store.setDocument(doc)
     this.store.setDocumentTitle(doc.title)
-    const loaded = loadDocumentFromObject(doc, { extraNodes: nodes })
-    this.pool = loaded.pool
+    this.pool = loadResult.pool
     // 优先级: 显式 stores (外部模板路径) > 加载器从 doc 顶层字段读回 (引擎序列化格式, 契约 §12.1)
-    this.templateDefinitions = stores?.templateDefinitions ?? loaded.templateDefinitions ?? null
-    this.presentationStyles = stores?.presentationStyles ?? loaded.presentationStyles ?? null
+    this.templateDefinitions = stores?.templateDefinitions ?? loadResult.templateDefinitions ?? null
+    this.presentationStyles = stores?.presentationStyles ?? loadResult.presentationStyles ?? null
     // dictionaries 是 runtime-only 候选源, **不在** document artifact 里 (契约
     // §12.6.4: 只有 id 引用随 ElementFormat 持久化)。因此它没有「从 doc 读回」
     // 这条兜底路径, 不能用 `?? null`: 那样每次换文档都会把已注入的 provider 抹掉

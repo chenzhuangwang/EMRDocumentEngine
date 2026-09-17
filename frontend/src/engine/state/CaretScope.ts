@@ -44,12 +44,6 @@ export type CaretScope =
  * 两个 CaretScope 是否在同一个域内。
  * 用于选区扩展时的域边界校验。
  */
-export function isSameScope(a: CaretScope, b: CaretScope): boolean {
-  if (a.type !== b.type) return false
-  if (a.type === 'body') return true
-  // 同 cell 或至少同 table (宽松匹配)
-  return (a as { tableId: string }).tableId === (b as { tableId: string }).tableId
-}
 
 /**
  * 判断 scope 是否为 'cell' 类型 (类型收窄 guard)

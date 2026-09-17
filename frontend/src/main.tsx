@@ -12,6 +12,12 @@ import './index.css'
 import { useUIStore } from './store'
 import { applyChromeTheme, storeChromePreset } from './platform/dom/chromeTheme'
 import { bootstrapLocale } from './i18n/bootstrap'
+import { installErrorReporter } from './errorReporting'
+
+// ---- 引擎错误上报落点 ----
+// ErrorRecovery 的三级容错默认只 console.error, 用户侧零感知。接上落点后由
+// StatusBar 呈现 (实现与理由见 errorReporting.ts)。
+installErrorReporter()
 
 // ---- i18n bootstrap ----
 //

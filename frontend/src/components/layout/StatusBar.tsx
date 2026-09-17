@@ -8,8 +8,9 @@
 // 状态栏
 // ============================================================
 
-import { FileText, Type, Wifi, WifiOff, Minus, Plus, Pilcrow, Activity } from 'lucide-react'
+import { FileText, Type, Wifi, WifiOff, Minus, Plus, Pilcrow, Activity, AlertTriangle } from 'lucide-react'
 import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
+import { useEditorStore } from '@/store'
 import { cn, formatWordCount } from '@/lib/utils'
 import { ModeSwitcher } from '@/components/views/ModeSwitcher'
 import type { EditorMode, ScoreResult } from '@/engine'
@@ -135,6 +136,9 @@ export function StatusBar({
         </span>
       </div>
       <div className="flex items-center gap-4">
+        {/* 引擎错误 (ErrorRecovery Level 2/3 上报) — 点击关闭 */}
+        <EngineErrorChip />
+
         {/* 保存状态 */}
         <SaveStatusIcon status={saveStatus} />
 
@@ -159,6 +163,32 @@ export function StatusBar({
         </div>
       </div>
     </footer>
+  )
+}
+
+/**
+ * 引擎错误提示 (ErrorRecovery 上报)。
+ *
+ * 在此之前引擎的 Level 2/3 容错只 console.error: 某一页渲染失败时画布上只有
+ * 一张红色占位图, 用户看不到任何原因; 导入损坏文档更是**什么都没发生**。
+ * 这里把那条链路的终点接上, 点击即关闭。
+ */
+function EngineErrorChip() {
+  const error = useEditorStore((s) => s.lastEngineError)
+  const dismiss = useEditorStore((s) => s.dismissEngineError)
+  if (!error) return null
+
+  return (
+    <button
+      className="flex items-center gap-1 max-w-[280px] text-error-500
+                 hover:text-error-500/80 transition-colors"
+      onClick={dismiss}
+      title={`${error.code}: ${error.message}（点击关闭）`}
+      aria-label={`引擎错误：${error.message}（点击关闭）`}
+    >
+      <AlertTriangle size={12} className="flex-shrink-0" />
+      <span className="truncate">{error.message}</span>
+    </button>
   )
 }
 

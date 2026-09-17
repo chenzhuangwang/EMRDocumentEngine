@@ -38,7 +38,7 @@ import type { ControlConfigData } from '@/components/dialogs/controlConfigShared
 import { documentApi, templateApi } from '@/services/api'
 import { getMockDocumentDetail } from '@/mocks/documents'
 import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
-import { templateImporter, isExternalTemplate, hfParagraphsForPage } from '@/engine'
+import { templateImporter, isExternalTemplate, hfParagraphsForPage, reportError, EditorErrorCode } from '@/engine'
 import { TOCGenerator } from '@/engine/render/TOCGenerator'
 import { buildExportHtml, buildExportText } from '@/lib/documentExport'
 import {
@@ -500,8 +500,17 @@ function EditorPageInner({
         } catch { /* 非 JSON → 回落 registry */ }
       }
 
-      const result = documentLoaderRegistry.load(text, file.name)
-      if (result?.doc) {
+      try {
+        const result = documentLoaderRegistry.load(text, file.name)
+        if (!result?.doc) {
+          // 没有 loader 认领这个格式。原先这里是**静默 return**: 用户点了导入却
+          // 什么都没发生, 分不清是"格式不支持"还是"程序坏了"。
+          reportError({
+            code: EditorErrorCode.E_DOCUMENT_CORRUPTED,
+            message: `无法识别该文件格式：${file.name}`,
+          })
+          return
+        }
         // 导入清理: 旧版控件向导会把控件库默认标签(如 '文本输入：')写进
         // templateDefinitions; 这里把「等于库默认标签」的 label 去掉, 避免导入后
         // 出现用户并不想要的多余标签文字 (契约 §12.1)。
@@ -511,6 +520,14 @@ function EditorPageInner({
         ed.setDocument(result.doc, result.nodes, {
           templateDefinitions: result.templateDefinitions,
           presentationStyles: result.presentationStyles,
+        })
+      } catch (err) {
+        // registry 现在对"认领了但读不动"**会抛**(不再吞成 null), 所以这里能拿到
+        // 真实原因; 这一处不接的话异常会从 reader.onload 冒出去, 用户侧毫无反馈。
+        reportError({
+          code: EditorErrorCode.E_DOCUMENT_CORRUPTED,
+          message: `导入失败：${err instanceof Error ? err.message : String(err)}`,
+          cause: err,
         })
       }
     }

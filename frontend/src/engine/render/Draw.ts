@@ -43,7 +43,7 @@ import { textParticle, separatorParticle, listParticle, fieldParticle } from './
 import { buildCellGrid } from '../document/table/TableOps'
 import { flattenTextContainers, regionIdOf, selectionSpine, paragraphTextLength } from '../document/selection/SelectionCollector'
 import { COMMENT_HIGHLIGHT } from './particles/CommentParticle'
-import { safeRenderParticle } from '../ErrorRecovery'
+import { safeRenderParticle, safeRenderPage } from '../ErrorRecovery'
 import { resolveHfParagraphLocation } from '../document/core/HeaderFooterRegions'
 import { resolveFieldText as formatFieldText } from '../document/factory/FieldFormatter'
 
@@ -595,92 +595,14 @@ export class Draw {
         if (!page) continue
         // 每页 canvas Y = 该页累加顶部 (含间隙) - 当前 scrollY
         const pageY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - (visibleStartDocY + scrollOffset)
-        const headerH = page.headerHeight ?? 42
-        const footerH = page.footerHeight ?? 42
-        const hasHeader = page.headerItems && page.headerItems.length > 0
-        const hasFooter = page.footerItems && page.footerItems.length > 0
-
-        // ================================================================
-        // 页眉区域 + 分隔线
-        // ================================================================
-        // 分隔线 (页眉下方) — 0.5px细线, 浅灰
-        this.drawHfSeparator(ctx, pageWidth, pageY + headerH)
-
-        // 编辑模式: 激活区域用虚线边框标记
-        if (this.hfEditActive && this.hfEditSection === 'header') {
-          ctx.save()
-          ctx.strokeStyle = '#93C5FD' // primary-300
-          ctx.lineWidth = 1
-          ctx.setLineDash([4, 3])
-          ctx.strokeRect(1, pageY + 1, pageWidth - 2, headerH - 2)
-          ctx.setLineDash([])
-          ctx.restore()
-        }
-
-        // --- 页眉文本 (仅在有内容时渲染) ---
-        if (hasHeader) {
-          ctx.save()
-          if (!this.hfEditActive || this.hfEditSection !== 'header') {
-            // 非编辑态: 页眉文本变淡
-            ctx.globalAlpha = 0.55
-          }
-          this.renderParticleItems(ctx, page.headerItems!, pageY, i)
-          ctx.restore()
-        }
-
-        // --- 正文 ---
-        for (const item of page.items) {
-          safeRenderParticle(() => this.renderBodyItem(ctx, item, pageY, i, contentWidth), item.nodeId)
-        }
-
-        // ================================================================
-        // 页眉页脚编辑模式遮罩层
-        // ================================================================
-        if (this.hfEditActive) {
-          ctx.save()
-          ctx.globalAlpha = 0.15
-          ctx.fillStyle = '#6B7280' // gray-500, 轻淡蒙层
-          // 正文区域变暗
-          ctx.fillRect(0, pageY + headerH, pageWidth, pageHeight - headerH - footerH)
-          // 非激活的页眉/页脚区域也变暗
-          if (this.hfEditSection !== 'header') {
-            ctx.fillRect(0, pageY, pageWidth, headerH)
-          }
-          if (this.hfEditSection !== 'footer') {
-            ctx.fillRect(0, pageY + pageHeight - footerH, pageWidth, footerH)
-          }
-          ctx.restore()
-        }
-
-        // ================================================================
-        // 页脚区域背景 + 分隔线 (无条件渲染, 提供页面结构视觉)
-        // ================================================================
-        const footerTop = pageHeight - footerH
-
-        // 分隔线 (页脚上方) — 0.5px细线, 浅灰
-        this.drawHfSeparator(ctx, pageWidth, pageY + footerTop)
-
-        // 编辑模式: 激活区域用虚线边框标记
-        if (this.hfEditActive && this.hfEditSection === 'footer') {
-          ctx.save()
-          ctx.strokeStyle = '#93C5FD' // primary-300
-          ctx.lineWidth = 1
-          ctx.setLineDash([4, 3])
-          ctx.strokeRect(1, pageY + footerTop + 1, pageWidth - 2, footerH - 2)
-          ctx.setLineDash([])
-          ctx.restore()
-        }
-
-        // --- 页脚文本 (仅在有内容时渲染) ---
-        if (hasFooter) {
-          ctx.save()
-          if (!this.hfEditActive || this.hfEditSection !== 'footer') {
-            // 非编辑态: 页脚文本变淡
-            ctx.globalAlpha = 0.55
-          }
-          this.renderParticleItems(ctx, page.footerItems!, pageY + footerTop, i)
-          ctx.restore()
-        }
+        // 逐页容错: 单页抛错只损失这一页。rect **必须**给 ——
+        // 不给的话 safeRenderPage 的占位图会刷满整张 canvas (那是离屏单页渲染的语义)
+        safeRenderPage(
+          () => this.renderPageContent(ctx, page, i, pageY, pageWidth, pageHeight, contentWidth),
+          i,
+          ctx,
+          { x: 0, y: pageY, width: pageWidth, height: pageHeight },
+        )
       }
     }
 
@@ -731,6 +653,110 @@ export class Draw {
     if (this.columnResizeGuide) {
       this.renderColumnResizeGuide(this.columnResizeGuide, pageVerticalGap, ictx)
     }
+  }
+
+  /**
+   * 单页内容层渲染 (页眉 / 正文 / 页脚 + 分隔线 + 编辑态蒙层)。
+   *
+   * 从 render() 的页循环里抽出来, 只为能给它套 safeRenderPage 做**逐页**容错:
+   * 原先整段 inline, 任何一页抛错都会冒泡出 rAF 回调, 导致**整帧不画** ——
+   * 其余页和光标一起没。抽出后出错只损失那一页。
+   */
+  private renderPageContent(
+    ctx: CanvasRenderingContext2D,
+    page: SLIFPage,
+    pageIndex: number,
+    pageY: number,
+    pageWidth: number,
+    pageHeight: number,
+    contentWidth: number,
+  ): void {
+        const headerH = page.headerHeight ?? 42
+        const footerH = page.footerHeight ?? 42
+        const hasHeader = page.headerItems && page.headerItems.length > 0
+        const hasFooter = page.footerItems && page.footerItems.length > 0
+
+        // ================================================================
+        // 页眉区域 + 分隔线
+        // ================================================================
+        // 分隔线 (页眉下方) — 0.5px细线, 浅灰
+        this.drawHfSeparator(ctx, pageWidth, pageY + headerH)
+
+        // 编辑模式: 激活区域用虚线边框标记
+        if (this.hfEditActive && this.hfEditSection === 'header') {
+          ctx.save()
+          ctx.strokeStyle = '#93C5FD' // primary-300
+          ctx.lineWidth = 1
+          ctx.setLineDash([4, 3])
+          ctx.strokeRect(1, pageY + 1, pageWidth - 2, headerH - 2)
+          ctx.setLineDash([])
+          ctx.restore()
+        }
+
+        // --- 页眉文本 (仅在有内容时渲染) ---
+        if (hasHeader) {
+          ctx.save()
+          if (!this.hfEditActive || this.hfEditSection !== 'header') {
+            // 非编辑态: 页眉文本变淡
+            ctx.globalAlpha = 0.55
+          }
+          this.renderParticleItems(ctx, page.headerItems!, pageY, pageIndex)
+          ctx.restore()
+        }
+
+        // --- 正文 ---
+        for (const item of page.items) {
+          safeRenderParticle(() => this.renderBodyItem(ctx, item, pageY, pageIndex, contentWidth), item.nodeId)
+        }
+
+        // ================================================================
+        // 页眉页脚编辑模式遮罩层
+        // ================================================================
+        if (this.hfEditActive) {
+          ctx.save()
+          ctx.globalAlpha = 0.15
+          ctx.fillStyle = '#6B7280' // gray-500, 轻淡蒙层
+          // 正文区域变暗
+          ctx.fillRect(0, pageY + headerH, pageWidth, pageHeight - headerH - footerH)
+          // 非激活的页眉/页脚区域也变暗
+          if (this.hfEditSection !== 'header') {
+            ctx.fillRect(0, pageY, pageWidth, headerH)
+          }
+          if (this.hfEditSection !== 'footer') {
+            ctx.fillRect(0, pageY + pageHeight - footerH, pageWidth, footerH)
+          }
+          ctx.restore()
+        }
+
+        // ================================================================
+        // 页脚区域背景 + 分隔线 (无条件渲染, 提供页面结构视觉)
+        // ================================================================
+        const footerTop = pageHeight - footerH
+
+        // 分隔线 (页脚上方) — 0.5px细线, 浅灰
+        this.drawHfSeparator(ctx, pageWidth, pageY + footerTop)
+
+        // 编辑模式: 激活区域用虚线边框标记
+        if (this.hfEditActive && this.hfEditSection === 'footer') {
+          ctx.save()
+          ctx.strokeStyle = '#93C5FD' // primary-300
+          ctx.lineWidth = 1
+          ctx.setLineDash([4, 3])
+          ctx.strokeRect(1, pageY + footerTop + 1, pageWidth - 2, footerH - 2)
+          ctx.setLineDash([])
+          ctx.restore()
+        }
+
+        // --- 页脚文本 (仅在有内容时渲染) ---
+        if (hasFooter) {
+          ctx.save()
+          if (!this.hfEditActive || this.hfEditSection !== 'footer') {
+            // 非编辑态: 页脚文本变淡
+            ctx.globalAlpha = 0.55
+          }
+          this.renderParticleItems(ctx, page.footerItems!, pageY + footerTop, pageIndex)
+          ctx.restore()
+        }
   }
 
   /**
@@ -1702,6 +1728,13 @@ export class Draw {
    * 页面局部坐标 (item.y 相对页顶; 页眉项 y 相对页顶=带顶, 页脚项 y 相对带顶)。
    */
   renderPageToContext(ctx: CanvasRenderingContext2D, page: SLIFPage, pageWidth: number): void {
+    // 离屏整页渲染: 这里刻意**不给** rect —— 整张 canvas 就是这一页, 占满整张是对的。
+    // (屏幕多页画布那条路必须给 rect, 见 renderPageContent 的调用点)
+    safeRenderPage(() => this.paintPage(ctx, page, pageWidth), page.pageIndex, ctx)
+  }
+
+  /** 整页绘制本体 (打印离屏)。拆出来只为让 safeRenderPage 能兜住它。 */
+  private paintPage(ctx: CanvasRenderingContext2D, page: SLIFPage, pageWidth: number): void {
     const pageIndex = page.pageIndex
     const headerH = page.headerHeight ?? 42
     const footerTop = page.height - (page.footerHeight ?? 42)

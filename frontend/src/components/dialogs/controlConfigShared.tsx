@@ -21,7 +21,7 @@ import type { ReactNode } from 'react'
 import { controlWidgetById } from '@/platform/data/controlLibrary'
 import { DICTIONARY_CATALOG } from '@/platform/data/dictionaryCatalog'
 import type {
-  ElementFormat, ElementMeta, ElementEnumOption, TemplateDefinition,
+  ElementMeta, ElementEnumOption, TemplateDefinition,
 } from '@/engine'
 
 // ---- 家族 / 向导类型 ----
@@ -158,13 +158,6 @@ export function CodeBadge({ element }: { element: ElementMeta }) {
 }
 
 // 类型守卫 (用于选择控件是否显示某字段)
-export function isTextDataType(dt: ElementFormat['dataType']): boolean {
-  return dt === 'S1' || dt === 'S2' || dt === 'S3'
-}
-export function isMultiTextDataType(dt: ElementFormat['dataType']): boolean {
-  return dt === 'S2' || dt === 'S3'
-}
-
 // ---- 数据绑定 (码表) ----
 
 /**

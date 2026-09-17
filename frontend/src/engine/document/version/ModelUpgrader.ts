@@ -255,9 +255,3 @@ export interface VersionCompatibility {
   backwardCompatible: boolean
 }
 
-export const VERSION_COMPATIBILITY: VersionCompatibility = {
-  minVersion: { major: 1, minor: 0, patch: 0 },
-  currentVersion: CURRENT_DOCUMENT_VERSION,
-  forwardCompatible: false,  // 决策 4: 不实现降级
-  backwardCompatible: true,
-}

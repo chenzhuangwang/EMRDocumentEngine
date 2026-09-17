@@ -20,7 +20,7 @@
 // ============================================================
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { particleRegistry } from '../render/particles'
+import { particleRegistry } from '../render/particles/ParticleRegistry'
 import { Editor } from '../Editor'
 import { createDomEditorHost, type DomEditorHost } from '../../platform/dom'
 import { createDocument, createParagraph, createTextNode } from '../document/factory/ElementFormatter'

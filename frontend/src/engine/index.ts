@@ -19,7 +19,6 @@ export { PageBreaker } from './layout/page/PageBreaker'
 export { TextParticle } from './render/particles/TextParticle'
 export { SeparatorParticle } from './render/particles/SeparatorParticle'
 export { ListParticle } from './render/particles/ListParticle'
-export { Position } from './state/Position'
 export { CoordinateSystem } from './state/CoordinateSystem'
 export { NodePool, buildNodePool, traversePool } from './document/core/NodePool'
 
@@ -46,7 +45,7 @@ export {
 } from './state/EditorRuntimeState'
 export type {
   CursorState, SelectionState, SelectionGranularity,
-  ViewState, EditorMode, PageMode, IMEState,
+  ViewState, EditorMode, IMEState,
   EditorRuntimeState,
 } from './state/EditorRuntimeState'
 export type { HistoryState } from './state/HistoryState'
@@ -202,16 +201,16 @@ export { LocaleManager, formatMessage } from './i18n/index'
 export type { Locale, LocaleMessages, LocaleParams } from './i18n/index'
 export { VirtualViewport } from './layout/viewport/VirtualViewport'
 export type { ViewportState, VisibleRange } from './layout/viewport/VirtualViewport'
-export { MemoryManager, LRUMap } from './layout/viewport/MemoryManager'
+export { MemoryManager } from './layout/viewport/MemoryManager'
 export type { MemoryStats } from './layout/viewport/MemoryManager'
 export { PerformanceMetrics } from './PerformanceMetrics'
 export type { PerfEntry, PerfSummary } from './PerformanceMetrics'
 export {
   EditorErrorCode,
   safeRenderParticle, safeRenderPage, safeLoadDocument, safeAsync,
-  setErrorReporter,
+  setErrorReporter, reportError,
 } from './ErrorRecovery'
-export type { EditorError, ErrorReporter, EditorErrorCode as EditorErrorCodeType } from './ErrorRecovery'
+export type { EditorError, ErrorReporter, PageRect, EditorErrorCode as EditorErrorCodeType } from './ErrorRecovery'
 
 // ---- R30+: Font management ----
 export { FontManager } from './layout/text/FontManager'
@@ -224,7 +223,6 @@ export type { MultiLangFontConfig } from './layout/text/ScriptResolver'
 // ---- R60+: Document management ----
 export { ModelUpgrader, modelUpgrader } from './document/version/ModelUpgrader'
 export type { VersionUpgrader, CompatibilityStatus, CompatibilityResult, VersionCompatibility } from './document/version/ModelUpgrader'
-export { VERSION_COMPATIBILITY } from './document/version/ModelUpgrader'
 export type { EditorVersion } from './document/version/EditorVersion'
 export { EDITOR_VERSION } from './document/version/EditorVersion'
 export type { DocumentFormatVersion, SLIFVersion } from './document/version/DocumentFormatVersion'

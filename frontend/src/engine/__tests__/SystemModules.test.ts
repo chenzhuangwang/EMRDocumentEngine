@@ -13,10 +13,26 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { PerformanceMetrics } from '../PerformanceMetrics'
 import { testHost } from './helpers'
 import {
-  safeRenderParticle, safeLoadDocument, safeAsync,
+  safeRenderParticle, safeRenderPage, safeLoadDocument, safeAsync,
   EditorErrorCode, setErrorReporter,
 } from '../ErrorRecovery'
 import { PluginManager } from '../plugins/PluginManager'
+
+/**
+ * 记录绘制指令的最小 canvas 替身 —— 只关心"占位图落在哪块区域",
+ * 不需要真的画 (jsdom 的 canvas 是桩, 拿不到像素)。
+ */
+function fakeCtx(ops: string[]): CanvasRenderingContext2D {
+  return {
+    canvas: { width: 800, height: 600 },
+    save() {}, restore() {},
+    set fillStyle(_v: string) {}, get fillStyle() { return '' },
+    set font(_v: string) {}, get font() { return '' },
+    set textAlign(_v: string) {}, get textAlign() { return 'start' },
+    fillRect(x: number, y: number, w: number, h: number) { ops.push(`fillRect:${x},${y},${w},${h}`) },
+    fillText(t: string) { ops.push(`text:${t}`) },
+  } as unknown as CanvasRenderingContext2D
+}
 
 // ---- PerformanceMetrics ----
 
@@ -82,22 +98,63 @@ describe('ErrorRecovery', () => {
     expect((errors[0] as { code: string }).code).toBe(EditorErrorCode.E_PARTICLE_RENDER_FAILED)
   })
 
-  it('should safe load valid document', () => {
-    const result = safeLoadDocument(() => ({
-      type: 'document' as const, id: 'test', title: 'OK',
-      body: { mode: 'flow' as const, children: [] },
-      header: [], footer: [],
-      pageSetup: { width: 794, height: 1123, marginTop: 72, marginBottom: 72, marginLeft: 90, marginRight: 90, orientation: 'portrait' as const },
-    }))
+  it('safeLoadDocument: 成功 → 原值透传, recovered=false', () => {
+    const result = safeLoadDocument(() => ({ title: 'OK' }), () => ({ title: '恢复的文档' }))
     expect(result.recovered).toBe(false)
-    expect(result.doc.title).toBe('OK')
+    expect(result.value.title).toBe('OK')
+    expect(errors.length).toBe(0)
   })
 
-  it('should recover from corrupt document', () => {
-    const result = safeLoadDocument(() => { throw new Error('corrupt') }, 'Recovered')
+  it('safeLoadDocument: 失败 → 用调用方给的回落值 + 上报, 不抛', () => {
+    const result = safeLoadDocument<{ title: string }>(
+      () => { throw new Error('corrupt') },
+      () => ({ title: '恢复的文档' }),
+    )
     expect(result.recovered).toBe(true)
-    expect(result.doc.title).toBe('Recovered')
-    expect(result.doc.body.children).toEqual([])
+    expect(result.value.title).toBe('恢复的文档')
+    expect(errors.length).toBe(1)
+    expect((errors[0] as { code: string }).code).toBe(EditorErrorCode.E_DOCUMENT_CORRUPTED)
+  })
+
+  it('safeLoadDocument: 回落本身也失败 → 抛原始错误, 且两个错误都被上报', () => {
+    expect(() => safeLoadDocument(
+      () => { throw new Error('primary') },
+      () => { throw new Error('fallback') },
+    )).toThrow('primary')
+
+    // 回落失败必须单独可见 —— 否则"容错"等于静默吞掉两类错误
+    expect(errors.length).toBe(2)
+    expect((errors[1] as { message: string }).message).toContain('回落文档同样加载失败')
+  })
+
+  it('safeRenderPage: 给了 rect 只覆盖那一页 —— 否则一页出错会刷满整屏', () => {
+    const ops: string[] = []
+    const ctx = fakeCtx(ops)
+
+    const ok = safeRenderPage(
+      () => { throw new Error('boom') }, 2, ctx, { x: 0, y: 100, width: 200, height: 300 },
+    )
+
+    expect(ok).toBe(false)
+    expect(ops).toContain('fillRect:0,100,200,300')
+    expect(ops).not.toContain(`fillRect:0,0,${ctx.canvas.width},${ctx.canvas.height}`)
+    expect(ops.some((o) => o.startsWith('text:页面 3 渲染失败'))).toBe(true)
+    expect(errors.length).toBe(1)
+  })
+
+  it('safeRenderPage: 不给 rect 则铺满整张 canvas (离屏单页渲染的用法)', () => {
+    const ops: string[] = []
+    const ctx = fakeCtx(ops)
+
+    safeRenderPage(() => { throw new Error('boom') }, 0, ctx)
+
+    expect(ops).toContain(`fillRect:0,0,${ctx.canvas.width},${ctx.canvas.height}`)
+  })
+
+  it('safeRenderPage: 单页失败不影响后续页 (返回值 false 而不是抛)', () => {
+    const ctx = fakeCtx([])
+    expect(safeRenderPage(() => { throw new Error('x') }, 1, ctx)).toBe(false)
+    expect(safeRenderPage(() => { /* ok */ }, 2, ctx)).toBe(true)
   })
 
   it('should safeAsync return null on error', async () => {

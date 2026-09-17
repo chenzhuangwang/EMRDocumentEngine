@@ -424,11 +424,6 @@ const DOCUMENT_METADATA_STRING_KEYS = [
   'externalId', 'categoryId', 'createdAt', 'updatedAt',
 ] as const
 
-/** DocumentMetadata 全部 canonical 键 (契约 §7.7 白名单) */
-export const DOCUMENT_METADATA_KEYS: readonly (keyof DocumentMetadata)[] = [
-  ...DOCUMENT_METADATA_STRING_KEYS, 'keywords',
-]
-
 /**
  * 规范化任意输入为合法 DocumentMetadata (契约 §7.7)。
  *

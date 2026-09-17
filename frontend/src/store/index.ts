@@ -15,17 +15,54 @@ import type { ThemePreset } from '@/engine'
 
 // ---- 编辑器状态 (app 级状态, 架构 §7.1) ----
 
+/** 引擎上报的最近一次错误 (ErrorRecovery → setErrorReporter)。瞬态, 不序列化。 */
+export interface EngineErrorNotice {
+  code: string
+  message: string
+}
+
+/**
+ * 用户手动关掉过的错误。同一条 (code+message) 之后不再弹 ——
+ * 否则逐帧失败的页面每帧都重报一次, 状态栏里那条提示**永远关不掉**。
+ * 换一条错误 (key 不同) 就正常显示。
+ */
+let dismissedErrorKey: string | null = null
+const errorKeyOf = (e: EngineErrorNotice) => `${e.code}|${e.message}`
+
 interface EditorState {
   /** 在线协作人数 (Phase 2 collab 预留, 当前未接线 → 恒为 0) */
   onlineUsers: number
+  /**
+   * 引擎错误 (Level 2/3 容错报告)。
+   *
+   * 这是 setErrorReporter 的**落点** —— 在此之前引擎的错误只能走 console.error,
+   * 用户看不到任何东西 (页面渲染失败只留一张占位图, 没有任何说明)。
+   */
+  lastEngineError: EngineErrorNotice | null
 
   setOnlineUsers: (count: number) => void
+  reportEngineError: (err: EngineErrorNotice) => void
+  dismissEngineError: () => void
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
   onlineUsers: 0,
+  lastEngineError: null,
 
   setOnlineUsers: (onlineUsers) => set({ onlineUsers }),
+
+  reportEngineError: (err) => set((s) => {
+    const key = errorKeyOf(err)
+    // 同一条错误重复上报 → 不动 state (逐帧失败会每帧报一次, 每次 set 都会重渲染)
+    if (dismissedErrorKey === key) return s
+    if (s.lastEngineError && errorKeyOf(s.lastEngineError) === key) return s
+    return { lastEngineError: err }
+  }),
+
+  dismissEngineError: () => set((s) => {
+    dismissedErrorKey = s.lastEngineError ? errorKeyOf(s.lastEngineError) : null
+    return { lastEngineError: null }
+  }),
 }))
 
 // ---- 用户状态 ----

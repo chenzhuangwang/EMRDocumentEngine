@@ -11,12 +11,16 @@
 // 确有可计分控件时出现, 其余情况完全不出现在状态栏 (现有文档零影响)。
 // ============================================================
 
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { EditorContext, type EditorContextValue } from '../../editor/EditorProvider'
 import { StatusBar } from '../StatusBar'
 import { EditorStore } from '@/engine/state/EditorStore'
-import type { ScoreResult } from '@/engine'
+import {
+  reportError, EditorErrorCode, setErrorReporter, type ScoreResult,
+} from '@/engine'
+import { installErrorReporter } from '@/errorReporting'
+import { useEditorStore } from '@/store'
 
 function renderStatusBar(scaleScore?: ScoreResult | null) {
   const store = new EditorStore()
@@ -70,5 +74,77 @@ describe('StatusBar 量表评分标识 (§12.6.2 layer E)', () => {
     renderStatusBar(score({ total: 5, counted: 1, uncounted: 0 }))
     const el = screen.getByTitle(/量表评分 5 分/)
     expect(el.getAttribute('title')).not.toContain('未配数值')
+  })
+})
+
+// ============================================================
+// 引擎错误提示 (ErrorRecovery 上报链路的最后一跳)
+//
+// 链路: 引擎 reportError → reporter → useEditorStore → 这里渲染。
+// 上面每一环都有测试, 唯独"用户到底看不看得见"要在这里兜住 ——
+// 少了这一跳, 整条链路等于没接。
+// ============================================================
+
+function renderBar() {
+  const store = new EditorStore()
+  const value: EditorContextValue = { editorRef: { current: null }, ready: true, store }
+  return render(
+    <EditorContext.Provider value={value}>
+      <StatusBar />
+    </EditorContext.Provider>,
+  )
+}
+
+describe('StatusBar 引擎错误提示', () => {
+  beforeEach(() => {
+    useEditorStore.setState({ lastEngineError: null })
+    installErrorReporter()
+  })
+
+  afterEach(() => {
+    setErrorReporter((err) => console.error(`[${err.code}] ${err.message}`))
+    useEditorStore.setState({ lastEngineError: null })
+  })
+
+  it('没有错误时不渲染任何提示', () => {
+    renderBar()
+    expect(screen.queryByRole('button', { name: /引擎错误/ })).toBeNull()
+  })
+
+  it('引擎报错 → 状态栏出现该错误', () => {
+    renderBar()
+
+    act(() => {
+      reportError({ code: EditorErrorCode.E_DOCUMENT_CORRUPTED, message: '导入失败：文件损坏' })
+    })
+
+    expect(screen.getByText('导入失败：文件损坏')).toBeTruthy()
+  })
+
+  it('点击关闭 → 提示消失, 且同一条错误不再弹回来', () => {
+    renderBar()
+    act(() => {
+      reportError({ code: EditorErrorCode.E_DOCUMENT_CORRUPTED, message: '导入失败：文件损坏(单次)' })
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /引擎错误/ }))
+    expect(screen.queryByText('导入失败：文件损坏(单次)')).toBeNull()
+
+    // 逐帧失败的场景: 关掉之后同一条会立刻被重新报上来, 不能让它弹回来
+    act(() => {
+      reportError({ code: EditorErrorCode.E_DOCUMENT_CORRUPTED, message: '导入失败：文件损坏(单次)' })
+    })
+    expect(screen.queryByText('导入失败：文件损坏(单次)')).toBeNull()
+  })
+
+  it('错误详情放在 title 里 (消息可能被截断)', () => {
+    renderBar()
+    act(() => {
+      reportError({ code: EditorErrorCode.E_RENDER_CONTEXT_LOST, message: '页面渲染失败: pageIndex=2' })
+    })
+
+    const chip = screen.getByRole('button', { name: /引擎错误/ })
+    expect(chip.getAttribute('title')).toContain('E_RENDER_CONTEXT_LOST')
+    expect(chip.getAttribute('title')).toContain('pageIndex=2')
   })
 })

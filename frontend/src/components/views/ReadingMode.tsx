@@ -12,7 +12,7 @@
 // ============================================================
 
 import { useEffect, type ReactNode } from 'react'
-import { Eye, EyeOff } from 'lucide-react'
+import { EyeOff } from 'lucide-react'
 
 interface ReadingModeProps {
   children: ReactNode
@@ -52,20 +52,5 @@ export function ReadingModeOverlay({ children, active, onToggle }: ReadingModePr
       )}
       {children}
     </>
-  )
-}
-
-/** 阅读模式切换按钮 (用于 HeaderBar/Toolbar) */
-export function ReadingModeToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
-  return (
-    <button
-      onClick={onToggle}
-      title={active ? '退出阅读模式' : '阅读模式'}
-      className="flex items-center gap-1 px-2 py-1 text-xs rounded
-                 text-chrome-ink-tertiary hover:text-chrome-ink-body hover:bg-chrome-muted transition-colors"
-    >
-      {active ? <EyeOff size={14} /> : <Eye size={14} />}
-      <span>{active ? '退出' : '阅读'}</span>
-    </button>
   )
 }

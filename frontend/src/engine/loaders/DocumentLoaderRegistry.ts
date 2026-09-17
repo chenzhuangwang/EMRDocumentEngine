@@ -15,6 +15,7 @@ import type { DocumentTree, BaseNode } from '../document/core/DocumentModel'
 import { NodeType, generateId } from '../document/core/DocumentModel'
 import { loadDocument } from '../document/io/DocumentLoader'
 import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/version/DocumentFormatVersion'
+import { reportError, EditorErrorCode } from '../ErrorRecovery'
 
 // ---- 加载结果 ----
 
@@ -74,13 +75,22 @@ export class DocumentLoaderRegistry {
 
     if (fileName) loader = this.findByExtension(fileName)
     if (!loader) loader = this.detectFormat(content)
+    // null 只表示"没有 loader 认领这个格式"
     if (!loader) return null
 
     try {
       return loader.load(content, fileName)
     } catch (err) {
-      console.error(`[DocumentLoader] "${loader.name}" 加载失败:`, err)
-      return null
+      // 加载失败**不再吞掉**。"认领了但读不动" (版本过新/结构损坏) 与
+      // "不认识这个格式" 是两回事 —— 原先两者都返回 null, 上层只能把
+      // 版本过新报成"格式不支持", 把用户指向完全错误的方向。
+      // 先上报真实原因, 再抛给调用方 (它才知道该给用户看什么)。
+      reportError({
+        code: EditorErrorCode.E_DOCUMENT_CORRUPTED,
+        message: `"${loader.name}" 加载失败：${err instanceof Error ? err.message : String(err)}`,
+        cause: err,
+      })
+      throw err
     }
   }
 

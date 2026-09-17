@@ -42,27 +42,23 @@ export interface SelectionState {
   granularity: SelectionGranularity
 }
 
-// ---- Selection 工具 ----
-
-export function isCollapsed(sel: SelectionState): boolean {
-  return (
-    sel.anchor.paragraphPath.join('.') === sel.focus.paragraphPath.join('.') &&
-    sel.anchor.offset === sel.focus.offset
-  )
-}
-
 // ---- ViewState ----
 
 export type EditorMode = 'edit' | 'readonly' | 'form' | 'clean' | 'design' | 'print'
-export type PageMode = 'paging' | 'linkage'
 
+/**
+ * 视图状态。
+ *
+ * 这里刻意**只留真正被读写的字段**。原先还有 `pageMode` / `scroll` /
+ * `visiblePages` 三个字段, 全仓除默认值外零读写 —— 它们会让人以为"连页模式"
+ * 和"视口页范围记录"已经存在 (实际滚动位置在 CoordinateSystem.transform.scrollY,
+ * 可见页范围由 LayoutEngine.getVisiblePages 按需算, 都不需要在这里存一份)。
+ * 真要做视口虚拟化时再按需加回来, 而不是留三个空槽让人误判。
+ */
 export interface ViewState {
   mode: EditorMode
-  pageMode: PageMode
   scale: number
   showInvisible: boolean
-  scroll: { x: number; y: number }
-  visiblePages: { start: number; end: number }
 }
 
 // ---- IMEState ----
@@ -70,7 +66,6 @@ export interface ViewState {
 export interface IMEState {
   composing: boolean
   compositionText: string
-  compositionAnchor: CursorState | null
 }
 
 // ---- EditorRuntimeState ----
@@ -95,14 +90,9 @@ export function createDefaultRuntimeState(): EditorRuntimeState {
       granularity: 'character',
     },
     view: {
-      mode: 'edit', pageMode: 'paging', scale: 1, showInvisible: false,
-      scroll: { x: 0, y: 0 },
-      visiblePages: { start: 0, end: 0 },
+      mode: 'edit', scale: 1, showInvisible: false,
     },
-    ime: {
-      composing: false, compositionText: '',
-      compositionAnchor: null,
-    },
+    ime: { composing: false, compositionText: '' },
     history: {
       canUndo: false, canRedo: false,
       undoDepth: 0, redoDepth: 0,
