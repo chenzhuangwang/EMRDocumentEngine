@@ -9,7 +9,23 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './index.css'
-import 'katex/dist/katex.min.css'
+import { useUIStore } from './store'
+import { applyChromeTheme, storeChromePreset } from './platform/dom/chromeTheme'
+
+// ---- chrome 主题 bootstrap ----
+//
+// 必须在 createRoot().render() **之前**同步跑完: 否则首帧会是 standard,
+// 选深色的用户每次刷新都先看到一帧白, 再跳成暗色。
+//
+// 订阅放在这一处而不是各个调用点 (菜单 onClick 等), 保证任何地方
+// setThemePreset 都会真正落到 DOM —— 这正是本仓库反复出现的"改了 state
+// 但没人接线"死接缝的成因, 用一个订阅面兜住。
+applyChromeTheme(useUIStore.getState().themePreset)
+useUIStore.subscribe((state, prev) => {
+  if (state.themePreset === prev.themePreset) return
+  applyChromeTheme(state.themePreset)
+  storeChromePreset(state.themePreset)
+})
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

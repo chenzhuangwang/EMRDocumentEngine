@@ -41,12 +41,12 @@ interface OutlineNavProps {
 // ---- 图标映射 ----
 
 const LEVEL_ICONS: Record<number, React.ReactNode> = {
-  1: <Heading1 size={14} className="text-primary-600" />,
-  2: <Heading2 size={14} className="text-primary-500" />,
-  3: <Heading3 size={14} className="text-gray-500" />,
-  4: <Heading4 size={14} className="text-gray-400" />,
-  5: <FileText size={14} className="text-gray-400" />,
-  6: <FileText size={14} className="text-gray-300" />,
+  1: <Heading1 size={14} className="text-chrome-accent-ink" />,
+  2: <Heading2 size={14} className="text-chrome-accent-ink" />,
+  3: <Heading3 size={14} className="text-chrome-ink-tertiary" />,
+  4: <Heading4 size={14} className="text-chrome-ink-muted" />,
+  5: <FileText size={14} className="text-chrome-ink-muted" />,
+  6: <FileText size={14} className="text-chrome-ink-disabled" />,
 }
 
 // ---- 组件 ----
@@ -60,8 +60,8 @@ export function OutlineNav({
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-        <ListTree size={32} className="text-gray-300 mb-3" />
-        <p className="text-sm text-gray-400 leading-relaxed">{emptyMessage}</p>
+        <ListTree size={32} className="text-chrome-ink-disabled mb-3" />
+        <p className="text-sm text-chrome-ink-muted leading-relaxed">{emptyMessage}</p>
       </div>
     )
   }
@@ -73,21 +73,21 @@ export function OutlineNav({
           key={item.id}
           className={cn(
             'w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors',
-            'hover:bg-gray-50 rounded-sm',
+            'hover:bg-chrome-subtle rounded-sm',
             activeId === item.id
-              ? 'bg-primary-50 text-primary-700 font-medium border-l-2 border-primary-500'
-              : 'text-gray-600 border-l-2 border-transparent',
+              ? 'bg-chrome-accent text-chrome-accent-ink font-medium border-l-2 border-primary-500'
+              : 'text-chrome-ink-secondary border-l-2 border-transparent',
           )}
           style={{ paddingLeft: `${8 + (item.level - 1) * 16}px` }}
           onClick={() => onItemClick?.(item)}
           title={`Heading ${item.level}: ${item.text}`}
         >
           <span className="flex-shrink-0">
-            {LEVEL_ICONS[item.level] ?? <FileText size={14} className="text-gray-400" />}
+            {LEVEL_ICONS[item.level] ?? <FileText size={14} className="text-chrome-ink-muted" />}
           </span>
           <span className="truncate flex-1 min-w-0">{item.text}</span>
           {item.pageIndex >= 0 && (
-            <span className="text-xs text-gray-400 flex-shrink-0 tabular-nums">
+            <span className="text-xs text-chrome-ink-muted flex-shrink-0 tabular-nums">
               p{item.pageIndex + 1}
             </span>
           )}

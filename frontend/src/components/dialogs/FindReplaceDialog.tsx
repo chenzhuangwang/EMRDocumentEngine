@@ -113,16 +113,16 @@ export function FindReplaceDialog({
         <Dialog.Overlay className="fixed inset-0 bg-black/30 z-50" />
         <Dialog.Content
           className="fixed top-1/4 left-1/2 -translate-x-1/2 z-50
-                     w-[420px] bg-white rounded-lg shadow-xl border border-gray-200"
+                     w-[420px] bg-chrome rounded-lg shadow-xl border border-line"
           onKeyDown={handleKeyDown}
         >
           {/* 标题栏 */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <Dialog.Title className="text-sm font-semibold text-gray-800">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-line-subtle">
+            <Dialog.Title className="text-sm font-semibold text-chrome-ink-strong">
               {showReplace ? '查找和替换' : '查找'}
             </Dialog.Title>
             <button
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-chrome-ink-muted hover:text-chrome-ink-secondary transition-colors"
               onClick={onClose}
             >
               <X size={16} />
@@ -132,11 +132,11 @@ export function FindReplaceDialog({
           <div className="p-4 space-y-3">
             {/* 查找输入 */}
             <div className="flex items-center gap-2">
-              <div className="flex-1 flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-md focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-200">
-                <Search size={14} className="text-gray-400 flex-shrink-0" />
+              <div className="flex-1 flex items-center gap-2 px-3 py-1.5 border border-line rounded-md focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-200">
+                <Search size={14} className="text-chrome-ink-muted flex-shrink-0" />
                 <input
                   ref={inputRef}
-                  className="flex-1 bg-transparent border-none outline-none text-sm text-gray-700 placeholder:text-gray-400"
+                  className="flex-1 bg-transparent border-none outline-none text-sm text-chrome-ink-body placeholder:text-chrome-ink-muted"
                   placeholder="输入查找内容..."
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -145,7 +145,7 @@ export function FindReplaceDialog({
 
               {/* 结果计数 */}
               {matchCount > 0 && (
-                <span className="text-xs text-gray-500 flex-shrink-0">
+                <span className="text-xs text-chrome-ink-tertiary flex-shrink-0">
                   {currentMatchIndex >= 0 ? `${currentMatchIndex + 1}/` : ''}{matchCount}
                 </span>
               )}
@@ -153,10 +153,10 @@ export function FindReplaceDialog({
 
             {/* 替换输入 */}
             {showReplace && (
-              <div className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-md focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-200">
-                <Replace size={14} className="text-gray-400 flex-shrink-0" />
+              <div className="flex items-center gap-2 px-3 py-1.5 border border-line rounded-md focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-200">
+                <Replace size={14} className="text-chrome-ink-muted flex-shrink-0" />
                 <input
-                  className="flex-1 bg-transparent border-none outline-none text-sm text-gray-700 placeholder:text-gray-400"
+                  className="flex-1 bg-transparent border-none outline-none text-sm text-chrome-ink-body placeholder:text-chrome-ink-muted"
                   placeholder="替换为..."
                   value={replacement}
                   onChange={(e) => setReplacement(e.target.value)}
@@ -188,7 +188,7 @@ export function FindReplaceDialog({
               <div className="flex-1" />
 
               <button
-                className="text-xs text-gray-500 hover:text-primary-600 flex items-center gap-1 px-2 py-1 rounded transition-colors"
+                className="text-xs text-chrome-ink-tertiary hover:text-chrome-accent-ink flex items-center gap-1 px-2 py-1 rounded transition-colors"
                 onClick={() => setShowReplace(!showReplace)}
               >
                 <ListFilter size={12} />
@@ -210,8 +210,8 @@ export function FindReplaceDialog({
               </button>
 
               <button
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-600
-                           hover:bg-gray-100 rounded-md transition-colors
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-chrome-ink-secondary
+                           hover:bg-chrome-muted rounded-md transition-colors
                            disabled:opacity-40 disabled:cursor-not-allowed"
                 disabled={matchCount === 0}
                 onClick={onFindPrevious}
@@ -221,8 +221,8 @@ export function FindReplaceDialog({
               </button>
 
               <button
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-600
-                           hover:bg-gray-100 rounded-md transition-colors
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-chrome-ink-secondary
+                           hover:bg-chrome-muted rounded-md transition-colors
                            disabled:opacity-40 disabled:cursor-not-allowed"
                 disabled={matchCount === 0}
                 onClick={onFindNext}
@@ -233,7 +233,7 @@ export function FindReplaceDialog({
 
               {showReplace && (
                 <>
-                  <div className="w-px h-5 bg-gray-200" />
+                  <div className="w-px h-5 bg-chrome-strong" />
 
                   <button
                     className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white
@@ -282,8 +282,8 @@ function OptionToggle({
       className={cn(
         'flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors',
         active
-          ? 'bg-primary-50 text-primary-700 border border-primary-200'
-          : 'text-gray-500 hover:bg-gray-100 border border-transparent',
+          ? 'bg-chrome-accent text-chrome-accent-ink border border-chrome-accent-stronger'
+          : 'text-chrome-ink-tertiary hover:bg-chrome-muted border border-transparent',
       )}
       onClick={onClick}
       title={label}

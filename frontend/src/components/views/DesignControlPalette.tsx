@@ -38,15 +38,15 @@ export function DesignControlPalette() {
   }
 
   return (
-    <div className="fixed right-4 top-16 z-40 w-60 flex flex-col rounded-lg border border-gray-200 bg-white shadow-lg">
+    <div className="fixed right-4 top-16 z-40 w-60 flex flex-col rounded-lg border border-line bg-chrome shadow-lg">
       {/* 面板头 */}
-      <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
-        <span className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
+      <div className="flex items-center justify-between border-b border-line-subtle px-3 py-2">
+        <span className="flex items-center gap-1.5 text-xs font-medium text-chrome-ink-body">
           <Puzzle size={13} className="text-blue-500" />
           控件库
         </span>
         <button
-          className="p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+          className="p-0.5 rounded text-chrome-ink-muted hover:text-chrome-ink-secondary hover:bg-chrome-muted"
           onClick={() => setCollapsed(!collapsed)}
           title={collapsed ? '展开' : '折叠'}
         >
@@ -59,13 +59,13 @@ export function DesignControlPalette() {
         <div className="max-h-[70vh] overflow-y-auto p-1.5">
           {[...groups.entries()].map(([category, entries]) => (
             <div key={category} className="mb-1">
-              <div className="px-1.5 py-1 text-[11px] font-medium text-gray-400">{category}</div>
+              <div className="px-1.5 py-1 text-[11px] font-medium text-chrome-ink-muted">{category}</div>
               {entries.map((entry) => (
                 <button
                   key={entry.id}
                   onClick={() => insert(entry)}
                   className="w-full flex items-center justify-between rounded px-2 py-1.5 text-left text-xs
-                             text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                             text-chrome-ink-body hover:bg-blue-50 hover:text-blue-700 transition-colors"
                   title={entry.definition?.tips || entry.name}
                 >
                   <span>{entry.name}</span>

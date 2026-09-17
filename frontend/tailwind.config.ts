@@ -4,6 +4,58 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // SPDX-License-Identifier: MPL-2.0
 
+import {
+  STANDARD_CHROME_TOKENS,
+  type ChromeTokenName,
+} from './src/platform/dom/chromeTokens'
+
+/**
+ * chrome 中性色 token → Tailwind 配色。
+ *
+ * 写成 `rgb(var(--x, <standard 原值>) / <alpha-value>)` 而非裸 `var()`:
+ * 1. `/80` 透明度修饰符只有这个形状才生效, 裸 `var()` 会让 `bg-chrome/80`
+ *    静默退化成不透明 (PerfPanel / ReadingMode 用到半透明层);
+ * 2. 第二参兜底 = standard 原值, 使 bootstrap 未跑到 / JS 失效时仍渲染出
+ *    与今天一致的灰度, 不至于白底变透明。
+ *
+ * 数值单一来源 = chromeTokens.ts (同一份表也被 chromeTheme.ts 用于运行时写
+ * CSS 变量), 此处不重复抄写数值。
+ *
+ * `chrome` 是"面 + 墨"的语义别名 (bg-chrome = 主面板底); `line` 单独成组,
+ * 因为 Tailwind 的 border-/divide- 不读 chrome 组里的 surface 键。二者与
+ * chromeTokens.ts 的 token 名一一对应, 且都 **不碰** 品牌色/语义色
+ * (primary / success / warning / error / revision 保持字面 hex 不动)。
+ */
+const chromeColor = (name: ChromeTokenName) =>
+  `rgb(var(--emr-${name}, ${STANDARD_CHROME_TOKENS[name]}) / <alpha-value>)`
+
+const chromeColors = {
+  chrome: {
+    DEFAULT: chromeColor('surface'),
+    subtle: chromeColor('surface-subtle'),
+    muted: chromeColor('surface-muted'),
+    strong: chromeColor('surface-strong'),
+    desk: chromeColor('desk'),
+    ink: chromeColor('ink'),
+    'ink-strong': chromeColor('ink-strong'),
+    'ink-body': chromeColor('ink-body'),
+    'ink-secondary': chromeColor('ink-secondary'),
+    'ink-tertiary': chromeColor('ink-tertiary'),
+    'ink-muted': chromeColor('ink-muted'),
+    'ink-disabled': chromeColor('ink-disabled'),
+    // 主色底/字: 浅底牌片在深色下必须换成暗底亮字, 否则是一块块亮斑
+    accent: chromeColor('accent'),
+    'accent-strong': chromeColor('accent-strong'),
+    'accent-stronger': chromeColor('accent-stronger'),
+    'accent-ink': chromeColor('accent-ink'),
+  },
+  line: {
+    DEFAULT: chromeColor('line'),
+    subtle: chromeColor('line-subtle'),
+    strong: chromeColor('line-strong'),
+  },
+}
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -13,6 +65,7 @@ export default {
   theme: {
     extend: {
       colors: {
+        ...chromeColors,
         primary: {
           50: '#EFF6FF',
           100: '#DBEAFE',

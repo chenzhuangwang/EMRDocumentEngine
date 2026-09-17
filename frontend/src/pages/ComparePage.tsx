@@ -56,22 +56,22 @@ export default function ComparePage() {
       .finally(() => setLoading(false))
   }, [oldId, newId])
 
-  if (loading) return <div className="flex items-center justify-center h-full text-gray-400">加载中...</div>
+  if (loading) return <div className="flex items-center justify-center h-full text-chrome-ink-muted">加载中...</div>
   if (error) return <div className="flex items-center justify-center h-full text-red-500">{error}</div>
   if (!oldDoc || !newDoc || !oldPool || !newPool) return null
 
   return (
-    <div className="h-full flex flex-col bg-white">
-      <div className="flex items-center gap-4 px-4 py-3 border-b border-gray-200">
+    <div className="h-full flex flex-col bg-chrome">
+      <div className="flex items-center gap-4 px-4 py-3 border-b border-line">
         <button
-          className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-1 text-sm text-chrome-ink-secondary hover:text-chrome-ink"
           onClick={() => navigate(-1)}
         >
           <ArrowLeft size={16} />
           返回
         </button>
-        <h1 className="text-base font-semibold text-gray-800">文档比较</h1>
-        <span className="text-xs text-gray-400">旧版本 ID: {oldId} → 新版本 ID: {newId}</span>
+        <h1 className="text-base font-semibold text-chrome-ink-strong">文档比较</h1>
+        <span className="text-xs text-chrome-ink-muted">旧版本 ID: {oldId} → 新版本 ID: {newId}</span>
       </div>
       <div className="flex-1 overflow-auto">
         <DocumentCompareView

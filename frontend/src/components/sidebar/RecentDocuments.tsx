@@ -58,7 +58,7 @@ export function RecentDocuments({ onOpenDocument, activeDocId }: RecentDocuments
 
   if (docs.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+      <div className="flex flex-col items-center justify-center py-8 text-chrome-ink-muted">
         <Clock size={28} className="mb-2 opacity-40" />
         <span className="text-xs">暂无最近文档</span>
       </div>
@@ -75,18 +75,18 @@ export function RecentDocuments({ onOpenDocument, activeDocId }: RecentDocuments
             'w-full flex items-center gap-2 px-3 py-2 text-left rounded-md transition-colors',
             activeDocId === doc.id
               ? 'bg-blue-50 text-blue-700'
-              : 'hover:bg-gray-50 text-gray-700',
+              : 'hover:bg-chrome-subtle text-chrome-ink-body',
           )}
         >
-          <FileText size={14} className="text-gray-400 flex-shrink-0" />
+          <FileText size={14} className="text-chrome-ink-muted flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="text-sm truncate">{doc.title}</div>
-            <div className="text-[10px] text-gray-400">
+            <div className="text-[10px] text-chrome-ink-muted">
               {formatRelativeTime(doc.lastOpenedAt)}
               {doc.wordCount ? ` · ${doc.wordCount} 词` : ''}
             </div>
           </div>
-          <ExternalLink size={12} className="text-gray-300 flex-shrink-0" />
+          <ExternalLink size={12} className="text-chrome-ink-disabled flex-shrink-0" />
         </button>
       ))}
     </div>

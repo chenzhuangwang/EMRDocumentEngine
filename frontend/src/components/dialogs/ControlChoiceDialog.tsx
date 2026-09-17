@@ -82,7 +82,7 @@ function draftFrom(initial: ControlConfigData): ChoiceDraft {
   }
 }
 
-const THEAD = 'text-xs font-medium text-gray-500 border-b border-gray-100 px-1.5 py-1 text-left whitespace-nowrap'
+const THEAD = 'text-xs font-medium text-chrome-ink-tertiary border-b border-line-subtle px-1.5 py-1 text-left whitespace-nowrap'
 const CELL = 'px-1.5 py-1 align-middle'
 
 export function ControlChoiceDialog({
@@ -164,21 +164,21 @@ export function ControlChoiceDialog({
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose() }}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/30 z-50" />
-        <Dialog.Content onCloseAutoFocus={(e) => e.preventDefault()} className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex max-h-[85vh] w-[620px] flex-col overflow-hidden bg-white rounded-lg shadow-xl border border-gray-200">
-          <div className="flex flex-shrink-0 items-center justify-between px-4 py-3 border-b border-gray-100">
-            <Dialog.Title className="text-sm font-semibold text-gray-800">
+        <Dialog.Content onCloseAutoFocus={(e) => e.preventDefault()} className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex max-h-[85vh] w-[620px] flex-col overflow-hidden bg-chrome rounded-lg shadow-xl border border-line">
+          <div className="flex flex-shrink-0 items-center justify-between px-4 py-3 border-b border-line-subtle">
+            <Dialog.Title className="text-sm font-semibold text-chrome-ink-strong">
               {mode === 'create' ? '新建单选/复选' : `控件配置 · ${initial.element.name || '单选复选'}`}
             </Dialog.Title>
-            <button className="text-gray-400 hover:text-gray-600" onClick={onClose} aria-label="关闭"><X size={16} /></button>
+            <button className="text-chrome-ink-muted hover:text-chrome-ink-secondary" onClick={onClose} aria-label="关闭"><X size={16} /></button>
           </div>
 
           <Tabs.Root value={tab} onValueChange={(v) => setTab(v as TabId)} className="flex flex-1 min-h-0 flex-col overflow-hidden">
-            <Tabs.List className="flex flex-shrink-0 border-b border-gray-100 px-4">
+            <Tabs.List className="flex flex-shrink-0 border-b border-line-subtle px-4">
               {TABS.map((t) => (
                 <Tabs.Trigger
                   key={t.id} value={t.id}
                   className={cn('flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
-                    tab === t.id ? 'border-primary-500 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700')}
+                    tab === t.id ? 'border-primary-500 text-chrome-accent-ink' : 'border-transparent text-chrome-ink-tertiary hover:text-chrome-ink-body')}
                 >
                   {t.label}
                 </Tabs.Trigger>
@@ -197,14 +197,14 @@ export function ControlChoiceDialog({
                       key={String(o.key)} type="button"
                       onClick={() => patch({ multiple: o.key })}
                       className={cn('text-left px-3 py-2.5 rounded-md border transition-colors',
-                        draft.multiple === o.key ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50')}
+                        draft.multiple === o.key ? 'border-blue-500 bg-blue-50' : 'border-line hover:bg-chrome-subtle')}
                     >
-                      <div className={cn('text-sm font-medium', draft.multiple === o.key ? 'text-blue-700' : 'text-gray-700')}>{o.label}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">{o.desc}</div>
+                      <div className={cn('text-sm font-medium', draft.multiple === o.key ? 'text-blue-700' : 'text-chrome-ink-body')}>{o.label}</div>
+                      <div className="text-xs text-chrome-ink-muted mt-0.5">{o.desc}</div>
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-gray-400">单选/复选候选项取值均为文本；复选 = 多选枚举，单选 = 单选枚举。</p>
+                <p className="text-xs text-chrome-ink-muted">单选/复选候选项取值均为文本；复选 = 多选枚举，单选 = 单选枚举。</p>
               </Tabs.Content>
 
               {/* 基础属性 */}
@@ -227,7 +227,7 @@ export function ControlChoiceDialog({
               {/* 选项设置 */}
               <Tabs.Content forceMount value="options" className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-gray-500">候选项</span>
+                  <span className="text-xs font-medium text-chrome-ink-tertiary">候选项</span>
                   <button type="button" onClick={addOpt} className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700">
                     <Plus size={13} /> 新增选项
                   </button>
@@ -243,7 +243,7 @@ export function ControlChoiceDialog({
                   </thead>
                   <tbody>
                     {draft.options.map((o, i) => (
-                      <tr key={i} className="border-b border-gray-50">
+                      <tr key={i} className="border-b border-line-subtle">
                         <td className={CELL}>
                           <input className={inputCls} value={o.name} placeholder="名称" onChange={(e) => setOpt(i, { name: e.target.value })} />
                         </td>
@@ -254,12 +254,12 @@ export function ControlChoiceDialog({
                           <input type="checkbox" checked={o.exclusive === true} onChange={(e) => setOpt(i, { exclusive: e.target.checked ? true : undefined })} />
                         </td>
                         <td className={cn(CELL, 'text-center')}>
-                          <button type="button" aria-label={`删除选项 ${i + 1}`} onClick={() => removeOpt(i)} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+                          <button type="button" aria-label={`删除选项 ${i + 1}`} onClick={() => removeOpt(i)} className="text-chrome-ink-disabled hover:text-red-500"><Trash2 size={14} /></button>
                         </td>
                       </tr>
                     ))}
                     {draft.options.length === 0 && (
-                      <tr><td colSpan={4} className={cn(CELL, 'text-center text-xs text-gray-300 py-3')}>暂无候选项，点右上角新增</td></tr>
+                      <tr><td colSpan={4} className={cn(CELL, 'text-center text-xs text-chrome-ink-disabled py-3')}>暂无候选项，点右上角新增</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -267,7 +267,7 @@ export function ControlChoiceDialog({
 
               {/* 数值属性 */}
               <Tabs.Content forceMount value="numeric" className="space-y-3">
-                <p className="text-xs text-gray-400">为每个候选项(项目)附加一个数值(如评分/权重)；不填表示无。</p>
+                <p className="text-xs text-chrome-ink-muted">为每个候选项(项目)附加一个数值(如评分/权重)；不填表示无。</p>
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
@@ -277,10 +277,10 @@ export function ControlChoiceDialog({
                   </thead>
                   <tbody>
                     {draft.options.map((o, i) => (
-                      <tr key={i} className="border-b border-gray-50">
+                      <tr key={i} className="border-b border-line-subtle">
                         <td className={CELL}>
-                          <span className="text-sm text-gray-700">{o.name || o.value || '(空)'}</span>
-                          {o.value !== o.name && o.name ? <span className="ml-1 text-xs text-gray-300">({o.value})</span> : null}
+                          <span className="text-sm text-chrome-ink-body">{o.name || o.value || '(空)'}</span>
+                          {o.value !== o.name && o.name ? <span className="ml-1 text-xs text-chrome-ink-disabled">({o.value})</span> : null}
                         </td>
                         <td className={CELL}>
                           <input
@@ -291,14 +291,14 @@ export function ControlChoiceDialog({
                         </td>
                       </tr>
                     ))}
-                    {draft.options.length === 0 && <tr><td colSpan={2} className={cn(CELL, 'text-center text-xs text-gray-300 py-3')}>暂无候选项</td></tr>}
+                    {draft.options.length === 0 && <tr><td colSpan={2} className={cn(CELL, 'text-center text-xs text-chrome-ink-disabled py-3')}>暂无候选项</td></tr>}
                   </tbody>
                 </table>
               </Tabs.Content>
 
               {/* 项目列表 */}
               <Tabs.Content forceMount value="list" className="space-y-3">
-                <p className="text-xs text-gray-400">项目列表与选项/数值同源；可调序或快速删除。</p>
+                <p className="text-xs text-chrome-ink-muted">项目列表与选项/数值同源；可调序或快速删除。</p>
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
@@ -310,29 +310,29 @@ export function ControlChoiceDialog({
                   </thead>
                   <tbody>
                     {draft.options.map((o, i) => (
-                      <tr key={i} className="border-b border-gray-50">
-                        <td className={cn(CELL, 'text-center text-xs text-gray-400')}>{i + 1}</td>
+                      <tr key={i} className="border-b border-line-subtle">
+                        <td className={cn(CELL, 'text-center text-xs text-chrome-ink-muted')}>{i + 1}</td>
                         <td className={CELL}>
-                          <span className="text-sm text-gray-700">{o.name || '(空名)'}</span>
-                          {o.value !== o.name && o.name ? <span className="ml-1 text-xs text-gray-300">({o.value})</span> : null}
+                          <span className="text-sm text-chrome-ink-body">{o.name || '(空名)'}</span>
+                          {o.value !== o.name && o.name ? <span className="ml-1 text-xs text-chrome-ink-disabled">({o.value})</span> : null}
                         </td>
-                        <td className={cn(CELL, 'text-center text-xs text-gray-500')}>{o.numericValue ?? '—'}</td>
+                        <td className={cn(CELL, 'text-center text-xs text-chrome-ink-tertiary')}>{o.numericValue ?? '—'}</td>
                         <td className={cn(CELL, 'whitespace-nowrap text-right')}>
-                          <button type="button" aria-label="上移" disabled={i === 0} onClick={() => moveOpt(i, -1)} className="text-gray-400 hover:text-gray-600 disabled:opacity-30"><ArrowUp size={13} /></button>
-                          <button type="button" aria-label="下移" disabled={i === draft.options.length - 1} onClick={() => moveOpt(i, 1)} className="ml-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"><ArrowDown size={13} /></button>
-                          <button type="button" aria-label={`删除 ${rowRead(i)?.value || ''}`} onClick={() => removeOpt(i)} className="ml-1 text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
+                          <button type="button" aria-label="上移" disabled={i === 0} onClick={() => moveOpt(i, -1)} className="text-chrome-ink-muted hover:text-chrome-ink-secondary disabled:opacity-30"><ArrowUp size={13} /></button>
+                          <button type="button" aria-label="下移" disabled={i === draft.options.length - 1} onClick={() => moveOpt(i, 1)} className="ml-1 text-chrome-ink-muted hover:text-chrome-ink-secondary disabled:opacity-30"><ArrowDown size={13} /></button>
+                          <button type="button" aria-label={`删除 ${rowRead(i)?.value || ''}`} onClick={() => removeOpt(i)} className="ml-1 text-chrome-ink-disabled hover:text-red-500"><Trash2 size={13} /></button>
                         </td>
                       </tr>
                     ))}
-                    {draft.options.length === 0 && <tr><td colSpan={4} className={cn(CELL, 'text-center text-xs text-gray-300 py-3')}>暂无候选项</td></tr>}
+                    {draft.options.length === 0 && <tr><td colSpan={4} className={cn(CELL, 'text-center text-xs text-chrome-ink-disabled py-3')}>暂无候选项</td></tr>}
                   </tbody>
                 </table>
               </Tabs.Content>
             </div>
           </Tabs.Root>
 
-          <div className="flex flex-shrink-0 justify-end gap-2 border-t bg-gray-50 px-4 py-3">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-md text-gray-600 hover:bg-gray-100">取消</button>
+          <div className="flex flex-shrink-0 justify-end gap-2 border-t bg-chrome-subtle px-4 py-3">
+            <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-md text-chrome-ink-secondary hover:bg-chrome-muted">取消</button>
             <button
               onClick={() => { if (result) onApply(result) }}
               className="px-4 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"

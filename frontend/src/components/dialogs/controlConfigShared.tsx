@@ -91,9 +91,9 @@ export function cleanDefinition(def: TemplateDefinition | undefined): TemplateDe
 // ---- 共享小型表单控件 (样式与 DocumentPropertiesDialog / PageSetupDialog 对齐) ----
 
 export const inputCls =
-  'w-full text-sm px-2.5 py-1.5 border border-gray-200 rounded-md focus:outline-none ' +
-  'focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white'
-export const fieldLabelCls = 'text-xs font-medium text-gray-600 mb-1 flex items-center gap-1.5'
+  'w-full text-sm px-2.5 py-1.5 border border-line rounded-md focus:outline-none ' +
+  'focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-chrome'
+export const fieldLabelCls = 'text-xs font-medium text-chrome-ink-secondary mb-1 flex items-center gap-1.5'
 
 export function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
@@ -140,8 +140,8 @@ export function ToggleField({
   label, checked, onChange,
 }: { label: string; checked: boolean | undefined; onChange: (v: boolean) => void }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
-      <input type="checkbox" checked={checked === true} onChange={(e) => onChange(e.target.checked)} className="h-3.5 w-3.5 rounded border-gray-300" />
+    <label className="flex cursor-pointer items-center gap-2 text-sm text-chrome-ink-body">
+      <input type="checkbox" checked={checked === true} onChange={(e) => onChange(e.target.checked)} className="h-3.5 w-3.5 rounded border-line-strong" />
       <span>{label}</span>
     </label>
   )
@@ -150,9 +150,9 @@ export function ToggleField({
 export function CodeBadge({ element }: { element: ElementMeta }) {
   const { internal, dataElement } = element.code
   return (
-    <div className="rounded-md bg-gray-50 border border-gray-100 px-2.5 py-1.5 text-xs text-gray-500 space-y-0.5">
-      <div>内部码：<span className="text-gray-700 font-mono">{internal}</span></div>
-      <div>数据元编码：<span className="text-gray-700 font-mono">{dataElement}</span></div>
+    <div className="rounded-md bg-chrome-subtle border border-line-subtle px-2.5 py-1.5 text-xs text-chrome-ink-tertiary space-y-0.5">
+      <div>内部码：<span className="text-chrome-ink-body font-mono">{internal}</span></div>
+      <div>数据元编码：<span className="text-chrome-ink-body font-mono">{dataElement}</span></div>
     </div>
   )
 }
@@ -228,7 +228,7 @@ export function DictionaryField({
             type="button"
             onClick={() => onChange('')}
             disabled={value === ''}
-            className="flex-shrink-0 text-xs text-gray-500 hover:text-red-500 disabled:text-gray-300"
+            className="flex-shrink-0 text-xs text-chrome-ink-tertiary hover:text-red-500 disabled:text-chrome-ink-disabled"
           >
             清空
           </button>
@@ -245,7 +245,7 @@ export function DictionaryField({
           该控件已声明内置候选项。内置候选恒优先于码表 (契约 §12.6.4)，此绑定当前不生效。
         </p>
       )}
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-chrome-ink-muted">
         候选由平台预加载后注入编辑器；未加载时控件按自由文本处理，不报错。
       </p>
     </div>

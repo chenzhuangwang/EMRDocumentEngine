@@ -59,8 +59,8 @@ function cleanDefinition(def: TemplateDefinition): TemplateDefinition | undefine
 function SemanticRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between text-xs">
-      <span className="text-[11px] text-gray-400">{label}</span>
-      <span className="text-gray-600">{value}</span>
+      <span className="text-[11px] text-chrome-ink-muted">{label}</span>
+      <span className="text-chrome-ink-secondary">{value}</span>
     </div>
   )
 }
@@ -110,12 +110,12 @@ export function DesignControlProperties() {
   }
 
   return (
-    <div className="fixed right-[17.5rem] top-16 z-40 w-64 flex flex-col rounded-lg border border-gray-200 bg-white shadow-lg">
+    <div className="fixed right-[17.5rem] top-16 z-40 w-64 flex flex-col rounded-lg border border-line bg-chrome shadow-lg">
       {/* 面板头 */}
-      <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
-        <span className="text-xs font-medium text-gray-700 truncate">{title}</span>
+      <div className="flex items-center justify-between border-b border-line-subtle px-3 py-2">
+        <span className="text-xs font-medium text-chrome-ink-body truncate">{title}</span>
         <button
-          className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50"
+          className="p-1 rounded text-chrome-ink-muted hover:text-red-500 hover:bg-red-50"
           onClick={clearAll}
           title="清除全部设计期属性"
         >
@@ -128,9 +128,9 @@ export function DesignControlProperties() {
         {/* 文本字段 */}
         {STRING_FIELDS.map(({ key, label }) => (
           <div key={key} className="flex flex-col gap-1">
-            <label className="text-[11px] text-gray-400">{label}</label>
+            <label className="text-[11px] text-chrome-ink-muted">{label}</label>
             <input
-              className="w-full rounded border border-gray-200 px-2 py-1 text-xs text-gray-700
+              className="w-full rounded border border-line px-2 py-1 text-xs text-chrome-ink-body
                          focus:outline-none focus:border-blue-400"
               value={(draft[key] as string | undefined) ?? ''}
               onChange={(e) => setString(key, e.target.value)}
@@ -140,9 +140,9 @@ export function DesignControlProperties() {
         ))}
 
         {/* 布尔字段 */}
-        <div className="pt-1 space-y-1.5 border-t border-gray-100">
+        <div className="pt-1 space-y-1.5 border-t border-line-subtle">
           {BOOL_FIELDS.map(({ key, label }) => (
-            <label key={key} className="flex items-center justify-between text-xs text-gray-700">
+            <label key={key} className="flex items-center justify-between text-xs text-chrome-ink-body">
               <span>{label}</span>
               <input
                 type="checkbox"
@@ -155,15 +155,15 @@ export function DesignControlProperties() {
         </div>
 
         {/* controlType 只读展示 (契约 §12.5: 插入时写定, 面板不可改) */}
-        <div className="flex items-center justify-between pt-1.5 border-t border-gray-100">
-          <span className="text-[11px] text-gray-400">控件类型</span>
-          <span className="text-xs text-gray-600">{controlTypeDisplayName(draft.controlType)}</span>
+        <div className="flex items-center justify-between pt-1.5 border-t border-line-subtle">
+          <span className="text-[11px] text-chrome-ink-muted">控件类型</span>
+          <span className="text-xs text-chrome-ink-secondary">{controlTypeDisplayName(draft.controlType)}</span>
         </div>
 
         {/* 语义身份只读区 (契约 §12.5: 只读, 不产生写入) */}
         {identity && (
-          <div className="pt-2 border-t border-dashed border-gray-200">
-            <div className="text-[11px] text-gray-400 mb-1">语义信息（只读）</div>
+          <div className="pt-2 border-t border-dashed border-line">
+            <div className="text-[11px] text-chrome-ink-muted mb-1">语义信息（只读）</div>
             <div className="space-y-1">
               <SemanticRow label="数据元" value={identity.dataElement} />
               <SemanticRow label="数据类型" value={identity.dataType} />

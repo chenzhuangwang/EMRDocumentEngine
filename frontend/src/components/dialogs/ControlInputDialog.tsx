@@ -214,21 +214,21 @@ export function ControlInputDialog({
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose() }}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/30 z-50" />
-        <Dialog.Content onCloseAutoFocus={(e) => e.preventDefault()} className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex max-h-[85vh] w-[520px] flex-col overflow-hidden bg-white rounded-lg shadow-xl border border-gray-200">
-          <div className="flex flex-shrink-0 items-center justify-between px-4 py-3 border-b border-gray-100">
-            <Dialog.Title className="text-sm font-semibold text-gray-800">
+        <Dialog.Content onCloseAutoFocus={(e) => e.preventDefault()} className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex max-h-[85vh] w-[520px] flex-col overflow-hidden bg-chrome rounded-lg shadow-xl border border-line">
+          <div className="flex flex-shrink-0 items-center justify-between px-4 py-3 border-b border-line-subtle">
+            <Dialog.Title className="text-sm font-semibold text-chrome-ink-strong">
               {mode === 'create' ? '新建输入域' : `控件配置 · ${initial.element.name || '输入域'}`}
             </Dialog.Title>
-            <button className="text-gray-400 hover:text-gray-600" onClick={onClose} aria-label="关闭"><X size={16} /></button>
+            <button className="text-chrome-ink-muted hover:text-chrome-ink-secondary" onClick={onClose} aria-label="关闭"><X size={16} /></button>
           </div>
 
           <Tabs.Root value={tab} onValueChange={(v) => setTab(v as TabId)} className="flex flex-1 min-h-0 flex-col overflow-hidden">
-            <Tabs.List className="flex flex-shrink-0 border-b border-gray-100 px-4">
+            <Tabs.List className="flex flex-shrink-0 border-b border-line-subtle px-4">
               {TABS.map((t) => (
                 <Tabs.Trigger
                   key={t.id} value={t.id}
                   className={cn('flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
-                    tab === t.id ? 'border-primary-500 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700')}
+                    tab === t.id ? 'border-primary-500 text-chrome-accent-ink' : 'border-transparent text-chrome-ink-tertiary hover:text-chrome-ink-body')}
                 >
                   {t.label}
                 </Tabs.Trigger>
@@ -256,14 +256,14 @@ export function ControlInputDialog({
                         key={o.value} type="button"
                         onClick={() => patch({ kind: o.value })}
                         className={cn('px-3 py-1.5 text-xs rounded-md border transition-colors',
-                          draft.kind === o.value ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}
+                          draft.kind === o.value ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-line text-chrome-ink-secondary hover:bg-chrome-subtle')}
                       >
                         {o.label}
                       </button>
                     ))}
                   </div>
                 </Field>
-                <p className="text-xs text-gray-400">控件样式：{kindLabel}</p>
+                <p className="text-xs text-chrome-ink-muted">控件样式：{kindLabel}</p>
 
                 {draft.kind === 'N' && (
                   <div className="grid grid-cols-2 gap-3">
@@ -284,7 +284,7 @@ export function ControlInputDialog({
                 {draft.kind === 'select' && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-gray-600">候选项</span>
+                      <span className="text-xs font-medium text-chrome-ink-secondary">候选项</span>
                       <button type="button" onClick={addOption} className="text-xs text-blue-600 hover:text-blue-700">+ 添加选项</button>
                     </div>
                     {draft.options.map((o, i) => (
@@ -299,7 +299,7 @@ export function ControlInputDialog({
                             patchOption(i, { numericValue: s === '' ? undefined : (Number.isFinite(Number(s)) ? Number(s) : o.numericValue) })
                           }}
                         />
-                        <button type="button" onClick={() => removeOption(i)} className="text-gray-400 hover:text-red-500" aria-label="删除选项">×</button>
+                        <button type="button" onClick={() => removeOption(i)} className="text-chrome-ink-muted hover:text-red-500" aria-label="删除选项">×</button>
                       </div>
                     ))}
                     <ToggleField label="允许多选" checked={draft.multiple} onChange={(v) => patch({ multiple: v })} />
@@ -319,10 +319,10 @@ export function ControlInputDialog({
                   <NumField label="小数位数 (scale)" value={draft.scale} min={0} max={6} onChange={(v) => patch({ scale: v })} placeholder="不限" />
                 )}
                 {draft.kind === 'D' && (
-                  <p className="text-xs text-gray-400">日期按 YYYY-MM-DD 存储与校验。</p>
+                  <p className="text-xs text-chrome-ink-muted">日期按 YYYY-MM-DD 存储与校验。</p>
                 )}
                 {draft.kind === 'DT' && (
-                  <p className="text-xs text-gray-400">日期时间按 YYYY-MM-DD HH:mm:ss 存储与校验。</p>
+                  <p className="text-xs text-chrome-ink-muted">日期时间按 YYYY-MM-DD HH:mm:ss 存储与校验。</p>
                 )}
               </Tabs.Content>
 
@@ -335,7 +335,7 @@ export function ControlInputDialog({
                     inlineEnumsPresent={draft.options.some((o) => o.value !== '' || o.name !== '')}
                   />
                 ) : (
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-chrome-ink-muted">
                     仅「下拉」形态可绑定外部码表 —— 它是 format.dictionary 唯一有意义的落点
                     (单选/复选的候选恒为内置项，会覆盖码表)。当前形态为「{kindLabel}」，
                     请先在「格式」页切换为「下拉」。
@@ -358,8 +358,8 @@ export function ControlInputDialog({
           </Tabs.Root>
 
           {/* Footer */}
-          <div className="flex flex-shrink-0 justify-end gap-2 border-t bg-gray-50 px-4 py-3">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-md text-gray-600 hover:bg-gray-100">取消</button>
+          <div className="flex flex-shrink-0 justify-end gap-2 border-t bg-chrome-subtle px-4 py-3">
+            <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-md text-chrome-ink-secondary hover:bg-chrome-muted">取消</button>
             <button
               onClick={() => { if (result) onApply(result) }}
               className="px-4 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"

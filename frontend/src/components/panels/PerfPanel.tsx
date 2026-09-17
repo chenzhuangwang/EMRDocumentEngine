@@ -88,8 +88,8 @@ export function PerfPanel({ summary, layoutTime = 0, cacheHits = 0, cacheMisses 
       <button
         onClick={() => setVisible(true)}
         title="性能面板"
-        className="fixed bottom-2 right-2 z-50 p-1.5 bg-white/80 border border-gray-200
-                   rounded-md shadow-sm text-gray-400 hover:text-gray-600 text-[10px]"
+        className="fixed bottom-2 right-2 z-50 p-1.5 bg-chrome/80 border border-line
+                   rounded-md shadow-sm text-chrome-ink-muted hover:text-chrome-ink-secondary text-[10px]"
       >
         <Activity size={14} />
       </button>
@@ -100,15 +100,15 @@ export function PerfPanel({ summary, layoutTime = 0, cacheHits = 0, cacheMisses 
   const getLayoutColor = (t: number) => t < 16 ? 'text-green-600' : t < 50 ? 'text-amber-600' : 'text-red-600'
 
   return (
-    <div className="fixed bottom-2 right-2 z-50 bg-white/95 border border-gray-200 rounded-lg shadow-lg p-3 min-w-[160px]">
+    <div className="fixed bottom-2 right-2 z-50 bg-chrome/95 border border-line rounded-lg shadow-lg p-3 min-w-[160px]">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-medium text-gray-500 flex items-center gap-1">
+        <span className="text-[10px] font-medium text-chrome-ink-tertiary flex items-center gap-1">
           <Gauge size={12} />
           性能诊断
         </span>
         <button
           onClick={() => setVisible(false)}
-          className="text-gray-300 hover:text-gray-500"
+          className="text-chrome-ink-disabled hover:text-chrome-ink-tertiary"
         >
           <svg width="10" height="10" viewBox="0 0 10 10">
             <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.5" />
@@ -152,7 +152,7 @@ function MetricRow({ icon, label, value, colorClass }: {
 }) {
   return (
     <div className="flex items-center justify-between text-[10px]">
-      <span className="flex items-center gap-1 text-gray-400">
+      <span className="flex items-center gap-1 text-chrome-ink-muted">
         {icon}
         {label}
       </span>

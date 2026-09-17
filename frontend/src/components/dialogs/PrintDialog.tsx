@@ -65,15 +65,15 @@ export function PrintDialog({
         <Dialog.Content
           className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50
                      flex max-h-[85vh] w-[440px] flex-col overflow-hidden
-                     bg-white rounded-lg shadow-xl border border-gray-200"
+                     bg-chrome rounded-lg shadow-xl border border-line"
         >
           {/* 标题栏 */}
-          <div className="flex flex-shrink-0 items-center justify-between px-4 py-3 border-b border-gray-100">
-            <Dialog.Title className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-              <Printer size={16} className="text-gray-400" />
+          <div className="flex flex-shrink-0 items-center justify-between px-4 py-3 border-b border-line-subtle">
+            <Dialog.Title className="text-sm font-semibold text-chrome-ink-strong flex items-center gap-2">
+              <Printer size={16} className="text-chrome-ink-muted" />
               打印
             </Dialog.Title>
-            <button className="text-gray-400 hover:text-gray-600" onClick={onClose}>
+            <button className="text-chrome-ink-muted hover:text-chrome-ink-secondary" onClick={onClose}>
               <X size={16} />
             </button>
           </div>
@@ -81,17 +81,17 @@ export function PrintDialog({
           <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-5">
             {/* 打印机 */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-gray-500">打印机</label>
-              <div className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-md bg-gray-50">
-                <Printer size={14} className="text-gray-400" />
-                <span className="text-sm text-gray-700 flex-1">{settings.printer}</span>
-                <ChevronDown size={12} className="text-gray-400" />
+              <label className="text-xs font-medium text-chrome-ink-tertiary">打印机</label>
+              <div className="flex items-center gap-2 px-3 py-2 border border-line rounded-md bg-chrome-subtle">
+                <Printer size={14} className="text-chrome-ink-muted" />
+                <span className="text-sm text-chrome-ink-body flex-1">{settings.printer}</span>
+                <ChevronDown size={12} className="text-chrome-ink-muted" />
               </div>
             </div>
 
             {/* 页码范围 */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-gray-500">页码范围</label>
+              <label className="text-xs font-medium text-chrome-ink-tertiary">页码范围</label>
               <div className="flex gap-2">
                 {pagePresets.map(p => (
                   <button
@@ -100,8 +100,8 @@ export function PrintDialog({
                       'px-3 py-1.5 text-xs rounded-md border transition-colors',
                       settings.pageRange.start === p.range.start &&
                       settings.pageRange.end === p.range.end
-                        ? 'border-primary-400 bg-primary-50 text-primary-700'
-                        : 'border-gray-200 hover:bg-gray-50 text-gray-600',
+                        ? 'border-primary-400 bg-chrome-accent text-chrome-accent-ink'
+                        : 'border-line hover:bg-chrome-subtle text-chrome-ink-secondary',
                     )}
                     onClick={() => update({ pageRange: p.range })}
                   >
@@ -114,8 +114,8 @@ export function PrintDialog({
                     !pagePresets.some(p =>
                       p.range.start === settings.pageRange.start &&
                       p.range.end === settings.pageRange.end)
-                      ? 'border-primary-400 bg-primary-50 text-primary-700'
-                      : 'border-gray-200 hover:bg-gray-50 text-gray-600',
+                      ? 'border-primary-400 bg-chrome-accent text-chrome-accent-ink'
+                      : 'border-line hover:bg-chrome-subtle text-chrome-ink-secondary',
                   )}
                 >
                   自定义
@@ -125,7 +125,7 @@ export function PrintDialog({
               <div className="flex items-center gap-2 pt-1">
                 <input
                   type="number"
-                  className="w-16 px-2 py-1 text-xs border border-gray-200 rounded-md
+                  className="w-16 px-2 py-1 text-xs border border-line rounded-md
                              focus:outline-none focus:border-primary-400"
                   min={1} max={totalPages}
                   value={settings.pageRange.start}
@@ -133,10 +133,10 @@ export function PrintDialog({
                     pageRange: { ...settings.pageRange, start: Number(e.target.value) || 1 },
                   })}
                 />
-                <span className="text-xs text-gray-400">至</span>
+                <span className="text-xs text-chrome-ink-muted">至</span>
                 <input
                   type="number"
-                  className="w-16 px-2 py-1 text-xs border border-gray-200 rounded-md
+                  className="w-16 px-2 py-1 text-xs border border-line rounded-md
                              focus:outline-none focus:border-primary-400"
                   min={1} max={totalPages}
                   value={settings.pageRange.end}
@@ -144,19 +144,19 @@ export function PrintDialog({
                     pageRange: { ...settings.pageRange, end: Number(e.target.value) || totalPages },
                   })}
                 />
-                <span className="text-xs text-gray-400">页 (共 {totalPages} 页)</span>
+                <span className="text-xs text-chrome-ink-muted">页 (共 {totalPages} 页)</span>
               </div>
             </div>
 
             {/* 份数 + 双面 */}
             <div className="flex items-center gap-6">
               <div className="space-y-1.5 flex-1">
-                <label className="text-xs font-medium text-gray-500">份数</label>
+                <label className="text-xs font-medium text-chrome-ink-tertiary">份数</label>
                 <div className="flex items-center gap-1">
-                  <Copy size={14} className="text-gray-400" />
+                  <Copy size={14} className="text-chrome-ink-muted" />
                   <input
                     type="number"
-                    className="w-16 px-2 py-1.5 text-sm border border-gray-200 rounded-md
+                    className="w-16 px-2 py-1.5 text-sm border border-line rounded-md
                                focus:outline-none focus:border-primary-400"
                     min={1} max={99}
                     value={settings.copies}
@@ -166,13 +166,13 @@ export function PrintDialog({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-gray-500">打印方式</label>
+                <label className="text-xs font-medium text-chrome-ink-tertiary">打印方式</label>
                 <button
                   className={cn(
                     'px-3 py-1.5 text-xs rounded-md border transition-colors',
                     settings.duplex
-                      ? 'border-primary-400 bg-primary-50 text-primary-700'
-                      : 'border-gray-200 hover:bg-gray-50 text-gray-600',
+                      ? 'border-primary-400 bg-chrome-accent text-chrome-accent-ink'
+                      : 'border-line hover:bg-chrome-subtle text-chrome-ink-secondary',
                   )}
                   onClick={() => update({ duplex: !settings.duplex })}
                 >
@@ -198,7 +198,7 @@ export function PrintDialog({
             )}
 
             {/* 页数信息 */}
-            <div className="text-xs text-gray-400 text-center">
+            <div className="text-xs text-chrome-ink-muted text-center">
               共 {totalPages} 页 · 打印 {
                 settings.pageRange.end - settings.pageRange.start + 1
               } 页 · {settings.copies} 份 · {
@@ -208,9 +208,9 @@ export function PrintDialog({
           </div>
 
           {/* 底部按钮 */}
-          <div className="flex flex-shrink-0 items-center justify-end gap-2 px-4 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+          <div className="flex flex-shrink-0 items-center justify-end gap-2 px-4 py-3 border-t border-line-subtle bg-chrome-subtle rounded-b-lg">
             <button
-              className="px-4 py-1.5 text-xs text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
+              className="px-4 py-1.5 text-xs text-chrome-ink-secondary hover:bg-chrome-strong rounded-md transition-colors"
               onClick={onClose}
             >
               取消
@@ -218,7 +218,7 @@ export function PrintDialog({
             {/* 预览: 应用内看排版再决定打不打 (浏览器打印对话框只在 w.print() 后才出预览) */}
             {onPreview && (
               <button
-                className="px-4 py-1.5 text-xs text-gray-700 border border-gray-300 hover:bg-gray-100
+                className="px-4 py-1.5 text-xs text-chrome-ink-body border border-line-strong hover:bg-chrome-muted
                            rounded-md transition-colors"
                 onClick={onPreview}
               >

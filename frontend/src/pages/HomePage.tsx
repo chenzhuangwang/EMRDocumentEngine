@@ -21,6 +21,7 @@ import {
 import { documentApi, type DocumentListItem } from '@/services/api'
 import { formatDate, cn } from '@/lib/utils'
 import { RepoLinks } from '@/components/common/RepoLinks'
+import { ThemeMenu } from '@/components/common/ThemeMenu'
 import { MOCK_DOCUMENT_LIST } from '@/mocks/documents'
 import { RecentDocuments } from '@/components/sidebar/RecentDocuments'
 
@@ -74,18 +75,19 @@ export default function HomePage() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-full flex flex-col bg-chrome-subtle">
       {/* 顶部导航 */}
-      <header className="h-header bg-white border-b border-gray-200 flex items-center justify-between px-6 flex-shrink-0">
+      <header className="h-header bg-chrome border-b border-line flex items-center justify-between px-6 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-primary-600">
+          <div className="flex items-center gap-2 text-chrome-accent-ink">
             <FileText size={24} />
             <h1 className="text-lg font-semibold">EMR Document Editor</h1>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <RepoLinks />
-          <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700
+          <ThemeMenu />
+          <div className="w-8 h-8 rounded-full bg-chrome-accent-strong text-chrome-accent-ink
                           flex items-center justify-center text-sm font-medium">
             U
           </div>
@@ -98,8 +100,8 @@ export default function HomePage() {
           {/* 页面标题和新建按钮 */}
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">我的文档</h2>
-              <p className="text-gray-500 mt-1">管理和编辑所有结构化文档</p>
+              <h2 className="text-2xl font-bold text-chrome-ink">我的文档</h2>
+              <p className="text-chrome-ink-tertiary mt-1">管理和编辑所有结构化文档</p>
             </div>
             <button
               className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white
@@ -113,11 +115,11 @@ export default function HomePage() {
 
           {/* 搜索栏 */}
           <div className="relative mb-6">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-chrome-ink-muted" />
             <input
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-lg
+              className="w-full pl-10 pr-4 py-2.5 bg-chrome border border-line rounded-lg
                          text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                         placeholder:text-gray-400"
+                         placeholder:text-chrome-ink-muted"
               placeholder="搜索文档标题..."
               value={searchKeyword}
               onChange={(e) => setSearchKeyword(e.target.value)}
@@ -130,23 +132,23 @@ export default function HomePage() {
           {/* 文档列表 */}
           {loading ? (
             <div className="flex items-center justify-center py-20">
-              <div className="text-gray-400">加载中...</div>
+              <div className="text-chrome-ink-muted">加载中...</div>
             </div>
           ) : filteredDocs.length > 0 ? (
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-chrome rounded-lg border border-line shadow-sm overflow-hidden">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <tr className="border-b border-line bg-chrome-subtle">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-chrome-ink-tertiary uppercase tracking-wider">
                       文档标题
                     </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-chrome-ink-tertiary uppercase tracking-wider">
                       状态
                     </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-chrome-ink-tertiary uppercase tracking-wider hidden md:table-cell">
                       最后编辑
                     </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-chrome-ink-tertiary uppercase tracking-wider hidden md:table-cell">
                       更新时间
                     </th>
                     <th className="w-10 px-4 py-3" />
@@ -156,30 +158,30 @@ export default function HomePage() {
                   {filteredDocs.map((doc) => (
                     <tr
                       key={doc.id}
-                      className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
+                      className="border-b border-line-subtle hover:bg-chrome-subtle cursor-pointer transition-colors"
                       onClick={() => handleOpenDocument(doc.id)}
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <FileText size={18} className="text-primary-500 flex-shrink-0" />
-                          <span className="text-sm font-medium text-gray-900">{doc.title}</span>
+                          <FileText size={18} className="text-chrome-accent-ink flex-shrink-0" />
+                          <span className="text-sm font-medium text-chrome-ink">{doc.title}</span>
                         </div>
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={doc.status} />
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 hidden md:table-cell">
+                      <td className="px-4 py-3 text-sm text-chrome-ink-secondary hidden md:table-cell">
                         {doc.updatedBy || doc.createdBy}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">
+                      <td className="px-4 py-3 text-sm text-chrome-ink-tertiary hidden md:table-cell">
                         <div className="flex items-center gap-1.5">
-                          <Clock size={12} className="text-gray-400" />
+                          <Clock size={12} className="text-chrome-ink-muted" />
                           {formatDate(doc.updatedAt)}
                         </div>
                       </td>
                       <td className="px-4 py-3">
                         <button
-                          className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
+                          className="p-1 rounded hover:bg-red-50 text-chrome-ink-muted hover:text-red-500"
                           onClick={(e) => handleDelete(doc.id, e)}
                           title="删除"
                         >
@@ -192,9 +194,9 @@ export default function HomePage() {
               </table>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-              <FolderOpen size={48} className="mb-4 text-gray-300" />
-              <p className="text-base font-medium text-gray-500">暂无文档</p>
+            <div className="flex flex-col items-center justify-center py-20 text-chrome-ink-muted">
+              <FolderOpen size={48} className="mb-4 text-chrome-ink-disabled" />
+              <p className="text-base font-medium text-chrome-ink-tertiary">暂无文档</p>
               <p className="text-sm mt-1">点击"新建文档"开始创建</p>
               <button
                 className="mt-4 flex items-center gap-2 px-4 py-2 bg-primary-600 text-white
@@ -224,13 +226,13 @@ function StatusBadge({ status }: { status: string }) {
     },
     archived: {
       label: '已归档',
-      className: 'bg-gray-100 text-gray-600',
+      className: 'bg-chrome-muted text-chrome-ink-secondary',
     },
   }
 
   const { label, className } = config[status] || {
     label: status,
-    className: 'bg-gray-100 text-gray-600',
+    className: 'bg-chrome-muted text-chrome-ink-secondary',
   }
 
   return (

@@ -69,8 +69,8 @@ export function RepoLinks() {
           rel="noopener noreferrer"
           title={`开源仓库 · ${repo.label}`}
           aria-label={`开源仓库 · ${repo.label}`}
-          className={`flex items-center gap-1.5 h-8 px-3 rounded-full border border-gray-200
-                     text-sm text-gray-600 transition-colors flex-shrink-0 ${repo.hoverClass}`}
+          className={`flex items-center gap-1.5 h-8 px-3 rounded-full border border-line
+                     text-sm text-chrome-ink-secondary transition-colors flex-shrink-0 ${repo.hoverClass}`}
         >
           {repo.icon}
           <span className="font-medium hidden sm:inline">{repo.label}</span>

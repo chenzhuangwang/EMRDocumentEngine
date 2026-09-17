@@ -90,7 +90,7 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
 
   return (
     <>
-    <div className="h-toolbar bg-white border-b border-gray-100 flex items-center px-3 gap-0.5 flex-shrink-0 overflow-x-auto select-none">
+    <div className="h-toolbar bg-chrome border-b border-line-subtle flex items-center px-3 gap-0.5 flex-shrink-0 overflow-x-auto select-none">
       {/* 组1：历史操作 */}
       <ToolbarGroup>
         <ToolbarButton title="撤销 (Ctrl+Z)" disabled={!canUndo} onClick={() => onFormat?.('undo')}>
@@ -339,22 +339,22 @@ function FontDropdown({ onSelect }: { onSelect: (font: string) => void }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <button className="flex items-center gap-1 px-2 py-1 text-sm text-gray-700
-                            hover:bg-gray-100 rounded-md min-w-[90px] h-8
-                            data-[state=open]:bg-gray-100">
+        <button className="flex items-center gap-1 px-2 py-1 text-sm text-chrome-ink-body
+                            hover:bg-chrome-muted rounded-md min-w-[90px] h-8
+                            data-[state=open]:bg-chrome-muted">
           <span className="truncate">{FONT_FAMILIES.find(f => f.value === selected)?.label || '宋体'}</span>
           <ChevronDown size={12} />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[150px] bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
+          className="min-w-[150px] bg-chrome rounded-md shadow-lg border border-line py-1 z-50"
           sideOffset={4} align="start"
         >
           {FONT_FAMILIES.map(f => (
             <DropdownMenu.Item
               key={f.value}
-              className="px-3 py-1.5 text-sm text-gray-700 outline-none cursor-default
+              className="px-3 py-1.5 text-sm text-chrome-ink-body outline-none cursor-default
                          data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700"
               style={{ fontFamily: f.value }}
               onClick={() => onSelect(f.value)}
@@ -376,22 +376,22 @@ function FontSizeDropdown({ onSelect }: { onSelect: (size: number) => void }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <button className="flex items-center gap-1 px-2 py-1 text-sm text-gray-700
-                            hover:bg-gray-100 rounded-md min-w-[50px] h-8
-                            data-[state=open]:bg-gray-100">
+        <button className="flex items-center gap-1 px-2 py-1 text-sm text-chrome-ink-body
+                            hover:bg-chrome-muted rounded-md min-w-[50px] h-8
+                            data-[state=open]:bg-chrome-muted">
           <span>{selected}</span>
           <ChevronDown size={12} />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[60px] max-h-[280px] overflow-y-auto overflow-x-hidden bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
+          className="min-w-[60px] max-h-[280px] overflow-y-auto overflow-x-hidden bg-chrome rounded-md shadow-lg border border-line py-1 z-50"
           sideOffset={4} align="start"
         >
           {FONT_SIZES.map(s => (
             <DropdownMenu.Item
               key={s}
-              className="px-3 py-1.5 text-sm text-gray-700 outline-none cursor-default
+              className="px-3 py-1.5 text-sm text-chrome-ink-body outline-none cursor-default
                          data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 text-center"
               onClick={() => onSelect(s)}
             >
@@ -416,9 +416,9 @@ function LineHeightDropdown({ onSelect }: { onSelect: (v: number) => void }) {
       <DropdownMenu.Trigger asChild>
         <button
           title="行距"
-          className="flex items-center gap-1 px-2 py-1 text-sm text-gray-700
-                     hover:bg-gray-100 rounded-md min-w-[50px] h-8
-                     data-[state=open]:bg-gray-100"
+          className="flex items-center gap-1 px-2 py-1 text-sm text-chrome-ink-body
+                     hover:bg-chrome-muted rounded-md min-w-[50px] h-8
+                     data-[state=open]:bg-chrome-muted"
         >
           <span>{selected}</span>
           <ChevronDown size={12} />
@@ -426,13 +426,13 @@ function LineHeightDropdown({ onSelect }: { onSelect: (v: number) => void }) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[64px] bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
+          className="min-w-[64px] bg-chrome rounded-md shadow-lg border border-line py-1 z-50"
           sideOffset={4} align="start"
         >
           {LINE_HEIGHTS.map(v => (
             <DropdownMenu.Item
               key={v}
-              className="px-3 py-1.5 text-sm text-gray-700 outline-none cursor-default
+              className="px-3 py-1.5 text-sm text-chrome-ink-body outline-none cursor-default
                          data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 text-center"
               onClick={() => onSelect(v)}
             >
@@ -455,7 +455,7 @@ function ColorPicker({ onSelect }: { onSelect: (color: string) => void }) {
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          className="toolbar-btn data-[state=open]:bg-gray-100 relative"
+          className="toolbar-btn data-[state=open]:bg-chrome-muted relative"
           title={`文字颜色 (${currentColor})`}
         >
           <Palette size={16} />
@@ -468,14 +468,14 @@ function ColorPicker({ onSelect }: { onSelect: (color: string) => void }) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="bg-white rounded-md shadow-lg border border-gray-200 p-2 z-50"
+          className="bg-chrome rounded-md shadow-lg border border-line p-2 z-50"
           sideOffset={4} align="start"
         >
           <div className="grid grid-cols-7 gap-1">
             {COLORS.map(color => (
               <DropdownMenu.Item
                 key={color}
-                className="w-6 h-6 rounded-sm border border-gray-200 outline-none cursor-pointer
+                className="w-6 h-6 rounded-sm border border-line outline-none cursor-pointer
                            data-[highlighted]:ring-2 data-[highlighted]:ring-blue-400 data-[highlighted]:ring-offset-1"
                 style={{ backgroundColor: color }}
                 onClick={() => onSelect(color)}
@@ -495,8 +495,8 @@ function InsertControlDropdown({ onInsert }: { onInsert?: (type: string) => void
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          className="flex items-center gap-1 px-2 py-1 text-sm text-gray-600
-                     hover:bg-gray-100 rounded-md h-8 data-[state=open]:bg-gray-100"
+          className="flex items-center gap-1 px-2 py-1 text-sm text-chrome-ink-secondary
+                     hover:bg-chrome-muted rounded-md h-8 data-[state=open]:bg-chrome-muted"
           title="插入表单控件"
         >
           <ChevronsUpDown size={14} />
@@ -506,20 +506,20 @@ function InsertControlDropdown({ onInsert }: { onInsert?: (type: string) => void
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[200px] bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
+          className="min-w-[200px] bg-chrome rounded-md shadow-lg border border-line py-1 z-50"
           sideOffset={4} align="start"
         >
           {CONTROLS.map(({ type, label, description, icon }) => (
             <DropdownMenu.Item
               key={type}
-              className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 outline-none cursor-default
+              className="flex items-center gap-3 px-3 py-2 text-sm text-chrome-ink-body outline-none cursor-default
                          data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 transition-colors"
               onClick={() => onInsert?.(type)}
             >
-              <span className="flex-shrink-0 text-gray-400">{icon}</span>
+              <span className="flex-shrink-0 text-chrome-ink-muted">{icon}</span>
               <div className="flex flex-col min-w-0">
                 <span className="font-medium">{label}</span>
-                <span className="text-xs text-gray-400">{description}</span>
+                <span className="text-xs text-chrome-ink-muted">{description}</span>
               </div>
             </DropdownMenu.Item>
           ))}
@@ -550,9 +550,9 @@ function HeadingDropdown({ onSelect }: { onSelect: (level: number) => void }) {
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          className="flex items-center gap-1 px-2 py-1 text-sm text-gray-700
-                     hover:bg-gray-100 rounded-md min-w-[70px] h-8
-                     data-[state=open]:bg-gray-100"
+          className="flex items-center gap-1 px-2 py-1 text-sm text-chrome-ink-body
+                     hover:bg-chrome-muted rounded-md min-w-[70px] h-8
+                     data-[state=open]:bg-chrome-muted"
           title="标题样式"
         >
           <Heading size={14} />
@@ -562,13 +562,13 @@ function HeadingDropdown({ onSelect }: { onSelect: (level: number) => void }) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[120px] bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
+          className="min-w-[120px] bg-chrome rounded-md shadow-lg border border-line py-1 z-50"
           sideOffset={4} align="start"
         >
           {HEADING_STYLES.map(h => (
             <DropdownMenu.Item
               key={h.value}
-              className="px-3 py-1.5 text-sm text-gray-700 outline-none cursor-default
+              className="px-3 py-1.5 text-sm text-chrome-ink-body outline-none cursor-default
                          data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700"
               style={h.value >= 1 ? {
                 fontSize: [0, 28, 24, 20, 18, 16, 14][h.value],
@@ -592,8 +592,8 @@ function ExportDropdown({ onExportClick }: { onExportClick?: () => void }) {
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          className="flex items-center gap-1 px-2 py-1 text-sm text-gray-600
-                     hover:bg-gray-100 rounded-md h-8 data-[state=open]:bg-gray-100"
+          className="flex items-center gap-1 px-2 py-1 text-sm text-chrome-ink-secondary
+                     hover:bg-chrome-muted rounded-md h-8 data-[state=open]:bg-chrome-muted"
           title="导出"
         >
           <Download size={14} />
@@ -603,11 +603,11 @@ function ExportDropdown({ onExportClick }: { onExportClick?: () => void }) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[140px] bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
+          className="min-w-[140px] bg-chrome rounded-md shadow-lg border border-line py-1 z-50"
           sideOffset={4} align="end"
         >
           <DropdownMenu.Item
-            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 outline-none cursor-default
+            className="flex items-center gap-2 px-3 py-2 text-sm text-chrome-ink-body outline-none cursor-default
                        data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700"
             onClick={onExportClick}
           >
@@ -637,7 +637,7 @@ function HeaderFooterDropdown({
             'flex items-center gap-1 px-2 py-1 text-sm rounded-md h-8 transition-colors',
             hfEdit.active
               ? 'bg-blue-50 text-blue-700'
-              : 'text-gray-600 hover:bg-gray-100',
+              : 'text-chrome-ink-secondary hover:bg-chrome-muted',
           )}
           title="页眉页脚"
         >
@@ -648,7 +648,7 @@ function HeaderFooterDropdown({
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[130px] bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
+          className="min-w-[130px] bg-chrome rounded-md shadow-lg border border-line py-1 z-50"
           sideOffset={4} align="end"
         >
           <DropdownMenu.Item
@@ -656,7 +656,7 @@ function HeaderFooterDropdown({
               'flex items-center gap-2 px-3 py-2 text-sm outline-none cursor-default transition-colors',
               hfEdit.active && hfEdit.section === 'header'
                 ? 'bg-blue-50 text-blue-700'
-                : 'text-gray-700 data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700',
+                : 'text-chrome-ink-body data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700',
             )}
             onClick={() => onEnterEdit('header')}
           >
@@ -668,7 +668,7 @@ function HeaderFooterDropdown({
               'flex items-center gap-2 px-3 py-2 text-sm outline-none cursor-default transition-colors',
               hfEdit.active && hfEdit.section === 'footer'
                 ? 'bg-blue-50 text-blue-700'
-                : 'text-gray-700 data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700',
+                : 'text-chrome-ink-body data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700',
             )}
             onClick={() => onEnterEdit('footer')}
           >
@@ -677,9 +677,9 @@ function HeaderFooterDropdown({
           </DropdownMenu.Item>
           {hfEdit.active && (
             <>
-              <div className="h-px bg-gray-100 my-1" />
+              <div className="h-px bg-chrome-muted my-1" />
               <DropdownMenu.Item
-                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500 outline-none cursor-default
+                className="flex items-center gap-2 px-3 py-2 text-sm text-chrome-ink-tertiary outline-none cursor-default
                            data-[highlighted]:bg-red-50 data-[highlighted]:text-red-600 transition-colors"
                 onClick={() => onEnterEdit(hfEdit.section)}
               >
@@ -715,29 +715,29 @@ function FieldDropdown({ onInsert }: { onInsert?: (type: string) => void }) {
           className="toolbar-btn flex items-center gap-0.5"
         >
           <Hash size={16} />
-          <ChevronDown size={10} className="text-gray-400" />
+          <ChevronDown size={10} className="text-chrome-ink-muted" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[180px] bg-white rounded-md shadow-lg border border-gray-200
+          className="min-w-[180px] bg-chrome rounded-md shadow-lg border border-line
                      py-1 z-50 animate-in fade-in-80"
           sideOffset={4}
         >
-          <div className="px-2 py-1 text-[10px] text-gray-400 uppercase tracking-wider">
+          <div className="px-2 py-1 text-[10px] text-chrome-ink-muted uppercase tracking-wider">
             插入域代码
           </div>
           {FIELD_ITEMS.map(item => (
             <DropdownMenu.Item
               key={item.type}
-              className="flex items-center gap-2 px-2 py-1.5 text-xs text-gray-700
-                         hover:bg-gray-100 rounded mx-1 cursor-pointer outline-none"
+              className="flex items-center gap-2 px-2 py-1.5 text-xs text-chrome-ink-body
+                         hover:bg-chrome-muted rounded mx-1 cursor-pointer outline-none"
               onClick={() => onInsert?.(item.type)}
             >
-              <span className="flex-shrink-0 text-gray-400">{item.icon}</span>
+              <span className="flex-shrink-0 text-chrome-ink-muted">{item.icon}</span>
               <span className="flex-1">{item.label}</span>
               {item.shortcut && (
-                <span className="text-[10px] text-gray-400 font-mono">{item.shortcut}</span>
+                <span className="text-[10px] text-chrome-ink-muted font-mono">{item.shortcut}</span>
               )}
             </DropdownMenu.Item>
           ))}
@@ -762,7 +762,7 @@ function HighlightPicker({ onSelect }: { onSelect: (color: string) => void }) {
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          className="toolbar-btn data-[state=open]:bg-gray-100 relative"
+          className="toolbar-btn data-[state=open]:bg-chrome-muted relative"
           title={`文字高亮 (${currentHighlight === 'transparent' ? '无' : currentHighlight})`}
         >
           <Highlighter size={16} />
@@ -774,13 +774,13 @@ function HighlightPicker({ onSelect }: { onSelect: (color: string) => void }) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="bg-white rounded-md shadow-lg border border-gray-200 p-2 z-50"
+          className="bg-chrome rounded-md shadow-lg border border-line p-2 z-50"
           sideOffset={4} align="start"
         >
           <div className="grid grid-cols-7 gap-1">
             <DropdownMenu.Item
-              className="w-6 h-6 rounded-sm border border-gray-200 outline-none cursor-pointer
-                         flex items-center justify-center text-[10px] text-gray-400
+              className="w-6 h-6 rounded-sm border border-line outline-none cursor-pointer
+                         flex items-center justify-center text-[10px] text-chrome-ink-muted
                          data-[highlighted]:ring-2 data-[highlighted]:ring-blue-400"
               onClick={() => onSelect('transparent')}
             >
@@ -789,7 +789,7 @@ function HighlightPicker({ onSelect }: { onSelect: (color: string) => void }) {
             {HIGHLIGHT_COLORS.map(color => (
               <DropdownMenu.Item
                 key={color}
-                className="w-6 h-6 rounded-sm border border-gray-200 outline-none cursor-pointer
+                className="w-6 h-6 rounded-sm border border-line outline-none cursor-pointer
                            data-[highlighted]:ring-2 data-[highlighted]:ring-blue-400 data-[highlighted]:ring-offset-1"
                 style={{ backgroundColor: color }}
                 onClick={() => onSelect(color)}
@@ -820,17 +820,17 @@ function NumberStyleDropdown({ selected, onSelect }: { selected: string; onSelec
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          className="flex items-center gap-0.5 px-1.5 py-1 text-xs text-gray-500
-                     hover:bg-gray-100 rounded-md h-8 data-[state=open]:bg-gray-100"
+          className="flex items-center gap-0.5 px-1.5 py-1 text-xs text-chrome-ink-tertiary
+                     hover:bg-chrome-muted rounded-md h-8 data-[state=open]:bg-chrome-muted"
           title="编号样式"
         >
-          <span className="font-mono text-gray-600">{current.sample}</span>
+          <span className="font-mono text-chrome-ink-secondary">{current.sample}</span>
           <ChevronDown size={10} />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[120px] bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
+          className="min-w-[120px] bg-chrome rounded-md shadow-lg border border-line py-1 z-50"
           sideOffset={4} align="start"
         >
           {NUMBER_STYLES.map(n => (
@@ -840,7 +840,7 @@ function NumberStyleDropdown({ selected, onSelect }: { selected: string; onSelec
                 'px-3 py-1.5 text-sm outline-none cursor-default transition-colors',
                 n.value === selected
                   ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-700 data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700',
+                  : 'text-chrome-ink-body data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700',
               )}
               onClick={() => onSelect(n.value)}
             >

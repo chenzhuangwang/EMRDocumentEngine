@@ -26,7 +26,7 @@ interface QCResultPanelProps {
 export function QCResultPanel({ result, onIssueClick, onRecheck }: QCResultPanelProps) {
   if (!result) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+      <div className="flex flex-col items-center justify-center py-12 text-chrome-ink-muted">
         <Shield size={36} className="mb-2 opacity-30" />
         <span className="text-sm">尚未进行质控检查</span>
         {onRecheck && (
@@ -46,10 +46,10 @@ export function QCResultPanel({ result, onIssueClick, onRecheck }: QCResultPanel
   return (
     <div className="flex flex-col h-full">
       {/* 评分卡片 */}
-      <div className="px-4 py-3 border-b border-gray-100">
+      <div className="px-4 py-3 border-b border-line-subtle">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-gray-600">文书质控评分</span>
-          <span className="text-[10px] text-gray-400">
+          <span className="text-xs font-medium text-chrome-ink-secondary">文书质控评分</span>
+          <span className="text-[10px] text-chrome-ink-muted">
             {new Date(result.checkedAt).toLocaleTimeString('zh-CN')}
           </span>
         </div>
@@ -62,14 +62,14 @@ export function QCResultPanel({ result, onIssueClick, onRecheck }: QCResultPanel
             {grade}
           </div>
           <div>
-            <div className="text-2xl font-bold text-gray-800">{score}</div>
-            <div className="text-[10px] text-gray-400">满分 100</div>
+            <div className="text-2xl font-bold text-chrome-ink-strong">{score}</div>
+            <div className="text-[10px] text-chrome-ink-muted">满分 100</div>
           </div>
         </div>
       </div>
 
       {/* 统计条 */}
-      <div className="flex gap-3 px-4 py-2 border-b border-gray-50 text-[10px]">
+      <div className="flex gap-3 px-4 py-2 border-b border-line-subtle text-[10px]">
         <span className="flex items-center gap-1 text-red-600">
           <AlertCircle size={10} />
           {stats.errors} 错误
@@ -85,9 +85,9 @@ export function QCResultPanel({ result, onIssueClick, onRecheck }: QCResultPanel
       </div>
 
       {/* 问题列表 */}
-      <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+      <div className="flex-1 overflow-y-auto divide-y divide-line-subtle">
         {issues.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+          <div className="flex flex-col items-center justify-center py-8 text-chrome-ink-muted">
             <Shield size={28} className="mb-1 opacity-40" />
             <span className="text-xs">文书质控通过，无问题</span>
           </div>
@@ -104,17 +104,17 @@ export function QCResultPanel({ result, onIssueClick, onRecheck }: QCResultPanel
                 title={locatable ? '跳转到该位置' : '文档级问题，无具体位置'}
                 className={cn(
                   'w-full text-left px-4 py-2.5 transition-colors flex items-start gap-2',
-                  locatable ? 'hover:bg-gray-50' : 'cursor-default',
+                  locatable ? 'hover:bg-chrome-subtle' : 'cursor-default',
                 )}
               >
                 <span className={cn('mt-0.5 flex-shrink-0', SEVERITY_ICON[issue.severity].color)}>
                   {SEVERITY_ICON[issue.severity].icon}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-gray-700 truncate">{issue.ruleName}</div>
-                  <div className="text-[10px] text-gray-500 mt-0.5">{issue.message}</div>
+                  <div className="text-xs font-medium text-chrome-ink-body truncate">{issue.ruleName}</div>
+                  <div className="text-[10px] text-chrome-ink-tertiary mt-0.5">{issue.message}</div>
                 </div>
-                {locatable && <ChevronRight size={12} className="text-gray-300 flex-shrink-0 mt-0.5" />}
+                {locatable && <ChevronRight size={12} className="text-chrome-ink-disabled flex-shrink-0 mt-0.5" />}
               </button>
             )
           })
@@ -123,7 +123,7 @@ export function QCResultPanel({ result, onIssueClick, onRecheck }: QCResultPanel
 
       {/* 重新检查 */}
       {onRecheck && (
-        <div className="px-4 py-2 border-t border-gray-100">
+        <div className="px-4 py-2 border-t border-line-subtle">
           <button
             onClick={onRecheck}
             className="w-full text-xs py-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"

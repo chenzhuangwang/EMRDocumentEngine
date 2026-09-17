@@ -93,13 +93,13 @@ export function CommentPanel({
   ]
 
   return (
-    <div className="flex flex-col h-full bg-white border-l border-gray-200">
+    <div className="flex flex-col h-full bg-chrome border-l border-line">
       {/* 头部 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-line-subtle">
         <div className="flex items-center gap-2">
-          <MessageSquare size={16} className="text-gray-500" />
-          <span className="text-sm font-medium text-gray-800">批注</span>
-          <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+          <MessageSquare size={16} className="text-chrome-ink-tertiary" />
+          <span className="text-sm font-medium text-chrome-ink-strong">批注</span>
+          <span className="text-xs text-chrome-ink-muted bg-chrome-muted px-1.5 py-0.5 rounded">
             {counts.open}
           </span>
           {onNewComment && (
@@ -119,7 +119,7 @@ export function CommentPanel({
         {onClose && (
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+            className="p-1 rounded hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary"
           >
             <X size={14} />
           </button>
@@ -127,7 +127,7 @@ export function CommentPanel({
       </div>
 
       {/* 筛选 */}
-      <div className="flex gap-1 px-4 py-2 border-b border-gray-100">
+      <div className="flex gap-1 px-4 py-2 border-b border-line-subtle">
         {FILTERS.map(f => (
           <button
             key={f.key}
@@ -136,7 +136,7 @@ export function CommentPanel({
               'text-xs px-2 py-1 rounded transition-colors',
               filter === f.key
                 ? 'bg-blue-50 text-blue-700 font-medium'
-                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700',
+                : 'text-chrome-ink-tertiary hover:bg-chrome-subtle hover:text-chrome-ink-body',
             )}
           >
             {f.label}
@@ -146,7 +146,7 @@ export function CommentPanel({
 
       {/* 新建批注 (R32 补): 锚点取文档当前选区/光标, 故输入框只收内容 */}
       {newOpen && onNewComment && (
-        <div className="px-4 py-2 border-b border-gray-100 bg-blue-50/40">
+        <div className="px-4 py-2 border-b border-line-subtle bg-blue-50/40">
           <textarea
             autoFocus
             value={newText}
@@ -157,14 +157,14 @@ export function CommentPanel({
             }}
             rows={2}
             placeholder="批注内容…（Enter 提交，Shift+Enter 换行）"
-            className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded resize-none
-                       focus:outline-none focus:border-blue-400 bg-white"
+            className="w-full text-xs px-2 py-1.5 border border-line rounded resize-none
+                       focus:outline-none focus:border-blue-400 bg-chrome"
           />
           {newError && <p className="mt-1 text-[10px] text-amber-600">{newError}</p>}
           <div className="flex justify-end gap-1 mt-1">
             <button
               onClick={() => { setNewOpen(false); setNewText(''); setNewError(null) }}
-              className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded"
+              className="px-2 py-1 text-xs text-chrome-ink-secondary hover:bg-chrome-muted rounded"
             >
               取消
             </button>
@@ -183,12 +183,12 @@ export function CommentPanel({
       {/* 批注列表 */}
       <div className="flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+          <div className="flex flex-col items-center justify-center py-12 text-chrome-ink-muted">
             <MessageSquare size={32} className="mb-2 opacity-40" />
             <span className="text-sm">暂无批注</span>
           </div>
         ) : (
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-line-subtle">
             {filtered.map(thread => {
               const isExpanded = expandedThreads.has(thread.id)
               const isActive = thread.id === activeThreadId
@@ -201,7 +201,7 @@ export function CommentPanel({
                   className={cn(
                     'px-4 py-3 cursor-pointer transition-colors',
                     isActive && 'bg-blue-50 border-l-2 border-blue-400',
-                    !isActive && 'hover:bg-gray-50',
+                    !isActive && 'hover:bg-chrome-subtle',
                   )}
                   onClick={() => onSelectThread?.(thread.id)}
                 >
@@ -212,23 +212,23 @@ export function CommentPanel({
                         <ChevronDown
                           size={12}
                           className={cn(
-                            'text-gray-400 transition-transform',
+                            'text-chrome-ink-muted transition-transform',
                             isExpanded && 'rotate-180',
                           )}
                         />
-                        <span className="text-xs font-medium text-gray-800 truncate">
+                        <span className="text-xs font-medium text-chrome-ink-strong truncate">
                           {thread.author}
                         </span>
-                        <span className="text-[10px] text-gray-400">
+                        <span className="text-[10px] text-chrome-ink-muted">
                           {formatTime(lastEntry?.createdAt)}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-600 mt-1 line-clamp-2 ml-[18px]">
+                      <p className="text-xs text-chrome-ink-secondary mt-1 line-clamp-2 ml-[18px]">
                         {lastEntry?.content || '(无内容)'}
                       </p>
                       {/* 锚定摘录: 没有它, 列表里看不出这条批注标的是哪段字 */}
                       {excerpt && (
-                        <p className="text-[10px] text-gray-400 mt-0.5 ml-[18px] truncate">
+                        <p className="text-[10px] text-chrome-ink-muted mt-0.5 ml-[18px] truncate">
                           锚定：「{excerpt}」
                         </p>
                       )}
@@ -237,7 +237,7 @@ export function CommentPanel({
                     {thread.status !== 'resolved' && (
                       <button
                         onClick={(e) => { e.stopPropagation(); onResolveThread?.(thread.id) }}
-                        className="p-1 rounded hover:bg-green-50 text-gray-300 hover:text-green-600 shrink-0"
+                        className="p-1 rounded hover:bg-green-50 text-chrome-ink-disabled hover:text-green-600 shrink-0"
                         title="标记为已解决"
                       >
                         <Check size={14} />
@@ -259,16 +259,16 @@ export function CommentPanel({
                           key={entry.id}
                           className={cn(
                             'text-xs p-2 rounded',
-                            idx === 0 ? 'bg-amber-50' : 'bg-gray-50',
+                            idx === 0 ? 'bg-amber-50' : 'bg-chrome-subtle',
                           )}
                         >
                           <div className="flex items-center gap-1.5 mb-0.5">
-                            <span className="font-medium text-gray-700">{entry.author}</span>
-                            <span className="text-[10px] text-gray-400">
+                            <span className="font-medium text-chrome-ink-body">{entry.author}</span>
+                            <span className="text-[10px] text-chrome-ink-muted">
                               {formatTime(entry.createdAt)}
                             </span>
                           </div>
-                          <p className="text-gray-600 leading-relaxed">{entry.content}</p>
+                          <p className="text-chrome-ink-secondary leading-relaxed">{entry.content}</p>
                         </div>
                       ))}
 
@@ -291,7 +291,7 @@ export function CommentPanel({
                               }
                             }}
                             placeholder="输入回复..."
-                            className="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded focus:outline-none focus:border-blue-300"
+                            className="flex-1 text-xs px-2 py-1.5 border border-line rounded focus:outline-none focus:border-blue-300"
                           />
                           <button
                             onClick={(e) => {
@@ -302,7 +302,7 @@ export function CommentPanel({
                               }
                             }}
                             disabled={!replyText[thread.id]?.trim()}
-                            className="p-1 rounded text-gray-400 hover:text-blue-600 disabled:opacity-30"
+                            className="p-1 rounded text-chrome-ink-muted hover:text-blue-600 disabled:opacity-30"
                           >
                             <Reply size={14} />
                           </button>
@@ -318,7 +318,7 @@ export function CommentPanel({
       </div>
 
       {/* 底部信息 */}
-      <div className="px-4 py-2 border-t border-gray-100 text-[10px] text-gray-400">
+      <div className="px-4 py-2 border-t border-line-subtle text-[10px] text-chrome-ink-muted">
         {counts.open} 条未解决 · {counts.all} 条总计
       </div>
     </div>

@@ -27,7 +27,9 @@ import { controlRejectMessage } from './controlMessages'
 import { wrapControlText } from '@/engine/layout/text/TextWrap'
 import type { ControlEditTarget, ControlSnapshot, ControlType, ControlValue, Editor } from '@/engine'
 
-const PLACEHOLDER_COLOR = '#9CA3AF'
+// 占位符画在**文档页面上**(与块内文字同坐标系), 不是在 chrome 上 ——
+// 它的深浅要跟着纸面/正文走, 而不是跟着界面外壳主题走, 故不 token 化。
+const PLACEHOLDER_COLOR = '#9CA3AF' // retheme-keep: 绘制于文档页面, 非外壳
 
 /** jsdom 无 requestAnimationFrame → setTimeout 兜底 (生产仍用原生) */
 function raf(cb: FrameRequestCallback): number {

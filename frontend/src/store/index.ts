@@ -10,6 +10,8 @@
 
 import { create } from 'zustand'
 import type { UserInfo } from '@/services/api'
+import { readStoredChromePreset } from '@/platform/dom/chromeTheme'
+import type { ThemePreset } from '@/engine'
 
 // ---- 编辑器状态 (app 级状态, 架构 §7.1) ----
 
@@ -54,17 +56,31 @@ export type SidebarTab = 'templates' | 'elements' | 'pages' | 'comments' | 'qc'
 interface UIState {
   sidebarOpen: boolean
   sidebarTab: SidebarTab
+  /**
+   * chrome (界面外壳) 主题预设。
+   *
+   * owner 在这里而不是 EditorStore: 主题要覆盖 HomePage / ComparePage, 那两页
+   * **不挂 EditorProvider**, 放 EditorStore 会变成 per-Editor 事实, 主页拿不到
+   * (契约 §7.1 把 application settings 判给 Zustand)。
+   *
+   * 注意: 这里只存"选了什么"; 写 CSS 变量/落盘的副作用由 main.tsx 的
+   * bootstrap 订阅统一处理, 使任何调用方 set 都能生效, 不会漏接。
+   */
+  themePreset: ThemePreset
 
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
   setSidebarTab: (tab: SidebarTab) => void
+  setThemePreset: (preset: ThemePreset) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
   sidebarOpen: false,
   sidebarTab: 'templates',
+  themePreset: readStoredChromePreset(),
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
   setSidebarTab: (sidebarTab) => set({ sidebarTab }),
+  setThemePreset: (themePreset) => set({ themePreset }),
 }))

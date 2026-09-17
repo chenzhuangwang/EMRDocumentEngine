@@ -54,7 +54,7 @@ export function StatusBar({
   const saveStatus = useEditorStoreSnapshot((s) => s.saveStatus)
 
   return (
-    <footer className="h-statusbar bg-gray-50 border-t border-gray-200 flex items-center justify-between px-4 text-xs text-gray-500 flex-shrink-0 select-none">
+    <footer className="h-statusbar bg-chrome-subtle border-t border-line flex items-center justify-between px-4 text-xs text-chrome-ink-tertiary flex-shrink-0 select-none">
       {/* 左侧：页面信息 */}
       <div className="flex items-center gap-4">
         {/* 不可见字符切换 (TASK-475) */}
@@ -63,7 +63,7 @@ export function StatusBar({
             'p-0.5 rounded transition-colors',
             showInvisible
               ? 'text-blue-600 bg-blue-50 hover:bg-blue-100'
-              : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100',
+              : 'text-chrome-ink-muted hover:text-chrome-ink-secondary hover:bg-chrome-muted',
           )}
           onClick={onToggleInvisible}
           title={showInvisible ? '隐藏格式标记' : '显示格式标记 (Ctrl+Shift+8)'}
@@ -100,7 +100,7 @@ export function StatusBar({
       {/* 中间: 缩放控制 */}
       <div className="flex items-center gap-1">
         <button
-          className="p-0.5 text-gray-400 hover:text-gray-600 rounded transition-colors disabled:opacity-30"
+          className="p-0.5 text-chrome-ink-muted hover:text-chrome-ink-secondary rounded transition-colors disabled:opacity-30"
           disabled={scale <= 0.25}
           onClick={() => onScaleChange?.(Math.max(0.25, scale - 0.1))}
           title="缩小"
@@ -118,7 +118,7 @@ export function StatusBar({
         />
 
         <button
-          className="p-0.5 text-gray-400 hover:text-gray-600 rounded transition-colors disabled:opacity-30"
+          className="p-0.5 text-chrome-ink-muted hover:text-chrome-ink-secondary rounded transition-colors disabled:opacity-30"
           disabled={scale >= 4}
           onClick={() => onScaleChange?.(Math.min(4, scale + 0.1))}
           title="放大"
@@ -127,7 +127,7 @@ export function StatusBar({
         </button>
 
         <span
-          className="text-xs text-gray-500 w-10 text-center tabular-nums cursor-pointer hover:text-primary-600"
+          className="text-xs text-chrome-ink-tertiary w-10 text-center tabular-nums cursor-pointer hover:text-chrome-accent-ink"
           onClick={() => onScaleChange?.(1)}
           title="重置缩放"
         >
@@ -152,8 +152,8 @@ export function StatusBar({
             </>
           ) : (
             <>
-              <WifiOff size={12} className="text-gray-400" />
-              <span className="text-gray-400">离线</span>
+              <WifiOff size={12} className="text-chrome-ink-muted" />
+              <span className="text-chrome-ink-muted">离线</span>
             </>
           )}
         </div>
@@ -173,7 +173,7 @@ function SaveStatusIcon({ status }: { status: string }) {
       )
     case 'saving':
       return (
-        <span className="flex items-center gap-1 text-primary-500">
+        <span className="flex items-center gap-1 text-chrome-accent-ink">
           <span className="w-1.5 h-1.5 rounded-full bg-primary-500 animate-pulse" />
           保存中...
         </span>

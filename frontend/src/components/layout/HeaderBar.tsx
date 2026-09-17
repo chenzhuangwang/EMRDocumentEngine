@@ -25,6 +25,7 @@ import {
 import { useEditorStore, useUserStore, useUIStore } from '@/store'
 import { useEditor, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { RepoLinks } from '@/components/common/RepoLinks'
+import { ThemeMenu } from '@/components/common/ThemeMenu'
 
 interface HeaderBarProps {
   onSave?: () => void
@@ -42,7 +43,7 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
 
   return (
-    <header className="h-header bg-white border-b border-gray-200 flex items-center justify-between px-4 flex-shrink-0 select-none">
+    <header className="h-header bg-chrome border-b border-line flex items-center justify-between px-4 flex-shrink-0 select-none">
       {/* 左侧：Logo + 标题 */}
       <div className="flex items-center gap-3">
         {/* Sidebar toggle */}
@@ -54,12 +55,12 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
           {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
         </button>
 
-        <div className="flex items-center gap-2 text-primary-600">
+        <div className="flex items-center gap-2 text-chrome-accent-ink">
           <FileText size={22} />
           <span className="font-semibold text-base hidden sm:inline">EMR Editor</span>
         </div>
 
-        <div className="h-6 w-px bg-gray-200" />
+        <div className="h-6 w-px bg-chrome-strong" />
 
         <DocumentTitleInput />
 
@@ -84,7 +85,7 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
           <Redo2 size={16} />
         </button>
 
-        <div className="h-6 w-px bg-gray-200 mx-1" />
+        <div className="h-6 w-px bg-chrome-strong mx-1" />
 
         <button
           className="toolbar-btn"
@@ -115,7 +116,7 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
       <div className="flex items-center gap-2">
         {/* 在线协作人数 */}
         {onlineUsers > 0 && (
-          <div className="flex items-center gap-1 text-sm text-gray-500">
+          <div className="flex items-center gap-1 text-sm text-chrome-ink-tertiary">
             <Users size={14} />
             <span>{onlineUsers}</span>
           </div>
@@ -123,11 +124,13 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
 
         <RepoLinks />
 
+        <ThemeMenu />
+
         {/* 用户头像/菜单 */}
         {user ? (
-          <div className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer
-                          hover:bg-gray-100 rounded-md px-2 py-1">
-            <div className="w-7 h-7 rounded-full bg-primary-100 text-primary-700
+          <div className="flex items-center gap-1.5 text-sm text-chrome-ink-body cursor-pointer
+                          hover:bg-chrome-muted rounded-md px-2 py-1">
+            <div className="w-7 h-7 rounded-full bg-chrome-accent-strong text-chrome-accent-ink
                             flex items-center justify-center text-xs font-medium">
               {user.realName?.charAt(0) || user.username.charAt(0)}
             </div>
@@ -135,7 +138,7 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
             <ChevronDown size={14} />
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+          <div className="flex items-center gap-2 text-sm text-chrome-ink-tertiary">
             <User size={16} />
             <span>未登录</span>
           </div>
@@ -176,9 +179,9 @@ function DocumentTitleInput() {
 
   return (
     <input
-      className="text-sm font-medium text-gray-800 bg-transparent border-none outline-none
-                 hover:bg-gray-50 rounded px-2 py-1 max-w-[240px] truncate
-                 focus:bg-gray-50 focus:ring-1 focus:ring-primary-300"
+      className="text-sm font-medium text-chrome-ink-strong bg-transparent border-none outline-none
+                 hover:bg-chrome-subtle rounded px-2 py-1 max-w-[240px] truncate
+                 focus:bg-chrome-subtle focus:ring-1 focus:ring-primary-300"
       value={draft}
       onChange={(e) => { const v = e.target.value; draftRef.current = v; setDraft(v) }}
       onBlur={commit}
@@ -202,7 +205,7 @@ function DocumentTitleInput() {
 function SaveIndicator({ status, isDirty }: { status: string; isDirty: boolean }) {
   if (!isDirty && status === 'saved') {
     return (
-      <span className="text-xs text-gray-400 flex items-center gap-1">
+      <span className="text-xs text-chrome-ink-muted flex items-center gap-1">
         <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
         已保存
       </span>
@@ -211,7 +214,7 @@ function SaveIndicator({ status, isDirty }: { status: string; isDirty: boolean }
 
   if (status === 'saving') {
     return (
-      <span className="text-xs text-primary-500 flex items-center gap-1">
+      <span className="text-xs text-chrome-accent-ink flex items-center gap-1">
         <span className="w-1.5 h-1.5 rounded-full bg-primary-500 animate-pulse" />
         保存中...
       </span>

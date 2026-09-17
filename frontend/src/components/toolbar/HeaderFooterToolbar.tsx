@@ -61,14 +61,14 @@ export function HeaderFooterToolbar({
   const scope = `${variantLabel}${label}${pageNumber ? ` · 第 ${pageNumber} 页` : ''}`
 
   return (
-    <div className="flex items-center gap-1 px-2 py-1 bg-gray-50 border-b border-gray-200">
+    <div className="flex items-center gap-1 px-2 py-1 bg-chrome-subtle border-b border-line">
       {/* 首页不同 */}
       <button
         className={cn(
           'flex items-center gap-1.5 px-2 py-1 text-xs rounded-md h-7 transition-colors',
           config.differentFirstPage
             ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-            : 'text-gray-600 hover:bg-gray-100',
+            : 'text-chrome-ink-secondary hover:bg-chrome-muted',
         )}
         title="首页不同"
         onClick={() => onConfigChange({ differentFirstPage: !config.differentFirstPage })}
@@ -83,7 +83,7 @@ export function HeaderFooterToolbar({
           'flex items-center gap-1.5 px-2 py-1 text-xs rounded-md h-7 transition-colors',
           config.differentOddEven
             ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-            : 'text-gray-600 hover:bg-gray-100',
+            : 'text-chrome-ink-secondary hover:bg-chrome-muted',
         )}
         title="奇偶页不同"
         onClick={() => onConfigChange({ differentOddEven: !config.differentOddEven })}
@@ -93,11 +93,11 @@ export function HeaderFooterToolbar({
       </button>
 
       {/* 分隔线 */}
-      <div className="w-px h-5 bg-gray-200 mx-1" />
+      <div className="w-px h-5 bg-chrome-strong mx-1" />
 
       {/* 插入页码 */}
       <button
-        className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded-md h-7 transition-colors"
+        className="flex items-center gap-1.5 px-2 py-1 text-xs text-chrome-ink-secondary hover:bg-chrome-muted rounded-md h-7 transition-colors"
         title="插入页码"
         onClick={onInsertPageNumber}
       >
@@ -107,7 +107,7 @@ export function HeaderFooterToolbar({
 
       {/* 插入日期 */}
       <button
-        className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded-md h-7 transition-colors"
+        className="flex items-center gap-1.5 px-2 py-1 text-xs text-chrome-ink-secondary hover:bg-chrome-muted rounded-md h-7 transition-colors"
         title="插入日期"
         onClick={onInsertDate}
       >
@@ -116,16 +116,16 @@ export function HeaderFooterToolbar({
       </button>
 
       {/* 分隔线 */}
-      <div className="w-px h-5 bg-gray-200 mx-1" />
+      <div className="w-px h-5 bg-chrome-strong mx-1" />
 
       {/* 区域标签 */}
-      <span className="text-xs text-gray-400 px-1">{scope}</span>
+      <span className="text-xs text-chrome-ink-muted px-1">{scope}</span>
 
       <div className="flex-1" />
 
       {/* 关闭 */}
       <button
-        className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-500 hover:bg-gray-200 rounded-md h-7 transition-colors"
+        className="flex items-center gap-1.5 px-2 py-1 text-xs text-chrome-ink-tertiary hover:bg-chrome-strong rounded-md h-7 transition-colors"
         title={`关闭${label}编辑`}
         onClick={onClose}
       >

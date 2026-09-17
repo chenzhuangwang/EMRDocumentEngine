@@ -92,21 +92,21 @@ export function BookmarkDialog({
         <Dialog.Overlay className="fixed inset-0 bg-black/30 z-50" />
         <Dialog.Content
           className="fixed top-1/4 left-1/2 -translate-x-1/2 z-50
-                     w-[420px] bg-white rounded-lg shadow-xl border border-gray-200"
+                     w-[420px] bg-chrome rounded-lg shadow-xl border border-line"
         >
           {/* 头部 */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-line-subtle">
             <div className="flex items-center gap-2">
-              <Bookmark size={16} className="text-gray-500" />
-              <Dialog.Title className="text-sm font-medium text-gray-800">书签与引用</Dialog.Title>
+              <Bookmark size={16} className="text-chrome-ink-tertiary" />
+              <Dialog.Title className="text-sm font-medium text-chrome-ink-strong">书签与引用</Dialog.Title>
             </div>
-            <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+            <button onClick={onClose} className="p-1 rounded hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary">
               <X size={14} />
             </button>
           </div>
 
           {/* Tab */}
-          <div className="flex border-b border-gray-100 px-5">
+          <div className="flex border-b border-line-subtle px-5">
             {tabs.map(t => (
               <button
                 key={t.id}
@@ -115,7 +115,7 @@ export function BookmarkDialog({
                   'flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors -mb-px',
                   tab === t.id
                     ? 'border-blue-500 text-blue-700'
-                    : 'border-transparent text-gray-500 hover:text-gray-700',
+                    : 'border-transparent text-chrome-ink-tertiary hover:text-chrome-ink-body',
                 )}
               >
                 {t.icon}
@@ -129,19 +129,19 @@ export function BookmarkDialog({
             {tab === 'bookmark' ? (
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-600 block mb-1">书签名称</label>
+                  <label className="text-xs font-medium text-chrome-ink-secondary block mb-1">书签名称</label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleInsertBookmark() }}
                     placeholder="例如: 实验室检查结果"
-                    className="w-full text-sm px-3 py-2 border border-gray-200 rounded-md
+                    className="w-full text-sm px-3 py-2 border border-line rounded-md
                                focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
                     autoFocus
                   />
                 </div>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-chrome-ink-muted">
                   书签用于标记文档中的重要位置，方便后续定位和交叉引用。
                 </p>
               </div>
@@ -150,11 +150,11 @@ export function BookmarkDialog({
                 {/* 引用格式: 决定 displayText 里是否带 {page} 占位符 —— 带占位符时
                     由 LayoutEngine 在排版期展开为真实页码 (契约 §12.2) */}
                 <div>
-                  <label className="text-xs font-medium text-gray-600 block mb-1">引用格式</label>
+                  <label className="text-xs font-medium text-chrome-ink-secondary block mb-1">引用格式</label>
                   <select
                     value={refFormat}
                     onChange={(e) => setRefFormat(e.target.value as RefFormat)}
-                    className="w-full text-sm px-3 py-2 border border-gray-200 rounded-md bg-white
+                    className="w-full text-sm px-3 py-2 border border-line rounded-md bg-chrome
                                focus:outline-none focus:border-blue-400"
                   >
                     <option value="label">书签名 / 标题（不带页码）</option>
@@ -169,14 +169,14 @@ export function BookmarkDialog({
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                   placeholder="搜索书签/标题/脚注..."
-                  className="w-full text-sm px-3 py-2 border border-gray-200 rounded-md
+                  className="w-full text-sm px-3 py-2 border border-line rounded-md
                              focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
                 />
 
                 {/* 目标列表 */}
-                <div className="max-h-48 overflow-y-auto border border-gray-100 rounded-md divide-y divide-gray-50">
+                <div className="max-h-48 overflow-y-auto border border-line-subtle rounded-md divide-y divide-line-subtle">
                   {filtered.length === 0 ? (
-                    <div className="px-3 py-6 text-center text-xs text-gray-400">
+                    <div className="px-3 py-6 text-center text-xs text-chrome-ink-muted">
                       暂无可用目标
                     </div>
                   ) : (
@@ -188,15 +188,15 @@ export function BookmarkDialog({
                           'w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors',
                           selectedTarget === target.id
                             ? 'bg-blue-50 text-blue-700'
-                            : 'hover:bg-gray-50 text-gray-700',
+                            : 'hover:bg-chrome-subtle text-chrome-ink-body',
                         )}
                       >
-                        {target.type === 'heading' && <Hash size={14} className="text-gray-400 flex-shrink-0" />}
-                        {target.type === 'bookmark' && <Bookmark size={14} className="text-gray-400 flex-shrink-0" />}
-                        {target.type === 'footnote' && <Link size={14} className="text-gray-400 flex-shrink-0" />}
+                        {target.type === 'heading' && <Hash size={14} className="text-chrome-ink-muted flex-shrink-0" />}
+                        {target.type === 'bookmark' && <Bookmark size={14} className="text-chrome-ink-muted flex-shrink-0" />}
+                        {target.type === 'footnote' && <Link size={14} className="text-chrome-ink-muted flex-shrink-0" />}
                         <span className="truncate flex-1">{target.label}</span>
                         {target.pageHint && (
-                          <span className="text-xs text-gray-400 flex-shrink-0">p.{target.pageHint}</span>
+                          <span className="text-xs text-chrome-ink-muted flex-shrink-0">p.{target.pageHint}</span>
                         )}
                       </button>
                     ))
@@ -207,10 +207,10 @@ export function BookmarkDialog({
           </div>
 
           {/* 底部 */}
-          <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+          <div className="flex justify-end gap-2 px-5 py-3 border-t border-line-subtle bg-chrome-subtle rounded-b-lg">
             <button
               onClick={onClose}
-              className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800"
+              className="px-3 py-1.5 text-xs text-chrome-ink-secondary hover:text-chrome-ink-strong"
             >
               取消
             </button>

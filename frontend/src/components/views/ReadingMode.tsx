@@ -36,14 +36,14 @@ export function ReadingModeOverlay({ children, active, onToggle }: ReadingModePr
     <>
       {active && (
         <div className="fixed top-3 right-4 z-50 flex items-center gap-2">
-          <span className="text-xs text-gray-400 bg-white/80 px-2 py-1 rounded shadow-sm">
+          <span className="text-xs text-chrome-ink-muted bg-chrome/80 px-2 py-1 rounded shadow-sm">
             阅读模式 · 按 ESC 退出
           </span>
           <button
             onClick={onToggle}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-white
-                       border border-gray-200 rounded-md shadow-sm
-                       text-gray-600 hover:text-gray-800 hover:bg-gray-50"
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-chrome
+                       border border-line rounded-md shadow-sm
+                       text-chrome-ink-secondary hover:text-chrome-ink-strong hover:bg-chrome-subtle"
           >
             <EyeOff size={14} />
             退出阅读
@@ -62,7 +62,7 @@ export function ReadingModeToggle({ active, onToggle }: { active: boolean; onTog
       onClick={onToggle}
       title={active ? '退出阅读模式' : '阅读模式'}
       className="flex items-center gap-1 px-2 py-1 text-xs rounded
-                 text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                 text-chrome-ink-tertiary hover:text-chrome-ink-body hover:bg-chrome-muted transition-colors"
     >
       {active ? <EyeOff size={14} /> : <Eye size={14} />}
       <span>{active ? '退出' : '阅读'}</span>

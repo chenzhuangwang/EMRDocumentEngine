@@ -99,7 +99,7 @@ export default function EditorPage() {
   }, [id]) // eslint-disable-line
 
   if (loading) {
-    return <div className="h-full flex items-center justify-center"><div className="text-gray-400">加载中...</div></div>
+    return <div className="h-full flex items-center justify-center"><div className="text-chrome-ink-muted">加载中...</div></div>
   }
 
   return (
@@ -949,7 +949,7 @@ function EditorPageInner({
     >
       <div
         ref={containerRef}
-        className="flex-1 bg-[#E5E7EB] relative overflow-y-auto overflow-x-hidden"
+        className="flex-1 bg-chrome-desk relative overflow-y-auto overflow-x-hidden"
         style={{ minHeight: '400px' }}
         onContextMenu={contextMenu.onContextMenu}
       />
@@ -1162,15 +1162,25 @@ function TableSizePicker({ onSelect, onCancel }: { onSelect: (rows: number, cols
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20" onClick={onCancel}>
-      <div className="bg-white rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
-        <div className="text-xs text-gray-500 mb-2">{hoverRows}×{hoverCols} 表格</div>
+      <div className="bg-chrome rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+        <div className="text-xs text-chrome-ink-tertiary mb-2">{hoverRows}×{hoverCols} 表格</div>
         <div className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(${maxC}, 24px)` }}>
           {Array.from({ length: maxR }, (_, r) =>
             Array.from({ length: maxC }, (_, c) => (
               <div
                 key={`${r}-${c}`}
                 className="w-6 h-6 rounded-sm border cursor-pointer transition-colors"
-                style={{ backgroundColor: r < hoverRows && c < hoverCols ? '#3B82F6' : '#E5E7EB', borderColor: r < hoverRows && c < hoverCols ? '#2563EB' : '#D1D5DB' }}
+                style={{
+                  // 内联样式吃不到 Tailwind 类, 直接读 chrome token (兜底值 = standard 原值)。
+                  // 空档位原为 #E5E7EB/#D1D5DB: 不跟着主题走的话, 深色下这张表格选择器
+                  // 会是一片刺眼的白格。选中态用 primary, 属品牌色, 不参与主题化。
+                  backgroundColor: r < hoverRows && c < hoverCols
+                    ? '#3B82F6'
+                    : 'rgb(var(--emr-surface-strong, 229 231 235))',
+                  borderColor: r < hoverRows && c < hoverCols
+                    ? '#2563EB'
+                    : 'rgb(var(--emr-line-strong, 209 213 219))',
+                }}
                 onMouseEnter={() => { setHoverRows(r + 1); setHoverCols(c + 1) }}
                 onClick={() => onSelect(r + 1, c + 1)}
               />

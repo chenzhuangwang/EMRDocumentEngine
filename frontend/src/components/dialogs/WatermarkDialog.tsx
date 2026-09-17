@@ -54,14 +54,14 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemov
         <Dialog.Content
           className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50
                      flex max-h-[85vh] w-[380px] flex-col overflow-hidden
-                     bg-white rounded-lg shadow-xl border border-gray-200"
+                     bg-chrome rounded-lg shadow-xl border border-line"
         >
-          <div className="flex flex-shrink-0 items-center justify-between px-5 py-3 border-b border-gray-100">
+          <div className="flex flex-shrink-0 items-center justify-between px-5 py-3 border-b border-line-subtle">
             <div className="flex items-center gap-2">
-              <Type size={16} className="text-gray-500" />
-              <Dialog.Title className="text-sm font-medium text-gray-800">水印设置</Dialog.Title>
+              <Type size={16} className="text-chrome-ink-tertiary" />
+              <Dialog.Title className="text-sm font-medium text-chrome-ink-strong">水印设置</Dialog.Title>
             </div>
-            <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+            <button onClick={onClose} className="p-1 rounded hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary">
               <X size={14} />
             </button>
           </div>
@@ -74,7 +74,7 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemov
                 value={config.text || ''}
                 onChange={(e) => update({ text: e.target.value })}
                 placeholder="例如: 内部资料"
-                className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:outline-none focus:border-blue-400"
+                className="w-full text-sm px-2 py-1.5 border border-line rounded focus:outline-none focus:border-blue-400"
               />
             </Field>
 
@@ -86,7 +86,7 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemov
                   value={config.fontSize || 48}
                   onChange={(e) => update({ fontSize: Number(e.target.value) || 48 })}
                   min={12} max={120}
-                  className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:outline-none focus:border-blue-400"
+                  className="w-full text-sm px-2 py-1.5 border border-line rounded focus:outline-none focus:border-blue-400"
                 />
               </Field>
               <Field label="旋转" icon={<RotateCw size={12} />} className="flex-1">
@@ -95,7 +95,7 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemov
                   value={config.rotation || 45}
                   onChange={(e) => update({ rotation: Number(e.target.value) || 45 })}
                   min={0} max={90}
-                  className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:outline-none focus:border-blue-400"
+                  className="w-full text-sm px-2 py-1.5 border border-line rounded focus:outline-none focus:border-blue-400"
                 />
               </Field>
             </div>
@@ -107,7 +107,7 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemov
                   type="color"
                   value={config.color || '#000000'}
                   onChange={(e) => update({ color: e.target.value })}
-                  className="w-full h-8 border border-gray-200 rounded cursor-pointer"
+                  className="w-full h-8 border border-line rounded cursor-pointer"
                 />
               </Field>
               <Field label="透明度" className="flex-1">
@@ -118,7 +118,7 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemov
                   min={1} max={30}
                   className="w-full"
                 />
-                <span className="text-[10px] text-gray-400">{Math.round((config.opacity ?? 0.08) * 100)}%</span>
+                <span className="text-[10px] text-chrome-ink-muted">{Math.round((config.opacity ?? 0.08) * 100)}%</span>
               </Field>
             </div>
 
@@ -129,12 +129,12 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemov
                 value={config.spacing || 200}
                 onChange={(e) => update({ spacing: Number(e.target.value) || 200 })}
                 min={100} max={500} step={20}
-                className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:outline-none focus:border-blue-400"
+                className="w-full text-sm px-2 py-1.5 border border-line rounded focus:outline-none focus:border-blue-400"
               />
             </Field>
           </div>
 
-          <div className="flex flex-shrink-0 items-center justify-end gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+          <div className="flex flex-shrink-0 items-center justify-end gap-2 px-5 py-3 border-t border-line-subtle bg-chrome-subtle rounded-b-lg">
             {/* 移除只在已有水印时出现 (调用方传入 onRemove) —— 与"应用"同处, 不留单向入口 */}
             {onRemove && (
               <button
@@ -146,7 +146,7 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemov
                 移除水印
               </button>
             )}
-            <button onClick={onClose} className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800">取消</button>
+            <button onClick={onClose} className="px-3 py-1.5 text-xs text-chrome-ink-secondary hover:text-chrome-ink-strong">取消</button>
             <button
               onClick={() => { onApply?.(config); onClose() }}
               className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700"
@@ -167,7 +167,7 @@ function Field({ label, icon, children, className }: {
 }) {
   return (
     <div className={className}>
-      <label className="flex items-center gap-1 text-[11px] font-medium text-gray-500 mb-1">
+      <label className="flex items-center gap-1 text-[11px] font-medium text-chrome-ink-tertiary mb-1">
         {icon}
         {label}
       </label>

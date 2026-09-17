@@ -129,15 +129,15 @@ export function DocumentPropertiesDialog({
         <Dialog.Content
           className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50
                      flex max-h-[85vh] w-[400px] flex-col overflow-hidden
-                     bg-white rounded-lg shadow-xl border border-gray-200"
+                     bg-chrome rounded-lg shadow-xl border border-line"
         >
           {/* 头部 */}
-          <div className="flex flex-shrink-0 items-center justify-between px-5 py-3 border-b border-gray-100">
+          <div className="flex flex-shrink-0 items-center justify-between px-5 py-3 border-b border-line-subtle">
             <div className="flex items-center gap-2">
-              <FileText size={16} className="text-gray-500" />
-              <Dialog.Title className="text-sm font-medium text-gray-800">文档属性</Dialog.Title>
+              <FileText size={16} className="text-chrome-ink-tertiary" />
+              <Dialog.Title className="text-sm font-medium text-chrome-ink-strong">文档属性</Dialog.Title>
             </div>
-            <button onClick={requestClose} className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600" aria-label="关闭">
+            <button onClick={requestClose} className="p-1 rounded hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary" aria-label="关闭">
               <X size={14} />
             </button>
           </div>
@@ -146,7 +146,7 @@ export function DocumentPropertiesDialog({
           <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
             {/* 标题 (DocumentTree.title, 可编辑) */}
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-chrome-ink-secondary mb-1">
                 <Heading size={14} />
                 标题
               </label>
@@ -155,14 +155,14 @@ export function DocumentPropertiesDialog({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="文档标题"
-                className="w-full text-sm px-3 py-2 border border-gray-200 rounded-md
+                className="w-full text-sm px-3 py-2 border border-line rounded-md
                            focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
               />
             </div>
 
             {textFields.map(f => (
               <div key={f.key}>
-                <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
+                <label className="flex items-center gap-1.5 text-xs font-medium text-chrome-ink-secondary mb-1">
                   {f.icon}
                   {f.label}
                 </label>
@@ -171,7 +171,7 @@ export function DocumentPropertiesDialog({
                   value={values[f.key] || ''}
                   onChange={(e) => update({ [f.key]: e.target.value })}
                   placeholder={f.placeholder}
-                  className="w-full text-sm px-3 py-2 border border-gray-200 rounded-md
+                  className="w-full text-sm px-3 py-2 border border-line rounded-md
                              focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
                 />
               </div>
@@ -179,7 +179,7 @@ export function DocumentPropertiesDialog({
 
             {/* 关键词: 逗号串输入, 提交时拆分为 string[] */}
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-chrome-ink-secondary mb-1">
                 <Tag size={14} />
                 关键词
               </label>
@@ -188,14 +188,14 @@ export function DocumentPropertiesDialog({
                 value={keywordsText}
                 onChange={(e) => setKeywordsText(e.target.value)}
                 placeholder="关键词1, 关键词2"
-                className="w-full text-sm px-3 py-2 border border-gray-200 rounded-md
+                className="w-full text-sm px-3 py-2 border border-line rounded-md
                            focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
               />
             </div>
 
             {readonlyFields.map(f => (
               <div key={f.key}>
-                <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
+                <label className="flex items-center gap-1.5 text-xs font-medium text-chrome-ink-secondary mb-1">
                   {f.icon}
                   {f.label}
                 </label>
@@ -203,18 +203,18 @@ export function DocumentPropertiesDialog({
                   type="text"
                   value={values[f.key] || ''}
                   readOnly
-                  className="w-full text-sm px-3 py-2 border border-gray-100 rounded-md
-                             bg-gray-50 text-gray-500 cursor-default"
+                  className="w-full text-sm px-3 py-2 border border-line-subtle rounded-md
+                             bg-chrome-subtle text-chrome-ink-tertiary cursor-default"
                 />
               </div>
             ))}
           </div>
 
           {/* 底部 */}
-          <div className="flex flex-shrink-0 justify-end gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+          <div className="flex flex-shrink-0 justify-end gap-2 px-5 py-3 border-t border-line-subtle bg-chrome-subtle rounded-b-lg">
             <button
               onClick={requestClose}
-              className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800"
+              className="px-3 py-1.5 text-xs text-chrome-ink-secondary hover:text-chrome-ink-strong"
             >
               取消
             </button>
@@ -229,12 +229,12 @@ export function DocumentPropertiesDialog({
           {/* 脏态二次确认 */}
           {confirmOpen && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20">
-              <div className="w-72 rounded-lg bg-white p-4 shadow-xl border border-gray-200">
-                <div className="text-sm text-gray-800 mb-3">有未保存的更改，确定放弃吗？</div>
+              <div className="w-72 rounded-lg bg-chrome p-4 shadow-xl border border-line">
+                <div className="text-sm text-chrome-ink-strong mb-3">有未保存的更改，确定放弃吗？</div>
                 <div className="flex justify-end gap-2">
                   <button
                     onClick={() => setConfirmOpen(false)}
-                    className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800"
+                    className="px-3 py-1.5 text-xs text-chrome-ink-secondary hover:text-chrome-ink-strong"
                   >
                     继续编辑
                   </button>

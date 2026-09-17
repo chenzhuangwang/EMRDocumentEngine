@@ -34,8 +34,8 @@ export function ModeSwitcher({ mode, onModeChange }: ModeSwitcherProps) {
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          className="flex items-center gap-0.5 text-xs text-gray-400 hover:text-gray-600
-                     p-0.5 rounded transition-colors hover:bg-gray-100 data-[state=open]:bg-gray-100"
+          className="flex items-center gap-0.5 text-xs text-chrome-ink-muted hover:text-chrome-ink-secondary
+                     p-0.5 rounded transition-colors hover:bg-chrome-muted data-[state=open]:bg-chrome-muted"
           title="切换编辑器模式"
         >
           <Icon size={12} />
@@ -45,13 +45,13 @@ export function ModeSwitcher({ mode, onModeChange }: ModeSwitcherProps) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[100px] bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50"
+          className="min-w-[100px] bg-chrome rounded-md shadow-lg border border-line py-1 z-50"
           sideOffset={4} align="end"
         >
           {MODES.map(item => (
             <DropdownMenu.Item
               key={item.mode}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 outline-none
+              className="flex items-center gap-2 px-3 py-1.5 text-xs text-chrome-ink-body outline-none
                          cursor-default data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700"
               onClick={() => onModeChange(item.mode)}
             >

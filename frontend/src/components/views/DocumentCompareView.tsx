@@ -54,10 +54,10 @@ export function DocumentCompareView({
   }, [diffs])
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-chrome">
       {/* 统计栏 */}
-      <div className="flex items-center gap-4 px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs">
-        <span className="font-medium text-gray-700">文档比较</span>
+      <div className="flex items-center gap-4 px-4 py-2 border-b border-line-subtle bg-chrome-subtle text-xs">
+        <span className="font-medium text-chrome-ink-body">文档比较</span>
         <span className="flex items-center gap-1 text-green-600">
           <Plus size={12} /> {stats.insertions} 新增
         </span>
@@ -67,7 +67,7 @@ export function DocumentCompareView({
         <span className="flex items-center gap-1 text-amber-600">
           <Edit3 size={12} /> {stats.modifications} 修改
         </span>
-        <span className="flex items-center gap-1 text-gray-400">
+        <span className="flex items-center gap-1 text-chrome-ink-muted">
           <Equal size={12} /> {stats.equal} 相同
         </span>
 
@@ -90,9 +90,9 @@ export function DocumentCompareView({
       </div>
 
       {/* 差异列表 */}
-      <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+      <div className="flex-1 overflow-y-auto divide-y divide-line-subtle">
         {diffs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+          <div className="flex flex-col items-center justify-center py-16 text-chrome-ink-muted">
             <Equal size={36} className="mb-2 opacity-30" />
             <span className="text-sm">两份文档完全相同</span>
           </div>
@@ -142,7 +142,7 @@ function DiffRow({
             {config.label}
           </span>
           {diff.op === 'modify' && diff.textChanges && (
-            <span className="text-[10px] text-gray-400">
+            <span className="text-[10px] text-chrome-ink-muted">
               {diff.textChanges.filter(c => c.op !== 'equal').length} 处文本变更
             </span>
           )}
@@ -161,7 +161,7 @@ function DiffRow({
                   className={cn(
                     tc.op === 'insert' && 'bg-green-200 text-green-900',
                     tc.op === 'delete' && 'bg-red-200 text-red-900 line-through',
-                    tc.op === 'equal' && 'text-gray-600',
+                    tc.op === 'equal' && 'text-chrome-ink-secondary',
                   )}
                 >
                   {tc.text}
@@ -172,7 +172,7 @@ function DiffRow({
             <span className={cn(
               diff.op === 'delete' && 'line-through',
               diff.op === 'insert' && 'text-green-800',
-              diff.op === 'equal' && 'text-gray-500',
+              diff.op === 'equal' && 'text-chrome-ink-tertiary',
             )}>
               {text}
             </span>
@@ -186,14 +186,14 @@ function DiffRow({
           <button
             onClick={onAccept}
             title="接受"
-            className="p-1 rounded hover:bg-green-100 text-gray-300 hover:text-green-600"
+            className="p-1 rounded hover:bg-green-100 text-chrome-ink-disabled hover:text-green-600"
           >
             <Check size={14} />
           </button>
           <button
             onClick={onReject}
             title="拒绝"
-            className="p-1 rounded hover:bg-red-100 text-gray-300 hover:text-red-600"
+            className="p-1 rounded hover:bg-red-100 text-chrome-ink-disabled hover:text-red-600"
           >
             <X size={14} />
           </button>
@@ -233,9 +233,9 @@ const DIFF_CONFIG = {
   equal: {
     bg: '',
     label: '相同',
-    labelColor: 'text-gray-400',
+    labelColor: 'text-chrome-ink-muted',
     icon: <Equal size={14} />,
-    iconColor: 'text-gray-400',
+    iconColor: 'text-chrome-ink-muted',
     textBg: '',
   },
 }

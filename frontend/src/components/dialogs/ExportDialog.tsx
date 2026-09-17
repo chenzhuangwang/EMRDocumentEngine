@@ -73,14 +73,14 @@ export function ExportDialog({ open, onOpenChange, onExport }: Props) {
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/30 z-50 animate-in fade-in" />
         <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
-                                     w-[460px] bg-white rounded-lg shadow-xl z-50
+                                     w-[460px] bg-chrome rounded-lg shadow-xl z-50
                                      animate-in zoom-in-95 fade-in">
           {/* Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-            <Dialog.Title className="text-base font-semibold text-gray-800">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-line-subtle">
+            <Dialog.Title className="text-base font-semibold text-chrome-ink-strong">
               导出文档
             </Dialog.Title>
-            <Dialog.Close className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+            <Dialog.Close className="p-1 rounded-md hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary">
               <X size={18} />
             </Dialog.Close>
           </div>
@@ -94,7 +94,7 @@ export function ExportDialog({ open, onOpenChange, onExport }: Props) {
                   'w-full flex items-center gap-4 px-4 py-3.5 rounded-lg text-left transition-colors',
                   selectedId === fmt.id
                     ? 'bg-blue-50 border border-blue-200'
-                    : 'hover:bg-gray-50 border border-transparent',
+                    : 'hover:bg-chrome-subtle border border-transparent',
                   !fmt.available && 'opacity-60'
                 )}
                 onClick={() => fmt.available && setSelectedId(fmt.id)}
@@ -102,20 +102,20 @@ export function ExportDialog({ open, onOpenChange, onExport }: Props) {
               >
                 <div className={cn(
                   'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
-                  selectedId === fmt.id && fmt.available ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'
+                  selectedId === fmt.id && fmt.available ? 'bg-blue-100 text-blue-600' : 'bg-chrome-muted text-chrome-ink-tertiary'
                 )}>
                   {fmt.icon}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-800">{fmt.label}</span>
+                    <span className="text-sm font-medium text-chrome-ink-strong">{fmt.label}</span>
                     {!fmt.available && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-500 font-medium">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-chrome-strong text-chrome-ink-tertiary font-medium">
                         即将推出
                       </span>
                     )}
                   </div>
-                  <div className="text-xs text-gray-400 mt-0.5">{fmt.description}</div>
+                  <div className="text-xs text-chrome-ink-muted mt-0.5">{fmt.description}</div>
                 </div>
                 {selectedId === fmt.id && fmt.available && (
                   <Check size={18} className="text-blue-500 flex-shrink-0" />
@@ -125,8 +125,8 @@ export function ExportDialog({ open, onOpenChange, onExport }: Props) {
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100">
-            <Dialog.Close className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md transition-colors">
+          <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-line-subtle">
+            <Dialog.Close className="px-4 py-2 text-sm text-chrome-ink-secondary hover:bg-chrome-muted rounded-md transition-colors">
               取消
             </Dialog.Close>
             <button

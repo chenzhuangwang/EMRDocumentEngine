@@ -29,18 +29,18 @@ export function PrintPreviewDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/40 z-50 animate-in fade-in" />
-        <Dialog.Content className="fixed inset-4 bg-white rounded-lg shadow-xl z-50
+        <Dialog.Content className="fixed inset-4 bg-chrome rounded-lg shadow-xl z-50
                                      flex flex-col animate-in zoom-in-95 fade-in">
           {/* Header */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 flex-shrink-0">
-            <Dialog.Title className="text-base font-semibold text-gray-800">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-line-subtle flex-shrink-0">
+            <Dialog.Title className="text-base font-semibold text-chrome-ink-strong">
               打印预览
             </Dialog.Title>
             <div className="flex items-center gap-3">
               {/* Page navigation */}
-              <div className="flex items-center gap-1 text-sm text-gray-600">
+              <div className="flex items-center gap-1 text-sm text-chrome-ink-secondary">
                 <button
-                  className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"
+                  className="p-1 rounded hover:bg-chrome-muted disabled:opacity-30"
                   disabled={currentPage <= 1}
                   onClick={() => onPageChange(currentPage - 1)}
                 >
@@ -50,7 +50,7 @@ export function PrintPreviewDialog({
                   {currentPage} / {pageCount}
                 </span>
                 <button
-                  className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"
+                  className="p-1 rounded hover:bg-chrome-muted disabled:opacity-30"
                   disabled={currentPage >= pageCount}
                   onClick={() => onPageChange(currentPage + 1)}
                 >
@@ -67,16 +67,16 @@ export function PrintPreviewDialog({
                 打印
               </button>
 
-              <Dialog.Close className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+              <Dialog.Close className="p-1.5 rounded-md hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary">
                 <X size={20} />
               </Dialog.Close>
             </div>
           </div>
 
           {/* Preview area */}
-          <div className="flex-1 overflow-auto bg-[#E5E7EB] flex items-start justify-center p-6">
+          <div className="flex-1 overflow-auto bg-chrome-desk flex items-start justify-center p-6">
             <div className={cn(
-              'bg-white shadow-lg',
+              'bg-white shadow-lg', // retheme-keep: A4 纸面本体, 打印必须 WYSIWYG —— 深色外壳下纸仍是白的
               // Simulate A4 aspect ratio within available space
             )}>
               {children}
@@ -84,7 +84,7 @@ export function PrintPreviewDialog({
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 text-xs text-gray-400 flex-shrink-0">
+          <div className="flex items-center justify-between px-5 py-3 border-t border-line-subtle text-xs text-chrome-ink-muted flex-shrink-0">
             <span>A4 纸张 · 适合打印</span>
             <span>{pageCount} 页</span>
           </div>

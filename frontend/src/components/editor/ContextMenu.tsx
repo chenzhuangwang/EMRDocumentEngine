@@ -25,9 +25,9 @@ interface ContextMenuProps {
 }
 
 const ITEM_CLASS =
-  'flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 outline-none ' +
+  'flex items-center gap-2 px-3 py-1.5 text-xs text-chrome-ink-body outline-none ' +
   'cursor-default data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 ' +
-  'data-[disabled]:text-gray-300 data-[disabled]:cursor-not-allowed'
+  'data-[disabled]:text-chrome-ink-disabled data-[disabled]:cursor-not-allowed'
 
 export function ContextMenu({ open, x, y, entries, onClose, onAction }: ContextMenuProps) {
   // 无菜单条目 (table/image/separator/sectionBreak/headerFooter/smartText 暂不提供)
@@ -48,7 +48,7 @@ export function ContextMenu({ open, x, y, entries, onClose, onAction }: ContextM
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[160px] bg-white rounded-md shadow-lg border border-gray-200 py-1 z-[1000]"
+          className="min-w-[160px] bg-chrome rounded-md shadow-lg border border-line py-1 z-[1000]"
           side="bottom"
           align="start"
           sideOffset={2}
@@ -56,7 +56,7 @@ export function ContextMenu({ open, x, y, entries, onClose, onAction }: ContextM
         >
           {entries.map((entry, i) =>
             entry.kind === 'separator' ? (
-              <DropdownMenu.Separator key={`sep-${i}`} className="h-px my-1 bg-gray-200" />
+              <DropdownMenu.Separator key={`sep-${i}`} className="h-px my-1 bg-chrome-strong" />
             ) : (
               <DropdownMenu.Item
                 key={entry.id}

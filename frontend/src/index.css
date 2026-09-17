@@ -25,10 +25,37 @@
 
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    color: #111827;
-    background-color: #F9FAFB;
+    /* 兜底值 = standard 预设原值: bootstrap (main.tsx 渲染前) 未跑到时仍与今天一致 */
+    color: rgb(var(--emr-ink, 17 24 39));
+    background-color: rgb(var(--emr-surface-subtle, 249 250 251));
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /*
+   * 表单控件的 UA 默认底/字色是**固定的白底黑字**, 不跟任何 class 走 ——
+   * 只要某个 <input> 忘了写 bg-*, 深色下就是一块白洞 (实测: 页面设置的 6 个
+   * 数字框就是这么漏的)。与其逐个补 class 再靠肉眼复查, 这里统一兜住:
+   * 未显式指定底色的输入类控件一律取 chrome token。
+   *
+   * 显式 class 仍然优先 (Tailwind 的 utilities 层在 base 之后), 例如
+   * `bg-transparent` / `bg-chrome` 都不会被这条盖掉。
+   *
+   * 覆盖层 (`data-ctl-overlay`) 是个例外, 必须排除: 运行时控件的就地编辑框
+   * 贴在**文档页面**上, 要透出下面的画布 (契约 §12.8 的 WYSIWYG 口径),
+   * 给它上底色会让纸张凭空多出一块灰rect。它与正文同坐标系, 不属外壳。
+   */
+  input:not([data-ctl-overlay]):not([type='checkbox']):not([type='radio']),
+  select:not([data-ctl-overlay]),
+  textarea:not([data-ctl-overlay]) {
+    background-color: rgb(var(--emr-surface, 255 255 255));
+    color: rgb(var(--emr-ink, 17 24 39));
+  }
+
+  /* 占位符同理: 不指定的话深色底上会是一行几乎看不见的暗灰 */
+  input:not([data-ctl-overlay])::placeholder,
+  textarea:not([data-ctl-overlay])::placeholder {
+    color: rgb(var(--emr-ink-muted, 156 163 175));
   }
 }
 
@@ -36,13 +63,13 @@
   /* 工具栏按钮基础样式 */
   .toolbar-btn {
     @apply inline-flex items-center justify-center w-8 h-8 rounded-md
-           text-gray-600 hover:bg-gray-100 hover:text-gray-900
+           text-chrome-ink-secondary hover:bg-chrome-muted hover:text-chrome-ink
            transition-colors duration-150 cursor-pointer
            disabled:opacity-40 disabled:cursor-not-allowed;
   }
 
   .toolbar-btn-active {
-    @apply bg-primary-100 text-primary-700 hover:bg-primary-200;
+    @apply bg-chrome-accent-strong text-chrome-accent-ink hover:bg-chrome-accent-stronger;
   }
 
   .toolbar-btn-group {
@@ -50,27 +77,27 @@
   }
 
   .toolbar-divider {
-    @apply w-px h-6 bg-gray-200 mx-1;
+    @apply w-px h-6 bg-chrome-strong mx-1;
   }
 
   /* 侧边栏 */
   .sidebar-item {
-    @apply flex items-center gap-2 px-3 py-2 text-sm text-gray-700
-           hover:bg-gray-100 rounded-md cursor-pointer
+    @apply flex items-center gap-2 px-3 py-2 text-sm text-chrome-ink-body
+           hover:bg-chrome-muted rounded-md cursor-pointer
            transition-colors duration-150;
   }
 
   .sidebar-item-active {
-    @apply bg-primary-50 text-primary-700 font-medium;
+    @apply bg-chrome-accent text-chrome-accent-ink font-medium;
   }
 
   /* 属性面板 */
   .property-group {
-    @apply border-b border-gray-200 pb-4 mb-4;
+    @apply border-b border-line pb-4 mb-4;
   }
 
   .property-group-title {
-    @apply text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3;
+    @apply text-xs font-semibold text-chrome-ink-tertiary uppercase tracking-wider mb-3;
   }
 
   .property-field {
@@ -78,11 +105,13 @@
   }
 
   .property-label {
-    @apply text-xs text-gray-600 font-medium;
+    @apply text-xs text-chrome-ink-secondary font-medium;
   }
 
+  /* bg-chrome 与浏览器对 <input> 的默认白底等价 (standard 下不变),
+     但深色预设下若不显式指定, UA 的白底会在暗色面板里留一块白洞 */
   .property-input {
-    @apply w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md
+    @apply w-full px-2 py-1.5 text-sm bg-chrome border border-line-strong rounded-md
            focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
   }
 }
@@ -91,7 +120,7 @@
   /* 滚动条样式 */
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: #D1D5DB transparent;
+    scrollbar-color: rgb(var(--emr-ink-disabled, 209 213 219)) transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
@@ -104,12 +133,12 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: #D1D5DB;
+    background-color: rgb(var(--emr-ink-disabled, 209 213 219));
     border-radius: 3px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background-color: #9CA3AF;
+    background-color: rgb(var(--emr-ink-muted, 156 163 175));
   }
 
   /* 属性面板滑入动画 */
