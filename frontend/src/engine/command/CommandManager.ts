@@ -27,6 +27,15 @@ import type { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import type { DictionaryProvider } from '../document/control/Dictionary'
 import { DirtyTracker } from '../layout/incremental/DirtyTracker'
 
+/**
+ * 插件命令钩子 —— 只声明本模块需要的那两项, 不 import plugins/ 的类型
+ * (command/ 是底层域, 不该反向依赖特征层 PluginsManager)。
+ */
+export interface CommandHooks {
+  emitCommandBefore(cmd: unknown): void
+  emitCommandAfter(cmd: unknown): void
+}
+
 export class CommandManager {
   readonly undoStack: CommandUndoRedoStack
   readonly dirtyTracker: DirtyTracker
@@ -35,6 +44,7 @@ export class CommandManager {
   private getPool: () => NodePool
   private getTemplateDefinitions: () => TemplateDefinitionStore | undefined
   private getDictionaries: () => DictionaryProvider | undefined
+  private getPluginHooks: () => CommandHooks | undefined
   /** 事务栈 — beginMacro/endMacro 间收集的子命令 (RULE 11) */
   private macroStack: ICommand[][] = []
 
@@ -44,12 +54,14 @@ export class CommandManager {
     getPool: () => NodePool,
     getTemplateDefinitions: () => TemplateDefinitionStore | undefined = () => undefined,
     getDictionaries: () => DictionaryProvider | undefined = () => undefined,
+    getPluginHooks: () => CommandHooks | undefined = () => undefined,
   ) {
     this.eventBus = eventBus
     this.getDocument = getDocument
     this.getPool = getPool
     this.getTemplateDefinitions = getTemplateDefinitions
     this.getDictionaries = getDictionaries
+    this.getPluginHooks = getPluginHooks
     this.undoStack = new CommandUndoRedoStack(100)
     this.dirtyTracker = new DirtyTracker()
   }
@@ -65,6 +77,19 @@ export class CommandManager {
   }
 
   execute(command: ICommand): void {
+    // 插件命令钩子 (契约 §12): 环绕命令执行。放在 finally 里保证即使 forward
+    // 抛错也会通知 —— 否则插件会看到"只有 before 没有 after"的错位生命周期。
+    const hooks = this.getPluginHooks()
+    hooks?.emitCommandBefore(command)
+    try {
+      this.runCommand(command)
+    } finally {
+      hooks?.emitCommandAfter(command)
+    }
+  }
+
+  /** execute 的执行体 (命令钩子由 execute 环绕, 此处只管命令本身) */
+  private runCommand(command: ICommand): void {
     const ctx = this.buildContext()
 
     const macro = this.macroStack[this.macroStack.length - 1]

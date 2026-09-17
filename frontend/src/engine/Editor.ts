@@ -12,11 +12,13 @@ import { serializeDocument } from './document/io/DocumentSerializer'
 import { loadDocumentFromObject } from './document/io/DocumentLoader'
 import type { FieldType, Table } from './document/core/DocumentModel'
 import { Draw } from './render/Draw'
+import { particleRegistry } from './render/particles/ParticleRegistry'
 import type { EditorHost } from './host/EditorHost'
 import { AutoSaveManager } from './AutoSaveManager'
 import { AutoCorrectEngine } from './AutoCorrectEngine'
 import { PerformanceMetrics } from './PerformanceMetrics'
 import { PluginManager } from './plugins/PluginManager'
+import type { ToolbarAction } from './plugins/PluginManager'
 import { EventBus } from './interaction/EventBus'
 import { CommandManager } from './command/CommandManager'
 import { InputComposer } from './interaction/IMEHandler'
@@ -226,7 +228,10 @@ export class Editor {
     this.autoSave = new AutoSaveManager(doc.id, doc.title || '未命名文档', () => this.getSerializedDocument(), host.platform.storage)
     this.autoCorrect = new AutoCorrectEngine()
     this.perfMetrics = new PerformanceMetrics(host)
-    this.pluginManager = new PluginManager()
+    // 粒子桥: 插件注册的自定义粒子落到渲染层注册表 (同名已存在则跳过, 不覆盖内置)
+    this.pluginManager = new PluginManager((particle) => {
+      if (!particleRegistry.has(particle.type)) particleRegistry.register(particle)
+    })
     this.qcEngine = new QCEngine()
     // 自动保存: 保存状态同步到 EditorStore
     this.autoSave.onSave((type) => {
@@ -242,6 +247,8 @@ export class Editor {
       () => this.pool,
       () => this.templateDefinitions ?? undefined,
       () => this.dictionaries ?? undefined,
+      // 插件命令钩子 (契约 §12) — 惰性解析: pluginManager 在构造后段才建立
+      () => this.pluginManager?.getHook(),
     )
 
     // 状态变更 → 仅更新 Store, 不渲染
@@ -264,7 +271,7 @@ export class Editor {
 
     // render:request (undo/redo 等) → 使用当前的 pool 和 state
     this.eventBus.on('render:request', () => {
-      this.draw.recomputeLayout(this.pool)
+      this.relayout()
       this.draw.render(this.pool, this.store.state.runtime)
       this.syncHistoryState()
       this.syncUiProjections()
@@ -318,7 +325,7 @@ export class Editor {
     })
 
     // 初始布局 + 首帧渲染
-    this.draw.recomputeLayout(this.pool)
+    this.relayout()
 
     // 初始化光标 — 必须在 render() 之前, 确保首帧即绘制光标
     const cursorPath = this.doc.body.children.length > 0
@@ -334,7 +341,7 @@ export class Editor {
     })
     this.draw.renderer.startCursorBlink(this.store.state.runtime)
 
-    // 注册演示插件 (验证 PluginManager 系统)
+    // 注册演示插件 (验证 PluginManager 系统) —— register 内部完成 install → enable
     this.pluginManager.register({
       id: 'emr.demo',
       name: 'Demo Plugin',
@@ -1222,7 +1229,10 @@ export class Editor {
   getPresentationStyles(): PresentationStyleStore | null { return this.presentationStyles }
   /** 序列化文档为 JSON 字符串 (含全部节点 payload, 供保存/自动保存使用) */
   getSerializedDocument(): string {
-    return serializeDocument(this.doc, this.pool, {
+    // 插件 beforeSave 钩子 (契约 §12): 序列化前给插件一次变换机会。
+    // 只影响**产物**, 不回写 this.doc —— 插件不应借保存路径改运行时文档。
+    const outDoc = this.pluginManager.getHook().emitBeforeSave(this.doc)
+    return serializeDocument(outDoc, this.pool, {
       templateDefinitions: this.templateDefinitions ?? undefined,
       presentationStyles: this.presentationStyles ?? undefined,
     })
@@ -1273,6 +1283,11 @@ export class Editor {
     nodes?: Map<string, BaseNode>,
     stores?: { templateDefinitions?: TemplateDefinitionStore; presentationStyles?: PresentationStyleStore; dictionaries?: DictionaryProvider },
   ): void {
+    // 插件 afterLoad 钩子 (契约 §12)。签名返回「变换后的文档」, 故落点必须在
+    // **构建 NodePool 之前** —— 池一旦建好, 再换文档就会与池不一致。
+    // (插件的 install/enable 语义清晰, 但本钩子的时机由这里定义。)
+    doc = this.pluginManager.getHook().emitAfterLoad(doc)
+
     // 确保 header/footer 字段存在 (兼容旧版文档数据)
     if (!doc.header) doc.header = []
     if (!doc.footer) doc.footer = []
@@ -1292,7 +1307,7 @@ export class Editor {
     // (React 边界调 setDocument(doc) 时不传 stores)。仅在显式传入时替换。
     if (stores?.dictionaries !== undefined) this.dictionaries = stores.dictionaries
     this.draw.setDocument(doc, this.pool, this.presentationStyles, this.templateDefinitions)
-    this.draw.recomputeLayout(this.pool)
+    this.relayout()
 
     // 自动应用文档水印 (R70) — 用 document 域类型直接读取, 契约 §12.4。
     // 必须显式 else 清除: 水印是 document content (§12.4), 换到无水印文档时
@@ -1908,6 +1923,17 @@ export class Editor {
     this.commandManager.execute(new ResolveCommentCommand(
       generateCommandId(), Date.now(), 'user', threadId, resolved,
     ))
+  }
+
+  /**
+   * 重排重绘 —— 插件 layout 钩子在此环绕 (before → 布局 → after)。
+   * 三处调用点统一走这里, 使钩子不会因某个路径忘了调用而漏触发。
+   */
+  private relayout(): void {
+    const hook = this.pluginManager.getHook()
+    hook.emitBeforeLayout(this.pool)
+    this.draw.recomputeLayout(this.pool)
+    hook.emitAfterLayout(this.pool)
   }
 
   execCommand(command: ICommand): void { this.commandManager.execute(command) }
@@ -2792,6 +2818,14 @@ export class Editor {
 
   /** 注册演示插件 (验证 PluginManager 系统) */
   getPluginManager(): PluginManager { return this.pluginManager }
+
+  /**
+   * 插件注册的工具栏动作 —— UI 经此渲染插件按钮。
+   * 此前 getToolbarActions() 零调用, 插件注册的按钮无处可去 (接线审计 P2)。
+   */
+  getPluginToolbarActions(): ToolbarAction[] {
+    return this.pluginManager.getToolbarActions()
+  }
 
   destroy(): void {
     this.listeners = []

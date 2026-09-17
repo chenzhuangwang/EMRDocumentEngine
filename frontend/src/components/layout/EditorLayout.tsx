@@ -18,6 +18,7 @@ import { useEditorStore, useUIStore } from '@/store'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
 import type { CommentThread } from '@/engine/document/core/DocumentModel'
 import type { EditorMode, ScoreResult } from '@/engine'
+import type { ToolbarAction } from '@/engine/plugins/PluginManager'
 import type { QCIssue, QCResult } from '@/engine/qc/QCEngine'
 
 interface EditorLayoutProps {
@@ -32,6 +33,8 @@ interface EditorLayoutProps {
   onPageSetup?: () => void
   /** 水印设置 (契约 §12.4) */
   onWatermark?: () => void
+  /** 插件注册的工具栏动作 (契约 §12) */
+  pluginActions?: ToolbarAction[]
   wordCount?: number
   pageIndex?: number
   pageCount?: number
@@ -81,6 +84,7 @@ export function EditorLayout({
   onPrint,
   onPageSetup,
   onWatermark,
+  pluginActions,
   wordCount = 0,
   pageIndex = 1,
   pageCount = 1,
@@ -131,6 +135,7 @@ export function EditorLayout({
         onPrint={onPrint}
         onPageSetup={onPageSetup}
         onWatermark={onWatermark}
+        pluginActions={pluginActions}
       />
       )}
 

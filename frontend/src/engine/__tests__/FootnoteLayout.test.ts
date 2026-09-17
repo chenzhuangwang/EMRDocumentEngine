@@ -5,60 +5,18 @@
 // SPDX-License-Identifier: MPL-2.0
 
 // ============================================================
-// LaTeX tokenizer + FootnoteLayout 测试 (R93-R94)
+// FootnoteLayout 测试 (R93-R94)
+//
+// 原名 LaTeXFootnote.test.ts, 含一块 LaTeX tokenizer 测试 —— LaTeX 链
+// (KaTeXRenderer + LaTeXParticle) 已删除 (文档模型里从来没有 latex 节点类型,
+// 任何文档都产不出 latex item), 故改名并只留脚注部分。
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { tokenize, type LaTeXToken } from '../render/particles/LaTeXParticle'
 import { FootnoteLayout } from '../layout/footnote/FootnoteLayout'
 import { NodePool, buildNodePool } from '../document/core/NodePool'
 import type { BaseNode } from '../document/core/DocumentModel'
 import type { SLIFPage } from '../layout/core/SLIF'
-
-// ---- LaTeX Tokenizer ----
-
-describe('LaTeX tokenizer', () => {
-  it('should tokenize plain text', () => {
-    const tokens = tokenize('hello')
-    expect(tokens.length).toBe(5) // h,e,l,l,o — 逐字符
-    expect(tokens.every(t => t.type === 'text')).toBe(true)
-  })
-
-  it('should tokenize Greek letters', () => {
-    const tokens = tokenize('\\alpha')
-    expect(tokens).toEqual([{ type: 'text', value: 'α' }])
-  })
-
-  it('should tokenize superscript', () => {
-    const tokens = tokenize('x^{2}')
-    expect(tokens.some(t => t.type === 'sup' && t.value === '2')).toBe(true)
-  })
-
-  it('should tokenize subscript', () => {
-    const tokens = tokenize('x_{1}')
-    expect(tokens.some(t => t.type === 'sub' && t.value === '1')).toBe(true)
-  })
-
-  it('should tokenize fraction', () => {
-    const tokens = tokenize('\\frac{a}{b}')
-    const frac = tokens.find(t => t.type === 'frac') as Extract<LaTeXToken, { type: 'frac' }> | undefined
-    expect(frac).toBeDefined()
-    expect(frac!.num).toBe('a')
-    expect(frac!.den).toBe('b')
-  })
-
-  it('should tokenize square root', () => {
-    const tokens = tokenize('\\sqrt{x}')
-    const sqrt = tokens.find(t => t.type === 'sqrt') as Extract<LaTeXToken, { type: 'sqrt' }> | undefined
-    expect(sqrt).toBeDefined()
-    expect(sqrt!.inner).toBe('x')
-  })
-
-  it('should tokenize \\infty symbol', () => {
-    const tokens = tokenize('\\infty')
-    expect(tokens).toEqual([{ type: 'text', value: '∞' }])
-  })
-})
 
 // ---- FootnoteLayout ----
 

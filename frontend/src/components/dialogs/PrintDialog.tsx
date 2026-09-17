@@ -31,13 +31,15 @@ interface PrintDialogProps {
   totalPages: number
   initialSettings?: Partial<PrintSettings>
   onPrint?: (settings: PrintSettings) => void
+  /** 打开应用内打印预览 (可选; 不传则不显示预览入口) */
+  onPreview?: () => void
 }
 
 // ---- 组件 ----
 
 export function PrintDialog({
   open, onClose, totalPages,
-  initialSettings, onPrint,
+  initialSettings, onPrint, onPreview,
 }: PrintDialogProps) {
   const [settings, setSettings] = useState<PrintSettings>({
     printer: '默认打印机',
@@ -213,6 +215,16 @@ export function PrintDialog({
             >
               取消
             </button>
+            {/* 预览: 应用内看排版再决定打不打 (浏览器打印对话框只在 w.print() 后才出预览) */}
+            {onPreview && (
+              <button
+                className="px-4 py-1.5 text-xs text-gray-700 border border-gray-300 hover:bg-gray-100
+                           rounded-md transition-colors"
+                onClick={onPreview}
+              >
+                预览
+              </button>
+            )}
             <button
               className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-white
                          bg-primary-600 hover:bg-primary-700 rounded-md transition-colors"

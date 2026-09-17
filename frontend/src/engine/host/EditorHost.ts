@@ -184,13 +184,6 @@ export interface ClipboardHost {
   canRead(): boolean
 }
 
-export interface HtmlMeasureResult {
-  width: number
-  height: number
-  /** 元素 textContent (供 Canvas fillText 回退绘制) */
-  text: string
-}
-
 /** 自动保存快照 — 引擎域类型, 定义在 host 边界 (契约 §19: host 不反向依赖 feature) */
 export interface SaveSnapshot {
   id: string
@@ -221,8 +214,6 @@ export interface PlatformHost {
   clipboard: ClipboardHost
   /** 上报性能埋点 (payload 已由 engine 序列化为 JSON 字符串; 平台负责 Blob + sendBeacon) */
   sendBeacon(url: string, data: string): void
-  /** 离屏测量一段 HTML 在给定字号下的尺寸 + 文本内容 (KaTeX) */
-  measureHtml(html: string, fontSize: number): HtmlMeasureResult
   /** 页面卸载前回调, 返回 detach 闭包 (替代 window.addEventListener('beforeunload')) */
   onBeforeUnload(cb: () => void): () => void
   /** 自动保存持久化 (替代 indexedDB 直连) */

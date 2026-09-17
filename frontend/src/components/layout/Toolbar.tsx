@@ -19,8 +19,9 @@ import {
   Clock, User, Highlighter, Bookmark,
   Combine, Ungroup,
   Rows3, Rows, Columns3, Columns,
-  Droplets,
+  Droplets, Puzzle,
 } from 'lucide-react'
+import type { ToolbarAction } from '@/engine/plugins/PluginManager'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { cn } from '@/lib/utils'
 import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
@@ -35,6 +36,8 @@ interface ToolbarProps {
   onPageSetup?: () => void
   /** 水印设置 (契约 §12.4) */
   onWatermark?: () => void
+  /** 插件注册的工具栏动作 (契约 §12) */
+  pluginActions?: ToolbarAction[]
 }
 
 // ---- 常量 ----
@@ -71,7 +74,7 @@ interface ControlItem {
 }
 
 // ================================================================
-export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetup, onWatermark }: ToolbarProps) {
+export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetup, onWatermark, pluginActions }: ToolbarProps) {
   const paraStyle = useEditorStoreSnapshot((s) => s.paragraphStyle)
   const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
   const canUndo = useEditorStoreSnapshot((s) => s.runtime.history.canUndo)
@@ -255,6 +258,18 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
           onEnterEdit={(section) => onFormat?.('headerFooterEnter', section)}
         />
       </ToolbarGroup>
+
+      {/* 插件动作组 (契约 §12) — 插件经 registerToolbarAction 注册的按钮。
+          此前 getToolbarActions() 零调用, 插件注册的按钮无处可去。 */}
+      {pluginActions && pluginActions.length > 0 && (
+        <ToolbarGroup>
+          {pluginActions.map((a) => (
+            <ToolbarButton key={a.id} title={a.label} onClick={a.onClick}>
+              <Puzzle size={16} />
+            </ToolbarButton>
+          ))}
+        </ToolbarGroup>
+      )}
 
       {/* 组10：文件操作 */}
       <ToolbarGroup>

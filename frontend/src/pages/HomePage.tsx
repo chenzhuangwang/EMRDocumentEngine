@@ -22,6 +22,7 @@ import { documentApi, type DocumentListItem } from '@/services/api'
 import { formatDate, cn } from '@/lib/utils'
 import { RepoLinks } from '@/components/common/RepoLinks'
 import { MOCK_DOCUMENT_LIST } from '@/mocks/documents'
+import { RecentDocuments } from '@/components/sidebar/RecentDocuments'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -122,6 +123,9 @@ export default function HomePage() {
               onChange={(e) => setSearchKeyword(e.target.value)}
             />
           </div>
+
+          {/* 最近文档 — 此前 RecentDocuments 组件零挂载点 (接线审计 P2) */}
+          <RecentDocuments onOpenDocument={(doc) => navigate(`/editor/${doc.id}`)} />
 
           {/* 文档列表 */}
           {loading ? (

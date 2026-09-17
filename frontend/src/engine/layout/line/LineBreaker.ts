@@ -421,9 +421,6 @@ export class LineBreaker {
       case 'table': {
         return options.maxWidth
       }
-      case 'latex': {
-        return 200 // LaTeX 公式默认宽度
-      }
 
       default:
         return 0

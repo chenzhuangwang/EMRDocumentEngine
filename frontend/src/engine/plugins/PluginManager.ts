@@ -80,6 +80,18 @@ export interface ToolbarAction {
 
 export class PluginManager {
   private plugins = new Map<string, IPlugin>()
+  /**
+   * 粒子注册桥 —— 插件经 PluginContext.registerParticle 注册的自定义粒子
+   * 要落到渲染层 (ParticleRegistry)。此前该回调是空实现 (注释写"由
+   * ParticleRegistry 桥接"但没有任何人桥), 插件注册的粒子全部丢失。
+   * 由 Editor 在构造时注入, 免得 plugins/ 反向依赖 render/。
+   */
+  private readonly bridgeParticle: ((particle: IParticle) => void) | undefined
+
+  constructor(bridgeParticle?: (particle: IParticle) => void) {
+    this.bridgeParticle = bridgeParticle
+  }
+
   private hooks = {
     commandBefore: [] as Array<(cmd: unknown) => void>,
     commandAfter: [] as Array<(cmd: unknown) => void>,
@@ -90,7 +102,7 @@ export class PluginManager {
   }
   private toolbarActions: ToolbarAction[] = []
 
-  /** 注册插件 */
+  /** 注册插件 (install → enable)。注册后即生效 —— 生命周期不再停在第 1 步。 */
   register(plugin: IPlugin): void {
     if (this.plugins.has(plugin.id)) {
       console.warn(`[PluginManager] 插件 "${plugin.id}" 已注册, 跳过`)
@@ -100,12 +112,14 @@ export class PluginManager {
     const ctx = this.createContext()
     plugin.install(ctx)
     this.plugins.set(plugin.id, plugin)
+    plugin.enable()
   }
 
-  /** 卸载插件 */
+  /** 卸载插件 (disable → destroy) */
   unregister(pluginId: string): void {
     const plugin = this.plugins.get(pluginId)
     if (plugin) {
+      plugin.disable()
       plugin.destroy()
       this.plugins.delete(pluginId)
     }
@@ -140,7 +154,7 @@ export class PluginManager {
 
   private createContext(): PluginContext {
     return {
-      registerParticle: (_particle) => { /* 由 ParticleRegistry 桥接 */ },
+      registerParticle: (particle) => { this.bridgeParticle?.(particle) },
       onCommandBefore: (fn) => this.hooks.commandBefore.push(fn),
       onCommandAfter: (fn) => this.hooks.commandAfter.push(fn),
       onBeforeSave: (fn) => this.hooks.beforeSave.push(fn),

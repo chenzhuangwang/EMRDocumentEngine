@@ -19,7 +19,6 @@ import {
   extractStyle, sameStyle, smartTextDisplayValue,
 } from '../document/factory/ElementFormatter'
 import { sanitizeText } from '../security/SecurityConfig'
-import { validateKaTeX } from '../render/KaTeXRenderer'
 
 // ---- ElementFormatter factories ----
 
@@ -149,19 +148,6 @@ describe('sanitizeText extended', () => {
   })
 })
 
-// ---- KaTeX validation (DOM required) ----
-
-describe('KaTeX validation', () => {
-  it('should validate simple LaTeX', () => {
-    expect(validateKaTeX('x^2')).toBe(true)
-    expect(validateKaTeX('\\frac{a}{b}')).toBe(true)
-    expect(validateKaTeX('\\alpha')).toBe(true)
-  })
-
-  it('should reject invalid LaTeX', () => {
-    expect(validateKaTeX('\\invalid{')).toBe(false)
-  })
-})
 
 // ---- DEFAULT_PAGE_SETUP ----
 

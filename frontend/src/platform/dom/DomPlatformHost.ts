@@ -15,7 +15,7 @@
 // ============================================================
 
 import type {
-  ClipboardHost, HtmlMeasureResult, PlatformHost, StorageHost,
+  ClipboardHost, PlatformHost, StorageHost,
 } from '../../engine/host/EditorHost'
 import type { ThemeColors } from '../../engine/state/EditorTheme'
 import { DomIndexedDBStorage } from './DomStorageHost'
@@ -53,20 +53,6 @@ const THEME_CSS_VARS: Record<keyof ThemeColors, string> = {
   hfBg: '--emr-hf-bg',
 }
 
-// ---- 离屏测量容器 (复用单例) ----
-
-let measureContainer: HTMLDivElement | null = null
-
-function getMeasureContainer(): HTMLDivElement {
-  if (!measureContainer) {
-    measureContainer = document.createElement('div')
-    measureContainer.style.cssText =
-      'position:absolute;visibility:hidden;width:auto;height:auto;white-space:nowrap;pointer-events:none;'
-    document.body.appendChild(measureContainer)
-  }
-  return measureContainer
-}
-
 export class DomPlatformHost implements PlatformHost {
   readonly clipboard: ClipboardHost = new DomClipboardHost()
   readonly storage: StorageHost = new DomIndexedDBStorage()
@@ -85,16 +71,6 @@ export class DomPlatformHost implements PlatformHost {
         navigator.sendBeacon(url, blob)
       }
     } catch { /* 静默 */ }
-  }
-
-  measureHtml(html: string, fontSize: number): HtmlMeasureResult {
-    const container = getMeasureContainer()
-    container.innerHTML = html
-    const span = container.querySelector('.katex') as HTMLSpanElement
-    if (span) span.style.fontSize = `${fontSize}px`
-
-    const rect = container.getBoundingClientRect()
-    return { width: rect.width, height: rect.height, text: container.textContent || '' }
   }
 
   onBeforeUnload(cb: () => void): () => void {

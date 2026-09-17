@@ -2892,7 +2892,7 @@ NOT allowed:
     SurfaceHost   — createLayer(), createOffscreen(), devicePixelRatio(), requestFrame()
     ViewportHost  — size(), bounds()
     InputHost     — attach/detach global listeners, IME surface
-    PlatformHost  — applyTheme(), clipboard, sendBeacon(), measureHtml(), onBeforeUnload(), storage
+    PlatformHost  — applyTheme(), clipboard, sendBeacon(), onBeforeUnload(), storage
 
 Concrete shapes (surface / viewport — now stable):
 
@@ -2931,17 +2931,10 @@ Concrete shapes (surface / viewport — now stable):
       canRead(): boolean                       // navigator.clipboard?.readText presence
     }
 
-    interface HtmlMeasureResult {
-      width: number
-      height: number
-      text: string                             // element textContent
-    }
-
     interface PlatformHost {
       applyTheme(colors): void                 // :root CSS vars / native chrome
       clipboard: ClipboardHost
       sendBeacon(url, data): void              // data = engine-serialized JSON string
-      measureHtml(html, fontSize): HtmlMeasureResult   // off-screen KaTeX measurement
       onBeforeUnload(cb): () => void           // detach closure
       storage: StorageHost                     // autosave snapshot persistence (see below)
     }

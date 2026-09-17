@@ -12,6 +12,7 @@
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import type { PerfSummary } from '@/engine'
 import { Activity, Zap, Database, Gauge } from 'lucide-react'
 
 interface PerfMetrics {
@@ -22,6 +23,12 @@ interface PerfMetrics {
 }
 
 interface PerfPanelProps {
+  /**
+   * 引擎侧性能汇总 (`Editor.getPerfMetrics()?.summarize()`)。
+   * 提供时**优先**于下面三个外部注入值 —— 此前该面板与 PerformanceMetrics
+   * 毫无连接 (字段名都对不上), 只能靠调用方另行注入。
+   */
+  summary?: PerfSummary
   /** 布局耗时 (ms), 外部注入 */
   layoutTime?: number
   /** 缓存统计 */
@@ -29,7 +36,7 @@ interface PerfPanelProps {
   cacheMisses?: number
 }
 
-export function PerfPanel({ layoutTime = 0, cacheHits = 0, cacheMisses = 0 }: PerfPanelProps) {
+export function PerfPanel({ summary, layoutTime = 0, cacheHits = 0, cacheMisses = 0 }: PerfPanelProps) {
   const [visible, setVisible] = useState(false)
   const [metrics, setMetrics] = useState<PerfMetrics>({
     fps: 60, frameTime: 0, layoutTime: 0, cacheHitRate: 100,
@@ -63,16 +70,18 @@ export function PerfPanel({ layoutTime = 0, cacheHits = 0, cacheMisses = 0 }: Pe
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
   }, [visible, measureFps])
 
-  // 更新外部注入的指标
+  // 更新外部注入的指标 (summary 优先: 它来自引擎的 PerformanceMetrics)
   useEffect(() => {
     setMetrics(prev => ({
       ...prev,
-      layoutTime,
-      cacheHitRate: cacheHits + cacheMisses > 0
-        ? Math.round((cacheHits / (cacheHits + cacheMisses)) * 100)
-        : 100,
+      layoutTime: summary ? Math.round(summary.avgLayoutTime) : layoutTime,
+      cacheHitRate: summary
+        ? Math.round(summary.cacheHitRate)
+        : cacheHits + cacheMisses > 0
+          ? Math.round((cacheHits / (cacheHits + cacheMisses)) * 100)
+          : 100,
     }))
-  }, [layoutTime, cacheHits, cacheMisses])
+  }, [summary, layoutTime, cacheHits, cacheMisses])
 
   if (!visible) {
     return (

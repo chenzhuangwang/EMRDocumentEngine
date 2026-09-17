@@ -9,7 +9,7 @@
 // ============================================================
 
 // ---- Host 边界 (契约 §27) ----
-export type { EditorHost, TextHost, FontHost, TextMeasurement, SurfaceHost, ViewportHost, CanvasSurface, LayerKind, InputHost, ImeSurface, CaretRect, ContainerListeners, GlobalListeners, PlatformHost, ClipboardHost, HtmlMeasureResult, StorageHost } from './host/EditorHost'
+export type { EditorHost, TextHost, FontHost, TextMeasurement, SurfaceHost, ViewportHost, CanvasSurface, LayerKind, InputHost, ImeSurface, CaretRect, ContainerListeners, GlobalListeners, PlatformHost, ClipboardHost, StorageHost } from './host/EditorHost'
 
 export { Editor } from './Editor'
 export { Draw } from './render/Draw'
@@ -163,7 +163,6 @@ export { createImageParticle } from './render/particles/ImageParticle'
 export { createCommentParticle } from './render/particles/CommentParticle'
 export { createTableParticle } from './render/particles/TableParticle'
 export { createBarcodeParticle } from './render/particles/BarcodeParticle'
-export { createLaTeXParticle } from './render/particles/LaTeXParticle'
 
 // ---- R30+: Engine modules ----
 export { AutoSaveManager } from './AutoSaveManager'
@@ -267,10 +266,6 @@ export type {
   SeparatorContext, SectionBreakContext, SmartTextContext,
   HeaderFooterContext, BlankContext,
 } from './context/EditorContext'
-
-// ---- KaTeX ----
-export { renderKaTeXToCanvas, validateKaTeX, measureKaTeX } from './render/KaTeXRenderer'
-export type { KaTeXRenderResult } from './render/KaTeXRenderer'
 
 // ---- P0: 增量布局 + 增量分页 (TASK-482/485) ----
 export { IncrementalLayout } from './layout/incremental/IncrementalLayout'

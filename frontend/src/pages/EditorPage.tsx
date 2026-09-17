@@ -25,6 +25,9 @@ import { FindReplaceDialog } from '@/components/dialogs/FindReplaceDialog'
 import { PrintDialog } from '@/components/dialogs/PrintDialog'
 import { PageSetupDialog } from '@/components/dialogs/PageSetupDialog'
 import { WatermarkDialog } from '@/components/dialogs/WatermarkDialog'
+import { addRecentDocument } from '@/components/sidebar/RecentDocuments'
+import { PrintPreviewDialog } from '@/components/dialogs/PrintPreviewDialog'
+import { PerfPanel } from '@/components/panels/PerfPanel'
 import { PasteSpecialDialog, type PasteFormat } from '@/components/dialogs/PasteSpecialDialog'
 import { BookmarkDialog } from '@/components/dialogs/BookmarkDialog'
 import { DocumentPropertiesDialog } from '@/components/dialogs/DocumentPropertiesDialog'
@@ -42,11 +45,31 @@ import {
   provenanceMetaTags, stampExportHtml, stampExportObject, stampExportText,
 } from '@/lib/provenance'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
-import type { EditorMode, ScoreResult, WatermarkConfig } from '@/engine'
+import type { EditorMode, ScoreResult, WatermarkConfig, PerfSummary } from '@/engine'
 import type { QCIssue, QCResult } from '@/engine/qc/QCEngine'
 
 /** 质控防抖窗口 —— 质控比字数统计贵得多, 不该跟着每次按键跑 */
 const QC_DEBOUNCE_MS = 600
+
+/**
+ * 把已渲染的页面图交给浏览器打印 (开新窗口 + w.print())。
+ * 打印与打印预览共用同一条输出路径 —— 预览后点打印看到的就是这里的结果。
+ */
+function openPrintWindow(pageImages: string[]): void {
+  if (pageImages.length === 0) return
+  const w = window.open('', '_blank', `width=${screen.width},height=${screen.height}`)
+  if (!w) return
+  w.document.write(`<html><head><title>打印</title>${provenanceMetaTags()}<style>`)
+  w.document.write('@page{size:A4;margin:0}body{margin:0;display:flex;flex-direction:column;align-items:center}')
+  w.document.write('img{width:210mm;height:auto;page-break-after:always}img:last-child{page-break-after:auto}')
+  w.document.write('</style></head><body>')
+  for (const url of pageImages) {
+    w.document.write(`<img src="${url}" />`)
+  }
+  w.document.write('</body></html>')
+  w.document.close()
+  setTimeout(() => { w.print(); w.close() }, 300)
+}
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -68,6 +91,8 @@ export default function EditorPage() {
           // 打开旧文档同样清理库默认标签 (与导入/导出一致)
           stripWidgetDefaultLabelsFromObject((parsed as { templateDefinitions?: Record<string, import('@/engine').TemplateDefinition> }).templateDefinitions)
           setLoadedDoc(parsed)
+          // 记入最近文档 (首页 RecentDocuments 的数据源; localStorage 持久化)
+          addRecentDocument({ id: id!, title: detail.title, lastOpenedAt: Date.now() })
         } catch { /* 忽略解析错误 */ }
       })
       .finally(() => setLoading(false))
@@ -140,6 +165,11 @@ function EditorPageInner({
   const [pageSetupOpen, setPageSetupOpen] = useState(false)
   /** 质控结果 (契约 §12.2) — 只读派生, null = 尚未检查 */
   const [qcResult, setQcResult] = useState<QCResult | null>(null)
+  /** 打印预览的页面图 (null = 未打开预览) */
+  const [printPages, setPrintPages] = useState<string[] | null>(null)
+  const [previewPage, setPreviewPage] = useState(0)
+  /** 引擎性能汇总 (PerformanceMetrics.summarize) — 供 PerfPanel 显示 */
+  const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null)
   /**
    * 水印对话框初值 —— 必须**开时快照进 state**, 不能每次 render 现算:
    * 现算会给出新对象引用, 而对话框的 `useEffect([open, initialConfig])`
@@ -297,6 +327,8 @@ function EditorPageInner({
       setPageCount(editor.getDraw().getPages().length)
       // 量表评分 (§12.6.2 layer E): 只读派生, 与字数同频重算, 不产生命令
       setScaleScore(editor.computeControlScore())
+      // 性能汇总 (原先 PerformanceMetrics 只写不读, getPerfMetrics 零调用)
+      setPerfSummary(editor.getPerfMetrics()?.summarize() ?? null)
 
       // 大纲: 提取所有 outlineLevel > 0 的标题段落
       const doc = editor.getDocument()
@@ -878,6 +910,7 @@ function EditorPageInner({
       }}
       onExportClick={() => setExportOpen(true)}
       onPrint={() => setPrintOpen(true)}
+      pluginActions={editorRef.current?.getPluginToolbarActions()}
       onPageSetup={() => setPageSetupOpen(true)}
       onWatermark={() => {
         // 以**现值为初值**打开 (没有水印则 undefined → 对话框用默认值)
@@ -923,6 +956,8 @@ function EditorPageInner({
       <DesignControlTooltip />
       <RuntimeControlOverlay canvasContainerRef={containerRef} />
       <TableGrowOverlay />
+      {/* 性能面板 (接线审计 P2: 此前 PerformanceMetrics 只写不读、PerfPanel 零挂载) */}
+      <PerfPanel summary={perfSummary ?? undefined} />
       <ContextMenu
         open={contextMenu.open}
         x={contextMenu.x}
@@ -1007,24 +1042,36 @@ function EditorPageInner({
         open={printOpen}
         onClose={() => setPrintOpen(false)}
         totalPages={pageCount}
+        onPreview={() => {
+          const ed = editorRef.current
+          if (!ed) return
+          setPrintPages(ed.preparePrintPages())
+          setPreviewPage(0)
+          setPrintOpen(false)
+        }}
         onPrint={(_settings) => {
           const ed = editorRef.current
           if (!ed) return
-          const pageImages = ed.preparePrintPages()
-          const w = window.open('', '_blank', `width=${screen.width},height=${screen.height}`)
-          if (!w) return
-          w.document.write(`<html><head><title>打印</title>${provenanceMetaTags()}<style>`)
-          w.document.write('@page{size:A4;margin:0}body{margin:0;display:flex;flex-direction:column;align-items:center}')
-          w.document.write('img{width:210mm;height:auto;page-break-after:always}img:last-child{page-break-after:auto}')
-          w.document.write('</style></head><body>')
-          for (const url of pageImages) {
-            w.document.write(`<img src="${url}" />`)
-          }
-          w.document.write('</body></html>')
-          w.document.close()
-          setTimeout(() => { w.print(); w.close() }, 300)
+          openPrintWindow(ed.preparePrintPages())
         }}
       />
+      {/* 应用内打印预览 (接线审计 P2: PrintPreviewDialog 此前零挂载点) */}
+      <PrintPreviewDialog
+        open={printPages !== null}
+        onOpenChange={(o) => { if (!o) setPrintPages(null) }}
+        pageCount={printPages?.length ?? 0}
+        currentPage={previewPage}
+        onPageChange={(p) => setPreviewPage(Math.max(0, Math.min((printPages?.length ?? 1) - 1, p)))}
+        onPrint={() => {
+          if (printPages) openPrintWindow(printPages)
+          setPrintPages(null)
+        }}
+      >
+        {printPages?.[previewPage]
+          ? <img src={printPages[previewPage]} alt={`第 ${previewPage + 1} 页`}
+                 className="max-w-full max-h-full object-contain shadow-lg" />
+          : null}
+      </PrintPreviewDialog>
       <PageSetupDialog
         open={pageSetupOpen}
         onClose={() => setPageSetupOpen(false)}
