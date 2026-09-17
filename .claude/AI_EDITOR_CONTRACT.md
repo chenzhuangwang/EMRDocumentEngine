@@ -3014,6 +3014,27 @@ host-independent pure config / registries:
 These are side-effect-free at import (§29) and naturally
 app-wide shared; they do not block multi-Editor coexistence.
 
+BOUNDED EXCEPTION — `locale` subscription apparatus.
+
+`locale` additionally carries mutable subscription state: a
+listener set plus a monotonic version, so UI can re-render when
+the language changes (same shape as EditorStore: subscribe() /
+getVersion() / version++ in notify()).
+
+The exception is the SUBSCRIPTION APPARATUS ONLY. The single
+module-level `locale` stays the one app-wide instance:
+
+    - it MUST NOT be moved into EditorStore or a UI store —
+      that creates duplicate state (§7.5) and makes the language
+      a per-Editor / per-page fact, which it is not;
+    - it MUST NOT be re-created per Editor;
+    - the listener set is runtime-only, so module evaluation is
+      still side-effect-free (§29).
+
+Adding comparable mutable state to any OTHER singleton on the
+list above is still prohibited: none of them has a "the UI must
+re-render when this changes" requirement.
+
 ============================================================
 28. BROWSER GLOBAL PROHIBITION
 ============================================================

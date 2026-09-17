@@ -22,6 +22,7 @@ import { documentApi, type DocumentListItem } from '@/services/api'
 import { formatDate, cn } from '@/lib/utils'
 import { RepoLinks } from '@/components/common/RepoLinks'
 import { ThemeMenu } from '@/components/common/ThemeMenu'
+import { LanguageMenu } from '@/components/common/LanguageMenu'
 import { MOCK_DOCUMENT_LIST } from '@/mocks/documents'
 import { RecentDocuments } from '@/components/sidebar/RecentDocuments'
 
@@ -87,6 +88,7 @@ export default function HomePage() {
         <div className="flex items-center gap-3">
           <RepoLinks />
           <ThemeMenu />
+          <LanguageMenu />
           <div className="w-8 h-8 rounded-full bg-chrome-accent-strong text-chrome-accent-ink
                           flex items-center justify-center text-sm font-medium">
             U

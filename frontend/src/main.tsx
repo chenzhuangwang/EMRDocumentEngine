@@ -11,6 +11,12 @@ import App from './App'
 import './index.css'
 import { useUIStore } from './store'
 import { applyChromeTheme, storeChromePreset } from './platform/dom/chromeTheme'
+import { bootstrapLocale } from './i18n/bootstrap'
+
+// ---- i18n bootstrap ----
+//
+// 同样必须在 render() 之前: 否则首帧恒是中文, 选英文的人每次刷新先闪一下。
+bootstrapLocale()
 
 // ---- chrome 主题 bootstrap ----
 //

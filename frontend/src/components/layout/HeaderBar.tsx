@@ -26,6 +26,7 @@ import { useEditorStore, useUserStore, useUIStore } from '@/store'
 import { useEditor, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { RepoLinks } from '@/components/common/RepoLinks'
 import { ThemeMenu } from '@/components/common/ThemeMenu'
+import { LanguageMenu } from '@/components/common/LanguageMenu'
 
 interface HeaderBarProps {
   onSave?: () => void
@@ -125,6 +126,8 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
         <RepoLinks />
 
         <ThemeMenu />
+
+        <LanguageMenu />
 
         {/* 用户头像/菜单 */}
         {user ? (

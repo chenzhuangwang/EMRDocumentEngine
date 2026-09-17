@@ -8,7 +8,7 @@
 // DocumentLoader + EditorTheme + i18n 综合测试 (R84-R85)
 // ============================================================
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { documentLoaderRegistry } from '../loaders/DocumentLoaderRegistry'
 import { createDocument, createParagraph, createTextNode, createSmartTextNode } from '../document/factory/ElementFormatter'
 import { buildNodePool } from '../document/core/NodePool'
@@ -17,7 +17,7 @@ import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/version/D
 import type { BaseNode, ElementMeta } from '../document/core/DocumentModel'
 import { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import { EditorTheme } from '../state/EditorTheme'
-import { locale, t } from '../i18n/index'
+import { LocaleManager, formatMessage } from '../i18n/index'
 import { testHost } from './helpers'
 
 // ---- DocumentLoaderRegistry ----
@@ -120,30 +120,178 @@ describe('EditorTheme', () => {
 })
 
 // ---- i18n ----
+//
+// 一律 `new LocaleManager()` —— 早期版本这里直接操全局单例, `extend()` 写进去的
+// 覆盖**不会随 setLocale 清掉**, 于是"存储"这个覆盖会泄漏给后面所有用例。
+// 单例本身的行为 (bootstrap 用的那条路径) 由 i18n bootstrap 的测试覆盖。
 
 describe('i18n', () => {
-  it('should default to zh-CN', () => {
-    const mgr = locale
-    expect(mgr.getLocale()).toBe('zh-CN')
+  it('默认 zh-CN', () => {
+    expect(new LocaleManager().getLocale()).toBe('zh-CN')
   })
 
-  it('should translate zh-CN keys', () => {
-    expect(t('common.save')).toBe('保存')
-    expect(t('editor.undo')).toBe('撤销')
-    expect(t('file.print')).toBe('打印')
+  it('内置语言包可直接翻译', () => {
+    const mgr = new LocaleManager()
+    expect(mgr.t('common.save')).toBe('保存')
+    expect(mgr.t('editor.undo')).toBe('撤销')
+    expect(mgr.t('file.print')).toBe('打印')
   })
 
-  it('should switch to en-US', () => {
-    locale.setLocale('en-US')
-    expect(t('common.save')).toBe('Save')
-    expect(t('editor.undo')).toBe('Undo')
-    locale.setLocale('zh-CN') // restore
+  it('切换 en-US', () => {
+    const mgr = new LocaleManager()
+    mgr.setLocale('en-US')
+    expect(mgr.t('common.save')).toBe('Save')
+    expect(mgr.t('editor.undo')).toBe('Undo')
   })
 
-  it('should support partial override', () => {
-    locale.extend({ 'common.save': '存储' })
-    expect(t('common.save')).toBe('存储')
-    locale.setLocale('zh-CN') // reset
+  it('extend 部分覆盖', () => {
+    const mgr = new LocaleManager()
+    mgr.extend({ 'common.save': '存储' })
+    expect(mgr.t('common.save')).toBe('存储')
+    // 未覆盖的键不受影响
+    expect(mgr.t('common.cancel')).toBe('取消')
+  })
+
+  it('extend 的覆盖在切语言后依然生效 (覆盖的是"这套界面", 不是某种语言)', () => {
+    const mgr = new LocaleManager()
+    mgr.extend({ 'common.save': '存储' })
+    mgr.setLocale('en-US')
+    expect(mgr.t('common.save')).toBe('存储')
+  })
+
+  it('缺键时返回键本身并告警 (可见的失败, 不是空串)', () => {
+    const mgr = new LocaleManager()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(mgr.t('nope.notAKey' as never)).toBe('nope.notAKey')
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+  })
+})
+
+describe('i18n 订阅 (切语言后 UI 必须能重渲染)', () => {
+  it('setLocale 通知订阅者并递增版本', () => {
+    const mgr = new LocaleManager()
+    const seen: string[] = []
+    const v0 = mgr.getVersion()
+
+    mgr.subscribe(() => seen.push(mgr.getLocale()))
+    mgr.setLocale('en-US')
+
+    expect(seen).toEqual(['en-US'])
+    expect(mgr.getVersion()).toBe(v0 + 1)
+  })
+
+  it('setLocale 同值早退 —— 不白刷订阅者', () => {
+    const mgr = new LocaleManager()
+    const listener = vi.fn()
+    mgr.subscribe(listener)
+
+    mgr.setLocale('zh-CN') // 与当前值相同
+    expect(listener).not.toHaveBeenCalled()
+    expect(mgr.getVersion()).toBe(0)
+  })
+
+  it('extend 也通知 (文案变了, 界面同样要刷)', () => {
+    const mgr = new LocaleManager()
+    const listener = vi.fn()
+    mgr.subscribe(listener)
+
+    mgr.extend({ 'common.save': '存储' })
+    expect(listener).toHaveBeenCalledOnce()
+  })
+
+  it('取消订阅后不再收到通知', () => {
+    const mgr = new LocaleManager()
+    const listener = vi.fn()
+    const off = mgr.subscribe(listener)
+
+    off()
+    mgr.setLocale('en-US')
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('单个订阅者抛异常不阻断其余订阅者 (且不静默吞掉)', () => {
+    const mgr = new LocaleManager()
+    const good = vi.fn()
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    mgr.subscribe(() => { throw new Error('boom') })
+    mgr.subscribe(good)
+
+    expect(() => mgr.setLocale('en-US')).not.toThrow()
+    expect(good).toHaveBeenCalledOnce()
+    expect(err).toHaveBeenCalledOnce()
+    err.mockRestore()
+  })
+})
+
+describe('formatMessage — 插值', () => {
+  it('替换已提供的参数', () => {
+    expect(formatMessage('第 {current} 页 / 共 {total} 页', { current: 3, total: 12 }, 'zh-CN'))
+      .toBe('第 3 页 / 共 12 页')
+  })
+
+  it('未提供的参数保留字面 —— 可见的失败, 不静默变空串', () => {
+    expect(formatMessage('第 {current} 页 / 共 {total} 页', { current: 3 }, 'zh-CN'))
+      .toBe('第 3 页 / 共 {total} 页')
+  })
+
+  it('无参数的模板原样返回', () => {
+    expect(formatMessage('保存', undefined, 'zh-CN')).toBe('保存')
+  })
+
+  it('未闭合的 { 原样输出, 不吞掉后面的内容', () => {
+    expect(formatMessage('a{b 页', undefined, 'zh-CN')).toBe('a{b 页')
+  })
+
+  it('值为 0 / 空串也要插进去 (不能用 truthiness 判存在)', () => {
+    expect(formatMessage('{n} 项', { n: 0 }, 'zh-CN')).toBe('0 项')
+    expect(formatMessage('[{s}]', { s: '' }, 'zh-CN')).toBe('[]')
+  })
+})
+
+describe('formatMessage — 复数 (ICU 单层子集)', () => {
+  const en = '{n, plural, one {# control} other {# controls}}'
+
+  it('en-US: 1 走 one 分支', () => {
+    expect(formatMessage(en, { n: 1 }, 'en-US')).toBe('1 control')
+  })
+
+  it('en-US: 其余走 other 分支', () => {
+    expect(formatMessage(en, { n: 2 }, 'en-US')).toBe('2 controls')
+    expect(formatMessage(en, { n: 0 }, 'en-US')).toBe('0 controls')
+  })
+
+  it('zh-CN: 只有 other 一条, 任何数都走它', () => {
+    const zh = '{n, plural, other {# 个控件}}'
+    expect(formatMessage(zh, { n: 1 }, 'zh-CN')).toBe('1 个控件')
+    expect(formatMessage(zh, { n: 5 }, 'zh-CN')).toBe('5 个控件')
+  })
+
+  it('分支内可嵌套普通插值', () => {
+    const tpl = '{n, plural, one {# {unit}} other {# {unit}s}}'
+    expect(formatMessage(tpl, { n: 1, unit: '页' }, 'en-US')).toBe('1 页')
+    expect(formatMessage(tpl, { n: 3, unit: '页' }, 'en-US')).toBe('3 页s')
+  })
+
+  it('缺 n 时保留整段字面, 不静默变空串', () => {
+    expect(formatMessage(en, undefined, 'en-US')).toBe(en)
+  })
+
+  it('缺命中分支时回落 other', () => {
+    // en-US 的 3 命中 other; 这里故意只给 one, 走不到就回落空 —— 但 other 存在时必须命中
+    expect(formatMessage('{n, plural, other {# 项}}', { n: 7 }, 'en-US')).toBe('7 项')
+  })
+
+  it('内置语言包走完整链路 (t + 插值/复数)', () => {
+    const mgr = new LocaleManager()
+    expect(mgr.t('editor.pageOf', { current: 2, total: 9 })).toBe('第 2 页 / 共 9 页')
+    expect(mgr.t('editor.controlCount', { n: 3 })).toBe('3 个控件')
+
+    mgr.setLocale('en-US')
+    expect(mgr.t('editor.pageOf', { current: 2, total: 9 })).toBe('Page 2 of 9')
+    expect(mgr.t('editor.controlCount', { n: 1 })).toBe('1 control')
+    expect(mgr.t('editor.controlCount', { n: 4 })).toBe('4 controls')
   })
 })
 
