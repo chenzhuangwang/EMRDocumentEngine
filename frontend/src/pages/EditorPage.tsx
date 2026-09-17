@@ -8,7 +8,7 @@
 // 编辑器主页面 (ModelD)
 // ============================================================
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { EditorLayout } from '@/components/layout/EditorLayout'
 import { ReadingModeOverlay } from '@/components/views/ReadingMode'
@@ -36,6 +36,8 @@ import { ControlChoiceDialog } from '@/components/dialogs/ControlChoiceDialog'
 import { initialConfigForCreate, controlFamilyOf } from '@/components/dialogs/controlConfigShared'
 import type { ControlConfigData } from '@/components/dialogs/controlConfigShared'
 import { documentApi, templateApi } from '@/services/api'
+import { printHistory } from '@/services/PrintHistoryService'
+import { resolvePrintRange, selectPrintPages, buildPrintRecord, printDocKey } from '@/lib/printJob'
 import { getMockDocumentDetail } from '@/mocks/documents'
 import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
 import { templateImporter, isExternalTemplate, hfParagraphsForPage, reportError, EditorErrorCode } from '@/engine'
@@ -162,6 +164,7 @@ function EditorPageInner({
   const [exportOpen, setExportOpen] = useState(false)
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
   const [printOpen, setPrintOpen] = useState(false)
+
   const [pageSetupOpen, setPageSetupOpen] = useState(false)
   /** 质控结果 (契约 §12.2) — 只读派生, null = 尚未检查 */
   const [qcResult, setQcResult] = useState<QCResult | null>(null)
@@ -185,6 +188,19 @@ function EditorPageInner({
   /** 控件量表评分 (契约 §12.6.2 layer E) — 只读派生, 随 contentChange 重算 */
   const [scaleScore, setScaleScore] = useState<ScoreResult | null>(null)
   const [pageCount, setPageCount] = useState(1)
+  // 打印历史 (PrintHistoryService): 仅在对话框打开时读, 免得每次重渲染都摸 localStorage
+  const printHistoryForDoc = useMemo(
+    () => (printOpen ? printHistory.getByDocument(printDocKey(docId)) : []),
+    [printOpen, docId],
+  )
+  // 续打断点: 上一次没打到末页 → 提示从下一页继续
+  const printResumeFrom = useMemo(() => {
+    if (!printOpen) return null
+    const rec = printHistory.findResumePoint(printDocKey(docId))
+    const last = rec?.lastCompletedPage
+    return last != null && last < pageCount ? last + 1 : null
+    // pageCount 变化时要重算 (文档变长后断点可能已不再是"未打完")
+  }, [printOpen, docId, pageCount])
   const [currentPageIndex, setCurrentPageIndex] = useState(0)
   const [findMatchCount, setFindMatchCount] = useState(0)
   const [findMatchIndex, setFindMatchIndex] = useState(-1)
@@ -1059,6 +1075,8 @@ function EditorPageInner({
         open={printOpen}
         onClose={() => setPrintOpen(false)}
         totalPages={pageCount}
+        history={printHistoryForDoc}
+        initialSettings={{ resumeFromPage: printResumeFrom }}
         onPreview={() => {
           const ed = editorRef.current
           if (!ed) return
@@ -1066,10 +1084,23 @@ function EditorPageInner({
           setPreviewPage(0)
           setPrintOpen(false)
         }}
-        onPrint={(_settings) => {
+        onPrint={(settings) => {
           const ed = editorRef.current
           if (!ed) return
-          openPrintWindow(ed.preparePrintPages())
+          const all = ed.preparePrintPages()
+          // 页码范围**真的生效**: 钳制后切片再交给打印窗口。原先这里直接丢掉
+          // settings —— 页码框、续打断点全是摆设, 而且那样记下的历史范围是假的。
+          const range = resolvePrintRange(settings.pageRange, all.length)
+          openPrintWindow(selectPrintPages(all, range))
+
+          // 记入打印历史 (PrintHistoryService)。规则见 lib/printJob.ts。
+          printHistory.addRecord(buildPrintRecord({
+            documentId: docId,
+            documentTitle: ed.getDocumentTitle(),
+            settings,
+            range,
+            totalPages: all.length,
+          }))
         }}
       />
       {/* 应用内打印预览 (接线审计 P2: PrintPreviewDialog 此前零挂载点) */}

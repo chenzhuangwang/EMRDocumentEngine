@@ -7,13 +7,17 @@
 // ============================================================
 // PrintDialog — 打印对话框 (TASK-468, v5.0)
 //
-// 功能: 打印机选择 / 页码范围 / 份数 / 单双面 / 续打断点
+// 功能: 页码范围 (本应用按页切片, 真实生效) / 续打断点 (来自打印历史)
+//
+// ⚠ 打印机 / 份数 / 单双面 三项**由系统打印窗口生效**: JS 无法操控原生打印
+// 对话框, 这里的控件只是把用户的选择带进打印历史。界面上有如实说明。
 // ============================================================
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { X, Printer, FileText, Copy, ChevronDown } from 'lucide-react'
+import { X, Printer, FileText, Copy, ChevronDown, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { PrintRecord } from '@/services/PrintHistoryService'
 
 // ---- 类型 ----
 
@@ -33,13 +37,15 @@ interface PrintDialogProps {
   onPrint?: (settings: PrintSettings) => void
   /** 打开应用内打印预览 (可选; 不传则不显示预览入口) */
   onPreview?: () => void
+  /** 该文档的历史打印记录 (最近在前) — 来自 PrintHistoryService */
+  history?: PrintRecord[]
 }
 
 // ---- 组件 ----
 
 export function PrintDialog({
   open, onClose, totalPages,
-  initialSettings, onPrint, onPreview,
+  initialSettings, onPrint, onPreview, history,
 }: PrintDialogProps) {
   const [settings, setSettings] = useState<PrintSettings>({
     printer: '默认打印机',
@@ -51,6 +57,25 @@ export function PrintDialog({
   })
 
   const update = (patch: Partial<PrintSettings>) => setSettings(v => ({ ...v, ...patch }))
+
+  /**
+   * 每次**打开**时按 initialSettings 重新起算。
+   *
+   * 对话框是常驻挂载的 (Radix 只切 `open`), `useState` 的初值只在首挂载生效 ——
+   * 不重算的话, 续打断点/页码范围会一直带着上一次打开时的值。
+   */
+  useEffect(() => {
+    if (!open) return
+    const resume = initialSettings?.resumeFromPage ?? null
+    setSettings({
+      printer: '默认打印机',
+      pageRange: { start: resume ?? 1, end: totalPages },
+      copies: 1,
+      duplex: false,
+      ...initialSettings,
+      resumeFromPage: resume,
+    })
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 页码范围预设
   const pagePresets = [
@@ -190,7 +215,10 @@ export function PrintDialog({
                 </span>
                 <button
                   className="ml-auto text-xs text-amber-600 hover:text-amber-800"
-                  onClick={() => update({ resumeFromPage: null })}
+                  onClick={() => update({
+                    resumeFromPage: null,
+                    pageRange: { ...settings.pageRange, start: 1 },
+                  })}
                 >
                   取消续打
                 </button>
@@ -205,6 +233,47 @@ export function PrintDialog({
                 settings.duplex ? '双面' : '单面'
               }
             </div>
+
+            {/*
+              如实说明分工: 打印机 / 份数 / 单双面 由**系统打印窗口**生效,
+              应用侧改不了 (JS 无法操控原生打印对话框)。页码范围是真的由本应用
+              切片生效的。不写这句, 用户会以为在这里选了份数就生效了。
+            */}
+            <div className="text-[11px] leading-relaxed text-chrome-ink-muted">
+              页码范围由本应用按页渲染；打印机 / 份数 / 单双面请在随后弹出的系统打印窗口中设置。
+            </div>
+
+            {/* 最近打印 (PrintHistoryService) */}
+            {history && history.length > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-chrome-ink-tertiary flex items-center gap-1">
+                  <History size={12} />
+                  最近打印
+                </label>
+                <div className="space-y-1">
+                  {history.slice(0, 3).map(h => (
+                    <div
+                      key={h.id}
+                      className="flex items-center gap-2 px-2 py-1 rounded border border-line-subtle
+                                 bg-chrome-subtle text-[11px] text-chrome-ink-secondary"
+                    >
+                      <span className="tabular-nums">
+                        第 {h.pageRange.start}–{h.pageRange.end} 页
+                      </span>
+                      <span className="text-chrome-ink-muted">
+                        {h.copies} 份 · {h.duplex ? '双面' : '单面'}
+                      </span>
+                      <span className="ml-auto text-chrome-ink-muted tabular-nums">
+                        {formatPrintedAt(h.printedAt)}
+                      </span>
+                      {!h.completed && (
+                        <span className="text-warning-500">未打完</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 底部按钮 */}
@@ -238,4 +307,16 @@ export function PrintDialog({
       </Dialog.Portal>
     </Dialog.Root>
   )
+}
+
+/** 打印记录的时间戳 → 「今天 14:20」/「3 天前」这类一眼能读的形式 */
+function formatPrintedAt(ts: number): string {
+  const d = new Date(ts)
+  const now = new Date()
+  const sameDay = d.toDateString() === now.toDateString()
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  if (sameDay) return hm
+  const days = Math.floor((now.getTime() - ts) / 86_400_000)
+  if (days < 7) return `${days} 天前`
+  return `${d.getMonth() + 1}/${d.getDate()}`
 }
