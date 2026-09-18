@@ -5,103 +5,87 @@
 // SPDX-License-Identifier: MPL-2.0
 
 // ============================================================
-// EditorTheme — 编辑器主题系统 (R49, v6.0)
+// EditorTheme — 编辑器主题 (engine canvas theme, v6.0)
 //
 // 4 预设: standard / eyeCare / print / dark
-// 主题颜色注入到平台 chrome (DOM 下映射为 :root CSS 变量), 经 PlatformHost
+// 数据来源: canvasTokens.ts (4 预设 × 28 token, 纯数据)
+// 落地: EditorTheme.setTheme() → host.platform.applyTheme(this.colors) →
+//   DomPlatformHost 把 8 个旧画布变量 + 28 个 --emr-cnv-* 写到 :root
+//
+// Draw / 各 Particle 通过 RenderOptions.tokenSet 在每次 render 入口拍快照
+// 读取 (内存对象, 同步可见; 不依赖 CSS 变量回流)。
 // ============================================================
 
 import type { EditorHost } from '../host/EditorHost'
+import { CANVAS_TOKENS, STANDARD_CANVAS_TOKENS } from './canvasTokens'
+import type { CanvasTokenSet } from './canvasTokens'
+import type { EventBus } from '../interaction/EventBus'
 
 export type ThemePreset = 'standard' | 'eyeCare' | 'print' | 'dark'
 
-export interface ThemeColors {
-  /** 页面背景 */
-  pageBg: string
-  /** 画布背景 */
-  canvasBg: string
-  /** 正文文字颜色 */
-  textColor: string
-  /** 工具栏/状态栏背景 */
-  chromeBg: string
-  /** chrome 文字 */
-  chromeText: string
-  /** 选中高亮 */
-  selectionBg: string
-  /** 光标颜色 */
-  cursorColor: string
-  /** 页眉页脚背景 */
-  hfBg: string
-}
+/**
+ * 历史别名 —— 旧版 8 字段接口, 现委托到 canvasTokens 的 28 字段 CanvasTokenSet。
+ * DomPlatformHost.applyTheme(colors: ThemeColors) 仍编译。
+ */
+export type ThemeColors = CanvasTokenSet
 
-const THEMES: Record<ThemePreset, ThemeColors> = {
-  standard: {
-    pageBg: '#FFFFFF',
-    canvasBg: '#F5F5F5',
-    textColor: '#1F2937',
-    chromeBg: '#FFFFFF',
-    chromeText: '#374151',
-    selectionBg: 'rgba(59, 130, 246, 0.3)',
-    cursorColor: '#1F2937',
-    hfBg: '#F9FAFB',
-  },
-  eyeCare: {
-    pageBg: '#F5F0E8',
-    canvasBg: '#EAE3D9',
-    textColor: '#3D3226',
-    chromeBg: '#F5F0E8',
-    chromeText: '#5C4B3A',
-    selectionBg: 'rgba(180, 140, 100, 0.3)',
-    cursorColor: '#3D3226',
-    hfBg: '#EDE5D8',
-  },
-  print: {
-    pageBg: '#FFFFFF',
-    canvasBg: '#FFFFFF',
-    textColor: '#000000',
-    chromeBg: '#FFFFFF',
-    chromeText: '#000000',
-    selectionBg: 'rgba(0, 0, 0, 0.15)',
-    cursorColor: '#000000',
-    hfBg: '#FAFAFA',
-  },
-  dark: {
-    pageBg: '#1E1E1E',
-    canvasBg: '#2D2D2D',
-    textColor: '#E5E5E5',
-    chromeBg: '#252525',
-    chromeText: '#CCCCCC',
-    selectionBg: 'rgba(59, 130, 246, 0.4)',
-    cursorColor: '#FFFFFF',
-    hfBg: '#2A2A2A',
-  },
+/** 运行时收窄 —— 防止 localStorage / 外部脏数据 */
+export function isThemePreset(value: unknown): value is ThemePreset {
+  return typeof value === 'string'
+    && Object.prototype.hasOwnProperty.call(CANVAS_TOKENS, value)
 }
 
 export class EditorTheme {
   private host: EditorHost
   private current: ThemePreset = 'standard'
+  private eventBus: EventBus | null = null
 
   constructor(host: EditorHost) {
     this.host = host
   }
 
-  /** 获取当前主题 */
-  get preset(): ThemePreset { return this.current }
-
-  /** 获取当前颜色 */
-  get colors(): ThemeColors { return THEMES[this.current] }
-
-  /** 切换主题 */
-  setTheme(preset: ThemePreset): void {
-    this.current = preset
-    this.apply()
+  /** 注入事件总线 —— setTheme 同步发 'canvas-theme:changed' 用 */
+  attachEventBus(bus: EventBus): void {
+    if (this.eventBus === bus) return
+    this.eventBus = bus
   }
 
-  /** 应用主题到平台 chrome (契约 §28: 经 PlatformHost, 不直接触碰 DOM) */
+  /** 当前预设 */
+  get preset(): ThemePreset { return this.current }
+
+  /** 当前预设下的完整 28 token 表 (内存对象引用; Draw render() 入口拍快照用) */
+  get colors(): CanvasTokenSet { return CANVAS_TOKENS[this.current] }
+
+  /** colors 别名, 更明确语义 */
+  get tokenSet(): CanvasTokenSet { return this.colors }
+
+  /**
+   * 切换预设。同步:
+   *   1. 写内部 preset
+   *   2. 落 CSS 变量 (经 host.platform.applyTheme, 履约 §7.3)
+   *   3. 同步发 'canvas-theme:changed' 事件 (供日志 / 调试; Draw 直接读 colors)
+   *
+   * 非法 preset 早退 (不抛, 不写)。同值早退。
+   */
+  setTheme(preset: ThemePreset): boolean {
+    if (!isThemePreset(preset)) return false
+    if (this.current === preset) return false
+    this.current = preset
+    this.apply()
+    this.eventBus?.emit('canvas-theme:changed', preset)
+    return true
+  }
+
+  /** 落 CSS 变量 —— 经 PlatformHost, 不直接触碰 DOM (契约 §28) */
   apply(): void {
     this.host.platform.applyTheme(this.colors)
   }
 
   /** 重置为默认主题 */
-  reset(): void { this.setTheme('standard') }
+  reset(): void {
+    this.setTheme('standard')
+  }
 }
+
+/** standard 预设的 token 表 —— 兜底值, 防止首帧 / 漏注入 */
+export { STANDARD_CANVAS_TOKENS }
