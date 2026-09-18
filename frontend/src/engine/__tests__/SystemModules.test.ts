@@ -213,7 +213,10 @@ describe('PluginManager', () => {
         ctx.onCommandBefore((cmd) => beforeLog.push(cmd))
         ctx.onCommandAfter((cmd) => afterLog.push(cmd))
       },
-      enable() {}, disable() {}, destroy() {},
+      // enable 必须真的置位: 派发会按 enabled 过滤 (契约: disable = 保留扩展但不响应)
+      enable() { (this as { enabled: boolean }).enabled = true },
+      disable() { (this as { enabled: boolean }).enabled = false },
+      destroy() {},
     })
 
     const hooks = mgr.getHook()
@@ -236,10 +239,90 @@ describe('PluginManager', () => {
           onClick: () => {},
         })
       },
-      enable() {}, disable() {}, destroy() {},
+      enable() { (this as { enabled: boolean }).enabled = true },
+      disable() { (this as { enabled: boolean }).enabled = false },
+      destroy() {},
     })
 
     expect(mgr.getToolbarActions().length).toBe(1)
     expect(mgr.getToolbarActions()[0].id).toBe('custom_action')
+  })
+})
+
+// ---- PluginManager — 启停/卸载语义 + 观察通道 ----
+
+/** 好插件: enable/disable 真的置位 (派发按 enabled 过滤) */
+function makePlugin(id: string, install: (ctx: import('../plugins/PluginManager').PluginContext) => void) {
+  return {
+    id, name: id, version: '1', enabled: false,
+    install,
+    enable() { (this as { enabled: boolean }).enabled = true },
+    disable() { (this as { enabled: boolean }).enabled = false },
+    destroy() {},
+  }
+}
+
+describe('PluginManager — 观察通道与启停', () => {
+  it('cursor / scale 钩子收到真实载荷', () => {
+    const mgr = new PluginManager()
+    const cursors: unknown[] = []
+    const scales: number[] = []
+    mgr.register(makePlugin('observer', (ctx) => {
+      ctx.onCursorMoved((c) => cursors.push(c))
+      ctx.onScaleChanged((s) => scales.push(s))
+    }))
+
+    const hooks = mgr.getHook()
+    hooks.emitCursorMoved({ paragraphPath: ['p1'], offset: 3, visible: true })
+    hooks.emitScaleChanged(1.5)
+
+    expect(cursors).toEqual([{ paragraphPath: ['p1'], offset: 3, visible: true }])
+    expect(scales).toEqual([1.5])
+  })
+
+  it('disable 后不再响应 (契约: 保留已注册扩展, 不响应), 重新 enable 恢复', () => {
+    const mgr = new PluginManager()
+    const seen: unknown[] = []
+    const plugin = makePlugin('toggle', (ctx) => { ctx.onCursorMoved((c) => seen.push(c)) })
+    mgr.register(plugin)
+
+    mgr.getHook().emitCursorMoved({ paragraphPath: [], offset: 0, visible: true })
+    expect(seen.length).toBe(1)
+
+    plugin.disable()
+    mgr.getHook().emitCursorMoved({ paragraphPath: [], offset: 1, visible: true })
+    expect(seen.length).toBe(1)   // 禁用期间不该收到
+
+    plugin.enable()
+    mgr.getHook().emitCursorMoved({ paragraphPath: [], offset: 2, visible: true })
+    expect(seen.length).toBe(2)
+  })
+
+  it('unregister 摘掉该插件的钩子与工具栏按钮 (destroy 之后不该还在响应)', () => {
+    const mgr = new PluginManager()
+    const seen: unknown[] = []
+    mgr.register(makePlugin('gone', (ctx) => {
+      ctx.onCursorMoved((c) => seen.push(c))
+      ctx.registerToolbarAction({ id: 'a', label: 'A', icon: 'Star', onClick: () => {} })
+    }))
+    expect(mgr.getToolbarActions().length).toBe(1)
+
+    mgr.unregister('gone')
+
+    expect(mgr.getToolbarActions().length).toBe(0)
+    mgr.getHook().emitCursorMoved({ paragraphPath: [], offset: 0, visible: true })
+    expect(seen.length).toBe(0)
+  })
+
+  it('卸载一个插件不影响另一个', () => {
+    const mgr = new PluginManager()
+    const aSeen: unknown[] = []
+    mgr.register(makePlugin('a', (ctx) => { ctx.onCursorMoved((c) => aSeen.push(c)) }))
+    mgr.register(makePlugin('b', (ctx) => { ctx.onCursorMoved(() => {}) }))
+
+    mgr.unregister('b')
+    mgr.getHook().emitCursorMoved({ paragraphPath: [], offset: 0, visible: true })
+
+    expect(aSeen.length).toBe(1)
   })
 })

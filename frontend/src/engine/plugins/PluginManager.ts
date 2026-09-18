@@ -14,6 +14,7 @@
 import type { DocumentTree } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import type { IParticle } from '../render/particles/IParticle'
+import type { CursorState } from '../state/EditorRuntimeState'
 
 // ---- 插件生命周期 ----
 
@@ -48,6 +49,8 @@ export type ExtensionPoint =
   | 'document.afterLoad'    // 文档加载后
   | 'layout.beforeLayout'   // 布局计算前
   | 'layout.afterLayout'    // 布局计算后
+  | 'cursor.moved'          // 光标移动 (观察)
+  | 'scale.changed'         // 缩放变更 (观察)
   | 'toolbar.action'        // 自定义工具栏按钮
 
 // ---- 插件上下文 ----
@@ -64,6 +67,16 @@ export interface PluginContext {
   /** 注册布局钩子 */
   onBeforeLayout(fn: (pool: NodePool) => void): void
   onAfterLayout(fn: (pool: NodePool) => void): void
+  /**
+   * 观察光标移动。
+   *
+   * 这是插件**唯一**能拿到光标/缩放的途径: PluginContext 不暴露 EventBus,
+   * 也拿不到 EditorStore (那是 UI 的读取投影)。此前插件只能挂命令/文档/布局
+   * 六种钩子, 对"用户把光标挪到哪了"完全无感。
+   */
+  onCursorMoved(fn: (cursor: CursorState) => void): void
+  /** 观察缩放变更 */
+  onScaleChanged(fn: (scale: number) => void): void
   /** 注册工具栏按钮 */
   registerToolbarAction(action: ToolbarAction): void
 }
@@ -92,15 +105,47 @@ export class PluginManager {
     this.bridgeParticle = bridgeParticle
   }
 
+  /**
+   * 钩子注册项都带 owner。
+   *
+   * 带 owner 是为了修两个此前**契约说了没做到**的地方:
+   * - `disable()` 注释写「保留已注册扩展, 不响应」—— 但派发时从不看 enabled,
+   *   禁用的插件照样收钩子;
+   * - `unregister()` 只从 plugins 表里删, 已注册的钩子/工具栏按钮**留着**,
+   *   插件 destroy 之后仍在响应。
+   * 两者在"只有一个常驻 demo 插件"时都是潜伏的, 加观察钩子就会浮上来
+   * (禁用的插件还在收光标事件)。
+   */
   private hooks = {
-    commandBefore: [] as Array<(cmd: unknown) => void>,
-    commandAfter: [] as Array<(cmd: unknown) => void>,
-    beforeSave: [] as Array<(doc: DocumentTree) => DocumentTree>,
-    afterLoad: [] as Array<(doc: DocumentTree) => DocumentTree>,
-    beforeLayout: [] as Array<(pool: NodePool) => void>,
-    afterLayout: [] as Array<(pool: NodePool) => void>,
+    commandBefore: [] as HookEntry<(cmd: unknown) => void>[],
+    commandAfter: [] as HookEntry<(cmd: unknown) => void>[],
+    beforeSave: [] as HookEntry<(doc: DocumentTree) => DocumentTree>[],
+    afterLoad: [] as HookEntry<(doc: DocumentTree) => DocumentTree>[],
+    beforeLayout: [] as HookEntry<(pool: NodePool) => void>[],
+    afterLayout: [] as HookEntry<(pool: NodePool) => void>[],
+    cursorMoved: [] as HookEntry<(cursor: CursorState) => void>[],
+    scaleChanged: [] as HookEntry<(scale: number) => void>[],
   }
-  private toolbarActions: ToolbarAction[] = []
+  private toolbarActions: HookEntry<ToolbarAction>[] = []
+
+  /** 该 owner 的插件是否处于启用态 (未注册视为不活跃) */
+  private isActive(owner: string): boolean {
+    return this.plugins.get(owner)?.enabled !== false
+  }
+
+  /** 活跃钩子的 fn 列表 */
+  private active<T>(entries: HookEntry<T>[]): T[] {
+    return entries.filter(e => this.isActive(e.owner)).map(e => e.fn)
+  }
+
+  /** 摘掉某插件的全部注册 (unregister / destroy 时调用) */
+  private dropOwner(owner: string): void {
+    for (const key of Object.keys(this.hooks) as (keyof typeof this.hooks)[]) {
+      const arr = this.hooks[key] as HookEntry<unknown>[]
+      this.hooks[key] = arr.filter(e => e.owner !== owner) as never
+    }
+    this.toolbarActions = this.toolbarActions.filter(e => e.owner !== owner)
+  }
 
   /** 注册插件 (install → enable)。注册后即生效 —— 生命周期不再停在第 1 步。 */
   register(plugin: IPlugin): void {
@@ -109,13 +154,13 @@ export class PluginManager {
       return
     }
 
-    const ctx = this.createContext()
+    const ctx = this.createContext(plugin.id)
     plugin.install(ctx)
     this.plugins.set(plugin.id, plugin)
     plugin.enable()
   }
 
-  /** 卸载插件 (disable → destroy) */
+  /** 卸载插件 (disable → destroy), 并摘掉它的全部注册 */
   unregister(pluginId: string): void {
     const plugin = this.plugins.get(pluginId)
     if (plugin) {
@@ -123,6 +168,7 @@ export class PluginManager {
       plugin.destroy()
       this.plugins.delete(pluginId)
     }
+    this.dropOwner(pluginId)
   }
 
   /** 获取已注册插件列表 */
@@ -136,32 +182,46 @@ export class PluginManager {
     emitAfterLoad(doc: DocumentTree): DocumentTree
     emitBeforeLayout(pool: NodePool): void
     emitAfterLayout(pool: NodePool): void
+    emitCursorMoved(cursor: CursorState): void
+    emitScaleChanged(scale: number): void
   } {
     return {
-      emitCommandBefore: (cmd) => this.hooks.commandBefore.forEach(f => f(cmd)),
-      emitCommandAfter: (cmd) => this.hooks.commandAfter.forEach(f => f(cmd)),
-      emitBeforeSave: (doc) => this.hooks.beforeSave.reduce((d, f) => f(d), doc),
-      emitAfterLoad: (doc) => this.hooks.afterLoad.reduce((d, f) => f(d), doc),
-      emitBeforeLayout: (pool) => this.hooks.beforeLayout.forEach(f => f(pool)),
-      emitAfterLayout: (pool) => this.hooks.afterLayout.forEach(f => f(pool)),
+      emitCommandBefore: (cmd) => this.active(this.hooks.commandBefore).forEach(f => f(cmd)),
+      emitCommandAfter: (cmd) => this.active(this.hooks.commandAfter).forEach(f => f(cmd)),
+      emitBeforeSave: (doc) => this.active(this.hooks.beforeSave).reduce((d, f) => f(d), doc),
+      emitAfterLoad: (doc) => this.active(this.hooks.afterLoad).reduce((d, f) => f(d), doc),
+      emitBeforeLayout: (pool) => this.active(this.hooks.beforeLayout).forEach(f => f(pool)),
+      emitAfterLayout: (pool) => this.active(this.hooks.afterLayout).forEach(f => f(pool)),
+      emitCursorMoved: (cursor) => this.active(this.hooks.cursorMoved).forEach(f => f(cursor)),
+      emitScaleChanged: (scale) => this.active(this.hooks.scaleChanged).forEach(f => f(scale)),
     }
   }
 
   /** 获取工具栏扩展 */
-  getToolbarActions(): ToolbarAction[] { return [...this.toolbarActions] }
+  getToolbarActions(): ToolbarAction[] {
+    return this.active(this.toolbarActions)
+  }
 
   // ---- 内部 ----
 
-  private createContext(): PluginContext {
+  private createContext(owner: string): PluginContext {
     return {
       registerParticle: (particle) => { this.bridgeParticle?.(particle) },
-      onCommandBefore: (fn) => this.hooks.commandBefore.push(fn),
-      onCommandAfter: (fn) => this.hooks.commandAfter.push(fn),
-      onBeforeSave: (fn) => this.hooks.beforeSave.push(fn),
-      onAfterLoad: (fn) => this.hooks.afterLoad.push(fn),
-      onBeforeLayout: (fn) => this.hooks.beforeLayout.push(fn),
-      onAfterLayout: (fn) => this.hooks.afterLayout.push(fn),
-      registerToolbarAction: (action) => this.toolbarActions.push(action),
+      onCommandBefore: (fn) => { this.hooks.commandBefore.push({ fn, owner }) },
+      onCommandAfter: (fn) => { this.hooks.commandAfter.push({ fn, owner }) },
+      onBeforeSave: (fn) => { this.hooks.beforeSave.push({ fn, owner }) },
+      onAfterLoad: (fn) => { this.hooks.afterLoad.push({ fn, owner }) },
+      onBeforeLayout: (fn) => { this.hooks.beforeLayout.push({ fn, owner }) },
+      onAfterLayout: (fn) => { this.hooks.afterLayout.push({ fn, owner }) },
+      onCursorMoved: (fn) => { this.hooks.cursorMoved.push({ fn, owner }) },
+      onScaleChanged: (fn) => { this.hooks.scaleChanged.push({ fn, owner }) },
+      registerToolbarAction: (action) => { this.toolbarActions.push({ fn: action, owner }) },
     }
   }
+}
+
+/** 带 owner 的注册项 —— 用于按插件启停/卸载过滤 */
+interface HookEntry<T> {
+  fn: T
+  owner: string
 }

@@ -278,6 +278,17 @@ export class Editor {
       this.syncUiProjections()
     })
 
+    // ---- 插件观察通道 ----
+    // 把 EventBus 事件转给插件钩子。这是这两个事件**唯一**的消费者: 插件拿不到
+    // EventBus (PluginContext 不暴露它), 也拿不到 EditorStore (那是 UI 的读取投影)。
+    // 在此之前 cursor:moved / scale:changed 是 emit 了没人听的空通道。
+    this.eventBus.on('cursor:moved', (cursor) => {
+      this.pluginManager.getHook().emitCursorMoved(cursor)
+    })
+    this.eventBus.on('scale:changed', (scale) => {
+      this.pluginManager.getHook().emitScaleChanged(scale)
+    })
+
     // ---- 初始化 ----
 
     // IME 输入法: compositionstart → 更新候选窗位置
@@ -342,15 +353,28 @@ export class Editor {
     })
     this.draw.renderer.startCursorBlink(this.store.state.runtime)
 
-    // 注册演示插件 (验证 PluginManager 系统) —— register 内部完成 install → enable
+    // 演示插件 (验证 PluginManager 系统) —— register 内部完成 install → enable。
+    //
+    // 它同时是插件**观察通道**的活样板: 一条通道只注册不消费, 就没人知道它通不通。
+    // `enabled` 此前是写死的 true、从没被真正切换过, 所以 disable 的"不响应"语义
+    // 一直没被验证 —— 这里做成真字段。
+    const demoEnabled = { value: true }
     this.pluginManager.register({
       id: 'emr.demo',
       name: 'Demo Plugin',
       version: '1.0.0',
-      enabled: true,
-      install: (ctx) => { console.debug('[Plugin:demo] installed', ctx) },
-      enable: () => { console.debug('[Plugin:demo] enabled') },
-      disable: () => { console.debug('[Plugin:demo] disabled') },
+      get enabled() { return demoEnabled.value },
+      install: (ctx) => {
+        // 缩放低频, 适合打日志演示
+        ctx.onScaleChanged((scale) => {
+          console.debug(`[Plugin:demo] 缩放 → ${Math.round(scale * 100)}%`)
+        })
+        // 光标每次移动都会来一条, 打日志会淹掉控制台 —— 只记录, 不输出。
+        // 真实插件可据此做自动补全 / 上下文提示。
+        ctx.onCursorMoved(() => { /* 观察即可 */ })
+      },
+      enable: () => { demoEnabled.value = true; console.debug('[Plugin:demo] enabled') },
+      disable: () => { demoEnabled.value = false; console.debug('[Plugin:demo] disabled') },
       destroy: () => { console.debug('[Plugin:demo] destroyed') },
     })
 
