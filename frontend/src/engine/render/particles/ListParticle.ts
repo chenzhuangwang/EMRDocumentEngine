@@ -11,6 +11,8 @@
 // 由 Draw.ts 在内容层渲染时调用, 在 TextParticle 之前绘制标记
 // ============================================================
 
+import { asRgb } from '../../state/canvasTokens'
+
 export class ListParticle {
   /**
    * 渲染列表标记到 Canvas
@@ -33,12 +35,17 @@ export class ListParticle {
       size?: number
       bold?: boolean
       color?: string
+      tokenSet?: import('../../state/canvasTokens').CanvasTokenSet
     } = {},
   ): number {
     const font = options.font || 'SimSun'
     const size = options.size || 16
     const bold = options.bold ?? false
-    const color = options.color || '#374151' // gray-700, 比正文略深
+    // 静默 fallback: options.color > tokenSet.secondaryInk > '#374151'
+    const tokenColor = options.tokenSet?.secondaryInk
+    const color = options.color
+      || (tokenColor ? asRgb(tokenColor) : undefined)
+      || '#374151' // gray-700, 比正文略深 (回归保险)
 
     ctx.save()
 

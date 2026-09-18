@@ -19,10 +19,26 @@
 
 import type { IParticle, RenderOptions } from './IParticle'
 import type { SLIFItem } from '../../layout/core/SLIF'
+import type { CanvasTokenSet } from '../../state/canvasTokens'
+import { withAlpha } from '../../state/canvasTokens'
 
-/** 批注高亮颜色 (Draw 的批注高亮 pass 复用此常量, 保持单一来源) */
+/**
+ * 批注高亮颜色 — 兼容旧常量 (Draw 仍 import 作 fallback) + 主题化函数。
+ *
+ * 保留导出 `COMMENT_HIGHLIGHT` 是因为:
+ *   - Draw.drawCommentHighlightsForPage (Draw.ts:243) 仍是批注高亮唯一入口;
+ *   - 当前 Draw 尚未注入 tokenSet, 故仍读旧常量;
+ *   - 后续 Draw 改读 tokenSet 后 (P1), 本常量保留作为 fallback, 不破坏 ABI。
+ */
 export const COMMENT_HIGHLIGHT = 'rgba(255, 230, 100, 0.45)'
-/** 批注图标颜色 */
+
+/** tokenSet → 批注高亮色 hex (alpha 0.45) */
+export function commentHighlight(t: CanvasTokenSet | undefined): string {
+  const v = t?.commentHighlight
+  return v ? withAlpha(v, 0.45) : COMMENT_HIGHLIGHT
+}
+
+/** 批注图标颜色 (不主题化 —— 黄色批注场景下需醒目) */
 const COMMENT_ICON_COLOR = '#D97706'
 
 export function createCommentParticle(): IParticle {

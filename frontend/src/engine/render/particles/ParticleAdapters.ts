@@ -26,6 +26,7 @@ export const textParticle: IParticle = {
       const lm = item as { listMarker: string; listMarkerX?: number }
       ListParticle.render(ctx, lm.listMarker, lm.listMarkerX ?? x, y, item.ascent, {
         font: item.font, size: item.size, bold: item.bold, color: item.color,
+        tokenSet: options?.tokenSet,
       })
     }
     TextParticle.render(ctx, {
@@ -49,6 +50,7 @@ export const textParticle: IParticle = {
       showInvisible: options?.showInvisible,
       ascent: item.ascent,
       descent: item.descent,
+      tokenSet: options?.tokenSet,
     })
   },
 }
@@ -65,6 +67,7 @@ export const separatorParticle: IParticle = {
       widthMode: 'full',
     }, x, y, options?.contentWidth ?? 614, {  // 614 = default A4 content width
       defaultColor: options?.defaultColor,
+      tokenSet: options?.tokenSet,
     })
   },
 }
@@ -78,6 +81,7 @@ export const fieldParticle: IParticle = {
       const lm = item as { listMarker: string; listMarkerX?: number }
       ListParticle.render(ctx, lm.listMarker, lm.listMarkerX ?? x, y, item.ascent, {
         font: item.font, size: item.size, bold: item.bold, color: item.color,
+        tokenSet: options?.tokenSet,
       })
     }
     TextParticle.render(ctx, {
@@ -101,6 +105,7 @@ export const fieldParticle: IParticle = {
       showInvisible: options?.showInvisible,
       ascent: item.ascent,
       descent: item.descent,
+      tokenSet: options?.tokenSet,
     })
   },
 }
@@ -108,11 +113,12 @@ export const fieldParticle: IParticle = {
 /** 列表标记粒子适配器 — 独立渲染项目符号/编号 */
 export const listParticle: IParticle = {
   type: 'listmarker',
-  render(ctx: CanvasRenderingContext2D, item: SLIFItem, x: number, y: number, _options?: RenderOptions): void {
+  render(ctx: CanvasRenderingContext2D, item: SLIFItem, x: number, y: number, options?: RenderOptions): void {
     if ((item as { listMarker?: string; listMarkerX?: number }).listMarker) {
       const lm = item as { listMarker: string; listMarkerX?: number }
       ListParticle.render(ctx, lm.listMarker, lm.listMarkerX ?? x, y, item.ascent, {
         font: item.font, size: item.size, bold: item.bold, color: item.color,
+        tokenSet: options?.tokenSet,
       })
     }
   },

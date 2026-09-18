@@ -14,18 +14,26 @@
 import type { IParticle, RenderOptions } from './IParticle'
 import type { SLIFItem } from '../../layout/core/SLIF'
 import { particleRegistry } from './ParticleRegistry'
+import { asRgb } from '../../state/canvasTokens'
 
-const BORDER_COLOR = '#9CA3AF'
-const HEADER_BG = '#F3F4F6'
 const CELL_PADDING = 6
 const MIN_CELL_WIDTH = 40
 const MIN_ROW_HEIGHT = 24
+
+/** 单元格文本默认色 fallback (tokenSet 缺失时, 回归保险) */
+const CELL_TEXT_FALLBACK = '#1F2937'
 
 export function createTableParticle(): IParticle {
   return {
     type: 'table',
 
     render(ctx: CanvasRenderingContext2D, item: SLIFItem, x: number, y: number, options?: RenderOptions): void {
+      const t = options?.tokenSet
+      // 表格边框 / 表头底 / cell 文本色 — tokenSet 缺则回退硬编码
+      const borderColor = t?.tableBorder ? asRgb(t.tableBorder) : '#9CA3AF'
+      const headerBg = t?.tableHeaderBg ? asRgb(t.tableHeaderBg) : '#F3F4F6'
+      const cellTextFallback = t?.textInk ? asRgb(t.textInk) : CELL_TEXT_FALLBACK
+
       // 跨页片段: headerRows (重复表头, 视觉) + rows (本页 bodyRows), 两者按序绘制
       const headerRows = item.headerRows
       const bodyRows = item.rows
@@ -47,7 +55,7 @@ export function createTableParticle(): IParticle {
           // 背景
           ctx.save()
           if (cell.isHeader) {
-            ctx.fillStyle = HEADER_BG
+            ctx.fillStyle = headerBg
             ctx.fillRect(cellX, cellY, cw, ch)
           } else if (cell.backgroundColor) {
             ctx.fillStyle = cell.backgroundColor
@@ -55,7 +63,7 @@ export function createTableParticle(): IParticle {
           }
 
           // 边框 (每片画自身外框, 内部行线照旧)
-          ctx.strokeStyle = BORDER_COLOR
+          ctx.strokeStyle = borderColor
           ctx.lineWidth = 0.5
           ctx.strokeRect(cellX + 0.25, cellY + 0.25, cw - 0.5, ch - 0.5)
 
@@ -82,7 +90,7 @@ export function createTableParticle(): IParticle {
               const font = ci2.font || 'SimSun'
               const size = ci2.size || 16
               ctx.font = `${ci2.bold ? 'bold ' : ''}${size}px "${font}"`
-              ctx.fillStyle = ci2.color || '#1F2937'
+              ctx.fillStyle = ci2.color || cellTextFallback
               ctx.textBaseline = 'alphabetic'
               // ci2.y 为行顶 (cell 局部坐标), ascent 为基线相对行顶的偏移
               const baselineY = cellY + (ci2.y || 0) + (ci2.ascent ?? size * 0.8)

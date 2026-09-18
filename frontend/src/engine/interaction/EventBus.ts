@@ -29,6 +29,7 @@ export interface EventPayloadMap {
   'yjs:synced': []
   'qc:completed': [result: unknown]
   'save:versionConflict': []
+  'canvas-theme:changed': [preset: import('../state/EditorTheme').ThemePreset]
 }
 
 export type EngineEvent = keyof EventPayloadMap

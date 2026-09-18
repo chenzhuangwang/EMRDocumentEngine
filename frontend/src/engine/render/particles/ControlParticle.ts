@@ -14,6 +14,10 @@
 // 本文件是「单一视觉配方」消费方 —— 唯一分类决策点在
 // document/control/ControlBox.controlVisualRecipe (不变量 6); 本文件只按
 // recipe.kind 分支绘制, 不再持有 dataType→配色 / affordance 映射等第二套规则。
+//
+// 主题化 (v6.1): 6 个状态色 (placeholder/frame filled/readonly/masked/glyph)
+// 与控件文本默认色 — 读 options.tokenSet (Draw render() 入口拍快照);
+// tokenSet 缺则回退硬编码 hex (回归保险, 不应触发)。
 // ============================================================
 
 import type { IParticle, RenderOptions } from './IParticle'
@@ -24,27 +28,33 @@ import {
 } from '../../document/control/ControlBox'
 import { isControlValueEmpty, controlDisplayLength } from '../../document/control/ControlValue'
 import { layoutControlOptions, GLYPH_PAD, EMPTY_OPTIONS_PLACEHOLDER } from '../../document/control/ControlOptions'
+import { asRgb } from '../../state/canvasTokens'
+import type { CanvasTokenSet } from '../../state/canvasTokens'
 
-/** 空/占位灰 (状态色, 非分类色) */
-const PLACEHOLDER_COLOR = '#9CA3AF'
-/** 填充态框色 */
-const FRAME_FILLED = '#6B7280'
-/** 只读态框色 */
-const FRAME_READONLY = '#D1D5DB'
-/** 脱敏红框 */
-const FRAME_MASKED = '#F87171'
-/** 选中 glyph 蓝 (颜色只表 state, 非 widget identity) */
-const GLYPH_SELECTED = '#2563EB'
-/** 未选 glyph 灰 */
-const GLYPH_UNSELECTED = '#9CA3AF'
+/** tokenSet 缺时回退的硬编码 (回归保险; 标准预设下与 tokenSet.standard 一致) */
+const FALLBACK = {
+  placeholder: '#9CA3AF',
+  frameFilled: '#6B7280',
+  frameReadonly: '#D1D5DB',
+  frameMasked: '#F87171',
+  glyphSelected: '#2563EB',
+  glyphUnselected: '#9CA3AF',
+  fallbackInk: '#374151',
+} as const
+
+/** 状态色: tokenSet 优先, 回退硬编码 */
+function colorOf(t: CanvasTokenSet | undefined, key: keyof typeof FALLBACK): string {
+  if (t && t[key]) return asRgb(t[key])
+  return FALLBACK[key]
+}
 
 /** 下拉三角 (≤12px): 约 7×5 实心三角 */
-function drawDropdown(ctx: CanvasRenderingContext2D, left: number, top: number, height: number): void {
+function drawDropdown(ctx: CanvasRenderingContext2D, left: number, top: number, height: number, glyphUnselected: string): void {
   const w = 7
   const h = 5
   const cx = left + (AFFORDANCE_WIDTH - w) / 2
   const cy = top + height / 2
-  ctx.fillStyle = GLYPH_UNSELECTED
+  ctx.fillStyle = glyphUnselected
   ctx.beginPath()
   ctx.moveTo(cx, cy - h / 2)
   ctx.lineTo(cx + w, cy - h / 2)
@@ -54,12 +64,12 @@ function drawDropdown(ctx: CanvasRenderingContext2D, left: number, top: number, 
 }
 
 /** 日历 (≤12px): 1px 描边 9×10 矩形 + 顶部小耳 */
-function drawCalendar(ctx: CanvasRenderingContext2D, left: number, top: number, height: number): void {
+function drawCalendar(ctx: CanvasRenderingContext2D, left: number, top: number, height: number, glyphUnselected: string): void {
   const w = 9
   const h = 10
   const cx = left + (AFFORDANCE_WIDTH - w) / 2
   const cy = top + height / 2 - h / 2
-  ctx.strokeStyle = GLYPH_UNSELECTED
+  ctx.strokeStyle = glyphUnselected
   ctx.lineWidth = 1
   ctx.strokeRect(cx, cy, w, h)
   ctx.beginPath()
@@ -116,6 +126,16 @@ export function createControlParticle(): IParticle {
       const controlType = def?.controlType ?? controlVisualType(def?.controlType, hasEnums, enumsMultiple)
       const recipe = controlVisualRecipe(controlType)
 
+      // 主题化 (v6.1): 6 状态色 + 文本默认色 —— tokenSet 优先, 回退硬编码
+      const t = options?.tokenSet
+      const placeholderColor = colorOf(t, 'placeholder')
+      const frameFilledColor = colorOf(t, 'frameFilled')
+      const frameReadonlyColor = colorOf(t, 'frameReadonly')
+      const frameMaskedColor = colorOf(t, 'frameMasked')
+      const glyphSelectedColor = colorOf(t, 'glyphSelected')
+      const glyphUnselectedColor = colorOf(t, 'glyphUnselected')
+      const fallbackInk = colorOf(t, 'fallbackInk')
+
       ctx.save()
       const fontParts: string[] = []
       if (item.bold) fontParts.push('bold')
@@ -138,8 +158,8 @@ export function createControlParticle(): IParticle {
       const box = computeControlBox(x + leadW, y, boxW, ascent, descent, style?.minWidth)
 
       // 状态色 (非分类)
-      const frameColor = isMasked ? FRAME_MASKED : (isEmpty ? PLACEHOLDER_COLOR : FRAME_FILLED)
-      const textColor = isMasked ? PLACEHOLDER_COLOR : (isEmpty ? PLACEHOLDER_COLOR : (item.color || '#374151'))
+      const frameColor = isMasked ? frameMaskedColor : (isEmpty ? placeholderColor : frameFilledColor)
+      const textColor = isMasked ? placeholderColor : (isEmpty ? placeholderColor : (item.color || fallbackInk))
       // align 优先级 (不变量 8): 显式 textAlign 覆盖 recipe.align (number 缺省 right)
       const finalAlign = style?.textAlign ?? recipe.align
 
@@ -169,7 +189,7 @@ export function createControlParticle(): IParticle {
 
           const textLeft = frameLeft + (frameHidden ? 0 : bracketW)
           if (!frameHidden) {
-            ctx.fillStyle = isReadonly ? FRAME_READONLY : frameColor
+            ctx.fillStyle = isReadonly ? frameReadonlyColor : frameColor
             ctx.fillText('[', frameLeft, box.baselineY)
             ctx.fillText(']', textLeft + lineWidths[lineWidths.length - 1], box.baselineY + (lines.length - 1) * fontSize)
           }
@@ -182,7 +202,7 @@ export function createControlParticle(): IParticle {
           // 行距 = size (与 LayoutEngine 预留行高同 pitch, 契约 §12.6 多行)。
           const solidBorder = style?.borderStyle === 'solid'
           if (style?.borderStyle !== 'none') {
-            ctx.strokeStyle = isReadonly ? FRAME_READONLY : frameColor
+            ctx.strokeStyle = isReadonly ? frameReadonlyColor : frameColor
             ctx.lineWidth = 1
             if (!solidBorder) ctx.setLineDash([2, 1])
             ctx.strokeRect(box.x, box.y, box.w, box.h)
@@ -208,8 +228,8 @@ export function createControlParticle(): IParticle {
         // 激活编辑中隐藏, 由原生浮层承担。
         if (recipe.affordance && !activeEditing) {
           const affordLeft = box.rightEdge - CONTROL_BOX_PADDING - AFFORDANCE_WIDTH
-          if (recipe.affordance === 'dropdown') drawDropdown(ctx, affordLeft, box.y, box.h)
-          else if (recipe.affordance === 'calendar') drawCalendar(ctx, affordLeft, box.y, box.h)
+          if (recipe.affordance === 'dropdown') drawDropdown(ctx, affordLeft, box.y, box.h, glyphUnselectedColor)
+          else if (recipe.affordance === 'calendar') drawCalendar(ctx, affordLeft, box.y, box.h, glyphUnselectedColor)
         }
       } else {
         // options 拓扑 (不变量 2): 内联选项组, 无框/无括号/无整体盒。
@@ -217,7 +237,7 @@ export function createControlParticle(): IParticle {
         const opts = element?.format?.enums?.data ?? []
         if (opts.length === 0) {
           // 空候选项占位, 不退化输入框 (不变量 3)
-          ctx.fillStyle = PLACEHOLDER_COLOR
+          ctx.fillStyle = placeholderColor
           ctx.fillText(EMPTY_OPTIONS_PLACEHOLDER, x + leadW, box.baselineY)
         } else {
           const layout = layoutControlOptions(opts, controlType as 'checkbox' | 'radio', (t) => ctx.measureText(t).width)
@@ -228,9 +248,9 @@ export function createControlParticle(): IParticle {
           const selected = isMasked ? [] : (Array.isArray(controlValue) ? controlValue : typeof controlValue === 'string' ? [controlValue] : [])
           for (const opt of layout) {
             const isSel = selected.includes(opt.value)
-            ctx.fillStyle = isSel ? GLYPH_SELECTED : GLYPH_UNSELECTED
+            ctx.fillStyle = isSel ? glyphSelectedColor : glyphUnselectedColor
             ctx.fillText(isSel ? selGlyphChar : glyphChar, x + leadW + opt.x, box.baselineY)
-            ctx.fillStyle = item.color || '#374151'
+            ctx.fillStyle = item.color || fallbackInk
             ctx.fillText(opt.name, x + leadW + opt.x + glyphW + GLYPH_PAD, box.baselineY)
           }
         }
@@ -238,7 +258,7 @@ export function createControlParticle(): IParticle {
 
       // 附属字面量 label/prefix/suffix (不变量 10): 画在控件预留的左/右区 (lead/trail),
       // 不侵入 box / 不改 hit box。
-      ctx.fillStyle = isMasked ? PLACEHOLDER_COLOR : (item.color || '#374151')
+      ctx.fillStyle = isMasked ? placeholderColor : (item.color || fallbackInk)
       if (label) ctx.fillText(label, x, box.baselineY)
       if (prefix) ctx.fillText(prefix, x + labelW2, box.baselineY)
       if (suffix) ctx.fillText(suffix, box.rightEdge, box.baselineY)

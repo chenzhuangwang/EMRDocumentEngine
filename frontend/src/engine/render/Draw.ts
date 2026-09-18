@@ -42,10 +42,13 @@ import { particleRegistry } from './particles/ParticleRegistry'
 import { textParticle, separatorParticle, listParticle, fieldParticle } from './particles/ParticleAdapters'
 import { buildCellGrid } from '../document/table/TableOps'
 import { flattenTextContainers, regionIdOf, selectionSpine, paragraphTextLength } from '../document/selection/SelectionCollector'
-import { COMMENT_HIGHLIGHT } from './particles/CommentParticle'
+import { COMMENT_HIGHLIGHT, commentHighlight } from './particles/CommentParticle'
 import { safeRenderParticle, safeRenderPage } from '../ErrorRecovery'
 import { resolveHfParagraphLocation } from '../document/core/HeaderFooterRegions'
 import { resolveFieldText as formatFieldText } from '../document/factory/FieldFormatter'
+import { EditorTheme, STANDARD_CANVAS_TOKENS } from '../state/EditorTheme'
+import type { CanvasTokenSet } from '../state/canvasTokens'
+import { asRgb, withAlpha } from '../state/canvasTokens'
 
 interface CaretPos { x: number; y: number; h: number }
 
@@ -125,15 +128,20 @@ export class Draw {
   // — 该控件渲染时隐藏静态 field (框/值/affordance), 由 DOM overlay 承担文本面
   activeControlNodeId: string | null = null
 
+  /** 画布主题引用 (Editor 构造注入; 用于 render() 入口拍 tokenSet 快照) */
+  private theme: EditorTheme | null = null
+
   constructor(
     host: EditorHost,
     eventBus: EventBus,
     measurer: TextMeasurer,
     doc?: DocumentTree,
+    theme?: EditorTheme,
   ) {
     this.host = host
     this.measurer = measurer
     this.eventBus = eventBus
+    if (theme) this.theme = theme
 
     const dpr = this.host.surface.devicePixelRatio() || 1
     this.coordSystem = new CoordinateSystem(dpr)
@@ -224,6 +232,9 @@ export class Draw {
   /**
    * 批注高亮 (契约 §12.2) —— 按 doc.comments 的 range 逐 item 解析并填充。
    *
+   * 主题化 (v6.1): 颜色读 tokenSet.commentHighlight (alpha 0.45);
+   *   tokenSet 缺时回退 COMMENT_HIGHLIGHT 常量。
+   *
    * 为什么不用 CommentParticle: particleRegistry 未注册 'comment', 且布局不为
    * comment_marker 产出 SLIF item —— 那个粒子的 render() 实际不会被调用。这里
    * 直接从 doc.comments 解析, 屏幕 (静态层) 与打印 (renderPageToContext) 共用
@@ -234,13 +245,14 @@ export class Draw {
    */
   private drawCommentHighlightsForPage(
     ctx: CanvasRenderingContext2D, page: SLIFPage, pageY: number,
+    tokens: CanvasTokenSet | null,
   ): void {
     const threads = this.document?.comments
     const pool = this.pool
     if (!threads || threads.length === 0 || !pool) return
 
     ctx.save()
-    ctx.fillStyle = COMMENT_HIGHLIGHT
+    ctx.fillStyle = tokens ? commentHighlight(tokens) : COMMENT_HIGHLIGHT
     for (const thread of threads) {
       const startPara = thread.rangeStart.path[thread.rangeStart.path.length - 1]
       const endPara = thread.rangeEnd.path[thread.rangeEnd.path.length - 1]
@@ -536,6 +548,10 @@ export class Draw {
   render(pool?: NodePool, runtimeState?: EditorRuntimeState): void {
     if (this.pages.length === 0) return
 
+    // ---- 画布主题 token 拍快照 (Draw 同步持表) ----
+    const tokens: CanvasTokenSet = this.theme?.tokenSet ?? STANDARD_CANVAS_TOKENS
+    this.renderer.setTokens(tokens)
+
     const viewport = this.host.viewport.size()
     const viewportW = viewport.width
     const viewportH = viewport.height
@@ -571,7 +587,7 @@ export class Draw {
       }
     }
     this.renderer.renderStatic(this.pages, visible, scrollOffset, (ctx, page, _i, pageY) => {
-      this.drawCommentHighlightsForPage(ctx, page, pageY)
+      this.drawCommentHighlightsForPage(ctx, page, pageY, tokens)
     })
 
     // --- 内容层: 文本粒子 + 分隔线 + 页眉页脚 ---
@@ -643,7 +659,7 @@ export class Draw {
       if (cursor.visible && !this.activeControlNodeId) {
         const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, pageVerticalGap, this.hfPreferredPage)
         if (caret) {
-          ictx.fillStyle = '#000000'
+          ictx.fillStyle = asRgb(tokens.cursorColor)
           ictx.fillRect(caret.x, caret.y, 2, caret.h)
         }
       }
@@ -676,6 +692,8 @@ export class Draw {
         const hasHeader = page.headerItems && page.headerItems.length > 0
         const hasFooter = page.footerItems && page.footerItems.length > 0
 
+        const tokens = this.theme?.tokenSet ?? STANDARD_CANVAS_TOKENS
+
         // ================================================================
         // 页眉区域 + 分隔线
         // ================================================================
@@ -685,7 +703,7 @@ export class Draw {
         // 编辑模式: 激活区域用虚线边框标记
         if (this.hfEditActive && this.hfEditSection === 'header') {
           ctx.save()
-          ctx.strokeStyle = '#93C5FD' // primary-300
+          ctx.strokeStyle = asRgb(tokens.hfFocusRing)
           ctx.lineWidth = 1
           ctx.setLineDash([4, 3])
           ctx.strokeRect(1, pageY + 1, pageWidth - 2, headerH - 2)
@@ -706,7 +724,7 @@ export class Draw {
 
         // --- 正文 ---
         for (const item of page.items) {
-          safeRenderParticle(() => this.renderBodyItem(ctx, item, pageY, pageIndex, contentWidth), item.nodeId)
+          safeRenderParticle(() => this.renderBodyItem(ctx, item, pageY, pageIndex, contentWidth, tokens), item.nodeId)
         }
 
         // ================================================================
@@ -715,7 +733,7 @@ export class Draw {
         if (this.hfEditActive) {
           ctx.save()
           ctx.globalAlpha = 0.15
-          ctx.fillStyle = '#6B7280' // gray-500, 轻淡蒙层
+          ctx.fillStyle = withAlpha(tokens.hfMask, 0.15)
           // 正文区域变暗
           ctx.fillRect(0, pageY + headerH, pageWidth, pageHeight - headerH - footerH)
           // 非激活的页眉/页脚区域也变暗
@@ -739,7 +757,7 @@ export class Draw {
         // 编辑模式: 激活区域用虚线边框标记
         if (this.hfEditActive && this.hfEditSection === 'footer') {
           ctx.save()
-          ctx.strokeStyle = '#93C5FD' // primary-300
+          ctx.strokeStyle = asRgb(tokens.hfFocusRing)
           ctx.lineWidth = 1
           ctx.setLineDash([4, 3])
           ctx.strokeRect(1, pageY + footerTop + 1, pageWidth - 2, footerH - 2)
@@ -772,8 +790,9 @@ export class Draw {
   ): void {
     const pageY = accumulatedHeightTo(guide.pageIndex, this.pages, pageVerticalGap)
       - this.coordSystem.transform.scrollY
+    const tokens = this.theme?.tokenSet ?? STANDARD_CANVAS_TOKENS
     ictx.save()
-    ictx.strokeStyle = '#2563EB'
+    ictx.strokeStyle = asRgb(tokens.selectionBorder)
     ictx.lineWidth = 1.5
     ictx.beginPath()
     ictx.moveTo(guide.x, pageY + guide.top)
@@ -829,7 +848,8 @@ export class Draw {
     // 追踪每个段落的累计字符偏移
     const paraOffsets = new Map<string, number>()
 
-    ictx.fillStyle = 'rgba(59, 130, 246, 0.2)'
+    const tokens = this.theme?.tokenSet ?? STANDARD_CANVAS_TOKENS
+    ictx.fillStyle = withAlpha(tokens.selectionBg, 0.2)
 
     // 当前文档滚动位置 — 直接读取, 与 computeCaretPos 同源
     const scrollY = this.coordSystem.transform.scrollY
@@ -997,7 +1017,8 @@ export class Draw {
     const selMin = Math.min(anchorOff, focusOff)
     const selMax = Math.max(anchorOff, focusOff)
 
-    ictx.fillStyle = 'rgba(59, 130, 246, 0.2)'
+    const tokens = this.theme?.tokenSet ?? STANDARD_CANVAS_TOKENS
+    ictx.fillStyle = withAlpha(tokens.selectionBg, 0.2)
     const scrollY = this.coordSystem.transform.scrollY
 
     for (let i = 0; i < this.pages.length; i++) {
@@ -1078,9 +1099,10 @@ export class Draw {
       if (gc.row >= r0 && gc.row <= r1 && gc.col >= c0 && gc.col <= c1) selected.add(gc.cellId)
     }
 
+    const tokens = this.theme?.tokenSet ?? STANDARD_CANVAS_TOKENS
     ictx.save()
-    ictx.fillStyle = 'rgba(59, 130, 246, 0.16)'
-    ictx.strokeStyle = 'rgba(37, 99, 235, 0.85)'
+    ictx.fillStyle = withAlpha(tokens.selectionBgCell, 0.16)
+    ictx.strokeStyle = withAlpha(tokens.selectionBorder, 0.85)
     ictx.lineWidth = 1.5
 
     // 当前文档滚动位置 — 直接读取
@@ -1120,9 +1142,10 @@ export class Draw {
     pageVerticalGap: number = 0,
     ictx: CanvasRenderingContext2D,
   ): void {
+    const tokens = this.theme?.tokenSet ?? STANDARD_CANVAS_TOKENS
     ictx.save()
-    ictx.fillStyle = 'rgba(37, 99, 235, 0.10)' // primary-600 @ 10%
-    ictx.strokeStyle = '#2563EB'               // primary-600
+    ictx.fillStyle = withAlpha(tokens.selectionBorder, 0.10) // primary-600 @ 10%
+    ictx.strokeStyle = asRgb(tokens.selectionBorder)        // primary-600
     ictx.lineWidth = 1.5
     ictx.setLineDash([5, 3])
 
@@ -1177,20 +1200,22 @@ export class Draw {
     pageY: number,
     pageIndex: number,
     separatorContentWidth: number,
+    tokens: CanvasTokenSet | null,
     showInvisible: boolean = this._showInvisible,
   ): void {
     if (item.type === 'separator') {
       const sepRenderer = particleRegistry.get('separator')
       if (sepRenderer) {
-        sepRenderer.render(ctx, item, item.x, pageY + item.y, { contentWidth: separatorContentWidth })
+        sepRenderer.render(ctx, item, item.x, pageY + item.y, { contentWidth: separatorContentWidth, tokenSet: tokens ?? undefined })
       }
     } else if (item.type === 'image') {
-      this.imageParticle.render(ctx, item, item.x, pageY + item.y)
+      this.imageParticle.render(ctx, item, item.x, pageY + item.y, { tokenSet: tokens ?? undefined })
     } else if (item.type === 'footnote') {
       // 脚注引用: 上标编号 (R31)
       const fp = createFootnoteParticle()
       fp.render(ctx, item, item.x, pageY + item.y, {
         pageIndex, totalPages: this.pages.length,
+        tokenSet: tokens ?? undefined,
       })
     } else if (item.type === 'table') {
       // 表格渲染 (R37) — cell 内 smarttext 经 TableParticle 委托 registry (§4)
@@ -1203,6 +1228,7 @@ export class Draw {
         elementOf: this.elementOf,
         controlValueOf: this.controlValueOf,
         activeControlId: this.activeControlNodeId,
+        tokenSet: tokens ?? undefined,
       })
     } else {
       // 文本/域代码/控件 — 通过 ParticleRegistry 调度 (含列表标记)
@@ -1216,6 +1242,7 @@ export class Draw {
           elementOf: this.elementOf,
           controlValueOf: this.controlValueOf,
           activeControlId: this.activeControlNodeId,
+          tokenSet: tokens ?? undefined,
         })
       }
     }
@@ -1223,7 +1250,8 @@ export class Draw {
 
   /** 页眉/页脚带分隔线 (0.5px 浅灰) — 屏幕渲染与打印同源 */
   private drawHfSeparator(ctx: CanvasRenderingContext2D, pageWidth: number, y: number): void {
-    ctx.strokeStyle = '#CCCCCC'
+    const tokens = this.theme?.tokenSet ?? STANDARD_CANVAS_TOKENS
+    ctx.strokeStyle = asRgb(tokens.hfDivider)
     ctx.lineWidth = 0.5
     ctx.beginPath()
     ctx.moveTo(0, y)
@@ -1242,11 +1270,12 @@ export class Draw {
     pageIndex: number,
     showInvisible: boolean = this._showInvisible,
   ): void {
+    const tokens = this.theme?.tokenSet ?? null
     for (const item of items) {
       // 按**节点**兜错 (ErrorRecovery Level 1): 单个节点渲染失败只丢它自己,
       // 不让整帧渲染中断 —— 渲染路径此前完全没有 try/catch。
       safeRenderParticle(
-        () => this.renderOneItem(ctx, item, pageY, pageIndex, showInvisible),
+        () => this.renderOneItem(ctx, item, pageY, pageIndex, showInvisible, tokens),
         item.nodeId,
       )
     }
@@ -1259,11 +1288,12 @@ export class Draw {
     pageY: number,
     pageIndex: number,
     showInvisible: boolean,
+    tokens: CanvasTokenSet | null,
   ): void {
     if (item.type === 'image') {
       const imgUrl = this.resolveImageUrl(item)
       if (imgUrl) {
-        this.renderImage(ctx, imgUrl, item.x, pageY + item.y, item.width, item.height)
+        this.renderImage(ctx, imgUrl, item.x, pageY + item.y, item.width, item.height, tokens)
       }
       return
     }
@@ -1278,6 +1308,7 @@ export class Draw {
         elementOf: this.elementOf,
         controlValueOf: this.controlValueOf,
         activeControlId: this.activeControlNodeId,
+        tokenSet: tokens ?? undefined,
       })
     }
   }
@@ -1549,8 +1580,16 @@ export class Draw {
           align: region.align,
           bracketOn: region.bracketOn,
           affordance: region.affordance,
-          color: masked ? '#9CA3AF' : (empty ? '#9CA3AF' : (item.color || '#374151')),
-          caretColor: '#374151',
+          // 画布主题 token — RuntimeControlOverlay DOM 文本/光标色 (与 ControlParticle 同源 tokenSet)
+          ...(() => {
+            const ovTokens = this.theme?.tokenSet ?? STANDARD_CANVAS_TOKENS
+            const ovPlaceholder = asRgb(ovTokens.placeholder)
+            const ovFallbackInk = asRgb(ovTokens.fallbackInk)
+            return {
+              color: masked ? ovPlaceholder : (empty ? ovPlaceholder : (item.color || ovFallbackInk)),
+              caretColor: ovFallbackInk,
+            }
+          })(),
           placeholderText: stripPlaceholderBrackets(node.text || ''),
           empty,
           writable,
@@ -1639,6 +1678,7 @@ export class Draw {
     url: string,
     x: number, y: number,
     width: number, height: number,
+    tokens: CanvasTokenSet | null,
   ): void {
     const cached = this.imageCache.get<CanvasImageSource>(url)
     if (cached) {
@@ -1654,10 +1694,11 @@ export class Draw {
       }
     })
     // 加载中绘制占位矩形
+    const t = tokens ?? this.theme?.tokenSet ?? STANDARD_CANVAS_TOKENS
     ctx.save()
-    ctx.fillStyle = '#E5E7EB'
+    ctx.fillStyle = asRgb(t.imagePlaceholder)
     ctx.fillRect(x, y, width, height)
-    ctx.strokeStyle = '#9CA3AF'
+    ctx.strokeStyle = asRgb(t.imagePlaceholderBorder)
     ctx.lineWidth = 1
     ctx.setLineDash([4, 2])
     ctx.strokeRect(x, y, width, height)
@@ -1746,12 +1787,12 @@ export class Draw {
     this.drawHfSeparator(ctx, pageWidth, headerH)
 
     // --- 批注高亮: 必须在正文之前画 (同一 ctx 上文字会盖住它), 契约 §12.2 ---
-    this.drawCommentHighlightsForPage(ctx, page, 0)
+    this.drawCommentHighlightsForPage(ctx, page, 0, this.theme?.tokenSet ?? null)
 
     // --- 正文 (含表格/脚注; separator 可用宽与旧打印行为保持一致) ---
     for (const item of page.items) {
       safeRenderParticle(
-        () => this.renderBodyItem(ctx, item, 0, pageIndex, pageWidth - item.x - 90, false),
+        () => this.renderBodyItem(ctx, item, 0, pageIndex, pageWidth - item.x - 90, this.theme?.tokenSet ?? null, false),
         item.nodeId,
       )
     }

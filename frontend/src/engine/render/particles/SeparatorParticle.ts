@@ -26,10 +26,18 @@ export class SeparatorParticle {
     x: number,
     y: number,
     contentWidth: number,
-    options: { defaultColor?: string } = {},
+    options: {
+      defaultColor?: string
+      tokenSet?: import('../../state/canvasTokens').CanvasTokenSet
+    } = {},
   ): void {
     const lineStyle = el.lineStyle || 'solid'
-    const lineColor = el.color || options.defaultColor || '#6B7280' // gray-500
+    // 静默 fallback: el.color > tokenSet.hfDivider > options.defaultColor > '#6B7280'
+    const tokenColor = options.tokenSet?.hfDivider
+    const lineColor = el.color
+      || (tokenColor ? `rgb(${tokenColor.replace(/\s+/g, ', ')})` : undefined)
+      || options.defaultColor
+      || '#6B7280' // gray-500 (回归保险, 不应触发)
     const lineY = y + 4 // 行内居中偏上
 
     // 计算线宽和对齐

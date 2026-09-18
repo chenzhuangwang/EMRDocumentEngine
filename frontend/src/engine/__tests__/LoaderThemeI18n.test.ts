@@ -101,14 +101,14 @@ describe('EditorTheme', () => {
     const theme = new EditorTheme(testHost)
     theme.setTheme('eyeCare')
     expect(theme.preset).toBe('eyeCare')
-    expect(theme.colors.pageBg).toBe('#F5F0E8')
+    expect(theme.colors.pageBg).toBe('245 240 232') // #F5F0E8 (RGB 三元组形态)
   })
 
   it('should switch to dark theme', () => {
     const theme = new EditorTheme(testHost)
     theme.setTheme('dark')
     expect(theme.preset).toBe('dark')
-    expect(theme.colors.textColor).toBe('#E5E5E5')
+    expect(theme.colors.textInk).toBe('229 229 229') // #E5E5E5
   })
 
   it('should reset to standard', () => {

@@ -9,9 +9,10 @@
 // ============================================================
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { Editor, createDefaultRuntimeState, type DocumentTree, type EditorStore, type EditorStoreState } from '@/engine'
+import { Editor, createDefaultRuntimeState, type DocumentTree, type EditorStore, type EditorStoreState, type ThemePreset } from '@/engine'
 import { createDomEditorHost } from '@/platform/dom'
 import { createDictionaryStore } from '@/platform/data/dictionaryStore'
+import { useUIStore } from '@/store'
 
 // 创建浏览器宿主 — 平台能力注入点 (契约 §27 / §29)。
 // 构造无 DOM 副作用, 模块加载时安全创建; surface 在 Editor 创建前 mount 到容器。
@@ -82,6 +83,21 @@ export function EditorProvider({ children, containerRef, document }: EditorProvi
       editorRef.current.setDocument(document)
     }
   }, [document])
+
+  // ---- 画布主题同步 (v6.1) ----
+  // 订阅 useUIStore.themePreset 变化 → Editor.setTheme → document:changed('none') → Draw 重绘
+  // 与 main.tsx 的 chrome 主题订阅并存: 两套触发但独立 (canvas 路径与 chrome 路径互不阻塞)
+  useEffect(() => {
+    const apply = (preset: ThemePreset) => {
+      if (editorRef.current) editorRef.current.setTheme(preset)
+    }
+    // mount 时同步应用当前 store 值
+    apply(useUIStore.getState().themePreset)
+    const unsub = useUIStore.subscribe((state, prev) => {
+      if (state.themePreset !== prev.themePreset) apply(state.themePreset)
+    })
+    return unsub
+  }, [])
 
   return (
     <EditorContext.Provider value={{ editorRef, ready, store }}>

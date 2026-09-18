@@ -8,9 +8,16 @@
 // TextParticle — 文本粒子渲染器 (v5.0 / TASK-475)
 //
 // 新增: showInvisible 模式 — 空格→中点 / 换行→↵ / 制表符→→
+//
+// 主题化 (v6.1): REVISION / INVISIBLE / 文本默认色 — 优先 el.color / el.revision.type,
+// 否则读 options.tokenSet (Draw render() 入口拍快照); tokenSet 缺则回退硬编码 hex
+// (回归保险, 不应触发)。
 // ============================================================
 
-const REVISION_COLORS: Record<string, string> = {
+import type { CanvasTokenSet } from '../../state/canvasTokens'
+import { asRgb } from '../../state/canvasTokens'
+
+const REVISION_FALLBACK: Record<string, string> = {
   insert: '#16A34A', delete: '#DC2626', modify: '#2563EB',
 }
 
@@ -21,8 +28,24 @@ const INVISIBLE_MAP: Record<string, string> = {
   '\t': '→',   // → (right arrow)
 }
 
-/** 不可见字符的颜色 (淡蓝灰) */
-const INVISIBLE_COLOR = '#93C5FD'
+/** 不可见字符的颜色 (淡蓝灰) —— 仅在 tokenSet 缺失时兜底 */
+const INVISIBLE_COLOR_FALLBACK = '#93C5FD'
+
+/** tokenSet → 修订色 hex, 缺则回退硬编码 */
+function revisionColor(t: CanvasTokenSet | undefined, type: string): string {
+  if (t) {
+    const k = type === 'insert' ? 'revisionInsert' : type === 'delete' ? 'revisionDelete' : 'revisionModify'
+    const v = t[k]
+    if (v) return asRgb(v)
+  }
+  return REVISION_FALLBACK[type] || '#000000'
+}
+
+/** tokenSet → 不可见字符色, 缺则回退 */
+function invisibleColor(t: CanvasTokenSet | undefined): string {
+  if (t?.invisibleChar) return asRgb(t.invisibleChar)
+  return INVISIBLE_COLOR_FALLBACK
+}
 
 export class TextParticle {
   static render(
@@ -36,7 +59,11 @@ export class TextParticle {
     },
     x: number,
     y: number,
-    options: { defaultColor?: string; defaultFont?: string; defaultSize?: number; showInvisible?: boolean; ascent?: number; descent?: number } = {},
+    options: {
+      defaultColor?: string; defaultFont?: string; defaultSize?: number
+      showInvisible?: boolean; ascent?: number; descent?: number
+      tokenSet?: CanvasTokenSet
+    } = {},
   ): void {
     const fontSize = el.size || options.defaultSize || 16
     const fontFamily = el.font || options.defaultFont || 'SimSun'
@@ -53,33 +80,31 @@ export class TextParticle {
     const measureText = el.value || ' '
     const metrics = ctx.measureText(measureText)
     const tw = metrics.width
-    // actualBoundingBox* — 字符级实际渲染边界 / fontBoundingBox* — 字体级包围盒
     const m = metrics as unknown as {
       actualBoundingBoxAscent?: number; actualBoundingBoxDescent?: number
       fontBoundingBoxAscent?: number; fontBoundingBoxDescent?: number
     }
-    // 基线优先取行级 ascent/descent (item.ascent/descent), 保证同一行内加粗/非加粗
-    // 片段基线对齐; 逐字形 actualBoundingBoxAscent 会随样式/字符变化, 导致字母/数字
-    // 加粗后产生垂直位移 (中文因填充满 em 框而不受影响)。
     let textAscent = options.ascent ?? m.actualBoundingBoxAscent ?? m.fontBoundingBoxAscent ?? fontSize * 0.8
     let textDescent = options.descent ?? m.actualBoundingBoxDescent ?? m.fontBoundingBoxDescent ?? fontSize * 0.2
-    // 空白字符 actualBoundingBox 为 0, 回退到 fontSize 估算
     if (textAscent < 1) textAscent = fontSize * 0.8
     if (textDescent < 1) textDescent = fontSize * 0.2
 
-    // ---- 3. 颜色（修订色优先） ----
-    let baseColor = options.defaultColor || '#000000'
+    // ---- 3. 颜色（修订色优先 → 文档 run color → tokenSet.textInk → 硬编码） ----
+    const t = options.tokenSet
+    const textInkFallback = t ? asRgb(t.textInk) : undefined
+    let baseColor: string
     if (el.revision) {
-      baseColor = REVISION_COLORS[el.revision.type] || baseColor
+      baseColor = revisionColor(t, el.revision.type)
     } else if (el.color) {
       baseColor = el.color
+    } else {
+      baseColor = textInkFallback || options.defaultColor || '#000000'
     }
     ctx.fillStyle = baseColor
 
-    // ---- 4. 高亮背景（在文字之前绘制，使其位于文字下方） ----
+    // ---- 4. 高亮背景（在文字之前绘制） ----
     if (el.highlight) {
       ctx.fillStyle = el.highlight
-      // y = 行顶, 高度 = Canvas 原生度量的 ascent + descent
       ctx.fillRect(x, y, tw, textAscent + textDescent)
       ctx.fillStyle = baseColor
     }
@@ -90,21 +115,22 @@ export class TextParticle {
     else if (el.subscript) textY = y + textAscent * 1.4
 
     // ---- 6. 文字绘制 ----
-    if (el.value && el.value !== '​' && el.value !== '\n') {
+    const invisibleCol = invisibleColor(t)
+    if (el.value && el.value !== '' && el.value !== '\n') {
       if (options.showInvisible) {
-        this.renderInvisible(ctx, el.value, x, textY, baseColor, fontSize)
+        this.renderInvisible(ctx, el.value, x, textY, baseColor, fontSize, invisibleCol)
       } else {
         ctx.fillText(el.value, x, textY)
       }
     } else if (el.value === '\n' && options.showInvisible) {
       ctx.save()
-      ctx.fillStyle = INVISIBLE_COLOR
+      ctx.fillStyle = invisibleCol
       ctx.font = `${fontSize * 0.7}px "${fontFamily}"`
       ctx.fillText(INVISIBLE_MAP['\n'], x, textY)
       ctx.restore()
     }
 
-    // ---- 7. 下划线 (紧贴基线下方) ----
+    // ---- 7. 下划线 ----
     if (el.underline) {
       ctx.strokeStyle = baseColor
       ctx.lineWidth = 1
@@ -138,7 +164,7 @@ export class TextParticle {
       }
     }
 
-    // ---- 8. 删除线 (文字纵向中点) ----
+    // ---- 8. 删除线 ----
     if (el.strikeout) {
       ctx.strokeStyle = baseColor
       ctx.lineWidth = 1
@@ -158,6 +184,7 @@ export class TextParticle {
     y: number,
     normalColor: string,
     _fontSize: number,
+    invisibleColor: string,
   ): void {
     const spaceWidth = ctx.measureText(' ').width
 
@@ -166,7 +193,7 @@ export class TextParticle {
       const invisible = INVISIBLE_MAP[ch]
       if (invisible) {
         ctx.save()
-        ctx.fillStyle = INVISIBLE_COLOR
+        ctx.fillStyle = invisibleColor
         ctx.fillText(invisible, cx, y)
         ctx.restore()
         cx += ch === ' ' ? spaceWidth : ch === '\t' ? spaceWidth * 4 : ctx.measureText(invisible).width

@@ -15,6 +15,7 @@ import type { SLIFItem } from '../../layout/core/SLIF'
 import type { PresentationStyle } from '../presentation/PresentationStyle'
 import type { TemplateDefinition } from '../../template/TemplateDefinition'
 import type { ElementMeta, ControlValue } from '../../document/core/DocumentModel'
+import type { CanvasTokenSet } from '../../state/canvasTokens'
 
 /** 渲染上下文选项 */
 export interface RenderOptions {
@@ -45,6 +46,15 @@ export interface RenderOptions {
   /** 当前激活的控件 nodeId (无缝内联编辑) — 激活时该控件的静态 field
    *  框/值/affordance 隐藏 (label/prefix/suffix 仍画), 由 DOM overlay 承担 */
   activeControlId?: string | null
+  /**
+   * 引擎画布主题 token 表 (4 预设之一, 由 Draw 在 render() 入口拍快照)。
+   *
+   * 读取规则 (静默 fallback):
+   *   1. el.color / cell.backgroundColor 不空 → 用它 (用户 / 文档语义)
+   *   2. el.color 空 → 读 options.tokenSet?.<field>, 通过 asRgb / withAlpha 拼
+   *   3. tokenSet 也空 → 回退到硬编码 hex (回归保险, 不应触发)
+   */
+  tokenSet?: CanvasTokenSet
 }
 
 /** 粒子渲染器接口 */

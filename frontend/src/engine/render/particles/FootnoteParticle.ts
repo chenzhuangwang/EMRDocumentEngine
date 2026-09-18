@@ -13,6 +13,7 @@
 
 import type { IParticle, RenderOptions } from './IParticle'
 import type { SLIFItem } from '../../layout/core/SLIF'
+import { asRgb } from '../../state/canvasTokens'
 
 export function createFootnoteParticle(): IParticle {
   return {
@@ -21,7 +22,12 @@ export function createFootnoteParticle(): IParticle {
     render(ctx: CanvasRenderingContext2D, item: SLIFItem, x: number, y: number, options?: RenderOptions): void {
       const fontSize = (item.size || options?.defaultSize || 12) * 0.75  // 上标字号缩小
       const fontFamily = item.font || options?.defaultFont || 'SimSun'
-      const color = item.color || options?.defaultColor || '#2563EB'  // 蓝色引用
+      // 静默 fallback: item.color > options.defaultColor > tokenSet.footnoteRef > '#2563EB'
+      const tokenColor = options?.tokenSet?.footnoteRef
+      const color = item.color
+        || options?.defaultColor
+        || (tokenColor ? asRgb(tokenColor) : undefined)
+        || '#2563EB'
 
       ctx.save()
       ctx.font = `${fontSize}px "${fontFamily}"`

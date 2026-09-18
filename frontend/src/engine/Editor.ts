@@ -42,6 +42,8 @@ import { MergeParagraphCommand } from './command/commands/MergeParagraphCommand'
 import { ClipboardManager } from './command/ClipboardManager'
 import { EditorStore } from './state/EditorStore'
 import type { EditorRuntimeState, SelectionState, CursorState } from './state/EditorRuntimeState'
+import { EditorTheme } from './state/EditorTheme'
+import type { ThemePreset } from './state/EditorTheme'
 import { FindReplaceEngine } from './FindReplaceEngine'
 import type { FindOptions, MatchResult } from './FindReplaceEngine'
 import { computeOffsetInItems } from './layout/text/CharWidthHelper'
@@ -175,6 +177,8 @@ export class Editor {
   private autoCorrect: AutoCorrectEngine
   private perfMetrics: PerformanceMetrics
   private pluginManager: PluginManager
+  /** 引擎画布主题 (v6.1) — 持有 28 token × 4 预设; Draw 在 render() 入口拍快照读 */
+  private theme: EditorTheme
   /** 医学文书质控引擎 (契约 §12.2 特征隔离) — 由 Editor.runQC() 驱动 */
   private qcEngine: QCEngine
   private readonly host: EditorHost
@@ -195,8 +199,10 @@ export class Editor {
   private _onWindowFocus: () => void
   private _onVisibilityChange: () => void
 
-  constructor(host: EditorHost, doc?: DocumentTree) {
+  constructor(host: EditorHost, doc?: DocumentTree, theme?: EditorTheme) {
     this.host = host
+    // 主题 override 优先; 默认自构造 (新 EditorTheme(host))
+    this.theme = theme ?? new EditorTheme(host)
     this.fontManager = new FontManager(host)
     this.measurer = new TextMeasurer(host, this.fontManager)
     // 创建默认空文档
@@ -216,7 +222,9 @@ export class Editor {
     }
 
     this.eventBus = new EventBus()
-    this.draw = new Draw(host, this.eventBus, this.measurer, this.doc)
+    // 把 eventBus 注入主题 —— 后续 setTheme 同步发 'canvas-theme:changed'
+    this.theme.attachEventBus(this.eventBus)
+    this.draw = new Draw(host, this.eventBus, this.measurer, this.doc, this.theme)
     this.store = new EditorStore(this.doc)
     // 光标/选区移动后实时同步段落/文本样式投影 (工具栏联动), 单一 choke point
     this.store.onCursorOrSelectionChange(() => this.syncStyleProjections())
@@ -441,6 +449,22 @@ export class Editor {
    *   5. 工具栏/状态栏同步 (notifyListeners 'contentChange')
    */
   private commitDocumentChange(invalidation: import('./command/ICommand').InvalidationScope): void {
+    // 主题切换走 'none' 早退 (v6.1): 不重布局, 只重绘
+    // 但 store.documentTitle 投影 + contentChange 通知仍走 (UpdateDocumentTitleCommand 等
+    // 合法 'none' 路径仍需同步 UI)
+    if (invalidation === 'none') {
+      const state = this.store?.state?.runtime
+      if (!this.pool || !state) {
+        // 主题切换无 pool 也得能 render —— 但仍需 store 投影同步
+        this.store.setDocumentTitle(this.doc.title)
+        this.notifyListeners('contentChange', this.doc)
+        return
+      }
+      this.draw.render(this.pool, state)
+      this.store.setDocumentTitle(this.doc.title)
+      this.notifyListeners('contentChange', this.doc)
+      return
+    }
     const t0 = performance.now()
     this.draw.recomputeLayout(this.pool, invalidation)
     const t1 = performance.now()
@@ -457,6 +481,24 @@ export class Editor {
     this.store.setDocumentTitle(this.doc.title)
     this.notifyListeners('contentChange', this.doc)
   }
+
+  /**
+   * 切换画布主题 (v6.1 公共 API) —— 同步写内存 token + 落 CSS 变量,
+   * 同步发 `document:changed(invalidation: 'none')` 触发 Draw 重绘。
+   *
+   * 不入 undo 栈、不 markDirty (主题非文档内容)。
+   *
+   * @returns 是否真的变更 (非法 preset / 同值 → false)
+   */
+  setTheme(preset: ThemePreset): boolean {
+    const changed = this.theme.setTheme(preset)
+    if (!changed) return false
+    this.eventBus.emit('document:changed', { invalidation: 'none', dirtyNodeIds: [] })
+    return true
+  }
+
+  /** 当前画布主题 (v6.1) */
+  getTheme(): ThemePreset { return this.theme.preset }
 
   /**
    * 同步撤销/重做栈深度到 EditorStore.runtime.history (canonical owner, §7.2)。

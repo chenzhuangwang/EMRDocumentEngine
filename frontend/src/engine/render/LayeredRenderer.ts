@@ -25,6 +25,8 @@ import type { EditorRuntimeState } from '../state/EditorRuntimeState'
 import type { WatermarkConfig } from '../document/core/DocumentModel'
 import { accumulatedHeightTo, getTotalDocHeight } from '../layout/table/TableCoordUtil'
 import type { CanvasSurface, EditorHost } from '../host/EditorHost'
+import type { CanvasTokenSet } from '../state/canvasTokens'
+import { STANDARD_CANVAS_TOKENS, asRgb } from '../state/canvasTokens'
 
 export class LayeredRenderer {
   private layers = {
@@ -45,6 +47,8 @@ export class LayeredRenderer {
   private watermarkConfig: WatermarkConfig | null = null
   private watermarkImage: { width: number; height: number; source: CanvasImageSource } | null = null
   private cursorVisible = true
+  /** 画布主题 token (Draw 在 render() 入口拍快照, 通过 setTokens 注入) */
+  private tokens: CanvasTokenSet = STANDARD_CANVAS_TOKENS
 
   /**
    * 相邻分页之间的渲染垂直间隙 (文档逻辑 px)。
@@ -98,6 +102,14 @@ export class LayeredRenderer {
     if (clamped === this.pageVerticalGap) return false
     this.pageVerticalGap = clamped
     return true
+  }
+
+  /**
+   * 注入画布主题 token —— Draw 在 render() 入口拍快照调用。
+   * 引用替换 (this.tokens = tokens) 后, 静态层渲染读 this.tokens.pageBg / hfDivider。
+   */
+  setTokens(tokens: CanvasTokenSet): void {
+    this.tokens = tokens
   }
 
   /** 滚动反偏移: 保持绝对定位画布固定于可视区顶部 */
@@ -180,8 +192,8 @@ export class LayeredRenderer {
       // 这里保留与 Draw.render 同公式: accY(i) - scrollY, scrollY = baseY + scrollOffset
       const pageY = accumulatedHeightTo(i, pages, this.pageVerticalGap) - (baseY + scrollOffset)
 
-      // 页面背景
-      ctx.fillStyle = '#FFFFFF'
+      // 页面背景 (tokenSet.pageBg; tokenSet 缺时回退硬编码 #FFFFFF)
+      ctx.fillStyle = this.tokens.pageBg ? asRgb(this.tokens.pageBg) : '#FFFFFF'
       ctx.fillRect(0, pageY, page.width, page.height)
 
       // 水印
@@ -198,7 +210,7 @@ export class LayeredRenderer {
       }
 
       // 页面四角L标记 — 统一常量, 右上/右下用镜像变换
-      drawPageCornerMarks(ctx, pageY, page.width, page.height)
+      drawPageCornerMarks(ctx, pageY, page.width, page.height, this.tokens)
 
       // 调用方叠加 (批注高亮等): 画在页面背景/水印之上、文字之下 (静态层在内容层下)
       if (decoratePage) decoratePage(ctx, page, i, pageY)
@@ -337,7 +349,7 @@ export class LayeredRenderer {
 
 const L_ARM_LENGTH = 12   // 横/纵向段长度 (px)
 const L_LINE_WIDTH = 0.5  // 线宽 0.5px
-const L_COLOR = '#CCCCCC' // 浅灰
+const L_COLOR_FALLBACK = '#CCCCCC' // 浅灰 (tokenSet 缺时兜底)
 const L_OFFSET_X = 24     // 距页面左右边缘
 const L_ALPHA = 0.7       // 透明度
 
@@ -361,10 +373,13 @@ function drawPageCornerMarks(
   pageY: number,
   pageW: number,
   pageH: number,
+  tokens: CanvasTokenSet,
 ): void {
   ctx.save()
   ctx.lineWidth = L_LINE_WIDTH
-  ctx.strokeStyle = L_COLOR
+  // L 标记色 = tokenSet.hfDivider (与 HF 分隔线同 token, 与 Draw.drawHfSeparator 对齐)
+  // 主题切换后下一次 render 由 Draw 入口拍快照 → LayeredRenderer.setTokens → 静态层读 this.tokens。
+  ctx.strokeStyle = tokens.hfDivider ? asRgb(tokens.hfDivider) : L_COLOR_FALLBACK
   ctx.globalAlpha = L_ALPHA
 
   const sepY = 42 // 分隔线Y位置
