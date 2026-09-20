@@ -11,6 +11,7 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { X, Printer, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/useTranslation'
 
 interface Props {
   open: boolean
@@ -25,6 +26,7 @@ interface Props {
 export function PrintPreviewDialog({
   open, onOpenChange, pageCount, currentPage, onPageChange, onPrint, children,
 }: Props) {
+  const { t } = useTranslation()
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -34,7 +36,7 @@ export function PrintPreviewDialog({
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-3 border-b border-line-subtle flex-shrink-0">
             <Dialog.Title className="text-base font-semibold text-chrome-ink-strong">
-              打印预览
+              {t('dialog.title.printPreview')}
             </Dialog.Title>
             <div className="flex items-center gap-3">
               {/* Page navigation */}
@@ -43,16 +45,18 @@ export function PrintPreviewDialog({
                   className="p-1 rounded hover:bg-chrome-muted disabled:opacity-30"
                   disabled={currentPage <= 1}
                   onClick={() => onPageChange(currentPage - 1)}
+                  aria-label={t('common.previous')}
                 >
                   <ChevronLeft size={18} />
                 </button>
                 <span className="min-w-[80px] text-center tabular-nums">
-                  {currentPage} / {pageCount}
+                  {t('statusBar.pageOf', { current: currentPage, total: pageCount })}
                 </span>
                 <button
                   className="p-1 rounded hover:bg-chrome-muted disabled:opacity-30"
                   disabled={currentPage >= pageCount}
                   onClick={() => onPageChange(currentPage + 1)}
+                  aria-label={t('common.next')}
                 >
                   <ChevronRight size={18} />
                 </button>
@@ -64,10 +68,11 @@ export function PrintPreviewDialog({
                 onClick={onPrint}
               >
                 <Printer size={15} />
-                打印
+                {t('file.print')}
               </button>
 
-              <Dialog.Close className="p-1.5 rounded-md hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary">
+              <Dialog.Close className="p-1.5 rounded-md hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary"
+                           aria-label={t('common.close')}>
                 <X size={20} />
               </Dialog.Close>
             </div>
@@ -85,8 +90,8 @@ export function PrintPreviewDialog({
 
           {/* Footer */}
           <div className="flex items-center justify-between px-5 py-3 border-t border-line-subtle text-xs text-chrome-ink-muted flex-shrink-0">
-            <span>A4 纸张 · 适合打印</span>
-            <span>{pageCount} 页</span>
+            <span>{t('preview.paperFormat')}</span>
+            <span>{t('preview.pageCount', { n: pageCount })}</span>
           </div>
         </Dialog.Content>
       </Dialog.Portal>

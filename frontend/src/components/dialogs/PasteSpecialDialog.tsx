@@ -15,6 +15,7 @@ import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { X, Clipboard, FileText, AlignLeft, Type } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/useTranslation'
 
 // ---- 类型 ----
 
@@ -28,25 +29,10 @@ interface PasteSpecialDialogProps {
   previewText?: string
 }
 
-const FORMATS: { id: PasteFormat; label: string; desc: string; icon: React.ReactNode }[] = [
-  {
-    id: 'keep-source',
-    label: '保留源格式',
-    desc: '保留原始字体、颜色、样式',
-    icon: <Clipboard size={20} />,
-  },
-  {
-    id: 'match-destination',
-    label: '匹配目标格式',
-    desc: '使用当前光标位置的格式',
-    icon: <FileText size={20} />,
-  },
-  {
-    id: 'plain-text',
-    label: '仅保留文本',
-    desc: '移除所有格式，粘贴纯文本',
-    icon: <Type size={20} />,
-  },
+const FORMATS: { id: PasteFormat; labelKey: 'paste.keepSource' | 'paste.matchTarget' | 'paste.plainText'; descKey: 'paste.keepSourceDesc' | 'paste.matchTargetDesc' | 'paste.plainTextDesc'; icon: React.ReactNode }[] = [
+  { id: 'keep-source',       labelKey: 'paste.keepSource',   descKey: 'paste.keepSourceDesc',   icon: <Clipboard size={20} /> },
+  { id: 'match-destination', labelKey: 'paste.matchTarget',  descKey: 'paste.matchTargetDesc',  icon: <FileText size={20} /> },
+  { id: 'plain-text',        labelKey: 'paste.plainText',    descKey: 'paste.plainTextDesc',    icon: <Type size={20} /> },
 ]
 
 // ---- 组件 ----
@@ -54,6 +40,7 @@ const FORMATS: { id: PasteFormat; label: string; desc: string; icon: React.React
 export function PasteSpecialDialog({
   open, onClose, onPaste, previewText,
 }: PasteSpecialDialogProps) {
+  const { t } = useTranslation()
   const [selected, setSelected] = useState<PasteFormat>('match-destination')
 
   const handlePaste = () => {
@@ -73,9 +60,10 @@ export function PasteSpecialDialog({
           <div className="flex items-center justify-between px-5 py-3 border-b border-line-subtle">
             <div className="flex items-center gap-2">
               <Clipboard size={16} className="text-chrome-ink-tertiary" />
-              <Dialog.Title className="text-sm font-medium text-chrome-ink-strong">选择性粘贴</Dialog.Title>
+              <Dialog.Title className="text-sm font-medium text-chrome-ink-strong">{t('paste.title')}</Dialog.Title>
             </div>
-            <button onClick={onClose} className="p-1 rounded hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary">
+            <button onClick={onClose} aria-label={t('common.close')}
+                    className="p-1 rounded hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary">
               <X size={14} />
             </button>
           </div>
@@ -100,8 +88,8 @@ export function PasteSpecialDialog({
                   {f.icon}
                 </span>
                 <div>
-                  <div className="text-sm font-medium">{f.label}</div>
-                  <div className="text-xs text-chrome-ink-tertiary mt-0.5">{f.desc}</div>
+                  <div className="text-sm font-medium">{t(f.labelKey)}</div>
+                  <div className="text-xs text-chrome-ink-tertiary mt-0.5">{t(f.descKey)}</div>
                 </div>
               </button>
             ))}
@@ -112,7 +100,7 @@ export function PasteSpecialDialog({
             <div className="px-5 pb-3">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <AlignLeft size={12} className="text-chrome-ink-muted" />
-                <span className="text-[10px] text-chrome-ink-muted uppercase tracking-wider">剪贴板预览</span>
+                <span className="text-[10px] text-chrome-ink-muted uppercase tracking-wider">{t('paste.previewLabel')}</span>
               </div>
               <div className="text-xs text-chrome-ink-secondary bg-chrome-subtle border border-line-subtle rounded-md px-3 py-2 max-h-16 overflow-hidden">
                 {previewText.length > 200 ? previewText.slice(0, 200) + '...' : previewText}
@@ -123,20 +111,20 @@ export function PasteSpecialDialog({
           {/* 底部 */}
           <div className="flex justify-between px-5 py-3 border-t border-line-subtle bg-chrome-subtle rounded-b-lg">
             <span className="text-[10px] text-chrome-ink-muted self-center">
-              Ctrl+Shift+V 快速粘贴
+              {t('paste.shortcut')}
             </span>
             <div className="flex gap-2">
               <button
                 onClick={onClose}
                 className="px-3 py-1.5 text-xs text-chrome-ink-secondary hover:text-chrome-ink-strong"
               >
-                取消
+                {t('common.cancel')}
               </button>
               <button
                 onClick={handlePaste}
                 className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
-                粘贴
+                {t('paste.confirm')}
               </button>
             </div>
           </div>

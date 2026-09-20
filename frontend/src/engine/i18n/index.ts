@@ -53,6 +53,8 @@ export interface LocaleMessages {
   'common.more': string
   'common.all': string
   'common.unknown': string
+  'common.previous': string
+  'common.next': string
   'common.wordCount': string           // 词数后缀: 'X 词'
   'common.back': string                 // 通用返回按钮 (ComparePage 等)
   // ============================================================
@@ -596,6 +598,14 @@ export interface LocaleMessages {
   'paste.matchTarget': string
   'paste.plainText': string
   'paste.title': string
+  'paste.keepSourceDesc': string
+  'paste.matchTargetDesc': string
+  'paste.plainTextDesc': string
+  'paste.previewLabel': string
+  'paste.shortcut': string
+  'paste.confirm': string
+  'preview.paperFormat': string
+  'preview.pageCount': string
   // ============================================================
   // ExportDialog
   // ============================================================
@@ -687,6 +697,8 @@ const zhCN: LocaleMessages = {
   'common.more': '更多',
   'common.all': '全部',
   'common.unknown': '未知',
+  'common.previous': '上一个',
+  'common.next': '下一个',
   'common.wordCount': '{n} 词',
   'common.back': '返回',
   // ===== 编辑动作 =====
@@ -1145,6 +1157,14 @@ const zhCN: LocaleMessages = {
   'paste.matchTarget': '匹配目标格式',
   'paste.plainText': '纯文本',
   'paste.title': '选择性粘贴',
+  'paste.keepSourceDesc': '保留原始字体、颜色、样式',
+  'paste.matchTargetDesc': '使用当前光标位置的格式',
+  'paste.plainTextDesc': '移除所有格式，粘贴纯文本',
+  'paste.previewLabel': '剪贴板预览',
+  'paste.shortcut': 'Ctrl+Shift+V 快速粘贴',
+  'paste.confirm': '粘贴',
+  'preview.paperFormat': 'A4 纸张 · 适合打印',
+  'preview.pageCount': '{n} 页',
   // ===== ExportDialog =====
   'export.title': '导出文档',
   'export.format': '格式',
@@ -1216,6 +1236,8 @@ const enUS: LocaleMessages = {
   'common.more': 'More',
   'common.all': 'All',
   'common.unknown': 'Unknown',
+  'common.previous': 'Previous',
+  'common.next': 'Next',
   'common.wordCount': '{n} words',
   'common.back': 'Back',
   // ===== 编辑动作 =====
@@ -1674,6 +1696,14 @@ const enUS: LocaleMessages = {
   'paste.matchTarget': 'Match Target Format',
   'paste.plainText': 'Plain Text',
   'paste.title': 'Paste Special',
+  'paste.keepSourceDesc': 'Preserve original font, color, and style',
+  'paste.matchTargetDesc': 'Use the format at the current cursor position',
+  'paste.plainTextDesc': 'Remove all formatting and paste as plain text',
+  'paste.previewLabel': 'Clipboard Preview',
+  'paste.shortcut': 'Press Ctrl+Shift+V to quickly paste',
+  'paste.confirm': 'Paste',
+  'preview.paperFormat': 'A4 paper · Print-ready',
+  'preview.pageCount': '{n} pages',
   // ===== ExportDialog =====
   'export.title': 'Export Document',
   'export.format': 'Format',
