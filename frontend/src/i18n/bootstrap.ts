@@ -27,15 +27,6 @@ export const LOCALES: readonly LocaleMeta[] = [
   { locale: 'en-US', label: 'English' },
 ]
 
-/**
- * ⚠ 本批**只做基建, 不替换文案**。
- *
- * 全仓 564 处界面文案仍是硬编码中文, `components/` 与 `pages/` 零处调用 t()。
- * 所以切到 English 后界面**一个字都不会变**, 只有 `<html lang>` 跟着变。
- * 这个常量就是给切换菜单挂的诚实标注 —— 不加标注等于让用户以为 i18n 可用了。
- */
-export const NOT_WIRED_NOTICE = '未全量接入'
-
 export function isLocale(value: unknown): value is Locale {
   return LOCALES.some((l) => l.locale === value)
 }

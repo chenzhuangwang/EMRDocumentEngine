@@ -11,6 +11,7 @@
 
 import { Github } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useTranslation } from '@/i18n/useTranslation'
 
 /** 开源仓库地址 */
 export const GITEE_REPO_URL = 'https://gitee.com/wangwang_1_1665527118/emrdocument-engine'
@@ -35,22 +36,24 @@ export function GiteeIcon({ size = 16, className }: { size?: number; className?:
 /**
  * 仓库清单 — 品牌色以字面量 class 写出（Tailwind 需在源码中扫到完整类名，
  * 不能由运行时变量拼出），故每个品牌各自带一组 hover 类。
+ *
+ * label 用 i18n 键, 组件层 useTranslation 拉实际字面量。
  */
 const REPOS: {
-  label: string
+  labelKey: 'repo.gitee' | 'repo.github'
   href: string
   icon: ReactNode
   /** hover 态的品牌色类（文字 / 边框 / 底色同一基色降透明度） */
   hoverClass: string
 }[] = [
   {
-    label: 'Gitee',
+    labelKey: 'repo.gitee',
     href: GITEE_REPO_URL,
     icon: <GiteeIcon size={16} className="text-[#C71D23]" />,
     hoverClass: 'hover:text-[#C71D23] hover:border-[#C71D23]/30 hover:bg-[#C71D23]/5',
   },
   {
-    label: 'GitHub',
+    labelKey: 'repo.github',
     href: GITHUB_REPO_URL,
     icon: <Github size={16} className="text-[#181717]" />,
     hoverClass: 'hover:text-[#181717] hover:border-[#181717]/30 hover:bg-[#181717]/5',
@@ -59,23 +62,27 @@ const REPOS: {
 
 /** 顶栏仓库链接组 — 胶囊样式，与两侧头像/工具栏同高 */
 export function RepoLinks() {
+  const { t } = useTranslation()
   return (
     <>
-      {REPOS.map((repo) => (
-        <a
-          key={repo.label}
-          href={repo.href}
-          target="_blank"
-          rel="noopener noreferrer"
-          title={`开源仓库 · ${repo.label}`}
-          aria-label={`开源仓库 · ${repo.label}`}
-          className={`flex items-center gap-1.5 h-8 px-3 rounded-full border border-line
-                     text-sm text-chrome-ink-secondary transition-colors flex-shrink-0 ${repo.hoverClass}`}
-        >
-          {repo.icon}
-          <span className="font-medium hidden sm:inline">{repo.label}</span>
-        </a>
-      ))}
+      {REPOS.map((repo) => {
+        const label = t(repo.labelKey)
+        return (
+          <a
+            key={repo.labelKey}
+            href={repo.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={t('repo.aria', { label })}
+            aria-label={t('repo.aria', { label })}
+            className={`flex items-center gap-1.5 h-8 px-3 rounded-full border border-line
+                       text-sm text-chrome-ink-secondary transition-colors flex-shrink-0 ${repo.hoverClass}`}
+          >
+            {repo.icon}
+            <span className="font-medium hidden sm:inline">{label}</span>
+          </a>
+        )
+      })}
     </>
   )
 }

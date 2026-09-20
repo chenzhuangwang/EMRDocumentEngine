@@ -26,17 +26,21 @@ export const CHROME_THEME_STORAGE_KEY = 'emr.theme'
 
 export interface ChromePresetMeta {
   preset: ThemePreset
-  /** 菜单显示名 */
+  /** 菜单显示名 (zh-CN) — 英文版在 ThemeMenu 组件里按 locale 选另套字面量 */
   label: string
-  /** 菜单副标题 —— 说明这个预设改了什么, 避免"点了没反应"的困惑 */
+  /** 菜单副标题 —— zh-CN */
   hint: string
+  /** 英文显示名 */
+  labelEn: string
+  /** 英文副标题 */
+  hintEn: string
 }
 
 export const CHROME_PRESETS: readonly ChromePresetMeta[] = [
-  { preset: 'standard', label: '标准', hint: '默认灰度' },
-  { preset: 'eyeCare', label: '护眼', hint: '暖色低对比' },
-  { preset: 'print', label: '打印', hint: '高对比黑白' },
-  { preset: 'dark', label: '深色', hint: '暗色外壳' },
+  { preset: 'standard', label: '标准',  hint: '默认灰度',     labelEn: 'Standard', hintEn: 'Default grayscale' },
+  { preset: 'eyeCare',  label: '护眼',  hint: '暖色低对比',   labelEn: 'Eye Care', hintEn: 'Warm low-contrast' },
+  { preset: 'print',    label: '打印',  hint: '高对比黑白',   labelEn: 'Print',    hintEn: 'High contrast B&W' },
+  { preset: 'dark',     label: '深色',  hint: '暗色外壳',     labelEn: 'Dark',     hintEn: 'Dark chrome' },
 ]
 
 /** 运行时收窄 —— localStorage / 外部输入可能给出任意字符串 */

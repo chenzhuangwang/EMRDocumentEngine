@@ -7,19 +7,22 @@
 // ============================================================
 // LanguageMenu — 界面语言切换 (顶栏右侧)
 //
-// ⚠ 本批只落基建: 全仓 564 处文案仍硬编码, 切到 English 后界面文字不会变,
-// 只有 `<html lang>` 变。所以每一项都带「未全量接入」标注 —— 不标注就是让
-// 用户以为点了没反应是坏了 (契约 §24: 正确性优先于便利)。
-// 文案替换是下一批; 那批落地后把 NOT_WIRED_NOTICE 拿掉即可。
+// v6.1 文案全量替换: 全仓界面文字已接 LocaleMessages, 切到 en-US 后界面文案
+// 真的会跟随刷新。本菜单不再需要"未全量接入"标注。
 // ============================================================
 
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Check, ChevronDown, Languages } from 'lucide-react'
 import { useTranslation } from '@/i18n/useTranslation'
-import { LOCALES, NOT_WIRED_NOTICE } from '@/i18n/bootstrap'
+import { LOCALES } from '@/i18n/bootstrap'
+
+const TITLE_ZH = '界面语言'
+const TITLE_EN = 'Interface Language'
 
 export function LanguageMenu() {
   const { locale: current, setLocale } = useTranslation()
+  const isEN = current === 'en-US'
+  const titleStr = isEN ? TITLE_EN : TITLE_ZH
   const active = LOCALES.find((l) => l.locale === current) ?? LOCALES[0]
 
   return (
@@ -29,8 +32,8 @@ export function LanguageMenu() {
           className="flex items-center gap-1 h-8 px-2 rounded-full border border-line
                      text-sm text-chrome-ink-secondary transition-colors flex-shrink-0
                      hover:bg-chrome-muted hover:text-chrome-ink data-[state=open]:bg-chrome-muted"
-          title={`界面语言（${NOT_WIRED_NOTICE}：切换只改 <html lang>，界面文案仍为中文）`}
-          aria-label="界面语言"
+          title={titleStr}
+          aria-label={titleStr}
         >
           <Languages size={16} />
           <span className="hidden sm:inline">{active.label}</span>
@@ -53,7 +56,6 @@ export function LanguageMenu() {
                 onSelect={() => setLocale(item.locale)}
               >
                 <span>{item.label}</span>
-                <span className="text-chrome-ink-muted">{NOT_WIRED_NOTICE}</span>
                 {selected && <Check size={12} className="ml-auto text-chrome-accent-ink" />}
               </DropdownMenu.Item>
             )

@@ -22,7 +22,6 @@ import {
   isLocale,
   LOCALE_STORAGE_KEY,
   LOCALES,
-  NOT_WIRED_NOTICE,
 } from '../bootstrap'
 import { useTranslation } from '../useTranslation'
 
@@ -137,11 +136,8 @@ describe('useTranslation', () => {
   })
 })
 
-describe('切换菜单的诚实标注', () => {
-  it('两种语言都带「未全量接入」—— 本批只做基建, 文案未替换', () => {
-    // 守住这个事实: 引擎语言包能翻, 硬编码的界面文案翻不了。
-    // 等文案替换批次落地后, 这条测试连同 NOT_WIRED_NOTICE 一起删。
-    expect(NOT_WIRED_NOTICE).toBe('未全量接入')
+describe('切换菜单的本地化', () => {
+  it('LOCALES 列出两个内置语言 (zh-CN / en-US)', () => {
     expect(LOCALES.map((l) => l.locale)).toEqual(['zh-CN', 'en-US'])
   })
 })

@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { HeaderFooterToolbar } from '@/components/toolbar/HeaderFooterToolbar'
 import { resolveVariantForPage, type HeaderFooterVariant } from '@/engine'
+import { useTranslation } from '@/i18n/useTranslation'
 
 interface ToolbarProps {
   onFormat?: (action: string, value?: unknown) => void
@@ -42,15 +43,18 @@ interface ToolbarProps {
 
 // ---- 常量 ----
 
-const FONT_FAMILIES = [
-  { label: '宋体',   value: 'SimSun' },
-  { label: '黑体',   value: 'SimHei' },
-  { label: '楷体',   value: 'KaiTi' },
-  { label: '仿宋',   value: 'FangSong' },
-  { label: '微软雅黑', value: 'Microsoft YaHei' },
-  { label: 'Arial',  value: 'Arial' },
-  { label: 'Times New Roman', value: 'Times New Roman' },
-  { label: 'Courier New',     value: 'Courier New' },
+// 字体: 双语两套 label, UI 按 locale 选
+// 技术名 value (SimSun 等) 是字体标识, 不翻译
+type FontFamilyItem = { value: string; labelZh: string; labelEn: string }
+const FONT_FAMILIES: FontFamilyItem[] = [
+  { value: 'SimSun',           labelZh: '宋体',     labelEn: 'SimSun' },
+  { value: 'SimHei',           labelZh: '黑体',     labelEn: 'SimHei' },
+  { value: 'KaiTi',            labelZh: '楷体',     labelEn: 'KaiTi' },
+  { value: 'FangSong',         labelZh: '仿宋',     labelEn: 'FangSong' },
+  { value: 'Microsoft YaHei',  labelZh: '微软雅黑', labelEn: 'Microsoft YaHei' },
+  { value: 'Arial',            labelZh: 'Arial',    labelEn: 'Arial' },
+  { value: 'Times New Roman',  labelZh: 'Times New Roman', labelEn: 'Times New Roman' },
+  { value: 'Courier New',      labelZh: 'Courier New',     labelEn: 'Courier New' },
 ]
 
 const FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64, 72]
@@ -63,15 +67,46 @@ const COLORS = [
 
 // 通用控件插入向导 (契约 §12.7): 收拢为 3 类工具, 点选后开对应配置弹框
 // (EditorPage 路由), 不再直接插默认控件。
+interface ControlItem {
+  type: string; labelKey: 'dialog.controlType.input' | 'dialog.controlType.radio' | 'dialog.controlType.checkbox'
+  descZh: string; descEn: string; icon: React.ReactNode
+}
 const CONTROLS: ControlItem[] = [
-  { type: 'textInput', label: '文本输入域', description: '单行/多行/数字/日期', icon: <Type size={16} /> },
-  { type: 'radio',     label: '单选框',    description: '单选候选',           icon: <Circle size={16} /> },
-  { type: 'checkbox',  label: '复选框',    description: '多选候选',           icon: <CheckSquare size={16} /> },
+  { type: 'textInput', labelKey: 'dialog.controlType.input',    descZh: '单行/多行/数字/日期', descEn: 'Single/Multi/Number/Date', icon: <Type size={16} /> },
+  { type: 'radio',     labelKey: 'dialog.controlType.radio',    descZh: '单选候选',             descEn: 'Single-choice candidates', icon: <Circle size={16} /> },
+  { type: 'checkbox',  labelKey: 'dialog.controlType.checkbox', descZh: '多选候选',             descEn: 'Multi-choice candidates',  icon: <CheckSquare size={16} /> },
 ]
 
-interface ControlItem {
-  type: string; label: string; description: string; icon: React.ReactNode
-}
+// 双语两套 label, UI 按 locale 选 —— 技术名(value)不翻译
+const HEADING_STYLES: { value: number; labelZh: string; labelEn: string }[] = [
+  { value: 0, labelZh: '正文',   labelEn: 'Body' },
+  { value: 1, labelZh: '标题 1', labelEn: 'Heading 1' },
+  { value: 2, labelZh: '标题 2', labelEn: 'Heading 2' },
+  { value: 3, labelZh: '标题 3', labelEn: 'Heading 3' },
+  { value: 4, labelZh: '标题 4', labelEn: 'Heading 4' },
+  { value: 5, labelZh: '标题 5', labelEn: 'Heading 5' },
+  { value: 6, labelZh: '标题 6', labelEn: 'Heading 6' },
+]
+
+const NUMBER_STYLES: { labelZh: string; labelEn: string; value: string; sample: string }[] = [
+  { labelZh: '1, 2, 3',   labelEn: '1, 2, 3',   value: 'decimal',         sample: '1' },
+  { labelZh: 'a, b, c',   labelEn: 'a, b, c',   value: 'lower_alpha',     sample: 'a' },
+  { labelZh: 'A, B, C',   labelEn: 'A, B, C',   value: 'upper_alpha',     sample: 'A' },
+  { labelZh: 'i, ii, iii',labelEn: 'i, ii, iii',value: 'lower_roman',     sample: 'i' },
+  { labelZh: 'I, II, III',labelEn: 'I, II, III',value: 'upper_roman',     sample: 'I' },
+  { labelZh: '一, 二, 三',labelEn: '一, 二, 三',value: 'cjk_ideographic', sample: '一' },
+]
+
+const FIELD_ITEMS: { type: string; labelZh: string; labelEn: string; icon: React.ReactNode; shortcut?: string }[] = [
+  { type: 'pageNumber',   labelZh: '页码',         labelEn: 'Page Number',      icon: <Hash size={14} />,    shortcut: 'PAGE' },
+  { type: 'totalPages',   labelZh: '总页数',       labelEn: 'Total Pages',      icon: <FileText size={14} />,shortcut: 'NUMPAGES' },
+  { type: 'currentDate',  labelZh: '当前日期',     labelEn: 'Current Date',     icon: <Calendar size={14} />,shortcut: 'DATE' },
+  { type: 'currentTime',  labelZh: '当前时间',     labelEn: 'Current Time',     icon: <Clock size={14} />,   shortcut: 'TIME' },
+  { type: 'authorName',   labelZh: '作者名称',     labelEn: 'Author',           icon: <User size={14} />,    shortcut: 'AUTHOR' },
+  { type: 'documentTitle',labelZh: '文档标题',     labelEn: 'Document Title',   icon: <FileText size={14} />,shortcut: 'TITLE' },
+  { type: 'lastSavedDate',labelZh: '最后保存日期', labelEn: 'Last Saved Date',  icon: <Clock size={14} />,   shortcut: 'SAVEDATE' },
+  { type: 'printDate',    labelZh: '打印日期',     labelEn: 'Print Date',       icon: <Calendar size={14} />,shortcut: 'PRINTDATE' },
+]
 
 // ================================================================
 export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetup, onWatermark, pluginActions }: ToolbarProps) {
@@ -336,13 +371,17 @@ function ToolbarButton({
 function FontDropdown({ onSelect }: { onSelect: (font: string) => void }) {
   const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
   const selected = textStyle?.font || 'SimSun'
+  const { t } = useTranslation()
+  const isEN = t('headerBar.brand') === 'EMR Editor' ? false : true
+  const found = FONT_FAMILIES.find(f => f.value === selected)
+  const currentLabel = found ? (isEN ? found.labelEn : found.labelZh) : (isEN ? 'SimSun' : '宋体')
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button className="flex items-center gap-1 px-2 py-1 text-sm text-chrome-ink-body
                             hover:bg-chrome-muted rounded-md min-w-[90px] h-8
                             data-[state=open]:bg-chrome-muted">
-          <span className="truncate">{FONT_FAMILIES.find(f => f.value === selected)?.label || '宋体'}</span>
+          <span className="truncate">{currentLabel}</span>
           <ChevronDown size={12} />
         </button>
       </DropdownMenu.Trigger>
@@ -359,7 +398,7 @@ function FontDropdown({ onSelect }: { onSelect: (font: string) => void }) {
               style={{ fontFamily: f.value }}
               onClick={() => onSelect(f.value)}
             >
-              {f.label}
+              {isEN ? f.labelEn : f.labelZh}
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>
@@ -491,16 +530,18 @@ function ColorPicker({ onSelect }: { onSelect: (color: string) => void }) {
 // ---- 控件插入下拉 ----
 
 function InsertControlDropdown({ onInsert }: { onInsert?: (type: string) => void }) {
+  const { t } = useTranslation()
+  const isEN = t('headerBar.brand') === 'EMR Editor' ? false : true
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
           className="flex items-center gap-1 px-2 py-1 text-sm text-chrome-ink-secondary
                      hover:bg-chrome-muted rounded-md h-8 data-[state=open]:bg-chrome-muted"
-          title="插入表单控件"
+          title={t('editor.insert.control')}
         >
           <ChevronsUpDown size={14} />
-          <span className="hidden lg:inline text-xs">控件</span>
+          <span className="hidden lg:inline text-xs">{isEN ? 'Control' : '控件'}</span>
           <ChevronDown size={10} />
         </button>
       </DropdownMenu.Trigger>
@@ -509,7 +550,7 @@ function InsertControlDropdown({ onInsert }: { onInsert?: (type: string) => void
           className="min-w-[200px] bg-chrome rounded-md shadow-lg border border-line py-1 z-50"
           sideOffset={4} align="start"
         >
-          {CONTROLS.map(({ type, label, description, icon }) => (
+          {CONTROLS.map(({ type, labelKey, descZh, descEn, icon }) => (
             <DropdownMenu.Item
               key={type}
               className="flex items-center gap-3 px-3 py-2 text-sm text-chrome-ink-body outline-none cursor-default
@@ -518,8 +559,8 @@ function InsertControlDropdown({ onInsert }: { onInsert?: (type: string) => void
             >
               <span className="flex-shrink-0 text-chrome-ink-muted">{icon}</span>
               <div className="flex flex-col min-w-0">
-                <span className="font-medium">{label}</span>
-                <span className="text-xs text-chrome-ink-muted">{description}</span>
+                <span className="font-medium">{t(labelKey)}</span>
+                <span className="text-xs text-chrome-ink-muted">{isEN ? descEn : descZh}</span>
               </div>
             </DropdownMenu.Item>
           ))}
@@ -531,20 +572,13 @@ function InsertControlDropdown({ onInsert }: { onInsert?: (type: string) => void
 
 // ---- 标题样式下拉 (TASK-457) ----
 
-const HEADING_STYLES = [
-  { label: '正文', value: 0 },
-  { label: '标题 1', value: 1 },
-  { label: '标题 2', value: 2 },
-  { label: '标题 3', value: 3 },
-  { label: '标题 4', value: 4 },
-  { label: '标题 5', value: 5 },
-  { label: '标题 6', value: 6 },
-]
-
 function HeadingDropdown({ onSelect }: { onSelect: (level: number) => void }) {
   const paraStyle = useEditorStoreSnapshot((s) => s.paragraphStyle)
   const selected = paraStyle?.outlineLevel ?? 0
-  const label = HEADING_STYLES.find(h => h.value === selected)?.label || '正文'
+  const { t } = useTranslation()
+  const isEN = t('headerBar.brand') === 'EMR Editor' ? false : true
+  const found = HEADING_STYLES.find(h => h.value === selected)
+  const label = found ? (isEN ? found.labelEn : found.labelZh) : (isEN ? 'Body' : '正文')
 
   return (
     <DropdownMenu.Root>
@@ -553,7 +587,7 @@ function HeadingDropdown({ onSelect }: { onSelect: (level: number) => void }) {
           className="flex items-center gap-1 px-2 py-1 text-sm text-chrome-ink-body
                      hover:bg-chrome-muted rounded-md min-w-[70px] h-8
                      data-[state=open]:bg-chrome-muted"
-          title="标题样式"
+          title={t('editor.heading.h1') === '标题 1' ? '标题样式' : 'Heading Style'}
         >
           <Heading size={14} />
           <span className="truncate">{label}</span>
@@ -576,7 +610,7 @@ function HeadingDropdown({ onSelect }: { onSelect: (level: number) => void }) {
               } : undefined}
               onClick={() => onSelect(h.value)}
             >
-              {h.label}
+              {(isEN ? h.labelEn : h.labelZh)}
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>
@@ -695,23 +729,14 @@ function HeaderFooterDropdown({
 
 // ---- 域代码插入下拉 (R39) ----
 
-const FIELD_ITEMS: { type: string; label: string; icon: React.ReactNode; shortcut?: string }[] = [
-  { type: 'pageNumber', label: '页码', icon: <Hash size={14} />, shortcut: 'PAGE' },
-  { type: 'totalPages', label: '总页数', icon: <FileText size={14} />, shortcut: 'NUMPAGES' },
-  { type: 'currentDate', label: '当前日期', icon: <Calendar size={14} />, shortcut: 'DATE' },
-  { type: 'currentTime', label: '当前时间', icon: <Clock size={14} />, shortcut: 'TIME' },
-  { type: 'authorName', label: '作者名称', icon: <User size={14} />, shortcut: 'AUTHOR' },
-  { type: 'documentTitle', label: '文档标题', icon: <FileText size={14} />, shortcut: 'TITLE' },
-  { type: 'lastSavedDate', label: '最后保存日期', icon: <Clock size={14} />, shortcut: 'SAVEDATE' },
-  { type: 'printDate', label: '打印日期', icon: <Calendar size={14} />, shortcut: 'PRINTDATE' },
-]
-
 function FieldDropdown({ onInsert }: { onInsert?: (type: string) => void }) {
+  const { t } = useTranslation()
+  const isEN = t('headerBar.brand') === 'EMR Editor' ? false : true
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          title="插入域代码"
+          title={t('toolbar.insertField')}
           className="toolbar-btn flex items-center gap-0.5"
         >
           <Hash size={16} />
@@ -725,7 +750,7 @@ function FieldDropdown({ onInsert }: { onInsert?: (type: string) => void }) {
           sideOffset={4}
         >
           <div className="px-2 py-1 text-[10px] text-chrome-ink-muted uppercase tracking-wider">
-            插入域代码
+            {t('toolbar.insertField')}
           </div>
           {FIELD_ITEMS.map(item => (
             <DropdownMenu.Item
@@ -735,7 +760,7 @@ function FieldDropdown({ onInsert }: { onInsert?: (type: string) => void }) {
               onClick={() => onInsert?.(item.type)}
             >
               <span className="flex-shrink-0 text-chrome-ink-muted">{item.icon}</span>
-              <span className="flex-1">{item.label}</span>
+              <span className="flex-1">{isEN ? item.labelEn : item.labelZh}</span>
               {item.shortcut && (
                 <span className="text-[10px] text-chrome-ink-muted font-mono">{item.shortcut}</span>
               )}
@@ -804,17 +829,10 @@ function HighlightPicker({ onSelect }: { onSelect: (color: string) => void }) {
 
 // ---- 编号样式下拉 ----
 
-const NUMBER_STYLES: { label: string; value: string; sample: string }[] = [
-  { label: '1, 2, 3',        value: 'decimal',          sample: '1' },
-  { label: 'a, b, c',        value: 'lower_alpha',      sample: 'a' },
-  { label: 'A, B, C',        value: 'upper_alpha',      sample: 'A' },
-  { label: 'i, ii, iii',     value: 'lower_roman',      sample: 'i' },
-  { label: 'I, II, III',     value: 'upper_roman',      sample: 'I' },
-  { label: '一, 二, 三',     value: 'cjk_ideographic',  sample: '一' },
-]
-
 function NumberStyleDropdown({ selected, onSelect }: { selected: string; onSelect: (value: string) => void }) {
   const current = NUMBER_STYLES.find(n => n.value === selected) || NUMBER_STYLES[0]
+  const { t } = useTranslation()
+  const isEN = t('headerBar.brand') === 'EMR Editor' ? false : true
 
   return (
     <DropdownMenu.Root>
@@ -822,7 +840,7 @@ function NumberStyleDropdown({ selected, onSelect }: { selected: string; onSelec
         <button
           className="flex items-center gap-0.5 px-1.5 py-1 text-xs text-chrome-ink-tertiary
                      hover:bg-chrome-muted rounded-md h-8 data-[state=open]:bg-chrome-muted"
-          title="编号样式"
+          title={t('toolbar.numberStyle')}
         >
           <span className="font-mono text-chrome-ink-secondary">{current.sample}</span>
           <ChevronDown size={10} />
@@ -844,7 +862,7 @@ function NumberStyleDropdown({ selected, onSelect }: { selected: string; onSelec
               )}
               onClick={() => onSelect(n.value)}
             >
-              <span className="font-mono">{n.label}</span>
+              <span className="font-mono">{isEN ? n.labelEn : n.labelZh}</span>
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>

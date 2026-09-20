@@ -24,7 +24,7 @@ import { locale } from '@/engine'
 import { bootstrapLocale, LOCALE_STORAGE_KEY } from '@/i18n/bootstrap'
 import { LanguageMenu } from '../LanguageMenu'
 
-const trigger = () => screen.getByRole('button', { name: '界面语言' })
+const trigger = () => screen.getByRole('button', { name: /语言|Language/i })
 // Radix 开菜单后有一次聚焦/宏任务更新, 一并等掉, 否则会报 act(...) 警告
 const openMenu = async () => {
   await act(async () => {
@@ -49,19 +49,6 @@ describe('LanguageMenu', () => {
     bootstrapLocale()
     render(<LanguageMenu />)
     expect(trigger().textContent).toContain('简体中文')
-  })
-
-  it('展开后两种语言都带「未全量接入」标注', async () => {
-    bootstrapLocale()
-    render(<LanguageMenu />)
-
-    await openMenu()
-
-    const items = screen.getAllByRole('menuitem')
-    expect(items).toHaveLength(2)
-    for (const item of items) {
-      expect(item.textContent).toContain('未全量接入')
-    }
   })
 
   it('选中 English → 引擎语言、localStorage、<html lang> 三者同步', async () => {
