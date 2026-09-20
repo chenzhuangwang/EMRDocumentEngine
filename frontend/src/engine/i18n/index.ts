@@ -577,7 +577,7 @@ export interface LocaleMessages {
   'pageSetup.headerDistance': string
   'pageSetup.footerDistance': string
   // ============================================================
-  // WatermarkDialog
+  // WatermarkDialog (复用 dialog.title.watermark; 此处不复述)
   // ============================================================
   'watermark.text': string
   'watermark.fontSize': string
@@ -591,6 +591,8 @@ export interface LocaleMessages {
   'watermark.remove': string
   'watermark.internalMark': string
   'watermark.confidentialMark': string
+  'watermark.textPlaceholder': string       // '例如: 内部资料'
+  'watermark.removeTitle': string            // '删除本文档的水印'
   // ============================================================
   // PasteSpecialDialog
   // ============================================================
@@ -1163,6 +1165,8 @@ const zhCN: LocaleMessages = {
   'watermark.remove': '移除水印',
   'watermark.internalMark': '内部资料',
   'watermark.confidentialMark': '机密密级',
+  'watermark.textPlaceholder': '例如: 内部资料',
+  'watermark.removeTitle': '删除本文档的水印',
   // ===== PasteSpecialDialog =====
   'paste.keepSource': '保留源格式',
   'paste.matchTarget': '匹配目标格式',
@@ -1713,6 +1717,8 @@ const enUS: LocaleMessages = {
   'watermark.remove': 'Remove Watermark',
   'watermark.internalMark': 'Internal',
   'watermark.confidentialMark': 'Confidential',
+  'watermark.textPlaceholder': 'e.g. Internal',
+  'watermark.removeTitle': 'Remove watermark from this document',
   // ===== PasteSpecialDialog =====
   'paste.keepSource': 'Keep Source Format',
   'paste.matchTarget': 'Match Target Format',

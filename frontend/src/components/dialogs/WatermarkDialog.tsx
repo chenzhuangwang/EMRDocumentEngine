@@ -18,6 +18,7 @@ import { useState, useEffect } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { X, Type, Palette, RotateCw, Trash2 } from 'lucide-react'
 import type { WatermarkConfig } from '@/engine'
+import { useTranslation } from '@/i18n/useTranslation'
 
 interface WatermarkDialogProps {
   open: boolean
@@ -41,6 +42,7 @@ const DEFAULTS: WatermarkConfig = {
 }
 
 export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemove }: WatermarkDialogProps) {
+  const { t } = useTranslation()
   const [config, setConfig] = useState<WatermarkConfig>({ ...DEFAULTS, ...initialConfig })
 
   useEffect(() => { if (open) setConfig({ ...DEFAULTS, ...initialConfig }) }, [open, initialConfig])
@@ -59,28 +61,29 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemov
           <div className="flex flex-shrink-0 items-center justify-between px-5 py-3 border-b border-line-subtle">
             <div className="flex items-center gap-2">
               <Type size={16} className="text-chrome-ink-tertiary" />
-              <Dialog.Title className="text-sm font-medium text-chrome-ink-strong">水印设置</Dialog.Title>
+              <Dialog.Title className="text-sm font-medium text-chrome-ink-strong">{t('dialog.title.watermark')}</Dialog.Title>
             </div>
-            <button onClick={onClose} className="p-1 rounded hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary">
+            <button onClick={onClose} aria-label={t('common.close')}
+                    className="p-1 rounded hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary">
               <X size={14} />
             </button>
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
             {/* 水印文字 */}
-            <Field label="水印文字" icon={<Type size={12} />}>
+            <Field label={t('watermark.text')} icon={<Type size={12} />}>
               <input
                 type="text"
                 value={config.text || ''}
                 onChange={(e) => update({ text: e.target.value })}
-                placeholder="例如: 内部资料"
+                placeholder={t('watermark.textPlaceholder')}
                 className="w-full text-sm px-2 py-1.5 border border-line rounded focus:outline-none focus:border-blue-400"
               />
             </Field>
 
             {/* 字号 + 旋转 */}
             <div className="flex gap-3">
-              <Field label="字号" className="flex-1">
+              <Field label={t('watermark.fontSize')} className="flex-1">
                 <input
                   type="number"
                   value={config.fontSize || 48}
@@ -89,7 +92,7 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemov
                   className="w-full text-sm px-2 py-1.5 border border-line rounded focus:outline-none focus:border-blue-400"
                 />
               </Field>
-              <Field label="旋转" icon={<RotateCw size={12} />} className="flex-1">
+              <Field label={t('watermark.rotation')} icon={<RotateCw size={12} />} className="flex-1">
                 <input
                   type="number"
                   value={config.rotation || 45}
@@ -102,7 +105,7 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemov
 
             {/* 颜色 + 透明度 */}
             <div className="flex gap-3">
-              <Field label="颜色" icon={<Palette size={12} />} className="flex-1">
+              <Field label={t('watermark.color')} icon={<Palette size={12} />} className="flex-1">
                 <input
                   type="color"
                   value={config.color || '#000000'}
@@ -110,7 +113,7 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemov
                   className="w-full h-8 border border-line rounded cursor-pointer"
                 />
               </Field>
-              <Field label="透明度" className="flex-1">
+              <Field label={t('watermark.opacity')} className="flex-1">
                 <input
                   type="range"
                   value={(config.opacity ?? 0.08) * 100}
@@ -123,7 +126,7 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemov
             </div>
 
             {/* 间距 */}
-            <Field label="图案间距">
+            <Field label={t('watermark.spacing')}>
               <input
                 type="number"
                 value={config.spacing || 200}
@@ -140,18 +143,18 @@ export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemov
               <button
                 onClick={() => { onRemove(); onClose() }}
                 className="mr-auto flex items-center gap-1 px-2 py-1.5 text-xs text-red-600 rounded hover:bg-red-50"
-                title="删除本文档的水印"
+                title={t('watermark.removeTitle')}
               >
                 <Trash2 size={12} />
-                移除水印
+                {t('watermark.remove')}
               </button>
             )}
-            <button onClick={onClose} className="px-3 py-1.5 text-xs text-chrome-ink-secondary hover:text-chrome-ink-strong">取消</button>
+            <button onClick={onClose} className="px-3 py-1.5 text-xs text-chrome-ink-secondary hover:text-chrome-ink-strong">{t('common.cancel')}</button>
             <button
               onClick={() => { onApply?.(config); onClose() }}
               className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
-              应用水印
+              {t('watermark.apply')}
             </button>
           </div>
         </Dialog.Content>
