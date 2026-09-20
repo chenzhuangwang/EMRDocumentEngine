@@ -18,6 +18,7 @@ import {
   CaseSensitive, WholeWord, Regex,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/useTranslation'
 
 // ---- 类型 ----
 
@@ -68,6 +69,7 @@ export function FindReplaceDialog({
   onReplace,
   onReplaceAll,
 }: FindReplaceDialogProps) {
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [replacement, setReplacement] = useState('')
   const [showReplace, setShowReplace] = useState(initialMode === 'replace')
@@ -119,11 +121,12 @@ export function FindReplaceDialog({
           {/* 标题栏 */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-line-subtle">
             <Dialog.Title className="text-sm font-semibold text-chrome-ink-strong">
-              {showReplace ? '查找和替换' : '查找'}
+              {showReplace ? t('find.replace') : t('find.find')}
             </Dialog.Title>
             <button
               className="text-chrome-ink-muted hover:text-chrome-ink-secondary transition-colors"
               onClick={onClose}
+              aria-label={t('common.close')}
             >
               <X size={16} />
             </button>
@@ -137,7 +140,7 @@ export function FindReplaceDialog({
                 <input
                   ref={inputRef}
                   className="flex-1 bg-transparent border-none outline-none text-sm text-chrome-ink-body placeholder:text-chrome-ink-muted"
-                  placeholder="输入查找内容..."
+                  placeholder={t('find.placeholder')}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
@@ -157,7 +160,7 @@ export function FindReplaceDialog({
                 <Replace size={14} className="text-chrome-ink-muted flex-shrink-0" />
                 <input
                   className="flex-1 bg-transparent border-none outline-none text-sm text-chrome-ink-body placeholder:text-chrome-ink-muted"
-                  placeholder="替换为..."
+                  placeholder={t('find.replacePlaceholder')}
                   value={replacement}
                   onChange={(e) => setReplacement(e.target.value)}
                 />
@@ -170,19 +173,19 @@ export function FindReplaceDialog({
                 active={options.caseSensitive}
                 onClick={() => toggleOption('caseSensitive')}
                 icon={<CaseSensitive size={14} />}
-                label="Aa"
+                label={t('find.caseSensitive')}
               />
               <OptionToggle
                 active={options.wholeWord}
                 onClick={() => toggleOption('wholeWord')}
                 icon={<WholeWord size={14} />}
-                label="全词"
+                label={t('find.wholeWord')}
               />
               <OptionToggle
                 active={options.useRegex}
                 onClick={() => toggleOption('useRegex')}
                 icon={<Regex size={14} />}
-                label=".*"
+                label={t('find.useRegex')}
               />
 
               <div className="flex-1" />
@@ -192,7 +195,7 @@ export function FindReplaceDialog({
                 onClick={() => setShowReplace(!showReplace)}
               >
                 <ListFilter size={12} />
-                {showReplace ? '收起替换' : '展开替换'}
+                {showReplace ? t('find.collapseReplace') : t('find.expandReplace')}
               </button>
             </div>
 
@@ -206,7 +209,7 @@ export function FindReplaceDialog({
                 onClick={handleFind}
               >
                 <Search size={12} />
-                查找
+                {t('find.find')}
               </button>
 
               <button
@@ -215,7 +218,7 @@ export function FindReplaceDialog({
                            disabled:opacity-40 disabled:cursor-not-allowed"
                 disabled={matchCount === 0}
                 onClick={onFindPrevious}
-                title="上一个 (Shift+Enter)"
+                title={t('find.previous')}
               >
                 <ArrowUp size={12} />
               </button>
@@ -226,7 +229,7 @@ export function FindReplaceDialog({
                            disabled:opacity-40 disabled:cursor-not-allowed"
                 disabled={matchCount === 0}
                 onClick={onFindNext}
-                title="下一个 (Enter)"
+                title={t('find.next')}
               >
                 <ArrowDown size={12} />
               </button>
@@ -242,7 +245,7 @@ export function FindReplaceDialog({
                     disabled={matchCount === 0 || !replacement}
                     onClick={() => onReplace?.(replacement)}
                   >
-                    替换
+                    {t('find.replace')}
                   </button>
 
                   <button
@@ -252,7 +255,7 @@ export function FindReplaceDialog({
                     disabled={matchCount === 0 || !replacement}
                     onClick={() => onReplaceAll?.(replacement)}
                   >
-                    全部替换
+                    {t('find.replaceAll')}
                   </button>
                 </>
               )}

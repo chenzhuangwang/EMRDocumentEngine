@@ -541,6 +541,10 @@ export interface LocaleMessages {
   'find.previous': string
   'find.replaceAll': string
   'find.close': string
+  'find.placeholder': string                  // '输入查找内容...'
+  'find.replacePlaceholder': string           // '替换为...'
+  'find.expandReplace': string                // '展开替换'
+  'find.collapseReplace': string             // '收起替换'
   // ============================================================
   // PrintDialog
   // ============================================================
@@ -1131,6 +1135,10 @@ const zhCN: LocaleMessages = {
   'find.previous': '上一个',
   'find.replaceAll': '全部替换',
   'find.close': '关闭',
+  'find.placeholder': '输入查找内容...',
+  'find.replacePlaceholder': '替换为...',
+  'find.expandReplace': '展开替换',
+  'find.collapseReplace': '收起替换',
   // ===== PrintDialog =====
   'print.recent': '最近打印',
   'print.unfinished': '未打完',
@@ -1693,6 +1701,10 @@ const enUS: LocaleMessages = {
   'find.previous': 'Previous',
   'find.replaceAll': 'Replace All',
   'find.close': 'Close',
+  'find.placeholder': 'Enter search term...',
+  'find.replacePlaceholder': 'Replace with...',
+  'find.expandReplace': 'Show Replace',
+  'find.collapseReplace': 'Hide Replace',
   // ===== PrintDialog =====
   'print.recent': 'Recent Prints',
   'print.unfinished': 'Unfinished',
