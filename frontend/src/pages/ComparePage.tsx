@@ -16,8 +16,10 @@ import { documentApi } from '@/services/api'
 import type { DocumentTree } from '@/engine/document/core/DocumentModel'
 import { NodePool, buildNodePool } from '@/engine/document/core/NodePool'
 import { ArrowLeft } from 'lucide-react'
+import { useTranslation } from '@/i18n/useTranslation'
 
 export default function ComparePage() {
+  const { t } = useTranslation()
   const { oldId, newId } = useParams<{ oldId: string; newId: string }>()
   const navigate = useNavigate()
   const [oldDoc, setOldDoc] = useState<DocumentTree | null>(null)
@@ -48,15 +50,15 @@ export default function ComparePage() {
           const newMap = new Map<string, import('@/engine/document/core/DocumentModel').BaseNode>()
           newMap.set(newTree.id, newTree as unknown as import('@/engine/document/core/DocumentModel').BaseNode)
           setNewPool(buildNodePool(newMap, { body: newTree.id }))
-        } catch { setError('文档解析失败') }
+        } catch { setError(t('compare.parseError')) }
       } else {
-        setError('文档内容为空')
+        setError(t('compare.emptyError'))
       }
-    }).catch(() => setError('加载文档失败'))
+    }).catch(() => setError(t('compare.loadError')))
       .finally(() => setLoading(false))
-  }, [oldId, newId])
+  }, [oldId, newId, t])
 
-  if (loading) return <div className="flex items-center justify-center h-full text-chrome-ink-muted">加载中...</div>
+  if (loading) return <div className="flex items-center justify-center h-full text-chrome-ink-muted">{t('editorPage.loading')}</div>
   if (error) return <div className="flex items-center justify-center h-full text-red-500">{error}</div>
   if (!oldDoc || !newDoc || !oldPool || !newPool) return null
 
@@ -68,10 +70,10 @@ export default function ComparePage() {
           onClick={() => navigate(-1)}
         >
           <ArrowLeft size={16} />
-          返回
+          {t('common.back')}
         </button>
-        <h1 className="text-base font-semibold text-chrome-ink-strong">文档比较</h1>
-        <span className="text-xs text-chrome-ink-muted">旧版本 ID: {oldId} → 新版本 ID: {newId}</span>
+        <h1 className="text-base font-semibold text-chrome-ink-strong">{t('compare.title')}</h1>
+        <span className="text-xs text-chrome-ink-muted">{t('compare.versionIds', { oldId: oldId ?? '', newId: newId ?? '' })}</span>
       </div>
       <div className="flex-1 overflow-auto">
         <DocumentCompareView

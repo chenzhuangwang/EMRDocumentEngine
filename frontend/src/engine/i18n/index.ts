@@ -54,6 +54,7 @@ export interface LocaleMessages {
   'common.all': string
   'common.unknown': string
   'common.wordCount': string           // 词数后缀: 'X 词'
+  'common.back': string                 // 通用返回按钮 (ComparePage 等)
   // ============================================================
   // 编辑器 — 动作
   // ============================================================
@@ -471,6 +472,10 @@ export interface LocaleMessages {
   'compare.reject': string
   'compare.acceptAll': string
   'compare.rejectAll': string
+  'compare.versionIds': string           // '旧版本 ID: {oldId} → 新版本 ID: {newId}'
+  'compare.parseError': string           // '文档解析失败'
+  'compare.emptyError': string           // '文档内容为空'
+  'compare.loadError': string            // '加载文档失败'
   // ============================================================
   // ModeSwitcher (6 个编辑模式)
   // ============================================================
@@ -683,6 +688,7 @@ const zhCN: LocaleMessages = {
   'common.all': '全部',
   'common.unknown': '未知',
   'common.wordCount': '{n} 词',
+  'common.back': '返回',
   // ===== 编辑动作 =====
   'editor.undo': '撤销',
   'editor.redo': '重做',
@@ -1037,6 +1043,10 @@ const zhCN: LocaleMessages = {
   'compare.reject': '拒绝',
   'compare.acceptAll': '全部接受',
   'compare.rejectAll': '全部拒绝',
+  'compare.versionIds': '旧版本 ID: {oldId} → 新版本 ID: {newId}',
+  'compare.parseError': '文档解析失败',
+  'compare.emptyError': '文档内容为空',
+  'compare.loadError': '加载文档失败',
   // ===== ModeSwitcher =====
   'mode.edit': '编辑',
   'mode.design': '设计',
@@ -1207,6 +1217,7 @@ const enUS: LocaleMessages = {
   'common.all': 'All',
   'common.unknown': 'Unknown',
   'common.wordCount': '{n} words',
+  'common.back': 'Back',
   // ===== 编辑动作 =====
   'editor.undo': 'Undo',
   'editor.redo': 'Redo',
@@ -1561,6 +1572,10 @@ const enUS: LocaleMessages = {
   'compare.reject': 'Reject',
   'compare.acceptAll': 'Accept All',
   'compare.rejectAll': 'Reject All',
+  'compare.versionIds': 'Old ID: {oldId} → New ID: {newId}',
+  'compare.parseError': 'Failed to parse document',
+  'compare.emptyError': 'Document content is empty',
+  'compare.loadError': 'Failed to load document',
   // ===== ModeSwitcher =====
   'mode.edit': 'Edit',
   'mode.design': 'Design',
