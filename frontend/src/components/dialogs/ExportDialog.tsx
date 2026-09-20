@@ -12,51 +12,22 @@ import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { X, FileText, FileJson, FileCode, Download, Check, AlignLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/useTranslation'
 
 interface ExportFormat {
   id: string
-  label: string
-  description: string
+  labelKey: 'export.pdf' | 'export.word' | 'export.html' | 'export.txt' | 'export.json'
+  descKey: 'export.pdfDesc' | 'export.wordDesc' | 'export.htmlDesc' | 'export.txtDesc' | 'export.jsonDesc'
   icon: React.ReactNode
   available: boolean
 }
 
 const FORMATS: ExportFormat[] = [
-  {
-    id: 'pdf',
-    label: 'PDF 文档',
-    description: '适合打印和分享，保留完整排版格式',
-    icon: <FileText size={22} />,
-    available: false,
-  },
-  {
-    id: 'word',
-    label: 'Word 文档',
-    description: '.docx 格式，可在 Microsoft Word 中编辑',
-    icon: <FileText size={22} />,
-    available: false,
-  },
-  {
-    id: 'html',
-    label: 'HTML 页面',
-    description: '纯静态网页，可在浏览器中直接查看',
-    icon: <FileCode size={22} />,
-    available: true,
-  },
-  {
-    id: 'txt',
-    label: '纯文本',
-    description: '仅导出文字内容，不含样式和格式',
-    icon: <AlignLeft size={22} />,
-    available: true,
-  },
-  {
-    id: 'json',
-    label: 'JSON 数据',
-    description: '结构化数据格式，适合程序处理和数据迁移',
-    icon: <FileJson size={22} />,
-    available: true,
-  },
+  { id: 'pdf',  labelKey: 'export.pdf',   descKey: 'export.pdfDesc',   icon: <FileText size={22} />, available: false },
+  { id: 'word', labelKey: 'export.word',  descKey: 'export.wordDesc',  icon: <FileText size={22} />, available: false },
+  { id: 'html', labelKey: 'export.html',  descKey: 'export.htmlDesc',  icon: <FileCode size={22} />, available: true },
+  { id: 'txt',  labelKey: 'export.txt',   descKey: 'export.txtDesc',   icon: <AlignLeft size={22} />, available: true },
+  { id: 'json', labelKey: 'export.json',  descKey: 'export.jsonDesc',  icon: <FileJson size={22} />, available: true },
 ]
 
 interface Props {
@@ -66,6 +37,7 @@ interface Props {
 }
 
 export function ExportDialog({ open, onOpenChange, onExport }: Props) {
+  const { t } = useTranslation()
   const [selectedId, setSelectedId] = useState<string>('json')
 
   return (
@@ -78,9 +50,10 @@ export function ExportDialog({ open, onOpenChange, onExport }: Props) {
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-line-subtle">
             <Dialog.Title className="text-base font-semibold text-chrome-ink-strong">
-              导出文档
+              {t('export.title')}
             </Dialog.Title>
-            <Dialog.Close className="p-1 rounded-md hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary">
+            <Dialog.Close className="p-1 rounded-md hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary"
+                         aria-label={t('common.close')}>
               <X size={18} />
             </Dialog.Close>
           </div>
@@ -108,14 +81,14 @@ export function ExportDialog({ open, onOpenChange, onExport }: Props) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-chrome-ink-strong">{fmt.label}</span>
+                    <span className="text-sm font-medium text-chrome-ink-strong">{t(fmt.labelKey)}</span>
                     {!fmt.available && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-chrome-strong text-chrome-ink-tertiary font-medium">
-                        即将推出
+                        {t('export.comingSoon')}
                       </span>
                     )}
                   </div>
-                  <div className="text-xs text-chrome-ink-muted mt-0.5">{fmt.description}</div>
+                  <div className="text-xs text-chrome-ink-muted mt-0.5">{t(fmt.descKey)}</div>
                 </div>
                 {selectedId === fmt.id && fmt.available && (
                   <Check size={18} className="text-blue-500 flex-shrink-0" />
@@ -127,7 +100,7 @@ export function ExportDialog({ open, onOpenChange, onExport }: Props) {
           {/* Footer */}
           <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-line-subtle">
             <Dialog.Close className="px-4 py-2 text-sm text-chrome-ink-secondary hover:bg-chrome-muted rounded-md transition-colors">
-              取消
+              {t('common.cancel')}
             </Dialog.Close>
             <button
               className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600
@@ -138,7 +111,7 @@ export function ExportDialog({ open, onOpenChange, onExport }: Props) {
               }}
             >
               <Download size={15} />
-              导出
+              {t('file.export')}
             </button>
           </div>
         </Dialog.Content>

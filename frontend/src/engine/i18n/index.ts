@@ -613,6 +613,17 @@ export interface LocaleMessages {
   'export.format': string
   'export.include': string
   'export.confirm': string
+  'export.pdf': string
+  'export.word': string
+  'export.html': string
+  'export.txt': string
+  'export.json': string
+  'export.pdfDesc': string
+  'export.wordDesc': string
+  'export.htmlDesc': string
+  'export.txtDesc': string
+  'export.jsonDesc': string
+  'export.comingSoon': string
   // ============================================================
   // ControlConfig 对话框专属
   // ============================================================
@@ -1170,6 +1181,17 @@ const zhCN: LocaleMessages = {
   'export.format': '格式',
   'export.include': '包含',
   'export.confirm': '确认导出',
+  'export.pdf': 'PDF 文档',
+  'export.word': 'Word 文档',
+  'export.html': 'HTML 页面',
+  'export.txt': '纯文本',
+  'export.json': 'JSON 数据',
+  'export.pdfDesc': '适合打印和分享，保留完整排版格式',
+  'export.wordDesc': '.docx 格式，可在 Microsoft Word 中编辑',
+  'export.htmlDesc': '纯静态网页，可在浏览器中直接查看',
+  'export.txtDesc': '仅导出文字内容，不含样式和格式',
+  'export.jsonDesc': '结构化数据格式，适合程序处理和数据迁移',
+  'export.comingSoon': '即将推出',
   // ===== ControlConfig =====
   'controlConfig.element': '语义层',
   'controlConfig.definition': '设计期',
@@ -1709,6 +1731,17 @@ const enUS: LocaleMessages = {
   'export.format': 'Format',
   'export.include': 'Include',
   'export.confirm': 'Confirm Export',
+  'export.pdf': 'PDF Document',
+  'export.word': 'Word Document',
+  'export.html': 'HTML Page',
+  'export.txt': 'Plain Text',
+  'export.json': 'JSON Data',
+  'export.pdfDesc': 'For printing and sharing; preserves full layout',
+  'export.wordDesc': '.docx format; editable in Microsoft Word',
+  'export.htmlDesc': 'Static web page; viewable directly in a browser',
+  'export.txtDesc': 'Text only, no styles or formatting',
+  'export.jsonDesc': 'Structured data; for programmatic processing',
+  'export.comingSoon': 'Coming Soon',
   // ===== ControlConfig =====
   'controlConfig.element': 'Semantic',
   'controlConfig.definition': 'Design-Time',
