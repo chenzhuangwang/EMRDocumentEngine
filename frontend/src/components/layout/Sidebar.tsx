@@ -29,6 +29,7 @@ import { CommentPanel } from '@/components/panels/CommentPanel'
 import { QCResultPanel } from '@/components/panels/QCResultPanel'
 import type { CommentThread } from '@/engine/document/core/DocumentModel'
 import type { QCIssue, QCResult } from '@/engine/qc/QCEngine'
+import { useTranslation } from '@/i18n/useTranslation'
 
 interface SidebarProps {
   templates?: TemplateCategory[]
@@ -71,6 +72,7 @@ export function Sidebar({
   onNewComment, getCommentExcerpt,
   qcResult = null, onQcIssueClick, onQcRecheck,
 }: SidebarProps) {
+  const { t } = useTranslation()
   const sidebarTab = useUIStore((s) => s.sidebarTab)
   const setSidebarTab = useUIStore((s) => s.setSidebarTab)
 
@@ -82,31 +84,31 @@ export function Sidebar({
           active={sidebarTab === 'templates'}
           onClick={() => setSidebarTab('templates')}
           icon={<FileText size={14} />}
-          label="模板"
+          label={t('sidebar.tab.templates')}
         />
         <SidebarTab
           active={sidebarTab === 'elements'}
           onClick={() => setSidebarTab('elements')}
           icon={<Puzzle size={14} />}
-          label="元素"
+          label={t('sidebar.tab.elements')}
         />
         <SidebarTab
           active={sidebarTab === 'pages'}
           onClick={() => setSidebarTab('pages')}
           icon={<ListTree size={14} />}
-          label="大纲"
+          label={t('sidebar.tab.pages')}
         />
         <SidebarTab
           active={sidebarTab === 'comments'}
           onClick={() => setSidebarTab('comments')}
           icon={<MessageSquare size={14} />}
-          label="批注"
+          label={t('sidebar.tab.comments')}
         />
         <SidebarTab
           active={sidebarTab === 'qc'}
           onClick={() => setSidebarTab('qc')}
           icon={<ShieldCheck size={14} />}
-          label="质控"
+          label={t('sidebar.tab.qc')}
         />
       </div>
 
@@ -118,7 +120,7 @@ export function Sidebar({
           <input
             className="bg-transparent border-none outline-none text-sm text-chrome-ink-body w-full
                        placeholder:text-chrome-ink-muted"
-            placeholder={sidebarTab === 'templates' ? '搜索模板...' : '搜索元素...'}
+            placeholder={t('sidebar.searchPlaceholder')}
           />
         </div>
       </div>
@@ -203,6 +205,7 @@ function TemplateList({
   onTemplateSelect?: (id: string) => void
   onNewTemplate?: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <div className="space-y-3">
       {/* 新建模板按钮 */}
@@ -212,7 +215,7 @@ function TemplateList({
         onClick={onNewTemplate}
       >
         <FilePlus size={14} />
-        新建模板
+        {t('file.new')}
       </button>
 
       {/* 模板分类 */}
@@ -246,7 +249,7 @@ function TemplateList({
       ) : (
         <div className="text-center py-8 text-sm text-chrome-ink-muted">
           <FolderOpen size={32} className="mx-auto mb-2 text-chrome-ink-disabled" />
-          暂无模板
+          {t('sidebar.templatesEmpty')}
         </div>
       )}
     </div>
@@ -256,22 +259,23 @@ function TemplateList({
 // ---- 元素面板 ----
 
 function ElementPalette({ onClick }: { onClick?: (type: string) => void }) {
-  const elements = [
-    { type: 'table', label: '表格', icon: <Table size={16} /> },
-    { type: 'image', label: '图片', icon: <Image size={16} /> },
+  const { t } = useTranslation()
+  const elements: { key: 'type-table' | 'type-image'; type: string; labelKey: 'editor.insert.table' | 'editor.insert.image'; icon: React.ReactNode }[] = [
+    { key: 'type-table', type: 'table', labelKey: 'editor.insert.table', icon: <Table size={16} /> },
+    { key: 'type-image', type: 'image', labelKey: 'editor.insert.image', icon: <Image size={16} /> },
   ]
 
   return (
     <div className="space-y-0.5">
       {elements.map((el) => (
         <div
-          key={el.type}
+          key={el.key}
           className="sidebar-item cursor-grab active:cursor-grabbing"
           draggable
           onClick={() => onClick?.(el.type)}
         >
           <span className="text-chrome-ink-muted">{el.icon}</span>
-          <span className="text-sm">{el.label}</span>
+          <span className="text-sm">{t(el.labelKey)}</span>
         </div>
       ))}
     </div>
