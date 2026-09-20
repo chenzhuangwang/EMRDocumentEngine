@@ -17,10 +17,18 @@ import { EditorContext, type EditorContextValue } from '../../editor/EditorProvi
 import { StatusBar } from '../StatusBar'
 import { EditorStore } from '@/engine/state/EditorStore'
 import {
-  reportError, EditorErrorCode, setErrorReporter, type ScoreResult,
+  reportError, EditorErrorCode, setErrorReporter, locale, type ScoreResult,
 } from '@/engine'
+import { bootstrapLocale } from '@/i18n/bootstrap'
 import { installErrorReporter } from '@/errorReporting'
 import { useEditorStore } from '@/store'
+
+beforeEach(() => {
+  bootstrapLocale()
+})
+afterEach(() => {
+  locale.setLocale('zh-CN')
+})
 
 function renderStatusBar(scaleScore?: ScoreResult | null) {
   const store = new EditorStore()

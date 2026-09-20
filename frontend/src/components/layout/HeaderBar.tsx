@@ -27,6 +27,7 @@ import { useEditor, useEditorStoreSnapshot } from '@/components/editor/EditorPro
 import { RepoLinks } from '@/components/common/RepoLinks'
 import { ThemeMenu } from '@/components/common/ThemeMenu'
 import { LanguageMenu } from '@/components/common/LanguageMenu'
+import { useTranslation } from '@/i18n/useTranslation'
 
 interface HeaderBarProps {
   onSave?: () => void
@@ -36,6 +37,7 @@ interface HeaderBarProps {
 }
 
 export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProperties }: HeaderBarProps) {
+  const { t } = useTranslation()
   const saveStatus = useEditorStoreSnapshot((s) => s.saveStatus)
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
   const user = useUserStore((s) => s.user)
@@ -51,14 +53,14 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
         <button
           className="toolbar-btn"
           onClick={toggleSidebar}
-          title={sidebarOpen ? '关闭侧边栏' : '打开侧边栏'}
+          title={sidebarOpen ? t('headerBar.closeSidebar') : t('headerBar.openSidebar')}
         >
           {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
         </button>
 
         <div className="flex items-center gap-2 text-chrome-accent-ink">
           <FileText size={22} />
-          <span className="font-semibold text-base hidden sm:inline">EMR Editor</span>
+          <span className="font-semibold text-base hidden sm:inline">{t('headerBar.brand')}</span>
         </div>
 
         <div className="h-6 w-px bg-chrome-strong" />
@@ -74,14 +76,14 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
         <button
           className="toolbar-btn"
           onClick={() => onFormat?.('undo')}
-          title="撤销 (Ctrl+Z)"
+          title={t('headerBar.undo')}
         >
           <Undo2 size={16} />
         </button>
         <button
           className="toolbar-btn"
           onClick={() => onFormat?.('redo')}
-          title="重做 (Ctrl+Y)"
+          title={t('headerBar.redo')}
         >
           <Redo2 size={16} />
         </button>
@@ -91,7 +93,7 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
         <button
           className="toolbar-btn"
           onClick={onSave}
-          title="保存 (Ctrl+S)"
+          title={t('headerBar.save')}
         >
           <Save size={16} />
         </button>
@@ -99,7 +101,7 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
         <button
           className="toolbar-btn"
           onClick={onImportDocument}
-          title="导入文档/模板 (JSON/HTML/Markdown)"
+          title={t('headerBar.import')}
         >
           <FolderOpen size={16} />
         </button>
@@ -107,7 +109,7 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
         <button
           className="toolbar-btn"
           onClick={onDocumentProperties}
-          title="文档属性"
+          title={t('headerBar.docProperties')}
         >
           <Settings size={16} />
         </button>
@@ -143,7 +145,7 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
         ) : (
           <div className="flex items-center gap-2 text-sm text-chrome-ink-tertiary">
             <User size={16} />
-            <span>未登录</span>
+            <span>{t('headerBar.notLoggedIn')}</span>
           </div>
         )}
       </div>
@@ -163,6 +165,7 @@ export function HeaderBar({ onSave, onImportDocument, onFormat, onDocumentProper
  * 投影回同步到草稿。
  */
 function DocumentTitleInput() {
+  const { t } = useTranslation()
   const editor = useEditor()
   const canonicalTitle = useEditorStoreSnapshot((s) => s.documentTitle)
   const [draft, setDraft] = useState(canonicalTitle)
@@ -197,8 +200,8 @@ function DocumentTitleInput() {
           e.currentTarget.blur()
         }
       }}
-      placeholder="未命名文档"
-      aria-label="文档标题"
+      placeholder={t('headerBar.titlePlaceholder')}
+      aria-label={t('headerBar.titleAria')}
     />
   )
 }
@@ -206,11 +209,12 @@ function DocumentTitleInput() {
 // ---- 保存状态指示器 ----
 
 function SaveIndicator({ status, isDirty }: { status: string; isDirty: boolean }) {
+  const { t } = useTranslation()
   if (!isDirty && status === 'saved') {
     return (
       <span className="text-xs text-chrome-ink-muted flex items-center gap-1">
         <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-        已保存
+        {t('headerBar.saveStatus.saved')}
       </span>
     )
   }
@@ -219,7 +223,7 @@ function SaveIndicator({ status, isDirty }: { status: string; isDirty: boolean }
     return (
       <span className="text-xs text-chrome-accent-ink flex items-center gap-1">
         <span className="w-1.5 h-1.5 rounded-full bg-primary-500 animate-pulse" />
-        保存中...
+        {t('headerBar.saveStatus.saving')}
       </span>
     )
   }
@@ -228,7 +232,7 @@ function SaveIndicator({ status, isDirty }: { status: string; isDirty: boolean }
     return (
       <span className="text-xs text-warning-500 flex items-center gap-1">
         <span className="w-1.5 h-1.5 rounded-full bg-warning-500" />
-        未保存
+        {t('headerBar.saveStatus.unsaved')}
       </span>
     )
   }
@@ -237,7 +241,7 @@ function SaveIndicator({ status, isDirty }: { status: string; isDirty: boolean }
     return (
       <span className="text-xs text-error-500 flex items-center gap-1">
         <span className="w-1.5 h-1.5 rounded-full bg-error-500" />
-        保存失败
+        {t('headerBar.saveStatus.error')}
       </span>
     )
   }

@@ -16,12 +16,22 @@
 //   - 外部 store.documentTitle 变化 (对话框/撤销/加载) 回同步到输入框。
 // ============================================================
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { EditorContext, type EditorContextValue } from '../../editor/EditorProvider'
 import { HeaderBar } from '../HeaderBar'
 import { EditorStore } from '@/engine/state/EditorStore'
+import { bootstrapLocale } from '@/i18n/bootstrap'
+import { locale } from '@/engine'
 import type { Editor } from '@/engine'
+
+beforeEach(() => {
+  // 锁定 zh-CN 上下文: HeaderBar 的 aria-label 等都从 t() 拉
+  bootstrapLocale()
+})
+afterEach(() => {
+  locale.setLocale('zh-CN')
+})
 
 function renderHeaderBar(initialTitle: string) {
   const store = new EditorStore()
@@ -38,7 +48,7 @@ function renderHeaderBar(initialTitle: string) {
 }
 
 function titleInput(): HTMLInputElement {
-  return screen.getByLabelText('文档标题') as HTMLInputElement
+  return screen.getByLabelText(/文档标题/) as HTMLInputElement
 }
 
 describe('HeaderBar 文档标题输入 (P2-C, 契约 §7.7/§7.8)', () => {

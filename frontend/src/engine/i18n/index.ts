@@ -358,6 +358,7 @@ export interface LocaleMessages {
   'statusBar.errorChipAria': string           // '引擎错误：{msg}（点击关闭）'
   'statusBar.scale.tooltip': string           // 完整句: 量表评分 X 分...
   'statusBar.scale.value': string             // '{total} 分'
+  'statusBar.scale.uncountedNote': string      // '\n另有 {n} 个控件已填但候选项未配数值，未计入。'
   // ============================================================
   // HeaderBar
   // ============================================================
@@ -941,6 +942,7 @@ const zhCN: LocaleMessages = {
   'statusBar.errorChipAria': '引擎错误：{msg}（点击关闭）',
   'statusBar.scale.tooltip': '量表评分 {total} 分（由 {counted} 个控件的选项数值汇总，只读派生）\n与「文书质控合规分」是两套独立口径，不互相换算。{uncounted}',
   'statusBar.scale.value': '{total} 分',
+  'statusBar.scale.uncountedNote': '\n另有 {n} 个控件已填但候选项未配数值，未计入。',
   // ===== HeaderBar =====
   'headerBar.openSidebar': '打开侧边栏',
   'headerBar.closeSidebar': '关闭侧边栏',
@@ -1464,6 +1466,7 @@ const enUS: LocaleMessages = {
   'statusBar.errorChipAria': 'Engine error: {msg} (click to dismiss)',
   'statusBar.scale.tooltip': 'Scale Score {total} (summed from {counted} controls\' option values, read-only)\nDistinct from QC compliance score; the two are not convertible.{uncounted}',
   'statusBar.scale.value': '{total}',
+  'statusBar.scale.uncountedNote': '\n{n} more controls are filled but have no option numeric values (excluded).',
   // ===== HeaderBar =====
   'headerBar.openSidebar': 'Open Sidebar',
   'headerBar.closeSidebar': 'Close Sidebar',
