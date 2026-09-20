@@ -677,6 +677,16 @@ export interface LocaleMessages {
   'docProps.discardConfirm': string
   'docProps.unsavedHint': string
   'docProps.continueEditing': string
+  'docProps.creator': string                  // '创建人'
+  'docProps.externalId': string               // '外部模板 ID'
+  'docProps.categoryId': string                // '外部分类 ID'
+  'docProps.placeholderAuthor': string         // '作者姓名'
+  'docProps.placeholderCreator': string        // '创建人'
+  'docProps.placeholderReviewer': string       // '审核人'
+  'docProps.placeholderDepartment': string      // '所属科室'
+  'docProps.placeholderCategory': string        // '文档分类'
+  'docProps.titlePlaceholder': string           // '文档标题'
+  'docProps.keywordsPlaceholder': string        // '关键词1, 关键词2'
   // ============================================================
   // RuntimeControlOverlay
   // ============================================================
@@ -1255,6 +1265,16 @@ const zhCN: LocaleMessages = {
   'docProps.discardConfirm': '当前有未保存的修改，是否放弃并继续？',
   'docProps.unsavedHint': '当前有未保存的修改',
   'docProps.continueEditing': '继续编辑',
+  'docProps.creator': '创建人',
+  'docProps.externalId': '外部模板 ID',
+  'docProps.categoryId': '外部分类 ID',
+  'docProps.placeholderAuthor': '作者姓名',
+  'docProps.placeholderCreator': '创建人',
+  'docProps.placeholderReviewer': '审核人',
+  'docProps.placeholderDepartment': '所属科室',
+  'docProps.placeholderCategory': '文档分类',
+  'docProps.titlePlaceholder': '文档标题',
+  'docProps.keywordsPlaceholder': '关键词1, 关键词2',
   // ===== RuntimeControlOverlay =====
   'overlay.enterNumber': '请输入数字',
   // ===== TableGrowOverlay =====
@@ -1821,6 +1841,16 @@ const enUS: LocaleMessages = {
   'docProps.discardConfirm': 'There are unsaved changes. Discard and continue?',
   'docProps.unsavedHint': 'You have unsaved changes',
   'docProps.continueEditing': 'Continue Editing',
+  'docProps.creator': 'Creator',
+  'docProps.externalId': 'External Template ID',
+  'docProps.categoryId': 'External Category ID',
+  'docProps.placeholderAuthor': 'Author name',
+  'docProps.placeholderCreator': 'Creator',
+  'docProps.placeholderReviewer': 'Reviewer',
+  'docProps.placeholderDepartment': 'Department',
+  'docProps.placeholderCategory': 'Category',
+  'docProps.titlePlaceholder': 'Document title',
+  'docProps.keywordsPlaceholder': 'keyword1, keyword2',
   // ===== RuntimeControlOverlay =====
   'overlay.enterNumber': 'Please enter a number',
   // ===== TableGrowOverlay =====

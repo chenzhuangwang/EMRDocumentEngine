@@ -28,6 +28,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { X, FileText, User, BadgeCheck, Building2, Tag, Calendar, Heading, Link, Hash } from 'lucide-react'
 import type { DocumentMetadata } from '@/engine/document/core/DocumentModel'
 import { normalizeDocumentMetadata } from '@/engine/document/core/DocumentModel'
+import { useTranslation } from '@/i18n/useTranslation'
 
 export interface DocumentPropertiesResult {
   /** 文档标题 (DocumentTree.title) */
@@ -63,6 +64,7 @@ const EDITABLE_KEYS: readonly EditableKey[] = ['author', 'creator', 'reviewer', 
 export function DocumentPropertiesDialog({
   open, onClose, initialTitle, initialValues, onApply,
 }: DocumentPropertiesDialogProps) {
+  const { t } = useTranslation()
   const [title, setTitle] = useState(initialTitle ?? '')
   const [values, setValues] = useState<DocumentMetadata>({ ...initialValues })
   const [keywordsText, setKeywordsText] = useState(joinKeywords(initialValues?.keywords))
@@ -103,23 +105,23 @@ export function DocumentPropertiesDialog({
   // 可编辑字段 (字符串型)
   const textFields: {
     key: EditableKey
-    label: string
+    labelKey: 'dialog.label.author' | 'docProps.creator' | 'dialog.label.reviewer' | 'dialog.label.department' | 'dialog.label.category'
     icon: React.ReactNode
-    placeholder?: string
+    placeholderKey?: 'docProps.placeholderAuthor' | 'docProps.placeholderCreator' | 'docProps.placeholderReviewer' | 'docProps.placeholderDepartment' | 'docProps.placeholderCategory'
   }[] = [
-    { key: 'author', label: '作者', icon: <User size={14} />, placeholder: '作者姓名' },
-    { key: 'creator', label: '创建人', icon: <BadgeCheck size={14} />, placeholder: '创建人' },
-    { key: 'reviewer', label: '审核人', icon: <User size={14} />, placeholder: '审核人' },
-    { key: 'department', label: '科室', icon: <Building2 size={14} />, placeholder: '所属科室' },
-    { key: 'category', label: '分类', icon: <Tag size={14} />, placeholder: '文档分类' },
+    { key: 'author',     labelKey: 'dialog.label.author',     icon: <User size={14} />,      placeholderKey: 'docProps.placeholderAuthor' },
+    { key: 'creator',    labelKey: 'docProps.creator',        icon: <BadgeCheck size={14} />, placeholderKey: 'docProps.placeholderCreator' },
+    { key: 'reviewer',   labelKey: 'dialog.label.reviewer',   icon: <User size={14} />,      placeholderKey: 'docProps.placeholderReviewer' },
+    { key: 'department', labelKey: 'dialog.label.department', icon: <Building2 size={14} />, placeholderKey: 'docProps.placeholderDepartment' },
+    { key: 'category',   labelKey: 'dialog.label.category',   icon: <Tag size={14} />,       placeholderKey: 'docProps.placeholderCategory' },
   ]
 
   // 只读字段 (系统生命周期 / 外部 importer)
-  const readonlyFields: { key: 'externalId' | 'categoryId' | 'createdAt' | 'updatedAt'; label: string; icon: React.ReactNode }[] = [
-    { key: 'externalId', label: '外部模板 ID', icon: <Link size={14} /> },
-    { key: 'categoryId', label: '外部分类 ID', icon: <Hash size={14} /> },
-    { key: 'createdAt', label: '创建时间', icon: <Calendar size={14} /> },
-    { key: 'updatedAt', label: '更新时间', icon: <Calendar size={14} /> },
+  const readonlyFields: { key: 'externalId' | 'categoryId' | 'createdAt' | 'updatedAt'; labelKey: 'docProps.externalId' | 'docProps.categoryId' | 'dialog.label.createdAt' | 'dialog.label.updatedAt'; icon: React.ReactNode }[] = [
+    { key: 'externalId', labelKey: 'docProps.externalId', icon: <Link size={14} /> },
+    { key: 'categoryId', labelKey: 'docProps.categoryId', icon: <Hash size={14} /> },
+    { key: 'createdAt',  labelKey: 'dialog.label.createdAt', icon: <Calendar size={14} /> },
+    { key: 'updatedAt',  labelKey: 'dialog.label.updatedAt', icon: <Calendar size={14} /> },
   ]
 
   return (
@@ -135,9 +137,10 @@ export function DocumentPropertiesDialog({
           <div className="flex flex-shrink-0 items-center justify-between px-5 py-3 border-b border-line-subtle">
             <div className="flex items-center gap-2">
               <FileText size={16} className="text-chrome-ink-tertiary" />
-              <Dialog.Title className="text-sm font-medium text-chrome-ink-strong">文档属性</Dialog.Title>
+              <Dialog.Title className="text-sm font-medium text-chrome-ink-strong">{t('dialog.title.documentProperties')}</Dialog.Title>
             </div>
-            <button onClick={requestClose} className="p-1 rounded hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary" aria-label="关闭">
+            <button onClick={requestClose} className="p-1 rounded hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary"
+                    aria-label={t('common.close')}>
               <X size={14} />
             </button>
           </div>
@@ -148,13 +151,13 @@ export function DocumentPropertiesDialog({
             <div>
               <label className="flex items-center gap-1.5 text-xs font-medium text-chrome-ink-secondary mb-1">
                 <Heading size={14} />
-                标题
+                {t('dialog.label.title')}
               </label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="文档标题"
+                placeholder={t('docProps.titlePlaceholder')}
                 className="w-full text-sm px-3 py-2 border border-line rounded-md
                            focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
               />
@@ -164,13 +167,13 @@ export function DocumentPropertiesDialog({
               <div key={f.key}>
                 <label className="flex items-center gap-1.5 text-xs font-medium text-chrome-ink-secondary mb-1">
                   {f.icon}
-                  {f.label}
+                  {t(f.labelKey)}
                 </label>
                 <input
                   type="text"
                   value={values[f.key] || ''}
                   onChange={(e) => update({ [f.key]: e.target.value })}
-                  placeholder={f.placeholder}
+                  placeholder={f.placeholderKey ? t(f.placeholderKey) : undefined}
                   className="w-full text-sm px-3 py-2 border border-line rounded-md
                              focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
                 />
@@ -181,13 +184,13 @@ export function DocumentPropertiesDialog({
             <div>
               <label className="flex items-center gap-1.5 text-xs font-medium text-chrome-ink-secondary mb-1">
                 <Tag size={14} />
-                关键词
+                {t('dialog.label.keywords')}
               </label>
               <input
                 type="text"
                 value={keywordsText}
                 onChange={(e) => setKeywordsText(e.target.value)}
-                placeholder="关键词1, 关键词2"
+                placeholder={t('docProps.keywordsPlaceholder')}
                 className="w-full text-sm px-3 py-2 border border-line rounded-md
                            focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
               />
@@ -197,7 +200,7 @@ export function DocumentPropertiesDialog({
               <div key={f.key}>
                 <label className="flex items-center gap-1.5 text-xs font-medium text-chrome-ink-secondary mb-1">
                   {f.icon}
-                  {f.label}
+                  {t(f.labelKey)}
                 </label>
                 <input
                   type="text"
@@ -216,13 +219,13 @@ export function DocumentPropertiesDialog({
               onClick={requestClose}
               className="px-3 py-1.5 text-xs text-chrome-ink-secondary hover:text-chrome-ink-strong"
             >
-              取消
+              {t('common.cancel')}
             </button>
             <button
               onClick={apply}
               className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
-              应用
+              {t('common.apply')}
             </button>
           </div>
 
@@ -230,19 +233,19 @@ export function DocumentPropertiesDialog({
           {confirmOpen && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20">
               <div className="w-72 rounded-lg bg-chrome p-4 shadow-xl border border-line">
-                <div className="text-sm text-chrome-ink-strong mb-3">有未保存的更改，确定放弃吗？</div>
+                <div className="text-sm text-chrome-ink-strong mb-3">{t('docProps.discardConfirm')}</div>
                 <div className="flex justify-end gap-2">
                   <button
                     onClick={() => setConfirmOpen(false)}
                     className="px-3 py-1.5 text-xs text-chrome-ink-secondary hover:text-chrome-ink-strong"
                   >
-                    继续编辑
+                    {t('docProps.continueEditing')}
                   </button>
                   <button
                     onClick={discardAndClose}
                     className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-md hover:bg-red-700"
                   >
-                    放弃更改
+                    {t('dialog.label.discardChanges')}
                   </button>
                 </div>
               </div>
