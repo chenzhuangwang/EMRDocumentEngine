@@ -25,9 +25,22 @@ import { ThemeMenu } from '@/components/common/ThemeMenu'
 import { LanguageMenu } from '@/components/common/LanguageMenu'
 import { MOCK_DOCUMENT_LIST } from '@/mocks/documents'
 import { RecentDocuments } from '@/components/sidebar/RecentDocuments'
+import { useTranslation } from '@/i18n/useTranslation'
+
+const STATUS_KEYS: Record<string, 'mock.document.status.draft' | 'mock.document.status.published' | 'mock.document.status.archived' | 'mock.document.status.unknown'> = {
+  draft: 'mock.document.status.draft',
+  published: 'mock.document.status.published',
+  archived: 'mock.document.status.archived',
+}
+const STATUS_CLASS: Record<string, string> = {
+  draft: 'bg-warning-100 text-yellow-700',
+  published: 'bg-success-100 text-green-700',
+  archived: 'bg-chrome-muted text-chrome-ink-secondary',
+}
 
 export default function HomePage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [documents, setDocuments] = useState<DocumentListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [searchKeyword, setSearchKeyword] = useState('')
@@ -44,7 +57,7 @@ export default function HomePage() {
       // 直接先用 Mock 数据
       setDocuments(MOCK_DOCUMENT_LIST)
     } catch (err) {
-      console.error('加载文档列表失败:', err)
+      console.error(t('home.loadError'), err)
       // 后端不可用: 使用 Mock 数据 (与 EditorPage 兜底同源, 见 src/mocks/documents.ts)
       setDocuments(MOCK_DOCUMENT_LIST)
     } finally {
@@ -66,7 +79,8 @@ export default function HomePage() {
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!confirm('确定删除该文档？')) return
+    // 浏览器原生 confirm 文案受 OS locale 控制, 不走 t()
+    if (!confirm(t('home.deleteConfirm'))) return
     try {
       await documentApi.delete(id)
       setDocuments(prev => prev.filter(d => d.id !== id))
@@ -82,7 +96,7 @@ export default function HomePage() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 text-chrome-accent-ink">
             <FileText size={24} />
-            <h1 className="text-lg font-semibold">EMR Document Editor</h1>
+            <h1 className="text-lg font-semibold">{t('home.brand')}</h1>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -90,7 +104,8 @@ export default function HomePage() {
           <ThemeMenu />
           <LanguageMenu />
           <div className="w-8 h-8 rounded-full bg-chrome-accent-strong text-chrome-accent-ink
-                          flex items-center justify-center text-sm font-medium">
+                          flex items-center justify-center text-sm font-medium"
+               title={t('home.avatarTooltip')}>
             U
           </div>
         </div>
@@ -102,8 +117,8 @@ export default function HomePage() {
           {/* 页面标题和新建按钮 */}
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h2 className="text-2xl font-bold text-chrome-ink">我的文档</h2>
-              <p className="text-chrome-ink-tertiary mt-1">管理和编辑所有结构化文档</p>
+              <h2 className="text-2xl font-bold text-chrome-ink">{t('home.title')}</h2>
+              <p className="text-chrome-ink-tertiary mt-1">{t('home.subtitle')}</p>
             </div>
             <button
               className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white
@@ -111,7 +126,7 @@ export default function HomePage() {
               onClick={handleNewDocument}
             >
               <FilePlus size={18} />
-              <span className="font-medium">新建文档</span>
+              <span className="font-medium">{t('home.new')}</span>
             </button>
           </div>
 
@@ -122,7 +137,7 @@ export default function HomePage() {
               className="w-full pl-10 pr-4 py-2.5 bg-chrome border border-line rounded-lg
                          text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
                          placeholder:text-chrome-ink-muted"
-              placeholder="搜索文档标题..."
+              placeholder={t('home.searchPlaceholder')}
               value={searchKeyword}
               onChange={(e) => setSearchKeyword(e.target.value)}
             />
@@ -134,7 +149,7 @@ export default function HomePage() {
           {/* 文档列表 */}
           {loading ? (
             <div className="flex items-center justify-center py-20">
-              <div className="text-chrome-ink-muted">加载中...</div>
+              <div className="text-chrome-ink-muted">{t('common.loading')}</div>
             </div>
           ) : filteredDocs.length > 0 ? (
             <div className="bg-chrome rounded-lg border border-line shadow-sm overflow-hidden">
@@ -142,18 +157,18 @@ export default function HomePage() {
                 <thead>
                   <tr className="border-b border-line bg-chrome-subtle">
                     <th className="text-left px-4 py-3 text-xs font-semibold text-chrome-ink-tertiary uppercase tracking-wider">
-                      文档标题
+                      {t('home.column.title')}
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-chrome-ink-tertiary uppercase tracking-wider">
-                      状态
+                      {t('home.column.status')}
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-chrome-ink-tertiary uppercase tracking-wider hidden md:table-cell">
-                      最后编辑
+                      {t('home.column.lastEditor')}
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-chrome-ink-tertiary uppercase tracking-wider hidden md:table-cell">
-                      更新时间
+                      {t('home.column.updatedAt')}
                     </th>
-                    <th className="w-10 px-4 py-3" />
+                    <th className="w-10 px-4 py-3">{t('home.column.action')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -185,7 +200,7 @@ export default function HomePage() {
                         <button
                           className="p-1 rounded hover:bg-red-50 text-chrome-ink-muted hover:text-red-500"
                           onClick={(e) => handleDelete(doc.id, e)}
-                          title="删除"
+                          title={t('home.deleteTitle')}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -198,15 +213,15 @@ export default function HomePage() {
           ) : (
             <div className="flex flex-col items-center justify-center py-20 text-chrome-ink-muted">
               <FolderOpen size={48} className="mb-4 text-chrome-ink-disabled" />
-              <p className="text-base font-medium text-chrome-ink-tertiary">暂无文档</p>
-              <p className="text-sm mt-1">点击"新建文档"开始创建</p>
+              <p className="text-base font-medium text-chrome-ink-tertiary">{t('home.empty')}</p>
+              <p className="text-sm mt-1">{t('home.emptyHint')}</p>
               <button
                 className="mt-4 flex items-center gap-2 px-4 py-2 bg-primary-600 text-white
                            rounded-lg hover:bg-primary-700 transition-colors"
                 onClick={handleNewDocument}
               >
                 <FilePlus size={16} />
-                新建文档
+                {t('home.new')}
               </button>
             </div>
           )}
@@ -217,25 +232,10 @@ export default function HomePage() {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const config: Record<string, { label: string; className: string }> = {
-    draft: {
-      label: '草稿',
-      className: 'bg-warning-100 text-yellow-700',
-    },
-    published: {
-      label: '已发布',
-      className: 'bg-success-100 text-green-700',
-    },
-    archived: {
-      label: '已归档',
-      className: 'bg-chrome-muted text-chrome-ink-secondary',
-    },
-  }
-
-  const { label, className } = config[status] || {
-    label: status,
-    className: 'bg-chrome-muted text-chrome-ink-secondary',
-  }
+  const { t } = useTranslation()
+  const key = STATUS_KEYS[status] ?? 'mock.document.status.unknown'
+  const label = t(key)
+  const className = STATUS_CLASS[status] ?? 'bg-chrome-muted text-chrome-ink-secondary'
 
   return (
     <span
