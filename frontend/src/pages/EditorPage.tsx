@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from '@/i18n/useTranslation'
 import { EditorLayout } from '@/components/layout/EditorLayout'
 import { ReadingModeOverlay } from '@/components/views/ReadingMode'
 import { DesignControlPalette } from '@/components/views/DesignControlPalette'
@@ -40,7 +41,7 @@ import { printHistory } from '@/services/PrintHistoryService'
 import { resolvePrintRange, selectPrintPages, buildPrintRecord, printDocKey } from '@/lib/printJob'
 import { getMockDocumentDetail } from '@/mocks/documents'
 import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
-import { templateImporter, isExternalTemplate, hfParagraphsForPage, reportError, EditorErrorCode } from '@/engine'
+import { templateImporter, isExternalTemplate, hfParagraphsForPage, reportError, EditorErrorCode, locale } from '@/engine'
 import { TOCGenerator } from '@/engine/render/TOCGenerator'
 import { buildExportHtml, buildExportText } from '@/lib/documentExport'
 import {
@@ -56,12 +57,18 @@ const QC_DEBOUNCE_MS = 600
 /**
  * 把已渲染的页面图交给浏览器打印 (开新窗口 + w.print())。
  * 打印与打印预览共用同一条输出路径 —— 预览后点打印看到的就是这里的结果。
+ *
+ * 注: 这个函数**不在 React 渲染树里** (在文件模块层), 用 module-level t() 拿当前
+ * 语言 —— 浏览器打印 HTML <title> 必须用 string literal, 不支持动态语言;
+ * 这里我们读一次并缓存, 用户切语言后下一次开打印窗口就会用新语言 (开新窗口
+ * 触发新函数执行)。
  */
 function openPrintWindow(pageImages: string[]): void {
   if (pageImages.length === 0) return
+  const title = locale.t('editorPage.printingTitle')
   const w = window.open('', '_blank', `width=${screen.width},height=${screen.height}`)
   if (!w) return
-  w.document.write(`<html><head><title>打印</title>${provenanceMetaTags()}<style>`)
+  w.document.write(`<html><head><title>${title}</title>${provenanceMetaTags()}<style>`)
   w.document.write('@page{size:A4;margin:0}body{margin:0;display:flex;flex-direction:column;align-items:center}')
   w.document.write('img{width:210mm;height:auto;page-break-after:always}img:last-child{page-break-after:auto}')
   w.document.write('</style></head><body>')
@@ -74,6 +81,7 @@ function openPrintWindow(pageImages: string[]): void {
 }
 
 export default function EditorPage() {
+  const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const containerRef = useRef<HTMLDivElement>(null)
   const [loadedDoc, setLoadedDoc] = useState<unknown>(undefined)
@@ -101,7 +109,7 @@ export default function EditorPage() {
   }, [id]) // eslint-disable-line
 
   if (loading) {
-    return <div className="h-full flex items-center justify-center"><div className="text-chrome-ink-muted">加载中...</div></div>
+    return <div className="h-full flex items-center justify-center"><div className="text-chrome-ink-muted">{t('editorPage.loading')}</div></div>
   }
 
   return (
@@ -523,7 +531,7 @@ function EditorPageInner({
           // 什么都没发生, 分不清是"格式不支持"还是"程序坏了"。
           reportError({
             code: EditorErrorCode.E_DOCUMENT_CORRUPTED,
-            message: `无法识别该文件格式：${file.name}`,
+            message: locale.t('editorPage.importUnknownFormat', { name: file.name }),
           })
           return
         }
@@ -542,7 +550,7 @@ function EditorPageInner({
         // 真实原因; 这一处不接的话异常会从 reader.onload 冒出去, 用户侧毫无反馈。
         reportError({
           code: EditorErrorCode.E_DOCUMENT_CORRUPTED,
-          message: `导入失败：${err instanceof Error ? err.message : String(err)}`,
+          message: locale.t('editorPage.importError', { msg: err instanceof Error ? err.message : String(err) }),
           cause: err,
         })
       }
@@ -1116,7 +1124,7 @@ function EditorPageInner({
         }}
       >
         {printPages?.[previewPage]
-          ? <img src={printPages[previewPage]} alt={`第 ${previewPage + 1} 页`}
+          ? <img src={printPages[previewPage]} alt={locale.t('editorPage.previewAlt', { page: previewPage + 1 })}
                  className="max-w-full max-h-full object-contain shadow-lg" />
           : null}
       </PrintPreviewDialog>
