@@ -14,6 +14,7 @@ import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { X, Bookmark, Link, Hash } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/useTranslation'
 
 // ---- 类型 ----
 
@@ -47,6 +48,7 @@ export function BookmarkDialog({
   open, onClose, targets = [],
   onInsertBookmark, onInsertCrossReference,
 }: BookmarkDialogProps) {
+  const { t } = useTranslation()
   const [tab, setTab] = useState<TabId>('bookmark')
   const [name, setName] = useState('')
   const [filter, setFilter] = useState('')
@@ -55,7 +57,7 @@ export function BookmarkDialog({
   const [refFormat, setRefFormat] = useState<RefFormat>('label')
 
   const filtered = filter
-    ? targets.filter(t => t.label.includes(filter) || t.id.includes(filter))
+    ? targets.filter(tg => tg.label.includes(filter) || tg.id.includes(filter))
     : targets
 
   const handleInsertBookmark = () => {
@@ -67,11 +69,13 @@ export function BookmarkDialog({
 
   const handleInsertCrossRef = () => {
     if (!selectedTarget) return
-    const target = targets.find(t => t.id === selectedTarget)
+    const target = targets.find(tg => tg.id === selectedTarget)
     if (!target) return
     // 脚注解析的是 {number} (编号), 其余是 {page} (页码)
     const ph = target.type === 'footnote' ? '{number}' : '{page}'
-    const pageText = target.type === 'footnote' ? `脚注 ${ph}` : `第 ${ph} 页`
+    const pageText = target.type === 'footnote'
+      ? t('bookmark.footnotePrefix', { n: ph })
+      : t('bookmark.pagePrefix', { n: ph })
     const displayText =
       refFormat === 'page' ? pageText
         : refFormat === 'labelPage' ? `${target.label}（${pageText}）`
@@ -81,9 +85,9 @@ export function BookmarkDialog({
     onClose()
   }
 
-  const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-    { id: 'bookmark', label: '书签', icon: <Bookmark size={14} /> },
-    { id: 'crossref', label: '交叉引用', icon: <Link size={14} /> },
+  const tabs: { id: TabId; labelKey: 'bookmark.insertBookmark' | 'bookmark.insertCrossRef'; icon: React.ReactNode }[] = [
+    { id: 'bookmark', labelKey: 'bookmark.insertBookmark', icon: <Bookmark size={14} /> },
+    { id: 'crossref',  labelKey: 'bookmark.insertCrossRef',  icon: <Link size={14} /> },
   ]
 
   return (
@@ -98,28 +102,29 @@ export function BookmarkDialog({
           <div className="flex items-center justify-between px-5 py-3 border-b border-line-subtle">
             <div className="flex items-center gap-2">
               <Bookmark size={16} className="text-chrome-ink-tertiary" />
-              <Dialog.Title className="text-sm font-medium text-chrome-ink-strong">书签与引用</Dialog.Title>
+              <Dialog.Title className="text-sm font-medium text-chrome-ink-strong">{t('dialog.title.bookmark')}</Dialog.Title>
             </div>
-            <button onClick={onClose} className="p-1 rounded hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary">
+            <button onClick={onClose} aria-label={t('common.close')}
+                    className="p-1 rounded hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary">
               <X size={14} />
             </button>
           </div>
 
           {/* Tab */}
           <div className="flex border-b border-line-subtle px-5">
-            {tabs.map(t => (
+            {tabs.map(tabItem => (
               <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
+                key={tabItem.id}
+                onClick={() => setTab(tabItem.id)}
                 className={cn(
                   'flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors -mb-px',
-                  tab === t.id
+                  tab === tabItem.id
                     ? 'border-blue-500 text-blue-700'
                     : 'border-transparent text-chrome-ink-tertiary hover:text-chrome-ink-body',
                 )}
               >
-                {t.icon}
-                {t.label}
+                {tabItem.icon}
+                {t(tabItem.labelKey)}
               </button>
             ))}
           </div>
@@ -129,20 +134,20 @@ export function BookmarkDialog({
             {tab === 'bookmark' ? (
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-medium text-chrome-ink-secondary block mb-1">书签名称</label>
+                  <label className="text-xs font-medium text-chrome-ink-secondary block mb-1">{t('bookmark.nameLabel')}</label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleInsertBookmark() }}
-                    placeholder="例如: 实验室检查结果"
+                    placeholder={t('bookmark.namePlaceholder')}
                     className="w-full text-sm px-3 py-2 border border-line rounded-md
                                focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
                     autoFocus
                   />
                 </div>
                 <p className="text-xs text-chrome-ink-muted">
-                  书签用于标记文档中的重要位置，方便后续定位和交叉引用。
+                  {t('bookmark.description')}
                 </p>
               </div>
             ) : (
@@ -150,16 +155,16 @@ export function BookmarkDialog({
                 {/* 引用格式: 决定 displayText 里是否带 {page} 占位符 —— 带占位符时
                     由 LayoutEngine 在排版期展开为真实页码 (契约 §12.2) */}
                 <div>
-                  <label className="text-xs font-medium text-chrome-ink-secondary block mb-1">引用格式</label>
+                  <label className="text-xs font-medium text-chrome-ink-secondary block mb-1">{t('bookmark.refFormatLabel')}</label>
                   <select
                     value={refFormat}
                     onChange={(e) => setRefFormat(e.target.value as RefFormat)}
                     className="w-full text-sm px-3 py-2 border border-line rounded-md bg-chrome
                                focus:outline-none focus:border-blue-400"
                   >
-                    <option value="label">书签名 / 标题（不带页码）</option>
-                    <option value="page">第 {"{page}"} 页</option>
-                    <option value="labelPage">书签名（第 {"{page}"} 页）</option>
+                    <option value="label">{t('bookmark.refFormatLabelOnly')}</option>
+                    <option value="page">{t('bookmark.refFormatPageOnly', { n: '{page}' })}</option>
+                    <option value="labelPage">{t('bookmark.refFormatLabelPage', { n: '{page}' })}</option>
                   </select>
                 </div>
 
@@ -168,7 +173,7 @@ export function BookmarkDialog({
                   type="text"
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
-                  placeholder="搜索书签/标题/脚注..."
+                  placeholder={t('bookmark.filterPlaceholder')}
                   className="w-full text-sm px-3 py-2 border border-line rounded-md
                              focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
                 />
@@ -177,7 +182,7 @@ export function BookmarkDialog({
                 <div className="max-h-48 overflow-y-auto border border-line-subtle rounded-md divide-y divide-line-subtle">
                   {filtered.length === 0 ? (
                     <div className="px-3 py-6 text-center text-xs text-chrome-ink-muted">
-                      暂无可用目标
+                      {t('bookmark.noTargets')}
                     </div>
                   ) : (
                     filtered.map(target => (
@@ -196,7 +201,7 @@ export function BookmarkDialog({
                         {target.type === 'footnote' && <Link size={14} className="text-chrome-ink-muted flex-shrink-0" />}
                         <span className="truncate flex-1">{target.label}</span>
                         {target.pageHint && (
-                          <span className="text-xs text-chrome-ink-muted flex-shrink-0">p.{target.pageHint}</span>
+                          <span className="text-xs text-chrome-ink-muted flex-shrink-0">{t('bookmark.pageNumber', { n: target.pageHint })}</span>
                         )}
                       </button>
                     ))
@@ -212,7 +217,7 @@ export function BookmarkDialog({
               onClick={onClose}
               className="px-3 py-1.5 text-xs text-chrome-ink-secondary hover:text-chrome-ink-strong"
             >
-              取消
+              {t('common.cancel')}
             </button>
             {tab === 'bookmark' ? (
               <button
@@ -221,7 +226,7 @@ export function BookmarkDialog({
                 className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded-md
                            hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                插入书签
+                {t('bookmark.insertBookmark')}
               </button>
             ) : (
               <button
@@ -230,7 +235,7 @@ export function BookmarkDialog({
                 className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded-md
                            hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                插入引用
+                {t('bookmark.insertCrossRef')}
               </button>
             )}
           </div>

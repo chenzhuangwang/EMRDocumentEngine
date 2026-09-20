@@ -671,6 +671,16 @@ export interface LocaleMessages {
   'bookmark.footnotePrefix': string           // '脚注 {n}'
   'bookmark.pagePrefix': string               // '第 {n} 页'
   'bookmark.target': string
+  'bookmark.nameLabel': string                // '书签名称'
+  'bookmark.namePlaceholder': string         // '例如: 实验室检查结果'
+  'bookmark.description': string              // 长说明
+  'bookmark.refFormatLabel': string           // '引用格式'
+  'bookmark.refFormatLabelOnly': string       // '书签名 / 标题（不带页码）'
+  'bookmark.refFormatPageOnly': string        // '第 {n} 页'
+  'bookmark.refFormatLabelPage': string       // '书签名（第 {n} 页）'
+  'bookmark.filterPlaceholder': string         // '搜索书签/标题/脚注...'
+  'bookmark.noTargets': string                // '暂无可用目标'
+  'bookmark.pageNumber': string               // 'p.{n}'
   // ============================================================
   // DocumentPropertiesDialog
   // ============================================================
@@ -1261,6 +1271,16 @@ const zhCN: LocaleMessages = {
   'bookmark.footnotePrefix': '脚注 {n}',
   'bookmark.pagePrefix': '第 {n} 页',
   'bookmark.target': '目标',
+  'bookmark.nameLabel': '书签名称',
+  'bookmark.namePlaceholder': '例如: 实验室检查结果',
+  'bookmark.description': '书签用于标记文档中的重要位置，方便后续定位和交叉引用。',
+  'bookmark.refFormatLabel': '引用格式',
+  'bookmark.refFormatLabelOnly': '书签名 / 标题（不带页码）',
+  'bookmark.refFormatPageOnly': '第 {n} 页',
+  'bookmark.refFormatLabelPage': '书签名（第 {n} 页）',
+  'bookmark.filterPlaceholder': '搜索书签/标题/脚注...',
+  'bookmark.noTargets': '暂无可用目标',
+  'bookmark.pageNumber': 'p.{n}',
   // ===== docProps =====
   'docProps.discardConfirm': '当前有未保存的修改，是否放弃并继续？',
   'docProps.unsavedHint': '当前有未保存的修改',
@@ -1837,6 +1857,16 @@ const enUS: LocaleMessages = {
   'bookmark.footnotePrefix': 'Footnote {n}',
   'bookmark.pagePrefix': 'Page {n}',
   'bookmark.target': 'Target',
+  'bookmark.nameLabel': 'Bookmark name',
+  'bookmark.namePlaceholder': 'e.g. Lab Results',
+  'bookmark.description': 'Bookmarks mark important positions in the document for later reference and cross-referencing.',
+  'bookmark.refFormatLabel': 'Reference format',
+  'bookmark.refFormatLabelOnly': 'Bookmark / heading (no page number)',
+  'bookmark.refFormatPageOnly': 'Page {n}',
+  'bookmark.refFormatLabelPage': 'Bookmark (Page {n})',
+  'bookmark.filterPlaceholder': 'Search bookmarks/headings/footnotes...',
+  'bookmark.noTargets': 'No available targets',
+  'bookmark.pageNumber': 'p.{n}',
   // ===== docProps =====
   'docProps.discardConfirm': 'There are unsaved changes. Discard and continue?',
   'docProps.unsavedHint': 'You have unsaved changes',
