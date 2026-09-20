@@ -17,10 +17,20 @@
 //   6. 草稿未提交前不触发 onApply (对话框不直改 DocumentModel)。
 // ============================================================
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { DocumentPropertiesDialog, type DocumentPropertiesResult } from '../DocumentPropertiesDialog'
 import type { DocumentMetadata } from '@/engine/document/core/DocumentModel'
+import { bootstrapLocale } from '@/i18n/bootstrap'
+import { locale } from '@/engine'
+
+beforeEach(() => {
+  // 锁定 zh-CN 上下文: DocumentPropertiesDialog 的标题/字段/确认框都从 t() 拉
+  bootstrapLocale()
+})
+afterEach(() => {
+  locale.setLocale('zh-CN')
+})
 
 function renderDialog(overrides?: { initialTitle?: string; initialValues?: DocumentMetadata }) {
   const onClose = vi.fn()
@@ -37,7 +47,7 @@ function renderDialog(overrides?: { initialTitle?: string; initialValues?: Docum
   return { onClose, onApply }
 }
 
-function inputByPlaceholder(ph: string): HTMLInputElement {
+function inputByPlaceholder(ph: string | RegExp): HTMLInputElement {
   return screen.getByPlaceholderText(ph) as HTMLInputElement
 }
 
@@ -55,33 +65,33 @@ describe('DocumentPropertiesDialog (契约 §7.7/§7.8)', () => {
 
   it('无更改 → 取消直接关闭, 无二次确认', () => {
     const { onClose } = renderDialog({ initialTitle: '标题', initialValues: { author: '张三' } })
-    fireEvent.click(screen.getByText('取消'))
+    fireEvent.click(screen.getByText(t => t === '取消'))
 
     expect(onClose).toHaveBeenCalledTimes(1)
-    expect(screen.queryByText('有未保存的更改，确定放弃吗？')).toBeNull()
+    expect(screen.queryByText(t => t.startsWith('当前有未保存的修改'))).toBeNull()
   })
 
   it('有更改 → 取消弹二次确认; 放弃更改 → 丢弃草稿并关闭', () => {
     const { onClose, onApply } = renderDialog({ initialTitle: '标题' })
-    fireEvent.change(inputByPlaceholder('文档标题'), { target: { value: '新标题' } })
-    fireEvent.click(screen.getByText('取消'))
+    fireEvent.change(inputByPlaceholder(/文档标题/), { target: { value: '新标题' } })
+    fireEvent.click(screen.getByText(t => t === '取消'))
 
-    expect(screen.getByText('有未保存的更改，确定放弃吗？')).toBeTruthy()
+    expect(screen.getByText(t => t.startsWith('当前有未保存的修改'))).toBeTruthy()
     expect(onClose).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByText('放弃更改'))
+    fireEvent.click(screen.getByText(t => t === '放弃更改'))
     expect(onClose).toHaveBeenCalledTimes(1)
     expect(onApply).not.toHaveBeenCalled() // 丢弃草稿, 不提交
   })
 
   it('有更改 → 二次确认选继续编辑 → 保持打开', () => {
     const { onClose } = renderDialog({ initialTitle: '标题' })
-    fireEvent.change(inputByPlaceholder('文档标题'), { target: { value: '新标题' } })
-    fireEvent.click(screen.getByText('取消'))
-    fireEvent.click(screen.getByText('继续编辑'))
+    fireEvent.change(inputByPlaceholder(/文档标题/), { target: { value: '新标题' } })
+    fireEvent.click(screen.getByText(t => t === '取消'))
+    fireEvent.click(screen.getByText(t => t === '继续编辑'))
 
     expect(onClose).not.toHaveBeenCalled()
-    expect(screen.queryByText('有未保存的更改，确定放弃吗？')).toBeNull()
+    expect(screen.queryByText(t => t.startsWith('当前有未保存的修改'))).toBeNull()
   })
 
   it('应用 → onApply 提交规范化 { title, metadata } (keywords 逗号串 → string[])', () => {
