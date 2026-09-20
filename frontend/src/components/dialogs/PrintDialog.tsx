@@ -18,6 +18,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { X, Printer, FileText, Copy, ChevronDown, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { PrintRecord } from '@/services/PrintHistoryService'
+import { useTranslation } from '@/i18n/useTranslation'
 
 // ---- 类型 ----
 
@@ -43,12 +44,15 @@ interface PrintDialogProps {
 
 // ---- 组件 ----
 
+const PRINTER_FALLBACK = '默认打印机'
+
 export function PrintDialog({
   open, onClose, totalPages,
   initialSettings, onPrint, onPreview, history,
 }: PrintDialogProps) {
+  const { t } = useTranslation()
   const [settings, setSettings] = useState<PrintSettings>({
-    printer: '默认打印机',
+    printer: PRINTER_FALLBACK,
     pageRange: { start: 1, end: totalPages },
     copies: 1,
     duplex: false,
@@ -68,7 +72,7 @@ export function PrintDialog({
     if (!open) return
     const resume = initialSettings?.resumeFromPage ?? null
     setSettings({
-      printer: '默认打印机',
+      printer: PRINTER_FALLBACK,
       pageRange: { start: resume ?? 1, end: totalPages },
       copies: 1,
       duplex: false,
@@ -78,9 +82,9 @@ export function PrintDialog({
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 页码范围预设
-  const pagePresets = [
-    { label: '全部', range: { start: 1, end: totalPages } },
-    { label: '当前页', range: { start: 1, end: 1 } },
+  const pagePresets: { labelKey: 'print.range.all' | 'print.range.current'; range: { start: number; end: number } }[] = [
+    { labelKey: 'print.range.all',     range: { start: 1, end: totalPages } },
+    { labelKey: 'print.range.current', range: { start: 1, end: 1 } },
   ]
 
   return (
@@ -96,9 +100,9 @@ export function PrintDialog({
           <div className="flex flex-shrink-0 items-center justify-between px-4 py-3 border-b border-line-subtle">
             <Dialog.Title className="text-sm font-semibold text-chrome-ink-strong flex items-center gap-2">
               <Printer size={16} className="text-chrome-ink-muted" />
-              打印
+              {t('file.print')}
             </Dialog.Title>
-            <button className="text-chrome-ink-muted hover:text-chrome-ink-secondary" onClick={onClose}>
+            <button className="text-chrome-ink-muted hover:text-chrome-ink-secondary" onClick={onClose} aria-label={t('common.close')}>
               <X size={16} />
             </button>
           </div>
@@ -106,7 +110,7 @@ export function PrintDialog({
           <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-5">
             {/* 打印机 */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-chrome-ink-tertiary">打印机</label>
+              <label className="text-xs font-medium text-chrome-ink-tertiary">{t('print.printer')}</label>
               <div className="flex items-center gap-2 px-3 py-2 border border-line rounded-md bg-chrome-subtle">
                 <Printer size={14} className="text-chrome-ink-muted" />
                 <span className="text-sm text-chrome-ink-body flex-1">{settings.printer}</span>
@@ -116,11 +120,11 @@ export function PrintDialog({
 
             {/* 页码范围 */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-chrome-ink-tertiary">页码范围</label>
+              <label className="text-xs font-medium text-chrome-ink-tertiary">{t('print.range.label')}</label>
               <div className="flex gap-2">
                 {pagePresets.map(p => (
                   <button
-                    key={p.label}
+                    key={p.labelKey}
                     className={cn(
                       'px-3 py-1.5 text-xs rounded-md border transition-colors',
                       settings.pageRange.start === p.range.start &&
@@ -130,7 +134,7 @@ export function PrintDialog({
                     )}
                     onClick={() => update({ pageRange: p.range })}
                   >
-                    {p.label}
+                    {t(p.labelKey)}
                   </button>
                 ))}
                 <button
@@ -143,7 +147,7 @@ export function PrintDialog({
                       : 'border-line hover:bg-chrome-subtle text-chrome-ink-secondary',
                   )}
                 >
-                  自定义
+                  {t('print.range.custom')}
                 </button>
               </div>
 
@@ -158,7 +162,7 @@ export function PrintDialog({
                     pageRange: { ...settings.pageRange, start: Number(e.target.value) || 1 },
                   })}
                 />
-                <span className="text-xs text-chrome-ink-muted">至</span>
+                <span className="text-xs text-chrome-ink-muted">{t('print.range.to')}</span>
                 <input
                   type="number"
                   className="w-16 px-2 py-1 text-xs border border-line rounded-md
@@ -169,14 +173,14 @@ export function PrintDialog({
                     pageRange: { ...settings.pageRange, end: Number(e.target.value) || totalPages },
                   })}
                 />
-                <span className="text-xs text-chrome-ink-muted">页 (共 {totalPages} 页)</span>
+                <span className="text-xs text-chrome-ink-muted">{t('print.range.totalLabel', { n: totalPages })}</span>
               </div>
             </div>
 
             {/* 份数 + 双面 */}
             <div className="flex items-center gap-6">
               <div className="space-y-1.5 flex-1">
-                <label className="text-xs font-medium text-chrome-ink-tertiary">份数</label>
+                <label className="text-xs font-medium text-chrome-ink-tertiary">{t('print.copies')}</label>
                 <div className="flex items-center gap-1">
                   <Copy size={14} className="text-chrome-ink-muted" />
                   <input
@@ -191,7 +195,7 @@ export function PrintDialog({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-chrome-ink-tertiary">打印方式</label>
+                <label className="text-xs font-medium text-chrome-ink-tertiary">{t('print.duplex.label')}</label>
                 <button
                   className={cn(
                     'px-3 py-1.5 text-xs rounded-md border transition-colors',
@@ -201,7 +205,7 @@ export function PrintDialog({
                   )}
                   onClick={() => update({ duplex: !settings.duplex })}
                 >
-                  {settings.duplex ? '双面打印' : '单面打印'}
+                  {settings.duplex ? t('print.duplex.duplex') : t('print.duplex.simplex')}
                 </button>
               </div>
             </div>
@@ -211,7 +215,7 @@ export function PrintDialog({
               <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md">
                 <FileText size={14} className="text-amber-500" />
                 <span className="text-xs text-amber-700">
-                  续打: 从第 {settings.resumeFromPage} 页开始
+                  {t('print.resume', { n: settings.resumeFromPage })}
                 </span>
                 <button
                   className="ml-auto text-xs text-amber-600 hover:text-amber-800"
@@ -220,18 +224,19 @@ export function PrintDialog({
                     pageRange: { ...settings.pageRange, start: 1 },
                   })}
                 >
-                  取消续打
+                  {t('print.cancelResume')}
                 </button>
               </div>
             )}
 
             {/* 页数信息 */}
             <div className="text-xs text-chrome-ink-muted text-center">
-              共 {totalPages} 页 · 打印 {
-                settings.pageRange.end - settings.pageRange.start + 1
-              } 页 · {settings.copies} 份 · {
-                settings.duplex ? '双面' : '单面'
-              }
+              {t('print.summary', {
+                total: totalPages,
+                printing: settings.pageRange.end - settings.pageRange.start + 1,
+                copies: settings.copies,
+                sides: settings.duplex ? t('print.duplex.duplexShort') : t('print.duplex.simplexShort'),
+              })}
             </div>
 
             {/*
@@ -240,7 +245,7 @@ export function PrintDialog({
               切片生效的。不写这句, 用户会以为在这里选了份数就生效了。
             */}
             <div className="text-[11px] leading-relaxed text-chrome-ink-muted">
-              页码范围由本应用按页渲染；打印机 / 份数 / 单双面请在随后弹出的系统打印窗口中设置。
+              {t('print.systemNote')}
             </div>
 
             {/* 最近打印 (PrintHistoryService) */}
@@ -248,7 +253,7 @@ export function PrintDialog({
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-chrome-ink-tertiary flex items-center gap-1">
                   <History size={12} />
-                  最近打印
+                  {t('print.recent')}
                 </label>
                 <div className="space-y-1">
                   {history.slice(0, 3).map(h => (
@@ -258,16 +263,16 @@ export function PrintDialog({
                                  bg-chrome-subtle text-[11px] text-chrome-ink-secondary"
                     >
                       <span className="tabular-nums">
-                        第 {h.pageRange.start}–{h.pageRange.end} 页
+                        {t('print.range.fromTo', { from: h.pageRange.start, to: h.pageRange.end })}
                       </span>
                       <span className="text-chrome-ink-muted">
-                        {h.copies} 份 · {h.duplex ? '双面' : '单面'}
+                        {t('print.historySubline', { copies: h.copies, sides: h.duplex ? t('print.duplex.duplexShort') : t('print.duplex.simplexShort') })}
                       </span>
                       <span className="ml-auto text-chrome-ink-muted tabular-nums">
-                        {formatPrintedAt(h.printedAt)}
+                        {formatPrintedAt(h.printedAt, t)}
                       </span>
                       {!h.completed && (
-                        <span className="text-warning-500">未打完</span>
+                        <span className="text-warning-500">{t('print.unfinished')}</span>
                       )}
                     </div>
                   ))}
@@ -282,7 +287,7 @@ export function PrintDialog({
               className="px-4 py-1.5 text-xs text-chrome-ink-secondary hover:bg-chrome-strong rounded-md transition-colors"
               onClick={onClose}
             >
-              取消
+              {t('common.cancel')}
             </button>
             {/* 预览: 应用内看排版再决定打不打 (浏览器打印对话框只在 w.print() 后才出预览) */}
             {onPreview && (
@@ -291,7 +296,7 @@ export function PrintDialog({
                            rounded-md transition-colors"
                 onClick={onPreview}
               >
-                预览
+                {t('common.preview')}
               </button>
             )}
             <button
@@ -300,7 +305,7 @@ export function PrintDialog({
               onClick={() => { onPrint?.(settings); onClose() }}
             >
               <Printer size={12} />
-              打印
+              {t('file.print')}
             </button>
           </div>
         </Dialog.Content>
@@ -310,13 +315,13 @@ export function PrintDialog({
 }
 
 /** 打印记录的时间戳 → 「今天 14:20」/「3 天前」这类一眼能读的形式 */
-function formatPrintedAt(ts: number): string {
+function formatPrintedAt(ts: number, t: (key: any, p?: any) => string): string {
   const d = new Date(ts)
   const now = new Date()
   const sameDay = d.toDateString() === now.toDateString()
   const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   if (sameDay) return hm
   const days = Math.floor((now.getTime() - ts) / 86_400_000)
-  if (days < 7) return `${days} 天前`
+  if (days < 7) return t('print.relative.daysAgo', { n: days })
   return `${d.getMonth() + 1}/${d.getDate()}`
 }

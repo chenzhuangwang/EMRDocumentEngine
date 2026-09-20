@@ -559,6 +559,19 @@ export interface LocaleMessages {
   'print.range.selection': string
   'print.range.range': string                  // '页码范围'
   'print.range.fromTo': string
+  'print.range.to': string                     // '至'
+  'print.range.totalLabel': string             // '页 (共 {n} 页)'
+  'print.range.label': string                  // '页码范围' (label)
+  'print.range.custom': string                 // '自定义'
+  'print.printer': string                      // '打印机'
+  'print.duplex.label': string                 // '打印方式'
+  'print.duplex.duplex': string                // '双面打印'
+  'print.duplex.simplex': string               // '单面打印'
+  'print.duplex.duplexShort': string           // '双面'
+  'print.duplex.simplexShort': string          // '单面'
+  'print.summary': string                      // '共 {total} 页 · 打印 {printing} 页 · {copies} 份 · {sides}'
+  'print.historySubline': string               // '{copies} 份 · {sides}'
+  'print.systemNote': string                   // '页码范围由本应用按页渲染...'
   'print.copies': string
   'print.printedAt': string
   'print.relative.secondsAgo': string
@@ -1171,6 +1184,19 @@ const zhCN: LocaleMessages = {
   'print.range.selection': '所选内容',
   'print.range.range': '页码范围',
   'print.range.fromTo': '从 {from} 页到 {to} 页',
+  'print.range.to': '至',
+  'print.range.totalLabel': '页 (共 {n} 页)',
+  'print.range.label': '页码范围',
+  'print.range.custom': '自定义',
+  'print.printer': '打印机',
+  'print.duplex.label': '打印方式',
+  'print.duplex.duplex': '双面打印',
+  'print.duplex.simplex': '单面打印',
+  'print.duplex.duplexShort': '双面',
+  'print.duplex.simplexShort': '单面',
+  'print.summary': '共 {total} 页 · 打印 {printing} 页 · {copies} 份 · {sides}',
+  'print.historySubline': '{copies} 份 · {sides}',
+  'print.systemNote': '页码范围由本应用按页渲染；打印机 / 份数 / 单双面请在随后弹出的系统打印窗口中设置。',
   'print.copies': '份数',
   'print.printedAt': '打印于 {time}',
   'print.relative.secondsAgo': '{n} 秒前',
@@ -1757,6 +1783,19 @@ const enUS: LocaleMessages = {
   'print.range.selection': 'Selection',
   'print.range.range': 'Page Range',
   'print.range.fromTo': 'From {from} to {to}',
+  'print.range.to': 'to',
+  'print.range.totalLabel': 'pages (total {n})',
+  'print.range.label': 'Page Range',
+  'print.range.custom': 'Custom',
+  'print.printer': 'Printer',
+  'print.duplex.label': 'Print Mode',
+  'print.duplex.duplex': 'Double-sided',
+  'print.duplex.simplex': 'Single-sided',
+  'print.duplex.duplexShort': 'Duplex',
+  'print.duplex.simplexShort': 'Simplex',
+  'print.summary': '{total} pages total · printing {printing} pages · {copies} copies · {sides}',
+  'print.historySubline': '{copies} copies · {sides}',
+  'print.systemNote': 'Page range is applied by this app; printer / copies / duplex are set in the system print dialog.',
   'print.copies': 'Copies',
   'print.printedAt': 'Printed at {time}',
   'print.relative.secondsAgo': '{n}s ago',
