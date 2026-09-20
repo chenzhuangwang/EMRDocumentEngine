@@ -570,12 +570,22 @@ export interface LocaleMessages {
   'pageSetup.presetA4': string
   'pageSetup.presetLetter': string
   'pageSetup.presetLegal': string
+  'pageSetup.presetA3': string                 // 复用 A3 纸
   'pageSetup.marginTop': string
   'pageSetup.marginBottom': string
   'pageSetup.marginLeft': string
   'pageSetup.marginRight': string
   'pageSetup.headerDistance': string
   'pageSetup.footerDistance': string
+  'pageSetup.tabMargins': string
+  'pageSetup.tabPaper': string
+  'pageSetup.tabLayout': string
+  'pageSetup.pageVerticalGap': string         // 分页间隙
+  'pageSetup.applyTo': string                   // '应用于'
+  'pageSetup.applyWholeDocument': string        // 整篇文档
+  'pageSetup.applyFromThisPoint': string        // 从本节开始
+  'pageSetup.applyThisSection': string          // 本节
+  'pageSetup.hfFutureNote': string              // 页眉页脚后续版本提示
   // ============================================================
   // WatermarkDialog (复用 dialog.title.watermark; 此处不复述)
   // ============================================================
@@ -1143,15 +1153,25 @@ const zhCN: LocaleMessages = {
   'print.relative.unknown': '时间未知',
   // ===== PageSetupDialog =====
   'pageSetup.preset': '预设',
-  'pageSetup.presetA4': 'A4',
-  'pageSetup.presetLetter': 'Letter',
+  'pageSetup.presetA4': 'A4 (210×297mm)',
+  'pageSetup.presetLetter': 'Letter (8.5×11in)',
   'pageSetup.presetLegal': 'Legal',
-  'pageSetup.marginTop': '上',
-  'pageSetup.marginBottom': '下',
-  'pageSetup.marginLeft': '左',
-  'pageSetup.marginRight': '右',
+  'pageSetup.presetA3': 'A3 (297×420mm)',
+  'pageSetup.marginTop': '上边距',
+  'pageSetup.marginBottom': '下边距',
+  'pageSetup.marginLeft': '左边距',
+  'pageSetup.marginRight': '右边距',
   'pageSetup.headerDistance': '页眉距上',
   'pageSetup.footerDistance': '页脚距下',
+  'pageSetup.tabMargins': '页边距',
+  'pageSetup.tabPaper': '纸张',
+  'pageSetup.tabLayout': '版式',
+  'pageSetup.pageVerticalGap': '分页间隙',
+  'pageSetup.applyTo': '应用于',
+  'pageSetup.applyWholeDocument': '整篇文档',
+  'pageSetup.applyFromThisPoint': '从本节开始',
+  'pageSetup.applyThisSection': '本节',
+  'pageSetup.hfFutureNote': '页眉和页脚设置将在后续版本中提供。',
   // ===== WatermarkDialog =====
   'watermark.text': '水印文字',
   'watermark.fontSize': '字号',
@@ -1695,15 +1715,25 @@ const enUS: LocaleMessages = {
   'print.relative.unknown': 'unknown time',
   // ===== PageSetupDialog =====
   'pageSetup.preset': 'Preset',
-  'pageSetup.presetA4': 'A4',
-  'pageSetup.presetLetter': 'Letter',
+  'pageSetup.presetA4': 'A4 (210×297mm)',
+  'pageSetup.presetLetter': 'Letter (8.5×11in)',
   'pageSetup.presetLegal': 'Legal',
+  'pageSetup.presetA3': 'A3 (297×420mm)',
   'pageSetup.marginTop': 'Top',
   'pageSetup.marginBottom': 'Bottom',
   'pageSetup.marginLeft': 'Left',
   'pageSetup.marginRight': 'Right',
   'pageSetup.headerDistance': 'Header Distance',
   'pageSetup.footerDistance': 'Footer Distance',
+  'pageSetup.tabMargins': 'Margins',
+  'pageSetup.tabPaper': 'Paper',
+  'pageSetup.tabLayout': 'Layout',
+  'pageSetup.pageVerticalGap': 'Page Gap',
+  'pageSetup.applyTo': 'Apply to',
+  'pageSetup.applyWholeDocument': 'Whole Document',
+  'pageSetup.applyFromThisPoint': 'From This Point Forward',
+  'pageSetup.applyThisSection': 'This Section',
+  'pageSetup.hfFutureNote': 'Header and footer settings will be available in a future release.',
   // ===== WatermarkDialog =====
   'watermark.text': 'Watermark Text',
   'watermark.fontSize': 'Font Size',

@@ -16,6 +16,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import * as Tabs from '@radix-ui/react-tabs'
 import { X, Ruler, FileText, Layout } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/useTranslation'
 
 // ---- 类型 ----
 
@@ -40,10 +41,10 @@ const A4 = { width: 794, height: 1123 }
 const A3 = { width: 1123, height: 1587 }
 const LETTER = { width: 612, height: 792 }
 
-const PAPER_SIZES = [
-  { label: 'A4 (210×297mm)', width: A4.width, height: A4.height },
-  { label: 'A3 (297×420mm)', width: A3.width, height: A3.height },
-  { label: 'Letter (8.5×11in)', width: LETTER.width, height: LETTER.height },
+const PAPER_SIZES: { labelKey: 'pageSetup.presetA4' | 'pageSetup.presetLetter' | 'pageSetup.presetA3'; width: number; height: number }[] = [
+  { labelKey: 'pageSetup.presetA4',     width: A4.width,     height: A4.height },
+  { labelKey: 'pageSetup.presetA3',     width: A3.width,     height: A3.height },
+  { labelKey: 'pageSetup.presetLetter', width: LETTER.width, height: LETTER.height },
 ]
 
 interface PageSetupDialogProps {
@@ -69,10 +70,10 @@ const DEFAULTS: PageSetupValues = {
 
 type TabId = 'margins' | 'paper' | 'layout'
 
-const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
-  { id: 'margins', label: '页边距', icon: <Ruler size={14} /> },
-  { id: 'paper', label: '纸张', icon: <FileText size={14} /> },
-  { id: 'layout', label: '版式', icon: <Layout size={14} /> },
+const TABS: { id: TabId; labelKey: 'pageSetup.tabMargins' | 'pageSetup.tabPaper' | 'pageSetup.tabLayout'; icon: React.ReactNode }[] = [
+  { id: 'margins', labelKey: 'pageSetup.tabMargins', icon: <Ruler size={14} /> },
+  { id: 'paper',   labelKey: 'pageSetup.tabPaper',   icon: <FileText size={14} /> },
+  { id: 'layout',  labelKey: 'pageSetup.tabLayout',  icon: <Layout size={14} /> },
 ]
 
 // ---- 组件 ----
@@ -80,6 +81,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
 export function PageSetupDialog({
   open, onClose, initialValues, onApply,
 }: PageSetupDialogProps) {
+  const { t } = useTranslation()
   const [values, setValues] = useState<PageSetupValues>({ ...DEFAULTS, ...initialValues })
   const [tab, setTab] = useState<TabId>('margins')
 
@@ -107,9 +109,9 @@ export function PageSetupDialog({
           {/* 标题栏 */}
           <div className="flex flex-shrink-0 items-center justify-between px-4 py-3 border-b border-line-subtle">
             <Dialog.Title className="text-sm font-semibold text-chrome-ink-strong">
-              页面设置
+              {t('dialog.title.pageSetup')}
             </Dialog.Title>
-            <button className="text-chrome-ink-muted hover:text-chrome-ink-secondary" onClick={onClose}>
+            <button className="text-chrome-ink-muted hover:text-chrome-ink-secondary" onClick={onClose} aria-label={t('common.close')}>
               <X size={16} />
             </button>
           </div>
@@ -117,20 +119,20 @@ export function PageSetupDialog({
           {/* Tabs */}
           <Tabs.Root value={tab} onValueChange={(v) => setTab(v as TabId)} className="flex flex-1 min-h-0 flex-col overflow-hidden">
             <Tabs.List className="flex flex-shrink-0 border-b border-line-subtle px-4">
-              {TABS.map(t => (
+              {TABS.map(tabItem => (
                 <Tabs.Trigger
-                  key={t.id}
-                  value={t.id}
+                  key={tabItem.id}
+                  value={tabItem.id}
                   className={cn(
                     'flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors',
                     'border-b-2 -mb-px',
-                    tab === t.id
+                    tab === tabItem.id
                       ? 'border-primary-500 text-chrome-accent-ink'
                       : 'border-transparent text-chrome-ink-tertiary hover:text-chrome-ink-body',
                   )}
                 >
-                  {t.icon}
-                  {t.label}
+                  {tabItem.icon}
+                  {t(tabItem.labelKey)}
                 </Tabs.Trigger>
               ))}
             </Tabs.List>
@@ -140,28 +142,28 @@ export function PageSetupDialog({
               <Tabs.Content value="margins" className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <MarginField
-                    label="上边距"
+                    label={t('pageSetup.marginTop')}
                     value={values.marginTop}
                     onChange={(v) => update({ marginTop: v })}
                   />
                   <MarginField
-                    label="下边距"
+                    label={t('pageSetup.marginBottom')}
                     value={values.marginBottom}
                     onChange={(v) => update({ marginBottom: v })}
                   />
                   <MarginField
-                    label="左边距"
+                    label={t('pageSetup.marginLeft')}
                     value={values.marginLeft}
                     onChange={(v) => update({ marginLeft: v })}
                   />
                   <MarginField
-                    label="右边距"
+                    label={t('pageSetup.marginRight')}
                     value={values.marginRight}
                     onChange={(v) => update({ marginRight: v })}
                   />
                   {/* 分页间隙 — 仅作用于渲染视口, 不修改存储坐标 */}
                   <MarginField
-                    label="分页间隙"
+                    label={t('pageSetup.pageVerticalGap')}
                     value={values.pageVerticalGap}
                     min={0}
                     max={200}
@@ -176,11 +178,11 @@ export function PageSetupDialog({
               {/* === 纸张 Tab === */}
               <Tabs.Content value="paper" className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-chrome-ink-tertiary">纸张大小</label>
+                  <label className="text-xs font-medium text-chrome-ink-tertiary">{t('dialog.label.size')}</label>
                   <div className="space-y-1">
                     {PAPER_SIZES.map(ps => (
                       <button
-                        key={ps.label}
+                        key={ps.labelKey}
                         className={cn(
                           'w-full text-left px-3 py-2 text-sm rounded-md border transition-colors',
                           values.pageWidth === ps.width && values.pageHeight === ps.height
@@ -189,14 +191,14 @@ export function PageSetupDialog({
                         )}
                         onClick={() => update({ pageWidth: ps.width, pageHeight: ps.height })}
                       >
-                        {ps.label}
+                        {t(ps.labelKey)}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-chrome-ink-tertiary">方向</label>
+                  <label className="text-xs font-medium text-chrome-ink-tertiary">{t('dialog.label.orientation')}</label>
                   <div className="flex gap-2">
                     <button
                       className={cn('flex-1 py-2 text-sm rounded-md border transition-colors',
@@ -205,7 +207,7 @@ export function PageSetupDialog({
                           : 'border-line hover:bg-chrome-subtle text-chrome-ink-secondary')}
                       onClick={() => handleOrientationChange('portrait')}
                     >
-                      纵向
+                      {t('print.orientation.portrait')}
                     </button>
                     <button
                       className={cn('flex-1 py-2 text-sm rounded-md border transition-colors',
@@ -214,7 +216,7 @@ export function PageSetupDialog({
                           : 'border-line hover:bg-chrome-subtle text-chrome-ink-secondary')}
                       onClick={() => handleOrientationChange('landscape')}
                     >
-                      横向
+                      {t('print.orientation.landscape')}
                     </button>
                   </div>
                 </div>
@@ -223,12 +225,12 @@ export function PageSetupDialog({
               {/* === 版式 Tab === */}
               <Tabs.Content value="layout" className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-chrome-ink-tertiary">应用于</label>
+                  <label className="text-xs font-medium text-chrome-ink-tertiary">{t('pageSetup.applyTo')}</label>
                   <div className="space-y-1">
                     {([
-                      { value: 'wholeDocument' as const, label: '整篇文档' },
-                      { value: 'thisPointForward' as const, label: '从本节开始' },
-                      { value: 'section' as const, label: '本节' },
+                      { value: 'wholeDocument' as const,     labelKey: 'pageSetup.applyWholeDocument' as const },
+                      { value: 'thisPointForward' as const, labelKey: 'pageSetup.applyFromThisPoint' as const },
+                      { value: 'section' as const,           labelKey: 'pageSetup.applyThisSection' as const },
                     ]).map(opt => (
                       <button
                         key={opt.value}
@@ -240,14 +242,14 @@ export function PageSetupDialog({
                         )}
                         onClick={() => update({ applyTo: opt.value })}
                       >
-                        {opt.label}
+                        {t(opt.labelKey)}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div className="text-xs text-chrome-ink-muted">
-                  页眉和页脚设置将在后续版本中提供。
+                  {t('pageSetup.hfFutureNote')}
                 </div>
               </Tabs.Content>
             </div>
@@ -259,13 +261,13 @@ export function PageSetupDialog({
               className="px-4 py-1.5 text-xs text-chrome-ink-secondary hover:bg-chrome-strong rounded-md transition-colors"
               onClick={onClose}
             >
-              取消
+              {t('common.cancel')}
             </button>
             <button
               className="px-4 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-md transition-colors"
               onClick={() => { onApply?.(values); onClose() }}
             >
-              确定
+              {t('common.confirm')}
             </button>
           </div>
         </Dialog.Content>
