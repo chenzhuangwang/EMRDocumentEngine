@@ -487,6 +487,8 @@ export interface LocaleMessages {
   'mode.readonly': string
   'mode.print': string
   'mode.preview': string
+  'mode.clean': string                       // EditorMode 'clean' (纯文本) 显示名
+  'mode.switchTitle': string                 // '切换编辑器模式'
   // ============================================================
   // ReadingMode
   // ============================================================
@@ -1099,7 +1101,7 @@ const zhCN: LocaleMessages = {
   'recentDoc.daysAgo': '{n} 天前',
   // ===== OutlineNav =====
   'outline.title': '文档大纲',
-  'outline.empty': '暂无大纲',
+  'outline.empty': '暂无标题 — 使用 Heading 1-6 样式创建大纲',
   'outline.headingTitle': 'Heading {level}: {text}',
   // ===== CommentPanel =====
   'comment.title': '批注',
@@ -1156,6 +1158,8 @@ const zhCN: LocaleMessages = {
   'mode.readonly': '只读',
   'mode.print': '打印',
   'mode.preview': '预览',
+  'mode.clean': '纯文本',
+  'mode.switchTitle': '切换编辑器模式',
   // ===== ReadingMode =====
   'reading.exit': '退出阅读',
   'reading.hint': '阅读模式 · 按 ESC 退出',
@@ -1213,7 +1217,7 @@ const zhCN: LocaleMessages = {
   'print.range.current': '当前页',
   'print.range.selection': '所选内容',
   'print.range.range': '页码范围',
-  'print.range.fromTo': '从 {from} 页到 {to} 页',
+  'print.range.fromTo': '第 {from}–{to} 页',
   'print.range.to': '至',
   'print.range.totalLabel': '页 (共 {n} 页)',
   'print.range.label': '页码范围',
@@ -1727,7 +1731,7 @@ const enUS: LocaleMessages = {
   'recentDoc.daysAgo': '{n}d ago',
   // ===== OutlineNav =====
   'outline.title': 'Document Outline',
-  'outline.empty': 'No outline',
+  'outline.empty': 'No headings — use Heading 1-6 styles to build an outline',
   'outline.headingTitle': 'Heading {level}: {text}',
   // ===== CommentPanel =====
   'comment.title': 'Comments',
@@ -1784,6 +1788,8 @@ const enUS: LocaleMessages = {
   'mode.readonly': 'Read-only',
   'mode.print': 'Print',
   'mode.preview': 'Preview',
+  'mode.clean': 'Plain Text',
+  'mode.switchTitle': 'Switch editor mode',
   // ===== ReadingMode =====
   'reading.exit': 'Exit Reading Mode',
   'reading.hint': 'Reading mode · Press ESC to exit',

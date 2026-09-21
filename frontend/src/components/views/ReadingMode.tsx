@@ -13,6 +13,7 @@
 
 import { useEffect, type ReactNode } from 'react'
 import { EyeOff } from 'lucide-react'
+import { useTranslation } from '@/i18n/useTranslation'
 
 interface ReadingModeProps {
   children: ReactNode
@@ -23,6 +24,7 @@ interface ReadingModeProps {
 }
 
 export function ReadingModeOverlay({ children, active, onToggle }: ReadingModeProps) {
+  const { t } = useTranslation()
   useEffect(() => {
     if (!active) return
     const handler = (e: KeyboardEvent) => {
@@ -37,7 +39,7 @@ export function ReadingModeOverlay({ children, active, onToggle }: ReadingModePr
       {active && (
         <div className="fixed top-3 right-4 z-50 flex items-center gap-2">
           <span className="text-xs text-chrome-ink-muted bg-chrome/80 px-2 py-1 rounded shadow-sm">
-            阅读模式 · 按 ESC 退出
+            {t('reading.hint')}
           </span>
           <button
             onClick={onToggle}
@@ -46,7 +48,7 @@ export function ReadingModeOverlay({ children, active, onToggle }: ReadingModePr
                        text-chrome-ink-secondary hover:text-chrome-ink-strong hover:bg-chrome-subtle"
           >
             <EyeOff size={14} />
-            退出阅读
+            {t('reading.exit')}
           </button>
         </div>
       )}

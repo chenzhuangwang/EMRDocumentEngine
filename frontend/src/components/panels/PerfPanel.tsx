@@ -14,6 +14,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { PerfSummary } from '@/engine'
 import { Activity, Zap, Database, Gauge } from 'lucide-react'
+import { useTranslation } from '@/i18n/useTranslation'
 
 interface PerfMetrics {
   fps: number
@@ -37,6 +38,7 @@ interface PerfPanelProps {
 }
 
 export function PerfPanel({ summary, layoutTime = 0, cacheHits = 0, cacheMisses = 0 }: PerfPanelProps) {
+  const { t } = useTranslation()
   const [visible, setVisible] = useState(false)
   const [metrics, setMetrics] = useState<PerfMetrics>({
     fps: 60, frameTime: 0, layoutTime: 0, cacheHitRate: 100,
@@ -87,7 +89,7 @@ export function PerfPanel({ summary, layoutTime = 0, cacheHits = 0, cacheMisses 
     return (
       <button
         onClick={() => setVisible(true)}
-        title="性能面板"
+        title={t('perf.title')}
         className="fixed bottom-2 right-2 z-50 p-1.5 bg-chrome/80 border border-line
                    rounded-md shadow-sm text-chrome-ink-muted hover:text-chrome-ink-secondary text-[10px]"
       >
@@ -104,7 +106,7 @@ export function PerfPanel({ summary, layoutTime = 0, cacheHits = 0, cacheMisses 
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] font-medium text-chrome-ink-tertiary flex items-center gap-1">
           <Gauge size={12} />
-          性能诊断
+          {t('perf.title')}
         </span>
         <button
           onClick={() => setVisible(false)}
@@ -120,25 +122,25 @@ export function PerfPanel({ summary, layoutTime = 0, cacheHits = 0, cacheMisses 
       <div className="space-y-1.5">
         <MetricRow
           icon={<Activity size={10} />}
-          label="FPS"
+          label={t('perf.fps')}
           value={String(metrics.fps)}
           colorClass={getFpsColor(metrics.fps)}
         />
         <MetricRow
           icon={<Zap size={10} />}
-          label="帧耗时"
+          label={t('perf.render')}
           value={`${metrics.frameTime}ms`}
           colorClass={metrics.frameTime < 17 ? 'text-green-600' : 'text-amber-600'}
         />
         <MetricRow
           icon={<Zap size={10} />}
-          label="布局"
+          label={t('perf.layout')}
           value={metrics.layoutTime > 0 ? `${metrics.layoutTime}ms` : '--'}
           colorClass={getLayoutColor(metrics.layoutTime)}
         />
         <MetricRow
           icon={<Database size={10} />}
-          label="缓存命中"
+          label={t('perf.cache')}
           value={`${metrics.cacheHitRate}%`}
           colorClass={metrics.cacheHitRate >= 80 ? 'text-green-600' : 'text-amber-600'}
         />

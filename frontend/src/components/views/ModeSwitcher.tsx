@@ -11,22 +11,24 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Edit3, Eye, FormInput, Type, PenTool, Printer, ChevronDown } from 'lucide-react'
 import type { EditorMode } from '@/engine'
+import { useTranslation } from '@/i18n/useTranslation'
 
 interface ModeSwitcherProps {
   mode: EditorMode
   onModeChange: (mode: EditorMode) => void
 }
 
-const MODES: { mode: EditorMode; label: string; icon: typeof Edit3 }[] = [
-  { mode: 'edit',     label: '编辑',   icon: Edit3 },
-  { mode: 'readonly', label: '只读',   icon: Eye },
-  { mode: 'form',     label: '表单',   icon: FormInput },
-  { mode: 'clean',    label: '纯文本', icon: Type },
-  { mode: 'design',   label: '设计',   icon: PenTool },
-  { mode: 'print',    label: '打印',   icon: Printer },
+const MODES: { mode: EditorMode; labelKey: 'mode.edit' | 'mode.readonly' | 'mode.form' | 'mode.clean' | 'mode.design' | 'mode.print'; icon: typeof Edit3 }[] = [
+  { mode: 'edit',     labelKey: 'mode.edit',     icon: Edit3 },
+  { mode: 'readonly', labelKey: 'mode.readonly', icon: Eye },
+  { mode: 'form',     labelKey: 'mode.form',     icon: FormInput },
+  { mode: 'clean',    labelKey: 'mode.clean',    icon: Type },
+  { mode: 'design',   labelKey: 'mode.design',   icon: PenTool },
+  { mode: 'print',    labelKey: 'mode.print',    icon: Printer },
 ]
 
 export function ModeSwitcher({ mode, onModeChange }: ModeSwitcherProps) {
+  const { t } = useTranslation()
   const current = MODES.find(m => m.mode === mode) || MODES[0]
   const Icon = current.icon
 
@@ -36,10 +38,10 @@ export function ModeSwitcher({ mode, onModeChange }: ModeSwitcherProps) {
         <button
           className="flex items-center gap-0.5 text-xs text-chrome-ink-muted hover:text-chrome-ink-secondary
                      p-0.5 rounded transition-colors hover:bg-chrome-muted data-[state=open]:bg-chrome-muted"
-          title="切换编辑器模式"
+          title={t('mode.switchTitle')}
         >
           <Icon size={12} />
-          <span className="hidden sm:inline">{current.label}</span>
+          <span className="hidden sm:inline">{t(current.labelKey)}</span>
           <ChevronDown size={10} />
         </button>
       </DropdownMenu.Trigger>
@@ -56,7 +58,7 @@ export function ModeSwitcher({ mode, onModeChange }: ModeSwitcherProps) {
               onClick={() => onModeChange(item.mode)}
             >
               <item.icon size={14} />
-              <span>{item.label}</span>
+              <span>{t(item.labelKey)}</span>
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>

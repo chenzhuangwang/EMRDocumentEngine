@@ -12,6 +12,8 @@
 
 import { FileText, Clock, ExternalLink } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/useTranslation'
+import { locale as localeManager, type LocaleParams, type LocaleMessages } from '@/engine'
 
 // ---- 类型 ----
 
@@ -54,13 +56,14 @@ interface RecentDocumentsProps {
 }
 
 export function RecentDocuments({ onOpenDocument, activeDocId }: RecentDocumentsProps) {
+  const { t } = useTranslation()
   const docs = getRecentDocuments()
 
   if (docs.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-8 text-chrome-ink-muted">
         <Clock size={28} className="mb-2 opacity-40" />
-        <span className="text-xs">暂无最近文档</span>
+        <span className="text-xs">{t('recentDoc.empty')}</span>
       </div>
     )
   }
@@ -82,8 +85,8 @@ export function RecentDocuments({ onOpenDocument, activeDocId }: RecentDocuments
           <div className="flex-1 min-w-0">
             <div className="text-sm truncate">{doc.title}</div>
             <div className="text-[10px] text-chrome-ink-muted">
-              {formatRelativeTime(doc.lastOpenedAt)}
-              {doc.wordCount ? ` · ${doc.wordCount} 词` : ''}
+              {formatRelativeTime(doc.lastOpenedAt, t)}
+              {doc.wordCount ? t('recentDoc.separator', { n: doc.wordCount }) : ''}
             </div>
           </div>
           <ExternalLink size={12} className="text-chrome-ink-disabled flex-shrink-0" />
@@ -95,14 +98,17 @@ export function RecentDocuments({ onOpenDocument, activeDocId }: RecentDocuments
 
 // ---- 工具 ----
 
-function formatRelativeTime(ts: number): string {
+function formatRelativeTime(
+  ts: number,
+  t: (key: keyof LocaleMessages, params?: LocaleParams) => string,
+): string {
   const diff = Date.now() - ts
   const min = Math.floor(diff / 60000)
-  if (min < 1) return '刚刚'
-  if (min < 60) return `${min} 分钟前`
+  if (min < 1) return t('recentDoc.justNow')
+  if (min < 60) return t('recentDoc.minutesAgo', { n: min })
   const hours = Math.floor(min / 60)
-  if (hours < 24) return `${hours} 小时前`
+  if (hours < 24) return t('recentDoc.hoursAgo', { n: hours })
   const days = Math.floor(hours / 24)
-  if (days < 7) return `${days} 天前`
-  return new Date(ts).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+  if (days < 7) return t('recentDoc.daysAgo', { n: days })
+  return new Date(ts).toLocaleDateString(localeManager.getLocale(), { month: 'short', day: 'numeric' })
 }

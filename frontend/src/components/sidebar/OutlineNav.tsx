@@ -12,6 +12,7 @@
 
 import { ListTree, Heading1, Heading2, Heading3, Heading4, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/useTranslation'
 
 // ---- 类型 ----
 
@@ -55,19 +56,21 @@ export function OutlineNav({
   items,
   activeId,
   onItemClick,
-  emptyMessage = '暂无标题 — 使用 Heading 1-6 样式创建大纲',
+  emptyMessage,
 }: OutlineNavProps) {
+  const { t } = useTranslation()
+  const empty = emptyMessage ?? t('outline.empty')
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
         <ListTree size={32} className="text-chrome-ink-disabled mb-3" />
-        <p className="text-sm text-chrome-ink-muted leading-relaxed">{emptyMessage}</p>
+        <p className="text-sm text-chrome-ink-muted leading-relaxed">{empty}</p>
       </div>
     )
   }
 
   return (
-    <nav className="py-1" aria-label="文档大纲">
+    <nav className="py-1" aria-label={t('outline.title')}>
       {items.map((item) => (
         <button
           key={item.id}
@@ -80,7 +83,7 @@ export function OutlineNav({
           )}
           style={{ paddingLeft: `${8 + (item.level - 1) * 16}px` }}
           onClick={() => onItemClick?.(item)}
-          title={`Heading ${item.level}: ${item.text}`}
+          title={t('outline.headingTitle', { level: item.level, text: item.text })}
         >
           <span className="flex-shrink-0">
             {LEVEL_ICONS[item.level] ?? <FileText size={14} className="text-chrome-ink-muted" />}
