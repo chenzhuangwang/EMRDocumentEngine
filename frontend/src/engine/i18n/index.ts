@@ -517,6 +517,25 @@ export interface LocaleMessages {
   'design.paletteDescription': string
   'design.properties.semantic': string       // '语义信息（只读）'
   'design.properties.notSpecified': string   // '未指定'
+  'design.controlFallback': string            // '控件' (element 无名时标题兜底)
+  'design.clearAllTitle': string              // '清除全部设计期属性'
+  'design.field.label': string
+  'design.field.tips': string
+  'design.field.prefix': string
+  'design.field.suffix': string
+  'design.field.deletable': string
+  'design.field.editable': string
+  'design.field.single': string
+  'design.identity.dataElement': string
+  'design.identity.dataType': string
+  'design.identity.showType': string
+  'design.identity.enums': string
+  'design.identity.required': string
+  'design.identity.readonly': string
+  'design.expand': string                     // '展开'
+  'design.collapse': string                   // '折叠'
+  'design.singleBadge': string                // '单值'
+  'design.singleTitle': string                // '单值字段 (文档中仅可插入一次)'
   // ============================================================
   // controlDisplay.ts
   // ============================================================
@@ -526,6 +545,16 @@ export interface LocaleMessages {
   'controlDisplay.itemCount': string          // '{n} 项'
   'controlDisplay.textInput': string          // '单行文本' / 'Single Line'
   'controlDisplay.textarea': string           // '多行文本' / 'Multi Line'
+  // controlType 属性面板展示名 (与控件库目录名一致; 区别于 dialog.controlType.*
+  // 的配置弹窗短标签)
+  'controlDisplay.type.input': string         // '单行文本'
+  'controlDisplay.type.textarea': string      // '多行文本'
+  'controlDisplay.type.number': string        // '数字输入'
+  'controlDisplay.type.select': string        // '下拉选择'
+  'controlDisplay.type.date': string          // '日期选择'
+  'controlDisplay.type.datetime': string      // '日期时间选择'
+  'controlDisplay.type.checkbox': string      // '复选框'
+  'controlDisplay.type.radio': string         // '单选框'
   // ============================================================
   // RepoLinks
   // ============================================================
@@ -1198,6 +1227,25 @@ const zhCN: LocaleMessages = {
   'design.paletteDescription': '点击插入到当前光标位置',
   'design.properties.semantic': '语义信息（只读）',
   'design.properties.notSpecified': '未指定',
+  'design.controlFallback': '控件',
+  'design.clearAllTitle': '清除全部设计期属性',
+  'design.field.label': '标签',
+  'design.field.tips': '提示',
+  'design.field.prefix': '前缀',
+  'design.field.suffix': '后缀',
+  'design.field.deletable': '可删除',
+  'design.field.editable': '可编辑',
+  'design.field.single': '单值',
+  'design.identity.dataElement': '数据元',
+  'design.identity.dataType': '数据类型',
+  'design.identity.showType': '展示类型',
+  'design.identity.enums': '枚举',
+  'design.identity.required': '必填',
+  'design.identity.readonly': '只读',
+  'design.expand': '展开',
+  'design.collapse': '折叠',
+  'design.singleBadge': '单值',
+  'design.singleTitle': '单值字段 (文档中仅可插入一次)',
   // ===== controlDisplay =====
   'controlDisplay.notSpecified': '未指定',
   'controlDisplay.yes': '是',
@@ -1205,6 +1253,14 @@ const zhCN: LocaleMessages = {
   'controlDisplay.itemCount': '{n} 项',
   'controlDisplay.textInput': '单行文本',
   'controlDisplay.textarea': '多行文本',
+  'controlDisplay.type.input': '单行文本',
+  'controlDisplay.type.textarea': '多行文本',
+  'controlDisplay.type.number': '数字输入',
+  'controlDisplay.type.select': '下拉选择',
+  'controlDisplay.type.date': '日期选择',
+  'controlDisplay.type.datetime': '日期时间选择',
+  'controlDisplay.type.checkbox': '复选框',
+  'controlDisplay.type.radio': '单选框',
   // ===== RepoLinks =====
   'repo.gitee': 'Gitee',
   'repo.github': 'GitHub',
@@ -1842,6 +1898,25 @@ const enUS: LocaleMessages = {
   'design.paletteDescription': 'Click to insert at cursor',
   'design.properties.semantic': 'Semantic Info (Read-only)',
   'design.properties.notSpecified': 'Not Specified',
+  'design.controlFallback': 'Control',
+  'design.clearAllTitle': 'Clear all design-time attributes',
+  'design.field.label': 'Label',
+  'design.field.tips': 'Tips',
+  'design.field.prefix': 'Prefix',
+  'design.field.suffix': 'Suffix',
+  'design.field.deletable': 'Deletable',
+  'design.field.editable': 'Editable',
+  'design.field.single': 'Single',
+  'design.identity.dataElement': 'Data Element',
+  'design.identity.dataType': 'Data Type',
+  'design.identity.showType': 'Display Type',
+  'design.identity.enums': 'Options',
+  'design.identity.required': 'Required',
+  'design.identity.readonly': 'Read-only',
+  'design.expand': 'Expand',
+  'design.collapse': 'Collapse',
+  'design.singleBadge': 'Single',
+  'design.singleTitle': 'Single-value field (can only be inserted once per document)',
   // ===== controlDisplay =====
   'controlDisplay.notSpecified': 'Not Specified',
   'controlDisplay.yes': 'Yes',
@@ -1849,6 +1924,14 @@ const enUS: LocaleMessages = {
   'controlDisplay.itemCount': '{n} items',
   'controlDisplay.textInput': 'Single Line',
   'controlDisplay.textarea': 'Multi Line',
+  'controlDisplay.type.input': 'Single Line',
+  'controlDisplay.type.textarea': 'Multi Line',
+  'controlDisplay.type.number': 'Number',
+  'controlDisplay.type.select': 'Dropdown',
+  'controlDisplay.type.date': 'Date',
+  'controlDisplay.type.datetime': 'Date & Time',
+  'controlDisplay.type.checkbox': 'Checkbox',
+  'controlDisplay.type.radio': 'Radio',
   // ===== RepoLinks =====
   'repo.gitee': 'Gitee',
   'repo.github': 'GitHub',

@@ -18,8 +18,10 @@ import { useState } from 'react'
 import { PanelRightClose, PanelRightOpen, Puzzle } from 'lucide-react'
 import { useEditorRef, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { CONTROL_LIBRARY, type ControlLibraryEntry } from '@/platform/data/controlLibrary'
+import { useTranslation } from '@/i18n/useTranslation'
 
 export function DesignControlPalette() {
+  const { t } = useTranslation()
   const editorRef = useEditorRef()
   const mode = useEditorStoreSnapshot((s) => s.runtime.view.mode)
   const [collapsed, setCollapsed] = useState(false)
@@ -43,12 +45,12 @@ export function DesignControlPalette() {
       <div className="flex items-center justify-between border-b border-line-subtle px-3 py-2">
         <span className="flex items-center gap-1.5 text-xs font-medium text-chrome-ink-body">
           <Puzzle size={13} className="text-blue-500" />
-          控件库
+          {t('design.paletteTitle')}
         </span>
         <button
           className="p-0.5 rounded text-chrome-ink-muted hover:text-chrome-ink-secondary hover:bg-chrome-muted"
           onClick={() => setCollapsed(!collapsed)}
-          title={collapsed ? '展开' : '折叠'}
+          title={collapsed ? t('design.expand') : t('design.collapse')}
         >
           {collapsed ? <PanelRightOpen size={13} /> : <PanelRightClose size={13} />}
         </button>
@@ -70,7 +72,7 @@ export function DesignControlPalette() {
                 >
                   <span>{entry.name}</span>
                   {entry.definition?.single && (
-                    <span className="text-[10px] text-amber-500" title="单值字段 (文档中仅可插入一次)">单值</span>
+                    <span className="text-[10px] text-amber-500" title={t('design.singleTitle')}>{t('design.singleBadge')}</span>
                   )}
                 </button>
               ))}

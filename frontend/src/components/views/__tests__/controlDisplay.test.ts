@@ -14,9 +14,14 @@
 //   两者均为纯函数, 无副作用 → 展示不可能产生 setControlDefinition 回写。
 // ================================================================
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { controlTypeDisplayName, semanticIdentityOf } from '../controlDisplay'
 import type { ElementMeta } from '@/engine/document/core/DocumentModel'
+import { bootstrapLocale } from '@/i18n/bootstrap'
+import { locale } from '@/engine'
+
+beforeEach(() => { bootstrapLocale() })
+afterEach(() => { locale.setLocale('zh-CN') })
 
 describe('controlTypeDisplayName — 复用目录展示名 (契约 §12.5)', () => {
   it('7 个 controlType 各自映射到目录 name', () => {

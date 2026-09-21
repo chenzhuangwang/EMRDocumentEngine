@@ -26,21 +26,32 @@ import { Trash2 } from 'lucide-react'
 import { useEditorRef, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import type { TemplateDefinition } from '@/engine/template/TemplateDefinition'
 import { controlTypeDisplayName, semanticIdentityOf } from './controlDisplay'
+import { useTranslation } from '@/i18n/useTranslation'
+import type { LocaleMessages } from '@/engine'
 
 type StringField = 'label' | 'tips' | 'prefix' | 'suffix'
 type BoolField = 'deletable' | 'editable' | 'single'
 
-const STRING_FIELDS: { key: StringField; label: string }[] = [
-  { key: 'label', label: '标签' },
-  { key: 'tips', label: '提示' },
-  { key: 'prefix', label: '前缀' },
-  { key: 'suffix', label: '后缀' },
+const STRING_FIELDS: { key: StringField; labelKey: 'design.field.label' | 'design.field.tips' | 'design.field.prefix' | 'design.field.suffix' }[] = [
+  { key: 'label', labelKey: 'design.field.label' },
+  { key: 'tips', labelKey: 'design.field.tips' },
+  { key: 'prefix', labelKey: 'design.field.prefix' },
+  { key: 'suffix', labelKey: 'design.field.suffix' },
 ]
 
-const BOOL_FIELDS: { key: BoolField; label: string }[] = [
-  { key: 'deletable', label: '可删除' },
-  { key: 'editable', label: '可编辑' },
-  { key: 'single', label: '单值' },
+const BOOL_FIELDS: { key: BoolField; labelKey: 'design.field.deletable' | 'design.field.editable' | 'design.field.single' }[] = [
+  { key: 'deletable', labelKey: 'design.field.deletable' },
+  { key: 'editable', labelKey: 'design.field.editable' },
+  { key: 'single', labelKey: 'design.field.single' },
+]
+
+const IDENTITY_ROWS: { key: 'dataElement' | 'dataType' | 'showType' | 'enums' | 'required' | 'readonly'; labelKey: keyof LocaleMessages }[] = [
+  { key: 'dataElement', labelKey: 'design.identity.dataElement' },
+  { key: 'dataType', labelKey: 'design.identity.dataType' },
+  { key: 'showType', labelKey: 'design.identity.showType' },
+  { key: 'enums', labelKey: 'design.identity.enums' },
+  { key: 'required', labelKey: 'design.identity.required' },
+  { key: 'readonly', labelKey: 'design.identity.readonly' },
 ]
 
 /** 从完整 def 清洗出「有实际值的字段」; 空串视为清除该字段 */
@@ -66,6 +77,7 @@ function SemanticRow({ label, value }: { label: string; value: string }) {
 }
 
 export function DesignControlProperties() {
+  const { t } = useTranslation()
   const editorRef = useEditorRef()
   const mode = useEditorStoreSnapshot((s) => s.runtime.view.mode)
   const selectedId = useEditorStoreSnapshot((s) => s.designSelectedControlId)
@@ -85,8 +97,8 @@ export function DesignControlProperties() {
 
   // 选中控件语义 (element) — 供标题 + 只读语义身份卡
   const element = editor.getElement(selectedId)
-  const title = element?.name ?? '控件'
-  const identity = semanticIdentityOf(element)
+  const title = element?.name ?? t('design.controlFallback')
+  const identity = semanticIdentityOf(element, t)
 
   const commit = (next: TemplateDefinition) => {
     setDraft(next)
@@ -117,7 +129,7 @@ export function DesignControlProperties() {
         <button
           className="p-1 rounded text-chrome-ink-muted hover:text-red-500 hover:bg-red-50"
           onClick={clearAll}
-          title="清除全部设计期属性"
+          title={t('design.clearAllTitle')}
         >
           <Trash2 size={13} />
         </button>
@@ -126,9 +138,9 @@ export function DesignControlProperties() {
       {/* 字段编辑 */}
       <div className="max-h-[70vh] overflow-y-auto p-2.5 space-y-2">
         {/* 文本字段 */}
-        {STRING_FIELDS.map(({ key, label }) => (
+        {STRING_FIELDS.map(({ key, labelKey }) => (
           <div key={key} className="flex flex-col gap-1">
-            <label className="text-[11px] text-chrome-ink-muted">{label}</label>
+            <label className="text-[11px] text-chrome-ink-muted">{t(labelKey)}</label>
             <input
               className="w-full rounded border border-line px-2 py-1 text-xs text-chrome-ink-body
                          focus:outline-none focus:border-blue-400"
@@ -141,9 +153,9 @@ export function DesignControlProperties() {
 
         {/* 布尔字段 */}
         <div className="pt-1 space-y-1.5 border-t border-line-subtle">
-          {BOOL_FIELDS.map(({ key, label }) => (
+          {BOOL_FIELDS.map(({ key, labelKey }) => (
             <label key={key} className="flex items-center justify-between text-xs text-chrome-ink-body">
-              <span>{label}</span>
+              <span>{t(labelKey)}</span>
               <input
                 type="checkbox"
                 className="rounded text-blue-500"
@@ -156,21 +168,18 @@ export function DesignControlProperties() {
 
         {/* controlType 只读展示 (契约 §12.5: 插入时写定, 面板不可改) */}
         <div className="flex items-center justify-between pt-1.5 border-t border-line-subtle">
-          <span className="text-[11px] text-chrome-ink-muted">控件类型</span>
-          <span className="text-xs text-chrome-ink-secondary">{controlTypeDisplayName(draft.controlType)}</span>
+          <span className="text-[11px] text-chrome-ink-muted">{t('dialog.label.controlType')}</span>
+          <span className="text-xs text-chrome-ink-secondary">{controlTypeDisplayName(draft.controlType, t)}</span>
         </div>
 
         {/* 语义身份只读区 (契约 §12.5: 只读, 不产生写入) */}
         {identity && (
           <div className="pt-2 border-t border-dashed border-line">
-            <div className="text-[11px] text-chrome-ink-muted mb-1">语义信息（只读）</div>
+            <div className="text-[11px] text-chrome-ink-muted mb-1">{t('design.properties.semantic')}</div>
             <div className="space-y-1">
-              <SemanticRow label="数据元" value={identity.dataElement} />
-              <SemanticRow label="数据类型" value={identity.dataType} />
-              <SemanticRow label="展示类型" value={identity.showType} />
-              <SemanticRow label="枚举" value={identity.enums} />
-              <SemanticRow label="必填" value={identity.required} />
-              <SemanticRow label="只读" value={identity.readonly} />
+              {IDENTITY_ROWS.map(({ key, labelKey }) => (
+                <SemanticRow key={key} label={t(labelKey)} value={identity[key]} />
+              ))}
             </div>
           </div>
         )}

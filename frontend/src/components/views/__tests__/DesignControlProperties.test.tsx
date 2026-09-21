@@ -13,14 +13,19 @@
 //   - 全程不调用 setControlDefinition (展示 ≠ 迁移, 绝不自动回写默认值)
 // ================================================================
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { EditorContext, type EditorContextValue } from '../../editor/EditorProvider'
 import { DesignControlProperties } from '../DesignControlProperties'
 import { EditorStore } from '@/engine/state/EditorStore'
 import type { Editor } from '@/engine'
+import { bootstrapLocale } from '@/i18n/bootstrap'
+import { locale } from '@/engine'
 import type { TemplateDefinition } from '@/engine/template/TemplateDefinition'
 import type { ElementMeta } from '@/engine/document/core/DocumentModel'
+
+beforeEach(() => { bootstrapLocale() })
+afterEach(() => { locale.setLocale('zh-CN') })
 
 /** 最小 mock Editor: 面板只消费 getElement / getControlDefinition / setControlDefinition */
 function makeEditor(def: TemplateDefinition | undefined, element: ElementMeta | undefined) {
