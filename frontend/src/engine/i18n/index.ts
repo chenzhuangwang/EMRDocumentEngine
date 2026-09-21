@@ -479,11 +479,6 @@ export interface LocaleMessages {
   // DocumentCompareView
   // ============================================================
   'compare.title': string
-  'compare.added': string
-  'compare.removed': string
-  'compare.modified': string
-  'compare.unchanged': string
-  'compare.summary': string
   'compare.accept': string
   'compare.reject': string
   'compare.acceptAll': string
@@ -492,6 +487,20 @@ export interface LocaleMessages {
   'compare.parseError': string           // '文档解析失败'
   'compare.emptyError': string           // '文档内容为空'
   'compare.loadError': string            // '加载文档失败'
+  'compare.label.insert': string         // '新增段落'
+  'compare.label.delete': string         // '删除段落'
+  'compare.label.modify': string         // '修改段落'
+  'compare.label.equal': string          // '相同'
+  'compare.count.insert': string         // '{n} 新增'
+  'compare.count.delete': string         // '{n} 删除'
+  'compare.count.modify': string         // '{n} 修改'
+  'compare.count.equal': string          // '{n} 相同'
+  'compare.textChangeCount': string      // '{n} 处文本变更'
+  'compare.identical': string            // '两份文档完全相同'
+  'compare.noContent': string            // '(无内容)'
+  'compare.emptyParagraph': string       // '(空段落)'
+  'compare.imagePlaceholder': string     // '[图片]'
+  'compare.footnotePlaceholder': string  // '[脚注]'
   // ============================================================
   // ModeSwitcher (6 个编辑模式)
   // ============================================================
@@ -1195,11 +1204,6 @@ const zhCN: LocaleMessages = {
   'qc.recheck': '重新检查',
   // ===== DocumentCompareView =====
   'compare.title': '文档比较',
-  'compare.added': '新增',
-  'compare.removed': '删除',
-  'compare.modified': '修改',
-  'compare.unchanged': '相同',
-  'compare.summary': '共 {total} 处差异',
   'compare.accept': '接受',
   'compare.reject': '拒绝',
   'compare.acceptAll': '全部接受',
@@ -1208,6 +1212,20 @@ const zhCN: LocaleMessages = {
   'compare.parseError': '文档解析失败',
   'compare.emptyError': '文档内容为空',
   'compare.loadError': '加载文档失败',
+  'compare.label.insert': '新增段落',
+  'compare.label.delete': '删除段落',
+  'compare.label.modify': '修改段落',
+  'compare.label.equal': '相同',
+  'compare.count.insert': '{n} 新增',
+  'compare.count.delete': '{n} 删除',
+  'compare.count.modify': '{n} 修改',
+  'compare.count.equal': '{n} 相同',
+  'compare.textChangeCount': '{n} 处文本变更',
+  'compare.identical': '两份文档完全相同',
+  'compare.noContent': '(无内容)',
+  'compare.emptyParagraph': '(空段落)',
+  'compare.imagePlaceholder': '[图片]',
+  'compare.footnotePlaceholder': '[脚注]',
   // ===== ModeSwitcher =====
   'mode.edit': '编辑',
   'mode.design': '设计',
@@ -1866,11 +1884,6 @@ const enUS: LocaleMessages = {
   'qc.recheck': 'Re-check',
   // ===== DocumentCompareView =====
   'compare.title': 'Compare Documents',
-  'compare.added': 'Added',
-  'compare.removed': 'Removed',
-  'compare.modified': 'Modified',
-  'compare.unchanged': 'Unchanged',
-  'compare.summary': '{total} differences',
   'compare.accept': 'Accept',
   'compare.reject': 'Reject',
   'compare.acceptAll': 'Accept All',
@@ -1879,6 +1892,20 @@ const enUS: LocaleMessages = {
   'compare.parseError': 'Failed to parse document',
   'compare.emptyError': 'Document content is empty',
   'compare.loadError': 'Failed to load document',
+  'compare.label.insert': 'Paragraph added',
+  'compare.label.delete': 'Paragraph deleted',
+  'compare.label.modify': 'Paragraph modified',
+  'compare.label.equal': 'Unchanged',
+  'compare.count.insert': '{n} added',
+  'compare.count.delete': '{n} deleted',
+  'compare.count.modify': '{n} modified',
+  'compare.count.equal': '{n} unchanged',
+  'compare.textChangeCount': '{n} text changes',
+  'compare.identical': 'The two documents are identical',
+  'compare.noContent': '(no content)',
+  'compare.emptyParagraph': '(empty paragraph)',
+  'compare.imagePlaceholder': '[image]',
+  'compare.footnotePlaceholder': '[footnote]',
   // ===== ModeSwitcher =====
   'mode.edit': 'Edit',
   'mode.design': 'Design',
