@@ -443,6 +443,13 @@ export interface LocaleMessages {
   'comment.resolve': string
   'comment.unresolve': string
   'comment.noSelection': string               // '请先在文档中...'
+  'comment.anchorFailed': string               // '请先在文档中选中同一段落内的文字...'
+  'comment.newTitle': string                   // '在文档中选中文字后新建批注'
+  'comment.replyPlaceholder': string           // '输入回复...'
+  'comment.noContent': string                  // '(无内容)'
+  'comment.resolveTitle': string               // '标记为已解决'
+  'comment.resolvedBadge': string              // '已解决'
+  'comment.summary': string                    // '{open} 条未解决 · {total} 条总计'
   // ============================================================
   // QCResultPanel
   // ============================================================
@@ -461,6 +468,13 @@ export interface LocaleMessages {
   'qc.warning': string
   'qc.info': string
   'qc.passed': string
+  'qc.maxScore': string                        // '满分 100'
+  'qc.errorCount': string                      // '{n} 错误'
+  'qc.warningCount': string                    // '{n} 警告'
+  'qc.infoCount': string                       // '{n} 提示'
+  'qc.jumpToIssue': string                     // '跳转到该位置'
+  'qc.docLevelIssue': string                   // '文档级问题，无具体位置'
+  'qc.recheck': string                         // '重新检查'
   // ============================================================
   // DocumentCompareView
   // ============================================================
@@ -1112,7 +1126,7 @@ const zhCN: LocaleMessages = {
   'comment.newThread': '新建',
   'comment.placeholder': '批注内容...',
   'comment.addReply': '添加批注',
-  'comment.anchor': '锚定：{text}',
+  'comment.anchor': '锚定：「{text}」',
   'comment.timeJustNow': '刚刚',
   'comment.timeMinutesAgo': '{n} 分钟前',
   'comment.timeHoursAgo': '{n} 小时前',
@@ -1120,6 +1134,13 @@ const zhCN: LocaleMessages = {
   'comment.resolve': '解决',
   'comment.unresolve': '撤销解决',
   'comment.noSelection': '请先在文档中选择文字',
+  'comment.anchorFailed': '请先在文档中选中同一段落内的文字（或把光标放到要批注的位置）',
+  'comment.newTitle': '在文档中选中文字后新建批注',
+  'comment.replyPlaceholder': '输入回复...',
+  'comment.noContent': '(无内容)',
+  'comment.resolveTitle': '标记为已解决',
+  'comment.resolvedBadge': '已解决',
+  'comment.summary': '{open} 条未解决 · {total} 条总计',
   // ===== QCResultPanel =====
   'qc.empty': '尚未进行质控检查',
   'qc.start': '开始检查',
@@ -1136,6 +1157,13 @@ const zhCN: LocaleMessages = {
   'qc.warning': '警告',
   'qc.info': '提示',
   'qc.passed': '文书质控通过，无问题',
+  'qc.maxScore': '满分 100',
+  'qc.errorCount': '{n} 错误',
+  'qc.warningCount': '{n} 警告',
+  'qc.infoCount': '{n} 提示',
+  'qc.jumpToIssue': '跳转到该位置',
+  'qc.docLevelIssue': '文档级问题，无具体位置',
+  'qc.recheck': '重新检查',
   // ===== DocumentCompareView =====
   'compare.title': '文档比较',
   'compare.added': '新增',
@@ -1750,6 +1778,13 @@ const enUS: LocaleMessages = {
   'comment.resolve': 'Resolve',
   'comment.unresolve': 'Reopen',
   'comment.noSelection': 'Select text in the document first',
+  'comment.anchorFailed': 'Select text within a single paragraph (or place the cursor where you want the comment)',
+  'comment.newTitle': 'Select text in the document, then add a comment',
+  'comment.replyPlaceholder': 'Write a reply...',
+  'comment.noContent': '(no content)',
+  'comment.resolveTitle': 'Mark as resolved',
+  'comment.resolvedBadge': 'Resolved',
+  'comment.summary': '{open} open · {total} total',
   // ===== QCResultPanel =====
   'qc.empty': 'No QC check yet',
   'qc.start': 'Run Check',
@@ -1766,6 +1801,13 @@ const enUS: LocaleMessages = {
   'qc.warning': 'Warning',
   'qc.info': 'Info',
   'qc.passed': 'QC passed, no issues',
+  'qc.maxScore': 'out of 100',
+  'qc.errorCount': '{n} errors',
+  'qc.warningCount': '{n} warnings',
+  'qc.infoCount': '{n} notices',
+  'qc.jumpToIssue': 'Jump to this location',
+  'qc.docLevelIssue': 'Document-level issue; no specific location',
+  'qc.recheck': 'Re-check',
   // ===== DocumentCompareView =====
   'compare.title': 'Compare Documents',
   'compare.added': 'Added',

@@ -14,6 +14,8 @@
 import { AlertTriangle, AlertCircle, Info, Shield, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { QCResult, QCIssue, QCGrade } from '@/engine/qc/QCEngine'
+import { useTranslation } from '@/i18n/useTranslation'
+import { locale as localeManager } from '@/engine'
 
 // ---- 组件 ----
 
@@ -24,17 +26,18 @@ interface QCResultPanelProps {
 }
 
 export function QCResultPanel({ result, onIssueClick, onRecheck }: QCResultPanelProps) {
+  const { t } = useTranslation()
   if (!result) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-chrome-ink-muted">
         <Shield size={36} className="mb-2 opacity-30" />
-        <span className="text-sm">尚未进行质控检查</span>
+        <span className="text-sm">{t('qc.empty')}</span>
         {onRecheck && (
           <button
             onClick={onRecheck}
             className="mt-3 px-3 py-1.5 text-xs bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100"
           >
-            开始检查
+            {t('qc.start')}
           </button>
         )}
       </div>
@@ -48,9 +51,9 @@ export function QCResultPanel({ result, onIssueClick, onRecheck }: QCResultPanel
       {/* 评分卡片 */}
       <div className="px-4 py-3 border-b border-line-subtle">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-chrome-ink-secondary">文书质控评分</span>
+          <span className="text-xs font-medium text-chrome-ink-secondary">{t('qc.score')}</span>
           <span className="text-[10px] text-chrome-ink-muted">
-            {new Date(result.checkedAt).toLocaleTimeString('zh-CN')}
+            {new Date(result.checkedAt).toLocaleTimeString(localeManager.getLocale())}
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -63,7 +66,7 @@ export function QCResultPanel({ result, onIssueClick, onRecheck }: QCResultPanel
           </div>
           <div>
             <div className="text-2xl font-bold text-chrome-ink-strong">{score}</div>
-            <div className="text-[10px] text-chrome-ink-muted">满分 100</div>
+            <div className="text-[10px] text-chrome-ink-muted">{t('qc.maxScore')}</div>
           </div>
         </div>
       </div>
@@ -72,15 +75,15 @@ export function QCResultPanel({ result, onIssueClick, onRecheck }: QCResultPanel
       <div className="flex gap-3 px-4 py-2 border-b border-line-subtle text-[10px]">
         <span className="flex items-center gap-1 text-red-600">
           <AlertCircle size={10} />
-          {stats.errors} 错误
+          {t('qc.errorCount', { n: stats.errors })}
         </span>
         <span className="flex items-center gap-1 text-amber-600">
           <AlertTriangle size={10} />
-          {stats.warnings} 警告
+          {t('qc.warningCount', { n: stats.warnings })}
         </span>
         <span className="flex items-center gap-1 text-blue-600">
           <Info size={10} />
-          {stats.infos} 提示
+          {t('qc.infoCount', { n: stats.infos })}
         </span>
       </div>
 
@@ -89,7 +92,7 @@ export function QCResultPanel({ result, onIssueClick, onRecheck }: QCResultPanel
         {issues.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-chrome-ink-muted">
             <Shield size={28} className="mb-1 opacity-40" />
-            <span className="text-xs">文书质控通过，无问题</span>
+            <span className="text-xs">{t('qc.passed')}</span>
           </div>
         ) : (
           issues.map((issue, idx) => {
@@ -101,7 +104,7 @@ export function QCResultPanel({ result, onIssueClick, onRecheck }: QCResultPanel
                 key={`${issue.ruleId}-${idx}`}
                 onClick={() => { if (locatable) onIssueClick?.(issue) }}
                 disabled={!locatable}
-                title={locatable ? '跳转到该位置' : '文档级问题，无具体位置'}
+                title={locatable ? t('qc.jumpToIssue') : t('qc.docLevelIssue')}
                 className={cn(
                   'w-full text-left px-4 py-2.5 transition-colors flex items-start gap-2',
                   locatable ? 'hover:bg-chrome-subtle' : 'cursor-default',
@@ -128,7 +131,7 @@ export function QCResultPanel({ result, onIssueClick, onRecheck }: QCResultPanel
             onClick={onRecheck}
             className="w-full text-xs py-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
           >
-            重新检查
+            {t('qc.recheck')}
           </button>
         </div>
       )}

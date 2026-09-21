@@ -15,6 +15,8 @@ import { useState } from 'react'
 import { MessageSquare, Check, Reply, ChevronDown, X, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CommentThread } from '@/engine/document/core/DocumentModel'
+import { useTranslation } from '@/i18n/useTranslation'
+import { locale as localeManager, type LocaleParams, type LocaleMessages } from '@/engine'
 
 // ---- 组件 Props ----
 
@@ -48,6 +50,7 @@ export function CommentPanel({
   onNewComment,
   getThreadExcerpt,
 }: CommentPanelProps) {
+  const { t } = useTranslation()
   const [filter, setFilter] = useState<FilterMode>('open')
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set())
   const [replyText, setReplyText] = useState<Record<string, string>>({})
@@ -62,7 +65,7 @@ export function CommentPanel({
     if (onNewComment(content)) {
       setNewText(''); setNewOpen(false); setNewError(null)
     } else {
-      setNewError('请先在文档中选中同一段落内的文字（或把光标放到要批注的位置）')
+      setNewError(t('comment.anchorFailed'))
     }
   }
 
@@ -86,10 +89,10 @@ export function CommentPanel({
     resolved: threads.filter(t => t.status === 'resolved').length,
   }
 
-  const FILTERS: { key: FilterMode; label: string }[] = [
-    { key: 'all', label: `全部 (${counts.all})` },
-    { key: 'open', label: `未解决 (${counts.open})` },
-    { key: 'resolved', label: `已解决 (${counts.resolved})` },
+  const FILTERS: { key: FilterMode; labelKey: 'comment.filter.all' | 'comment.filter.unresolved' | 'comment.filter.resolved' }[] = [
+    { key: 'all', labelKey: 'comment.filter.all' },
+    { key: 'open', labelKey: 'comment.filter.unresolved' },
+    { key: 'resolved', labelKey: 'comment.filter.resolved' },
   ]
 
   return (
@@ -98,27 +101,28 @@ export function CommentPanel({
       <div className="flex items-center justify-between px-4 py-3 border-b border-line-subtle">
         <div className="flex items-center gap-2">
           <MessageSquare size={16} className="text-chrome-ink-tertiary" />
-          <span className="text-sm font-medium text-chrome-ink-strong">批注</span>
+          <span className="text-sm font-medium text-chrome-ink-strong">{t('comment.title')}</span>
           <span className="text-xs text-chrome-ink-muted bg-chrome-muted px-1.5 py-0.5 rounded">
             {counts.open}
           </span>
           {onNewComment && (
             <button
               onClick={() => { setNewOpen(v => !v); setNewError(null) }}
-              title="在文档中选中文字后新建批注"
+              title={t('comment.newTitle')}
               className={cn(
                 'ml-1 flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded transition-colors',
                 newOpen ? 'bg-blue-50 text-blue-700' : 'text-blue-600 hover:bg-blue-50',
               )}
             >
               <Plus size={12} />
-              新建
+              {t('comment.newThread')}
             </button>
           )}
         </div>
         {onClose && (
           <button
             onClick={onClose}
+            aria-label={t('common.close')}
             className="p-1 rounded hover:bg-chrome-muted text-chrome-ink-muted hover:text-chrome-ink-secondary"
           >
             <X size={14} />
@@ -139,7 +143,7 @@ export function CommentPanel({
                 : 'text-chrome-ink-tertiary hover:bg-chrome-subtle hover:text-chrome-ink-body',
             )}
           >
-            {f.label}
+            {t(f.labelKey, { n: counts[f.key] })}
           </button>
         ))}
       </div>
@@ -156,7 +160,7 @@ export function CommentPanel({
               if (e.key === 'Escape') { setNewOpen(false); setNewText(''); setNewError(null) }
             }}
             rows={2}
-            placeholder="批注内容…（Enter 提交，Shift+Enter 换行）"
+            placeholder={t('comment.placeholder')}
             className="w-full text-xs px-2 py-1.5 border border-line rounded resize-none
                        focus:outline-none focus:border-blue-400 bg-chrome"
           />
@@ -166,7 +170,7 @@ export function CommentPanel({
               onClick={() => { setNewOpen(false); setNewText(''); setNewError(null) }}
               className="px-2 py-1 text-xs text-chrome-ink-secondary hover:bg-chrome-muted rounded"
             >
-              取消
+              {t('common.cancel')}
             </button>
             <button
               onClick={submitNew}
@@ -174,7 +178,7 @@ export function CommentPanel({
               className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700
                          disabled:opacity-40 disabled:cursor-default"
             >
-              添加批注
+              {t('comment.addReply')}
             </button>
           </div>
         </div>
@@ -185,7 +189,7 @@ export function CommentPanel({
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-chrome-ink-muted">
             <MessageSquare size={32} className="mb-2 opacity-40" />
-            <span className="text-sm">暂无批注</span>
+            <span className="text-sm">{t('comment.empty')}</span>
           </div>
         ) : (
           <div className="divide-y divide-line-subtle">
@@ -220,16 +224,16 @@ export function CommentPanel({
                           {thread.author}
                         </span>
                         <span className="text-[10px] text-chrome-ink-muted">
-                          {formatTime(lastEntry?.createdAt)}
+                          {formatTime(lastEntry?.createdAt, t)}
                         </span>
                       </div>
                       <p className="text-xs text-chrome-ink-secondary mt-1 line-clamp-2 ml-[18px]">
-                        {lastEntry?.content || '(无内容)'}
+                        {lastEntry?.content || t('comment.noContent')}
                       </p>
                       {/* 锚定摘录: 没有它, 列表里看不出这条批注标的是哪段字 */}
                       {excerpt && (
                         <p className="text-[10px] text-chrome-ink-muted mt-0.5 ml-[18px] truncate">
-                          锚定：「{excerpt}」
+                          {t('comment.anchor', { text: excerpt })}
                         </p>
                       )}
                     </div>
@@ -238,7 +242,7 @@ export function CommentPanel({
                       <button
                         onClick={(e) => { e.stopPropagation(); onResolveThread?.(thread.id) }}
                         className="p-1 rounded hover:bg-green-50 text-chrome-ink-disabled hover:text-green-600 shrink-0"
-                        title="标记为已解决"
+                        title={t('comment.resolveTitle')}
                       >
                         <Check size={14} />
                       </button>
@@ -247,7 +251,7 @@ export function CommentPanel({
 
                   {thread.status === 'resolved' && (
                     <span className="inline-block mt-1 ml-[18px] text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
-                      已解决
+                      {t('comment.resolvedBadge')}
                     </span>
                   )}
 
@@ -265,7 +269,7 @@ export function CommentPanel({
                           <div className="flex items-center gap-1.5 mb-0.5">
                             <span className="font-medium text-chrome-ink-body">{entry.author}</span>
                             <span className="text-[10px] text-chrome-ink-muted">
-                              {formatTime(entry.createdAt)}
+                              {formatTime(entry.createdAt, t)}
                             </span>
                           </div>
                           <p className="text-chrome-ink-secondary leading-relaxed">{entry.content}</p>
@@ -290,7 +294,7 @@ export function CommentPanel({
                                 setReplyText(prev => ({ ...prev, [thread.id]: '' }))
                               }
                             }}
-                            placeholder="输入回复..."
+                            placeholder={t('comment.replyPlaceholder')}
                             className="flex-1 text-xs px-2 py-1.5 border border-line rounded focus:outline-none focus:border-blue-300"
                           />
                           <button
@@ -319,7 +323,7 @@ export function CommentPanel({
 
       {/* 底部信息 */}
       <div className="px-4 py-2 border-t border-line-subtle text-[10px] text-chrome-ink-muted">
-        {counts.open} 条未解决 · {counts.all} 条总计
+        {t('comment.summary', { open: counts.open, total: counts.all })}
       </div>
     </div>
   )
@@ -327,15 +331,18 @@ export function CommentPanel({
 
 // ---- 工具函数 ----
 
-function formatTime(ts?: number): string {
+function formatTime(
+  ts: number | undefined,
+  t: (key: keyof LocaleMessages, params?: LocaleParams) => string,
+): string {
   if (!ts) return ''
   const d = new Date(ts)
   const now = new Date()
   const diffMs = now.getTime() - d.getTime()
   const diffMin = Math.floor(diffMs / 60000)
 
-  if (diffMin < 1) return '刚刚'
-  if (diffMin < 60) return `${diffMin}分钟前`
-  if (diffMin < 1440) return `${Math.floor(diffMin / 60)}小时前`
-  return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+  if (diffMin < 1) return t('comment.timeJustNow')
+  if (diffMin < 60) return t('comment.timeMinutesAgo', { n: diffMin })
+  if (diffMin < 1440) return t('comment.timeHoursAgo', { n: Math.floor(diffMin / 60) })
+  return d.toLocaleDateString(localeManager.getLocale(), { month: 'short', day: 'numeric' })
 }
