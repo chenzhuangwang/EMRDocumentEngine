@@ -162,6 +162,14 @@ export interface LocaleMessages {
   'editor.hf.differentOddEven': string
   'editor.hf.headerHint': string            // 关闭时 title 提示
   'editor.hf.footerHint': string
+  'editor.hf.variantFirst': string          // '首页' (变体前缀)
+  'editor.hf.variantEven': string           // '偶数页' (变体前缀)
+  'editor.hf.scopePage': string             // ' · 第 {n} 页'
+  'editor.hf.insertPageNumber': string      // '插入页码'
+  'editor.hf.insertDate': string            // '插入日期'
+  'editor.hf.date': string                  // '日期'
+  'editor.hf.closeHeaderTitle': string      // '关闭页眉编辑'
+  'editor.hf.closeFooterTitle': string      // '关闭页脚编辑'
   // ============================================================
   // 编辑器 — 右键菜单
   // ============================================================
@@ -798,6 +806,7 @@ export interface LocaleMessages {
   // RuntimeControlOverlay
   // ============================================================
   'overlay.enterNumber': string               // '请输入数字'
+  'overlay.selectPlaceholder': string          // '请选择'
   // ============================================================
   // TableGrowOverlay
   // ============================================================
@@ -931,6 +940,14 @@ const zhCN: LocaleMessages = {
   'editor.hf.differentOddEven': '奇偶页不同',
   'editor.hf.headerHint': '编辑页眉',
   'editor.hf.footerHint': '编辑页脚',
+  'editor.hf.variantFirst': '首页',
+  'editor.hf.variantEven': '偶数页',
+  'editor.hf.scopePage': ' · 第 {n} 页',
+  'editor.hf.insertPageNumber': '插入页码',
+  'editor.hf.insertDate': '插入日期',
+  'editor.hf.date': '日期',
+  'editor.hf.closeHeaderTitle': '关闭页眉编辑',
+  'editor.hf.closeFooterTitle': '关闭页脚编辑',
   // ===== 右键菜单 =====
   'editor.contextMenu.cut': '剪切',
   'editor.contextMenu.copy': '复制',
@@ -1488,6 +1505,7 @@ const zhCN: LocaleMessages = {
   'docProps.keywordsPlaceholder': '关键词1, 关键词2',
   // ===== RuntimeControlOverlay =====
   'overlay.enterNumber': '请输入数字',
+  'overlay.selectPlaceholder': '请选择',
   // ===== TableGrowOverlay =====
   'tableGrow.addRow': '在表尾添加一行（克隆末行字段，数据为空）',
   'tableGrow.dynamicNotice': '此表声明了「填写时可增长」，按下方按钮或在该行末尾按 Enter 即可继续添加。',
@@ -1611,6 +1629,14 @@ const enUS: LocaleMessages = {
   'editor.hf.differentOddEven': 'Different Odd/Even Pages',
   'editor.hf.headerHint': 'Edit Header',
   'editor.hf.footerHint': 'Edit Footer',
+  'editor.hf.variantFirst': 'First page',
+  'editor.hf.variantEven': 'Even pages',
+  'editor.hf.scopePage': ' · Page {n}',
+  'editor.hf.insertPageNumber': 'Insert page number',
+  'editor.hf.insertDate': 'Insert date',
+  'editor.hf.date': 'Date',
+  'editor.hf.closeHeaderTitle': 'Close header editing',
+  'editor.hf.closeFooterTitle': 'Close footer editing',
   // ===== 右键菜单 =====
   'editor.contextMenu.cut': 'Cut',
   'editor.contextMenu.copy': 'Copy',
@@ -2168,6 +2194,7 @@ const enUS: LocaleMessages = {
   'docProps.keywordsPlaceholder': 'keyword1, keyword2',
   // ===== RuntimeControlOverlay =====
   'overlay.enterNumber': 'Please enter a number',
+  'overlay.selectPlaceholder': 'Please select',
   // ===== TableGrowOverlay =====
   'tableGrow.addRow': 'Append a row at table end (clones last row fields, data empty)',
   'tableGrow.dynamicNotice': 'This table is marked growable — click the button below or press Enter at end of row to extend.',

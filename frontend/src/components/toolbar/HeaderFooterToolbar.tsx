@@ -23,6 +23,8 @@ import { cn } from '@/lib/utils'
 // canonical 类型唯一来源 = 文档域 (契约 §7.3); 本组件不得再定义一份
 import type { HeaderFooterConfig } from '@/engine'
 import type { HeaderFooterVariant } from '@/engine'
+import { useTranslation } from '@/i18n/useTranslation'
+import type { LocaleMessages } from '@/engine'
 
 interface HeaderFooterToolbarProps {
   /** 当前编辑的是 header 还是 footer */
@@ -42,8 +44,11 @@ interface HeaderFooterToolbarProps {
   variant?: HeaderFooterVariant
 }
 
-const VARIANT_LABEL: Record<HeaderFooterVariant, string> = {
-  default: '', first: '首页', even: '偶数页',
+/** 变体 → i18n 标签键 (default 变体无前缀标签) */
+const VARIANT_LABEL_KEYS: Record<HeaderFooterVariant, keyof LocaleMessages | null> = {
+  default: null,
+  first: 'editor.hf.variantFirst',
+  even: 'editor.hf.variantEven',
 }
 
 export function HeaderFooterToolbar({
@@ -56,9 +61,12 @@ export function HeaderFooterToolbar({
   pageNumber,
   variant,
 }: HeaderFooterToolbarProps) {
-  const label = section === 'header' ? '页眉' : '页脚'
-  const variantLabel = variant ? VARIANT_LABEL[variant] : ''
-  const scope = `${variantLabel}${label}${pageNumber ? ` · 第 ${pageNumber} 页` : ''}`
+  const { t } = useTranslation()
+  const label = section === 'header' ? t('editor.hf.header') : t('editor.hf.footer')
+  const variantKey = variant ? VARIANT_LABEL_KEYS[variant] : null
+  const variantLabel = variantKey ? t(variantKey) : ''
+  const scope = variantLabel + label + (pageNumber ? t('editor.hf.scopePage', { n: pageNumber }) : '')
+  const closeTitle = section === 'header' ? t('editor.hf.closeHeaderTitle') : t('editor.hf.closeFooterTitle')
 
   return (
     <div className="flex items-center gap-1 px-2 py-1 bg-chrome-subtle border-b border-line">
@@ -70,11 +78,11 @@ export function HeaderFooterToolbar({
             ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
             : 'text-chrome-ink-secondary hover:bg-chrome-muted',
         )}
-        title="首页不同"
+        title={t('editor.hf.differentFirstPage')}
         onClick={() => onConfigChange({ differentFirstPage: !config.differentFirstPage })}
       >
         {config.differentFirstPage ? <CheckSquare size={14} /> : <Square size={14} />}
-        <span className="hidden sm:inline">首页不同</span>
+        <span className="hidden sm:inline">{t('editor.hf.differentFirstPage')}</span>
       </button>
 
       {/* 奇偶页不同 */}
@@ -85,11 +93,11 @@ export function HeaderFooterToolbar({
             ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
             : 'text-chrome-ink-secondary hover:bg-chrome-muted',
         )}
-        title="奇偶页不同"
+        title={t('editor.hf.differentOddEven')}
         onClick={() => onConfigChange({ differentOddEven: !config.differentOddEven })}
       >
         {config.differentOddEven ? <CheckSquare size={14} /> : <Square size={14} />}
-        <span className="hidden sm:inline">奇偶页不同</span>
+        <span className="hidden sm:inline">{t('editor.hf.differentOddEven')}</span>
       </button>
 
       {/* 分隔线 */}
@@ -98,21 +106,21 @@ export function HeaderFooterToolbar({
       {/* 插入页码 */}
       <button
         className="flex items-center gap-1.5 px-2 py-1 text-xs text-chrome-ink-secondary hover:bg-chrome-muted rounded-md h-7 transition-colors"
-        title="插入页码"
+        title={t('editor.hf.insertPageNumber')}
         onClick={onInsertPageNumber}
       >
         <Hash size={14} />
-        <span className="hidden sm:inline">页码</span>
+        <span className="hidden sm:inline">{t('editor.field.pageNumber')}</span>
       </button>
 
       {/* 插入日期 */}
       <button
         className="flex items-center gap-1.5 px-2 py-1 text-xs text-chrome-ink-secondary hover:bg-chrome-muted rounded-md h-7 transition-colors"
-        title="插入日期"
+        title={t('editor.hf.insertDate')}
         onClick={onInsertDate}
       >
         <Calendar size={14} />
-        <span className="hidden sm:inline">日期</span>
+        <span className="hidden sm:inline">{t('editor.hf.date')}</span>
       </button>
 
       {/* 分隔线 */}
@@ -126,11 +134,11 @@ export function HeaderFooterToolbar({
       {/* 关闭 */}
       <button
         className="flex items-center gap-1.5 px-2 py-1 text-xs text-chrome-ink-tertiary hover:bg-chrome-strong rounded-md h-7 transition-colors"
-        title={`关闭${label}编辑`}
+        title={closeTitle}
         onClick={onClose}
       >
         <X size={14} />
-        <span className="hidden sm:inline">关闭</span>
+        <span className="hidden sm:inline">{t('common.close')}</span>
       </button>
     </div>
   )

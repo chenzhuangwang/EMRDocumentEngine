@@ -23,6 +23,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useEditorRef, useEditorStoreSnapshot } from './EditorProvider'
 import { controlRejectMessage } from './controlMessages'
+import { useTranslation } from '@/i18n/useTranslation'
 // 折行口径单一来源: 编辑面的换行位置与布局/静态渲染必须一致 (契约 §12.8)
 import { wrapControlText } from '@/engine/layout/text/TextWrap'
 import type { ControlEditTarget, ControlSnapshot, ControlType, ControlValue, Editor } from '@/engine'
@@ -208,6 +209,7 @@ export function RuntimeControlOverlay({ canvasContainerRef }: RuntimeControlOver
 /** 统一文本字段状态: onChange 本地草稿; 卸载即提交; 非法值就地提示。
  *  numeric=true → 提交时把草稿解析为数字 (空→undefined, 非数字→提示)。 */
 function useFieldText(snap: ControlSnapshot, editor: Editor, numeric = false, onReject?: (msg: string) => void) {
+  const { t } = useTranslation()
   const [draft, setDraft] = useState(() => valueToText(snap.value))
   const [error, setError] = useState<string | null>(null)
   const draftRef = useRef(draft)
@@ -227,17 +229,17 @@ function useFieldText(snap: ControlSnapshot, editor: Editor, numeric = false, on
     if (cur === canon) return true
     let value: ControlValue | undefined = cur === '' ? undefined : cur
     if (numeric) {
-      const t = cur.trim()
-      if (t === '') value = undefined
+      const trimmed = cur.trim()
+      if (trimmed === '') value = undefined
       else {
-        const n = Number(t)
-        if (!Number.isFinite(n)) { setError('请输入数字'); onReject?.('请输入数字'); setDraft(canon); return false }
+        const n = Number(trimmed)
+        if (!Number.isFinite(n)) { const m = t('overlay.enterNumber'); setError(m); onReject?.(m); setDraft(canon); return false }
         value = n
       }
     }
     const r = editor.setControlValue(snap.nodeId, value)
     if (r.ok) return true
-    const msg = controlRejectMessage(r.reason)
+    const msg = controlRejectMessage(r.reason, t)
     setError(msg)
     onReject?.(msg)
     setDraft(canon)
@@ -431,6 +433,7 @@ function TextareaField({ snap, target, editor, onReject }: { snap: ControlSnapsh
 }
 
 function SelectField({ snap, target, editor, onReject }: { snap: ControlSnapshot; target: ControlEditTarget; editor: Editor; onReject?: (msg: string) => void }) {
+  const { t } = useTranslation()
   const [error, setError] = useState<string | null>(null)
   const current = typeof snap.value === 'string' ? snap.value : ''
   const font = `${target.bold ? 'bold ' : ''}${target.italic ? 'italic ' : ''}${target.fontSizeCss}px "${target.fontFamily}"`
@@ -458,14 +461,14 @@ function SelectField({ snap, target, editor, onReject }: { snap: ControlSnapshot
         onChange={(e) => {
           setError(null)
           const r = editor.setControlValue(snap.nodeId, e.target.value === '' ? undefined : e.target.value)
-          if (!r.ok) { const m = controlRejectMessage(r.reason); setError(m); onReject?.(m) }
+          if (!r.ok) { const m = controlRejectMessage(r.reason, t); setError(m); onReject?.(m) }
         }}
         onKeyDown={(e) => {
           if (e.key === 'Tab') { e.preventDefault(); goAdjacent(editor, snap.nodeId, e.shiftKey ? -1 : 1) }
           else if (e.key === 'Escape') { e.preventDefault(); editor.deactivateControl() }
         }}
       >
-        <option value="">请选择</option>
+        <option value="">{t('overlay.selectPlaceholder')}</option>
         {(snap.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.name}</option>)}
       </select>
       <FieldHint msg={error} />
