@@ -19,6 +19,7 @@ import { useCallback, useMemo, useState } from 'react'
 import type { EditorContextSnapshot } from '@/engine'
 import { useEditorRef, useEditorStoreSnapshot } from './EditorProvider'
 import { buildContextMenuModel, type ContextMenuActionId, type ContextMenuEntry } from './contextMenuModel'
+import { useTranslation } from '@/i18n/useTranslation'
 
 interface ContextMenuState {
   open: boolean
@@ -36,6 +37,7 @@ export interface UseEditorContextMenuOptions {
 
 export function useEditorContextMenu(options?: UseEditorContextMenuOptions) {
   const { onProperty } = options ?? {}
+  const { t } = useTranslation()
   const editorRef = useEditorRef()
   // 光标处样式投影 (供勾选状态) — 与工具栏共用同一 canonical 投影
   const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
@@ -67,8 +69,8 @@ export function useEditorContextMenu(options?: UseEditorContextMenuOptions) {
   }, [editorRef, state.open, state.snapshot])
 
   const entries: ContextMenuEntry[] = useMemo(
-    () => (state.snapshot ? buildContextMenuModel(state.snapshot, { textStyle, paragraphStyle }).entries : []),
-    [state.snapshot, textStyle, paragraphStyle],
+    () => (state.snapshot ? buildContextMenuModel(state.snapshot, { textStyle, paragraphStyle }, t).entries : []),
+    [state.snapshot, textStyle, paragraphStyle, t],
   )
 
   const runAction = useCallback((id: ContextMenuActionId) => {

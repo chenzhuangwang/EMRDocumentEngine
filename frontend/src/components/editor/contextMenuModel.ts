@@ -26,9 +26,56 @@
 //            ClipboardManager.copyImage, 复用粘贴管线)。
 // P3:        smartText 设计模式右键「属性」(Control Config Dialog, 契约 §12.7)。
 // 禁止项 (§十): 单格删除、header/footer 完整菜单 — 均不在实现范围。
+//
+// v6.1: label 走 i18n。**纯函数不能挂 hook** —— t() 由调用方
+// (useEditorContextMenu) 注入; 未注入时回退 zh-CN 字面量。
 // ============================================================
 
 import type { EditorContextSnapshot } from '@/engine'
+import type { LocaleMessages, LocaleParams } from '@/engine'
+
+/** 翻译函数形态 (由调用方注入 useTranslation().t) */
+type T = (key: keyof LocaleMessages, params?: LocaleParams) => string
+
+/** ContextMenuActionId → i18n 键 (单一映射, 不重复两份字面量) */
+const LABEL_KEYS: Record<ContextMenuActionId, keyof LocaleMessages> = {
+  cut: 'editor.contextMenu.cut',
+  copy: 'editor.contextMenu.copy',
+  paste: 'editor.contextMenu.paste',
+  delete: 'editor.contextMenu.delete',
+  deleteRow: 'editor.contextMenu.deleteRow',
+  deleteColumn: 'editor.contextMenu.deleteColumn',
+  toggleTableGrowable: 'editor.contextMenu.toggleTableGrowable',
+  bold: 'editor.contextMenu.bold',
+  italic: 'editor.contextMenu.italic',
+  underline: 'editor.contextMenu.underline',
+  strikeout: 'editor.contextMenu.strikeout',
+  clearFormat: 'editor.contextMenu.clearFormat',
+  alignLeft: 'editor.contextMenu.alignLeft',
+  alignCenter: 'editor.contextMenu.alignCenter',
+  alignRight: 'editor.contextMenu.alignRight',
+  alignJustify: 'editor.contextMenu.alignJustify',
+  increaseIndent: 'editor.contextMenu.increaseIndent',
+  decreaseIndent: 'editor.contextMenu.decreaseIndent',
+  properties: 'editor.contextMenu.properties',
+}
+
+/** zh-CN 兜底 (t 未注入时) —— 与 editor.contextMenu.* 的 zh-CN 值保持一致 */
+const FALLBACK: Record<ContextMenuActionId, string> = {
+  cut: '剪切', copy: '复制', paste: '粘贴', delete: '删除',
+  deleteRow: '删除行', deleteColumn: '删除列', toggleTableGrowable: '填写时可增长',
+  bold: '加粗', italic: '斜体', underline: '下划线', strikeout: '删除线', clearFormat: '清除格式',
+  alignLeft: '左对齐', alignCenter: '居中', alignRight: '右对齐', alignJustify: '两端对齐',
+  increaseIndent: '增加缩进', decreaseIndent: '减少缩进',
+  properties: '属性…',
+}
+
+/** id → 显示文案 (t 注入时走 i18n, 否则回退 zh-CN 字面量) */
+function labelOf(id: ContextMenuActionId, t?: T): string {
+  const key = LABEL_KEYS[id]
+  if (t && key) return t(key)
+  return FALLBACK[id]
+}
 
 export type ContextMenuActionId =
   | 'cut' | 'copy' | 'paste' | 'delete'
@@ -68,46 +115,46 @@ export interface ContextMenuStyleInfo {
 const SEP: ContextMenuEntrySeparator = { kind: 'separator' }
 
 /** 正文文本菜单分组 (text/smartText 共用) */
-function textBodyEntries(coversSelection: boolean, style: ContextMenuStyleInfo): ContextMenuEntry[] {
+function textBodyEntries(coversSelection: boolean, style: ContextMenuStyleInfo, t?: T): ContextMenuEntry[] {
   return [
-    { kind: 'item', id: 'cut', label: '剪切', enabled: coversSelection },
-    { kind: 'item', id: 'copy', label: '复制', enabled: true },
-    { kind: 'item', id: 'paste', label: '粘贴', enabled: true },
-    { kind: 'item', id: 'delete', label: '删除', enabled: true },
+    { kind: 'item', id: 'cut', label: labelOf('cut', t), enabled: coversSelection },
+    { kind: 'item', id: 'copy', label: labelOf('copy', t), enabled: true },
+    { kind: 'item', id: 'paste', label: labelOf('paste', t), enabled: true },
+    { kind: 'item', id: 'delete', label: labelOf('delete', t), enabled: true },
     SEP,
-    ...textFormatEntries(style),
+    ...textFormatEntries(style, t),
     SEP,
-    ...paragraphStyleEntries(style),
+    ...paragraphStyleEntries(style, t),
     SEP,
-    ...listLevelEntries(),
+    ...listLevelEntries(t),
   ]
 }
 
-function textFormatEntries(style: ContextMenuStyleInfo): ContextMenuEntry[] {
+function textFormatEntries(style: ContextMenuStyleInfo, t?: T): ContextMenuEntry[] {
   const ts = style.textStyle
   return [
-    { kind: 'item', id: 'bold', label: '加粗', enabled: true, checked: ts?.bold === true },
-    { kind: 'item', id: 'italic', label: '斜体', enabled: true, checked: ts?.italic === true },
-    { kind: 'item', id: 'underline', label: '下划线', enabled: true, checked: ts?.underline === true },
-    { kind: 'item', id: 'strikeout', label: '删除线', enabled: true, checked: ts?.strikeout === true },
-    { kind: 'item', id: 'clearFormat', label: '清除格式', enabled: true },
+    { kind: 'item', id: 'bold', label: labelOf('bold', t), enabled: true, checked: ts?.bold === true },
+    { kind: 'item', id: 'italic', label: labelOf('italic', t), enabled: true, checked: ts?.italic === true },
+    { kind: 'item', id: 'underline', label: labelOf('underline', t), enabled: true, checked: ts?.underline === true },
+    { kind: 'item', id: 'strikeout', label: labelOf('strikeout', t), enabled: true, checked: ts?.strikeout === true },
+    { kind: 'item', id: 'clearFormat', label: labelOf('clearFormat', t), enabled: true },
   ]
 }
 
-function paragraphStyleEntries(style: ContextMenuStyleInfo): ContextMenuEntry[] {
+function paragraphStyleEntries(style: ContextMenuStyleInfo, t?: T): ContextMenuEntry[] {
   const align = style.paragraphStyle?.alignment
   return [
-    { kind: 'item', id: 'alignLeft', label: '左对齐', enabled: true, checked: align === 'left' },
-    { kind: 'item', id: 'alignCenter', label: '居中', enabled: true, checked: align === 'center' },
-    { kind: 'item', id: 'alignRight', label: '右对齐', enabled: true, checked: align === 'right' },
-    { kind: 'item', id: 'alignJustify', label: '两端对齐', enabled: true, checked: align === 'justify' },
+    { kind: 'item', id: 'alignLeft', label: labelOf('alignLeft', t), enabled: true, checked: align === 'left' },
+    { kind: 'item', id: 'alignCenter', label: labelOf('alignCenter', t), enabled: true, checked: align === 'center' },
+    { kind: 'item', id: 'alignRight', label: labelOf('alignRight', t), enabled: true, checked: align === 'right' },
+    { kind: 'item', id: 'alignJustify', label: labelOf('alignJustify', t), enabled: true, checked: align === 'justify' },
   ]
 }
 
-function listLevelEntries(): ContextMenuEntry[] {
+function listLevelEntries(t?: T): ContextMenuEntry[] {
   return [
-    { kind: 'item', id: 'increaseIndent', label: '增加缩进', enabled: true },
-    { kind: 'item', id: 'decreaseIndent', label: '减少缩进', enabled: true },
+    { kind: 'item', id: 'increaseIndent', label: labelOf('increaseIndent', t), enabled: true },
+    { kind: 'item', id: 'decreaseIndent', label: labelOf('decreaseIndent', t), enabled: true },
   ]
 }
 
@@ -130,59 +177,62 @@ const NO_STYLE: ContextMenuStyleInfo = { textStyle: null, paragraphStyle: null }
  *   天然不出现在只读/打印模式的正文右键里。
  * - 其余种类 (table/separator/sectionBreak/headerFooterRegion):
  *   无对应菜单项, 返回空列表 (不弹出菜单)。
+ *
+ * @param t 可选翻译函数 (useTranslation().t); 缺省回退 zh-CN 字面量
  */
 export function buildContextMenuModel(
   snapshot: EditorContextSnapshot,
   style: ContextMenuStyleInfo = NO_STYLE,
+  t?: T,
 ): ContextMenuModel {
   switch (snapshot.kind) {
     case 'text':
-      return { entries: textBodyEntries(snapshot.coversSelection, style) }
+      return { entries: textBodyEntries(snapshot.coversSelection, style, t) }
     case 'cell':
       return {
         entries: [
-          { kind: 'item', id: 'cut', label: '剪切', enabled: snapshot.coversSelection },
-          { kind: 'item', id: 'copy', label: '复制', enabled: true },
-          { kind: 'item', id: 'paste', label: '粘贴', enabled: true },
-          { kind: 'item', id: 'delete', label: '删除', enabled: snapshot.coversSelection },
+          { kind: 'item', id: 'cut', label: labelOf('cut', t), enabled: snapshot.coversSelection },
+          { kind: 'item', id: 'copy', label: labelOf('copy', t), enabled: true },
+          { kind: 'item', id: 'paste', label: labelOf('paste', t), enabled: true },
+          { kind: 'item', id: 'delete', label: labelOf('delete', t), enabled: snapshot.coversSelection },
           SEP,
-          { kind: 'item', id: 'deleteRow', label: '删除行', enabled: true },
-          { kind: 'item', id: 'deleteColumn', label: '删除列', enabled: true },
+          { kind: 'item', id: 'deleteRow', label: labelOf('deleteRow', t), enabled: true },
+          { kind: 'item', id: 'deleteColumn', label: labelOf('deleteColumn', t), enabled: true },
           SEP,
           // 可增长表开关 (契约 §12.9)。设计期属性, 但 cell 命中在全部模式可达 ——
           // 真正的强制在命令层 (非可增长表 append 必被拒), 此处只提供入口。
           {
-            kind: 'item', id: 'toggleTableGrowable', label: '填写时可增长',
+            kind: 'item', id: 'toggleTableGrowable', label: labelOf('toggleTableGrowable', t),
             enabled: true, checked: snapshot.tableGrowable,
           },
           SEP,
-          ...textFormatEntries(style),
+          ...textFormatEntries(style, t),
           SEP,
-          ...paragraphStyleEntries(style),
+          ...paragraphStyleEntries(style, t),
           SEP,
-          ...listLevelEntries(),
+          ...listLevelEntries(t),
         ],
       }
     case 'image':
       return {
         entries: [
-          { kind: 'item', id: 'copy', label: '复制', enabled: true },
-          { kind: 'item', id: 'delete', label: '删除', enabled: true },
+          { kind: 'item', id: 'copy', label: labelOf('copy', t), enabled: true },
+          { kind: 'item', id: 'delete', label: labelOf('delete', t), enabled: true },
         ],
       }
     case 'blank':
       return {
         entries: [
-          { kind: 'item', id: 'paste', label: '粘贴', enabled: true },
+          { kind: 'item', id: 'paste', label: labelOf('paste', t), enabled: true },
         ],
       }
     case 'smartText':
       // 控件右键 = 完整正文菜单 + 分隔后的「属性」(控件删除走 deleteSelectedControl)
       return {
         entries: [
-          ...textBodyEntries(true, style),
+          ...textBodyEntries(true, style, t),
           SEP,
-          { kind: 'item', id: 'properties', label: '属性…', enabled: true },
+          { kind: 'item', id: 'properties', label: labelOf('properties', t), enabled: true },
         ],
       }
     default:
