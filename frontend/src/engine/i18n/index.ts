@@ -669,12 +669,42 @@ export interface LocaleMessages {
   'controlConfig.optionsEmptyHint': string
   'controlConfig.addOption': string
   'controlConfig.removeOption': string
-  'controlConfig.optionValue': string
-  'controlConfig.optionName': string
+  'controlConfig.optionValue': string        // 值 (候选项值)
+  'controlConfig.optionName': string         // 显示名
   'controlConfig.codePreview': string
   'controlConfig.create': string
   'controlConfig.editMode': string
   'controlConfig.allowFreeInput': string
+  'controlConfig.dictionaryIdLabel': string
+  'controlConfig.dictionaryIdPlaceholder': string
+  'controlConfig.dictionaryIdInvalid': string
+  'controlConfig.dictionaryInlineConflict': string
+  'controlConfig.dictionaryCandidateNote': string
+  'controlConfig.clear': string
+  'controlConfig.namePlaceholder': string
+  'controlConfig.labelPlaceholder': string
+  'controlConfig.styleHint': string
+  'controlConfig.kindLabel': string
+  'controlConfig.numberDisplay': string
+  'controlConfig.defaultOption': string
+  'controlConfig.numberDisplayN': string
+  'controlConfig.numberDisplayAN': string
+  'controlConfig.numericValuePlaceholder': string
+  'controlConfig.unlimited': string
+  'controlConfig.dateFormatHint': string
+  'controlConfig.dateTimeFormatHint': string
+  'controlConfig.bindingHint': string
+  'controlConfig.prefixLabel': string
+  'controlConfig.prefixPlaceholder': string
+  'controlConfig.suffixLabel': string
+  'controlConfig.suffixPlaceholder': string
+  'controlConfig.tipsLabel': string
+  'controlConfig.tipsPlaceholder': string
+  'controlConfig.deletableLabel': string
+  'controlConfig.editableLabel': string
+  'controlConfig.singleLabel': string
+  // 数据绑定 tab label — 复用 dialog.label.dictionary (它就是字典绑定的设置面板)
+  'controlConfig.dataBindingTab': string
   // ============================================================
   // BookmarkDialog
   // ============================================================
@@ -938,18 +968,18 @@ const zhCN: LocaleMessages = {
   'dialog.controlType.input': '单行文本',
   'dialog.controlType.textarea': '多行文本',
   'dialog.controlType.number': '数字',
-  'dialog.controlType.select': '下拉选择',
+  'dialog.controlType.select': '下拉',
   'dialog.controlType.date': '日期',
   'dialog.controlType.datetime': '日期时间',
   'dialog.controlType.checkbox': '复选框',
   'dialog.controlType.radio': '单选框',
   // ===== 数据类型 =====
-  'dialog.dataType.S1': 'S1',
+  'dialog.dataType.S1': 'Single Line',
   'dialog.dataType.S2': 'S2',
   'dialog.dataType.S3': 'S3',
-  'dialog.dataType.N': 'N',
-  'dialog.dataType.D': 'D',
-  'dialog.dataType.DT': 'DT',
+  'dialog.dataType.N': 'Number',
+  'dialog.dataType.D': 'Date',
+  'dialog.dataType.DT': 'Date & Time',
   // ===== 校验拒绝 =====
   'control.reject.writeLocked': '该字段为只读，不可修改',
   'control.reject.typeMismatch': '值的类型不正确',
@@ -1274,7 +1304,7 @@ const zhCN: LocaleMessages = {
   'controlConfig.element': '语义层',
   'controlConfig.definition': '设计期',
   'controlConfig.basic': '基本',
-  'controlConfig.tab.basic': '基本',
+  'controlConfig.tab.basic': '常规',
   'controlConfig.tab.format': '格式',
   'controlConfig.tab.options': '候选项',
   'controlConfig.tab.advanced': '高级',
@@ -1284,12 +1314,41 @@ const zhCN: LocaleMessages = {
   'controlConfig.optionsEmptyHint': '点击新增选项',
   'controlConfig.addOption': '新增选项',
   'controlConfig.removeOption': '删除选项',
-  'controlConfig.optionValue': '值',
-  'controlConfig.optionName': '显示名',
+  'controlConfig.optionValue': '值 (候选项值)',
+  'controlConfig.optionName': '显示名 (候选项)',
   'controlConfig.codePreview': '当前定义',
   'controlConfig.create': '新建',
   'controlConfig.editMode': '编辑',
   'controlConfig.allowFreeInput': '允许手输自定义值',
+  'controlConfig.dictionaryIdLabel': '码表 id (可手动粘贴)',
+  'controlConfig.dictionaryIdPlaceholder': '32 位 hex',
+  'controlConfig.dictionaryIdInvalid': 'id 不是 32 位 hex。引用会按原样持久化，但平台侧可能解析不出候选 —— 此时控件退回自由文本 (VR-7)。',
+  'controlConfig.dictionaryInlineConflict': '该控件已声明内置候选项。内置候选恒优先于码表 (契约 §12.6.4)，此绑定当前不生效。',
+  'controlConfig.dictionaryCandidateNote': '候选由平台预加载后注入编辑器；未加载时控件按自由文本处理，不报错。',
+  'controlConfig.clear': '清空',
+  'controlConfig.namePlaceholder': '如 主诉',
+  'controlConfig.labelPlaceholder': '如 主诉：',
+  'controlConfig.styleHint': '控件样式：{kind}',
+  'controlConfig.kindLabel': '控件形态 (决定控件类型)',
+  'controlConfig.numberDisplay': '数字展示',
+  'controlConfig.defaultOption': '默认',
+  'controlConfig.numberDisplayN': '数值 (右对齐)',
+  'controlConfig.numberDisplayAN': '文本数字',
+  'controlConfig.numericValuePlaceholder': '数值(可选)',
+  'controlConfig.unlimited': '不限',
+  'controlConfig.dateFormatHint': '日期按 YYYY-MM-DD 存储与校验。',
+  'controlConfig.dateTimeFormatHint': '日期时间按 YYYY-MM-DD HH:mm:ss 存储与校验。',
+  'controlConfig.bindingHint': '仅「下拉」形态可绑定外部码表 —— 它是 format.dictionary 唯一有意义的落点 (单选/复选的候选恒为内置项，会覆盖码表)。当前形态为「{kind}」，请先在「格式」页切换为「下拉」。',
+  'controlConfig.prefixLabel': '前缀',
+  'controlConfig.prefixPlaceholder': '框前字面量',
+  'controlConfig.suffixLabel': '后缀',
+  'controlConfig.suffixPlaceholder': '框后字面量',
+  'controlConfig.tipsLabel': '提示 (tips)',
+  'controlConfig.tipsPlaceholder': '悬浮提示',
+  'controlConfig.deletableLabel': '可删除',
+  'controlConfig.editableLabel': '可填写',
+  'controlConfig.singleLabel': '单值 (数据元唯一)',
+  'controlConfig.dataBindingTab': '数据绑定',
   // ===== BookmarkDialog =====
   'bookmark.insertBookmark': '插入书签',
   'bookmark.insertCrossRef': '插入交叉引用',
@@ -1543,12 +1602,12 @@ const enUS: LocaleMessages = {
   'dialog.controlType.checkbox': 'Checkbox',
   'dialog.controlType.radio': 'Radio',
   // ===== 数据类型 =====
-  'dialog.dataType.S1': 'S1',
+  'dialog.dataType.S1': 'Single Line',
   'dialog.dataType.S2': 'S2',
   'dialog.dataType.S3': 'S3',
-  'dialog.dataType.N': 'N',
-  'dialog.dataType.D': 'D',
-  'dialog.dataType.DT': 'DT',
+  'dialog.dataType.N': 'Number',
+  'dialog.dataType.D': 'Date',
+  'dialog.dataType.DT': 'Date & Time',
   // ===== 校验拒绝 =====
   'control.reject.writeLocked': 'This field is read-only',
   'control.reject.typeMismatch': 'Value type is incorrect',
@@ -1883,12 +1942,41 @@ const enUS: LocaleMessages = {
   'controlConfig.optionsEmptyHint': 'Click Add to insert an option',
   'controlConfig.addOption': 'Add Option',
   'controlConfig.removeOption': 'Remove Option',
-  'controlConfig.optionValue': 'Value',
-  'controlConfig.optionName': 'Display Name',
+  'controlConfig.optionValue': 'Value (option value)',
+  'controlConfig.optionName': 'Display name (option)',
   'controlConfig.codePreview': 'Current Definition',
   'controlConfig.create': 'Create',
   'controlConfig.editMode': 'Edit',
   'controlConfig.allowFreeInput': 'Allow free input',
+  'controlConfig.dictionaryIdLabel': 'Dictionary ID (paste manually)',
+  'controlConfig.dictionaryIdPlaceholder': '32-char hex',
+  'controlConfig.dictionaryIdInvalid': 'ID is not 32-char hex. The reference is persisted as-is, but the platform may not resolve candidates — the control falls back to free text (VR-7).',
+  'controlConfig.dictionaryInlineConflict': 'This control already declares inline options. Inline options always take priority over the dictionary (§12.6.4); this binding is currently a no-op.',
+  'controlConfig.dictionaryCandidateNote': 'Candidates are preloaded by the platform and injected into the editor; if not loaded the control behaves as free text without errors.',
+  'controlConfig.clear': 'Clear',
+  'controlConfig.namePlaceholder': 'e.g. Chief Complaint',
+  'controlConfig.labelPlaceholder': 'e.g. Chief Complaint:',
+  'controlConfig.styleHint': 'Control style: {kind}',
+  'controlConfig.kindLabel': 'Control kind (determines control type)',
+  'controlConfig.numberDisplay': 'Number Display',
+  'controlConfig.defaultOption': 'Default',
+  'controlConfig.numberDisplayN': 'Number (right-aligned)',
+  'controlConfig.numberDisplayAN': 'Text-number',
+  'controlConfig.numericValuePlaceholder': 'Numeric (optional)',
+  'controlConfig.unlimited': 'Unlimited',
+  'controlConfig.dateFormatHint': 'Dates are stored and validated as YYYY-MM-DD.',
+  'controlConfig.dateTimeFormatHint': 'Date-times are stored and validated as YYYY-MM-DD HH:mm:ss.',
+  'controlConfig.bindingHint': 'Only the Dropdown kind can bind an external dictionary — it is the only meaningful destination for format.dictionary. Switch to Dropdown on the Format tab first.',
+  'controlConfig.prefixLabel': 'Prefix',
+  'controlConfig.prefixPlaceholder': 'Literal before the control',
+  'controlConfig.suffixLabel': 'Suffix',
+  'controlConfig.suffixPlaceholder': 'Literal after the control',
+  'controlConfig.tipsLabel': 'Tooltip (tips)',
+  'controlConfig.tipsPlaceholder': 'Hover hint',
+  'controlConfig.deletableLabel': 'Deletable',
+  'controlConfig.editableLabel': 'Editable',
+  'controlConfig.singleLabel': 'Single (unique data element)',
+  'controlConfig.dataBindingTab': 'Data Binding',
   // ===== BookmarkDialog =====
   'bookmark.insertBookmark': 'Insert Bookmark',
   'bookmark.insertCrossRef': 'Insert Cross-Reference',
