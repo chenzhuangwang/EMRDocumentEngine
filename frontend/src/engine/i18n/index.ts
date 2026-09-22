@@ -89,6 +89,7 @@ export interface LocaleMessages {
   'editor.list.ordered': string
   'editor.list.continueNumbering': string
   'editor.list.firstLineIndent': string
+  'editor.list.firstLineIndentShort': string  // 按钮内短标签 (完整名在 title)
   'editor.list.indent': string
   'editor.list.outdent': string
   // 编号样式下拉 — 6 项
@@ -385,6 +386,17 @@ export interface LocaleMessages {
   'headerBar.import': string                  // '导入文档/模板 (JSON/HTML/Markdown)'
   'headerBar.docProperties': string          // '文档属性'
   'headerBar.notLoggedIn': string             // '未登录'
+  // 顶栏右侧两个切换菜单 (title/aria-label 与菜单项)
+  'headerBar.languageMenu': string            // '界面语言'
+  'headerBar.themeMenu': string               // '界面主题'
+  'theme.standard': string
+  'theme.standardHint': string
+  'theme.eyeCare': string
+  'theme.eyeCareHint': string
+  'theme.print': string
+  'theme.printHint': string
+  'theme.dark': string
+  'theme.darkHint': string
   // ============================================================
   // SaveIndicator (4 个状态)
   // ============================================================
@@ -417,6 +429,21 @@ export interface LocaleMessages {
   'toolbar.controlShort': string               // '控件' (工具栏短标签)
   'toolbar.insertField': string               // 插入域代码 title
   'toolbar.lineHeight': string
+  // 控件插入向导的一行描述 (与 dialog.controlType.* 的控件名配对)
+  'toolbar.controlDesc.input': string
+  'toolbar.controlDesc.radio': string
+  'toolbar.controlDesc.checkbox': string
+  // 控件配置面板 — 码表绑定 (controlConfigShared.DictionaryField / CodeBadge)
+  'controlConfig.codeBadge.internal': string
+  'controlConfig.codeBadge.dataElement': string
+  'controlConfig.dict.label': string
+  'controlConfig.dict.unbound': string
+  'controlConfig.dict.idLabel': string
+  'controlConfig.dict.idPlaceholder': string
+  'controlConfig.dict.clear': string
+  'controlConfig.dict.badIdHint': string
+  'controlConfig.dict.inlineOverrideHint': string
+  'controlConfig.dict.platformHint': string
   // ============================================================
   // RecentDocuments
   // ============================================================
@@ -628,6 +655,7 @@ export interface LocaleMessages {
   'print.range.label': string                  // '页码范围' (label)
   'print.range.custom': string                 // '自定义'
   'print.printer': string                      // '打印机'
+  'print.printerDefault': string               // '默认打印机' (未接打印机枚举时的占位值)
   'print.duplex.label': string                 // '打印方式'
   'print.duplex.duplex': string                // '双面打印'
   'print.duplex.simplex': string               // '单面打印'
@@ -849,8 +877,10 @@ export interface LocaleMessages {
   // ============================================================
   // TableGrowOverlay
   // ============================================================
-  'tableGrow.addRow': string                  // '在表尾添加一行（克隆末行字段，数据为空）'
-  'tableGrow.dynamicNotice': string          // '此表声明了「填写时可增长」...'
+  'tableGrow.addRow': string                  // '添加行' (按钮文字)
+  'tableGrow.addRowTitle': string             // 按钮 title
+  'tableGrow.growable': string                // '可增长' (设计态只读标记)
+  'tableGrow.growableMarkerTitle': string     // 设计态标记 title
   // ============================================================
   // Engine error chip
   // ============================================================
@@ -919,6 +949,7 @@ const zhCN: LocaleMessages = {
   'editor.list.ordered': '有序列表',
   'editor.list.continueNumbering': '继续上一列表编号',
   'editor.list.firstLineIndent': '首行缩进',
+  'editor.list.firstLineIndentShort': '首行',
   'editor.list.indent': '增加缩进',
   'editor.list.outdent': '清空缩进',
   'editor.list.numberStyle.decimal': '1, 2, 3',
@@ -1174,6 +1205,16 @@ const zhCN: LocaleMessages = {
   'headerBar.import': '导入文档/模板 (JSON/HTML/Markdown)',
   'headerBar.docProperties': '文档属性',
   'headerBar.notLoggedIn': '未登录',
+  'headerBar.languageMenu': '界面语言',
+  'headerBar.themeMenu': '界面主题',
+  'theme.standard': '标准',
+  'theme.standardHint': '默认灰度',
+  'theme.eyeCare': '护眼',
+  'theme.eyeCareHint': '暖色低对比',
+  'theme.print': '打印',
+  'theme.printHint': '高对比黑白',
+  'theme.dark': '深色',
+  'theme.darkHint': '暗色外壳',
   // ===== HeaderBar saveStatus =====
   'headerBar.saveStatus.saved': '已保存',
   'headerBar.saveStatus.saving': '保存中...',
@@ -1200,6 +1241,19 @@ const zhCN: LocaleMessages = {
   'toolbar.controlShort': '控件',
   'toolbar.insertField': '插入域代码',
   'toolbar.lineHeight': '行距',
+  'toolbar.controlDesc.input': '单行/多行/数字/日期',
+  'toolbar.controlDesc.radio': '单选候选',
+  'toolbar.controlDesc.checkbox': '多选候选',
+  'controlConfig.codeBadge.internal': '内部码：',
+  'controlConfig.codeBadge.dataElement': '数据元编码：',
+  'controlConfig.dict.label': '码表 (外部候选源)',
+  'controlConfig.dict.unbound': '未绑定',
+  'controlConfig.dict.idLabel': '码表 id (可手动粘贴)',
+  'controlConfig.dict.idPlaceholder': '32 位 hex',
+  'controlConfig.dict.clear': '清空',
+  'controlConfig.dict.badIdHint': 'id 不是 32 位 hex。引用会按原样持久化，但平台侧可能解析不出候选 —— 此时控件退回自由文本 (VR-7)。',
+  'controlConfig.dict.inlineOverrideHint': '该控件已声明内置候选项。内置候选恒优先于码表 (契约 §12.6.4)，此绑定当前不生效。',
+  'controlConfig.dict.platformHint': '候选由平台预加载后注入编辑器；未加载时控件按自由文本处理，不报错。',
   // ===== RecentDocuments =====
   'recentDoc.title': '最近文档',
   'recentDoc.empty': '暂无最近文档',
@@ -1383,6 +1437,7 @@ const zhCN: LocaleMessages = {
   'print.range.label': '页码范围',
   'print.range.custom': '自定义',
   'print.printer': '打印机',
+  'print.printerDefault': '默认打印机',
   'print.duplex.label': '打印方式',
   'print.duplex.duplex': '双面打印',
   'print.duplex.simplex': '单面打印',
@@ -1584,8 +1639,10 @@ const zhCN: LocaleMessages = {
   'overlay.enterNumber': '请输入数字',
   'overlay.selectPlaceholder': '请选择',
   // ===== TableGrowOverlay =====
-  'tableGrow.addRow': '在表尾添加一行（克隆末行字段，数据为空）',
-  'tableGrow.dynamicNotice': '此表声明了「填写时可增长」，按下方按钮或在该行末尾按 Enter 即可继续添加。',
+  'tableGrow.addRow': '添加行',
+  'tableGrow.addRowTitle': '在表尾添加一行（克隆末行字段，数据为空）',
+  'tableGrow.growable': '可增长',
+  'tableGrow.growableMarkerTitle': '此表声明了「填写时可增长」—— 填写时表尾会出现「+ 添加行」入口。在表格单元格上右键可切换。',
   // ===== Engine error chip =====
   'error.unknownEngine': '引擎错误',
   // ===== 既有 ICU 模板 =====
@@ -1646,6 +1703,7 @@ const enUS: LocaleMessages = {
   'editor.list.ordered': 'Numbered List',
   'editor.list.continueNumbering': 'Continue from Previous List',
   'editor.list.firstLineIndent': 'First Line Indent',
+  'editor.list.firstLineIndentShort': 'First Line',
   'editor.list.indent': 'Indent',
   'editor.list.outdent': 'Outdent',
   'editor.list.numberStyle.decimal': '1, 2, 3',
@@ -1901,6 +1959,16 @@ const enUS: LocaleMessages = {
   'headerBar.import': 'Import Document/Template (JSON/HTML/Markdown)',
   'headerBar.docProperties': 'Document Properties',
   'headerBar.notLoggedIn': 'Not logged in',
+  'headerBar.languageMenu': 'Interface Language',
+  'headerBar.themeMenu': 'Interface Theme',
+  'theme.standard': 'Standard',
+  'theme.standardHint': 'Default grayscale',
+  'theme.eyeCare': 'Eye Care',
+  'theme.eyeCareHint': 'Warm low-contrast',
+  'theme.print': 'Print',
+  'theme.printHint': 'High contrast B&W',
+  'theme.dark': 'Dark',
+  'theme.darkHint': 'Dark chrome',
   // ===== HeaderBar saveStatus =====
   'headerBar.saveStatus.saved': 'Saved',
   'headerBar.saveStatus.saving': 'Saving...',
@@ -1927,6 +1995,19 @@ const enUS: LocaleMessages = {
   'toolbar.controlShort': 'Control',
   'toolbar.insertField': 'Insert Field Code',
   'toolbar.lineHeight': 'Line Spacing',
+  'toolbar.controlDesc.input': 'Single/Multi/Number/Date',
+  'toolbar.controlDesc.radio': 'Single-choice candidates',
+  'toolbar.controlDesc.checkbox': 'Multi-choice candidates',
+  'controlConfig.codeBadge.internal': 'Internal code: ',
+  'controlConfig.codeBadge.dataElement': 'Data element code: ',
+  'controlConfig.dict.label': 'Dictionary (external candidate source)',
+  'controlConfig.dict.unbound': 'Not bound',
+  'controlConfig.dict.idLabel': 'Dictionary id (paste manually)',
+  'controlConfig.dict.idPlaceholder': '32-char hex',
+  'controlConfig.dict.clear': 'Clear',
+  'controlConfig.dict.badIdHint': 'Not a 32-char hex id. The reference is persisted as-is, but the platform may not resolve candidates — the control then falls back to free text (VR-7).',
+  'controlConfig.dict.inlineOverrideHint': 'This control already declares inline candidates. Inline candidates always win over the dictionary (contract §12.6.4), so this binding has no effect.',
+  'controlConfig.dict.platformHint': 'Candidates are preloaded by the platform and injected into the editor; while unloaded the control is treated as free text without error.',
   // ===== RecentDocuments =====
   'recentDoc.title': 'Recent Documents',
   'recentDoc.empty': 'No recent documents',
@@ -2110,6 +2191,7 @@ const enUS: LocaleMessages = {
   'print.range.label': 'Page Range',
   'print.range.custom': 'Custom',
   'print.printer': 'Printer',
+  'print.printerDefault': 'Default Printer',
   'print.duplex.label': 'Print Mode',
   'print.duplex.duplex': 'Double-sided',
   'print.duplex.simplex': 'Single-sided',
@@ -2311,8 +2393,10 @@ const enUS: LocaleMessages = {
   'overlay.enterNumber': 'Please enter a number',
   'overlay.selectPlaceholder': 'Please select',
   // ===== TableGrowOverlay =====
-  'tableGrow.addRow': 'Append a row at table end (clones last row fields, data empty)',
-  'tableGrow.dynamicNotice': 'This table is marked growable — click the button below or press Enter at end of row to extend.',
+  'tableGrow.addRow': 'Add Row',
+  'tableGrow.addRowTitle': 'Append a row at the end of the table (clones the last row’s fields, data left empty)',
+  'tableGrow.growable': 'Growable',
+  'tableGrow.growableMarkerTitle': 'This table is declared growable while filling — an "+ Add Row" entry appears at the end of the table when filling. Right-click a table cell to toggle.',
   // ===== Engine error chip =====
   'error.unknownEngine': 'Engine Error',
   // ===== 既有 ICU 模板 =====

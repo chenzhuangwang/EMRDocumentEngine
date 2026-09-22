@@ -20,6 +20,7 @@
 import type { ReactNode } from 'react'
 import { controlWidgetById } from '@/platform/data/controlLibrary'
 import { DICTIONARY_CATALOG } from '@/platform/data/dictionaryCatalog'
+import { useTranslation } from '@/i18n/useTranslation'
 import type {
   ElementMeta, ElementEnumOption, TemplateDefinition,
 } from '@/engine'
@@ -148,11 +149,12 @@ export function ToggleField({
 }
 
 export function CodeBadge({ element }: { element: ElementMeta }) {
+  const { t } = useTranslation()
   const { internal, dataElement } = element.code
   return (
     <div className="rounded-md bg-chrome-subtle border border-line-subtle px-2.5 py-1.5 text-xs text-chrome-ink-tertiary space-y-0.5">
-      <div>内部码：<span className="text-chrome-ink-body font-mono">{internal}</span></div>
-      <div>数据元编码：<span className="text-chrome-ink-body font-mono">{dataElement}</span></div>
+      <div>{t('controlConfig.codeBadge.internal')}<span className="text-chrome-ink-body font-mono">{internal}</span></div>
+      <div>{t('controlConfig.codeBadge.dataElement')}<span className="text-chrome-ink-body font-mono">{dataElement}</span></div>
     </div>
   )
 }
@@ -193,28 +195,29 @@ export function DictionaryField({
   /** 控件自身已声明 inline 候选 → 码表恒被覆盖 (§12.6.4), 提示死数据 */
   inlineEnumsPresent?: boolean
 }) {
+  const { t } = useTranslation()
   const known = DICTIONARY_CATALOG.some((e) => e.id === value)
   return (
     <div className="space-y-3">
-      <Field label="码表 (外部候选源)">
+      <Field label={t('controlConfig.dict.label')}>
         <select
           className={inputCls}
           value={known ? value : ''}
           onChange={(e) => onChange(e.target.value)}
         >
-          <option value="">未绑定</option>
+          <option value="">{t('controlConfig.dict.unbound')}</option>
           {DICTIONARY_CATALOG.map((e) => (
             <option key={e.id} value={e.id}>{e.name}</option>
           ))}
         </select>
       </Field>
 
-      <Field label="码表 id (可手动粘贴)">
+      <Field label={t('controlConfig.dict.idLabel')}>
         <div className="flex items-center gap-2">
           <input
             className={inputCls}
             value={value}
-            placeholder="32 位 hex"
+            placeholder={t('controlConfig.dict.idPlaceholder')}
             onChange={(e) => onChange(e.target.value.trim())}
           />
           <button
@@ -223,23 +226,23 @@ export function DictionaryField({
             disabled={value === ''}
             className="flex-shrink-0 text-xs text-chrome-ink-tertiary hover:text-red-500 disabled:text-chrome-ink-disabled"
           >
-            清空
+            {t('controlConfig.dict.clear')}
           </button>
         </div>
       </Field>
 
       {value !== '' && !isDictionaryIdLike(value) && (
         <p className="text-xs text-amber-600">
-          id 不是 32 位 hex。引用会按原样持久化，但平台侧可能解析不出候选 —— 此时控件退回自由文本 (VR-7)。
+          {t('controlConfig.dict.badIdHint')}
         </p>
       )}
       {value !== '' && inlineEnumsPresent === true && (
         <p className="text-xs text-amber-600">
-          该控件已声明内置候选项。内置候选恒优先于码表 (契约 §12.6.4)，此绑定当前不生效。
+          {t('controlConfig.dict.inlineOverrideHint')}
         </p>
       )}
       <p className="text-xs text-chrome-ink-muted">
-        候选由平台预加载后注入编辑器；未加载时控件按自由文本处理，不报错。
+        {t('controlConfig.dict.platformHint')}
       </p>
     </div>
   )

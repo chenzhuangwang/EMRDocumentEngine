@@ -26,7 +26,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { cn } from '@/lib/utils'
 import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { HeaderFooterToolbar } from '@/components/toolbar/HeaderFooterToolbar'
-import { resolveVariantForPage, type HeaderFooterVariant } from '@/engine'
+import { resolveVariantForPage, type HeaderFooterVariant, type LocaleMessages } from '@/engine'
 import { useTranslation } from '@/i18n/useTranslation'
 
 interface ToolbarProps {
@@ -43,18 +43,19 @@ interface ToolbarProps {
 
 // ---- 常量 ----
 
-// 字体: 双语两套 label, UI 按 locale 选
-// 技术名 value (SimSun 等) 是字体标识, 不翻译
-type FontFamilyItem = { value: string; labelZh: string; labelEn: string }
+// label 一律存 i18n 键, 渲染时 t() 展开 —— 不要再存 zh/en 双语字面量:
+// 那样等于把翻译表复制一份到组件里, 两处必然漂移 (且要靠"猜当前语言"选边,
+// 见下方 isEN 的历史教训)。技术名 value (SimSun 等) 是字体标识, 不翻译。
+type FontFamilyItem = { value: string; labelKey: keyof LocaleMessages }
 const FONT_FAMILIES: FontFamilyItem[] = [
-  { value: 'SimSun',           labelZh: '宋体',     labelEn: 'SimSun' },
-  { value: 'SimHei',           labelZh: '黑体',     labelEn: 'SimHei' },
-  { value: 'KaiTi',            labelZh: '楷体',     labelEn: 'KaiTi' },
-  { value: 'FangSong',         labelZh: '仿宋',     labelEn: 'FangSong' },
-  { value: 'Microsoft YaHei',  labelZh: '微软雅黑', labelEn: 'Microsoft YaHei' },
-  { value: 'Arial',            labelZh: 'Arial',    labelEn: 'Arial' },
-  { value: 'Times New Roman',  labelZh: 'Times New Roman', labelEn: 'Times New Roman' },
-  { value: 'Courier New',      labelZh: 'Courier New',     labelEn: 'Courier New' },
+  { value: 'SimSun',           labelKey: 'editor.font.family.simSun' },
+  { value: 'SimHei',           labelKey: 'editor.font.family.simHei' },
+  { value: 'KaiTi',            labelKey: 'editor.font.family.kaiTi' },
+  { value: 'FangSong',         labelKey: 'editor.font.family.fangSong' },
+  { value: 'Microsoft YaHei',  labelKey: 'editor.font.family.microsoftYaHei' },
+  { value: 'Arial',            labelKey: 'editor.font.family.arial' },
+  { value: 'Times New Roman',  labelKey: 'editor.font.family.timesNewRoman' },
+  { value: 'Courier New',      labelKey: 'editor.font.family.courierNew' },
 ]
 
 const FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64, 72]
@@ -68,44 +69,46 @@ const COLORS = [
 // 通用控件插入向导 (契约 §12.7): 收拢为 3 类工具, 点选后开对应配置弹框
 // (EditorPage 路由), 不再直接插默认控件。
 interface ControlItem {
-  type: string; labelKey: 'dialog.controlType.input' | 'dialog.controlType.radio' | 'dialog.controlType.checkbox'
-  descZh: string; descEn: string; icon: React.ReactNode
+  type: string
+  labelKey: keyof LocaleMessages
+  descKey: keyof LocaleMessages
+  icon: React.ReactNode
 }
 const CONTROLS: ControlItem[] = [
-  { type: 'textInput', labelKey: 'dialog.controlType.input',    descZh: '单行/多行/数字/日期', descEn: 'Single/Multi/Number/Date', icon: <Type size={16} /> },
-  { type: 'radio',     labelKey: 'dialog.controlType.radio',    descZh: '单选候选',             descEn: 'Single-choice candidates', icon: <Circle size={16} /> },
-  { type: 'checkbox',  labelKey: 'dialog.controlType.checkbox', descZh: '多选候选',             descEn: 'Multi-choice candidates',  icon: <CheckSquare size={16} /> },
+  { type: 'textInput', labelKey: 'dialog.controlType.input',    descKey: 'toolbar.controlDesc.input',    icon: <Type size={16} /> },
+  { type: 'radio',     labelKey: 'dialog.controlType.radio',    descKey: 'toolbar.controlDesc.radio',    icon: <Circle size={16} /> },
+  { type: 'checkbox',  labelKey: 'dialog.controlType.checkbox', descKey: 'toolbar.controlDesc.checkbox', icon: <CheckSquare size={16} /> },
 ]
 
-// 双语两套 label, UI 按 locale 选 —— 技术名(value)不翻译
-const HEADING_STYLES: { value: number; labelZh: string; labelEn: string }[] = [
-  { value: 0, labelZh: '正文',   labelEn: 'Body' },
-  { value: 1, labelZh: '标题 1', labelEn: 'Heading 1' },
-  { value: 2, labelZh: '标题 2', labelEn: 'Heading 2' },
-  { value: 3, labelZh: '标题 3', labelEn: 'Heading 3' },
-  { value: 4, labelZh: '标题 4', labelEn: 'Heading 4' },
-  { value: 5, labelZh: '标题 5', labelEn: 'Heading 5' },
-  { value: 6, labelZh: '标题 6', labelEn: 'Heading 6' },
+// 技术名 value 不翻译, label 走 i18n 键
+const HEADING_STYLES: { value: number; labelKey: keyof LocaleMessages }[] = [
+  { value: 0, labelKey: 'editor.heading.body' },
+  { value: 1, labelKey: 'editor.heading.h1' },
+  { value: 2, labelKey: 'editor.heading.h2' },
+  { value: 3, labelKey: 'editor.heading.h3' },
+  { value: 4, labelKey: 'editor.heading.h4' },
+  { value: 5, labelKey: 'editor.heading.h5' },
+  { value: 6, labelKey: 'editor.heading.h6' },
 ]
 
-const NUMBER_STYLES: { labelZh: string; labelEn: string; value: string; sample: string }[] = [
-  { labelZh: '1, 2, 3',   labelEn: '1, 2, 3',   value: 'decimal',         sample: '1' },
-  { labelZh: 'a, b, c',   labelEn: 'a, b, c',   value: 'lower_alpha',     sample: 'a' },
-  { labelZh: 'A, B, C',   labelEn: 'A, B, C',   value: 'upper_alpha',     sample: 'A' },
-  { labelZh: 'i, ii, iii',labelEn: 'i, ii, iii',value: 'lower_roman',     sample: 'i' },
-  { labelZh: 'I, II, III',labelEn: 'I, II, III',value: 'upper_roman',     sample: 'I' },
-  { labelZh: '一, 二, 三',labelEn: '一, 二, 三',value: 'cjk_ideographic', sample: '一' },
+const NUMBER_STYLES: { labelKey: keyof LocaleMessages; value: string; sample: string }[] = [
+  { labelKey: 'editor.list.numberStyle.decimal',         value: 'decimal',         sample: '1' },
+  { labelKey: 'editor.list.numberStyle.lowerAlpha',      value: 'lower_alpha',     sample: 'a' },
+  { labelKey: 'editor.list.numberStyle.upperAlpha',      value: 'upper_alpha',     sample: 'A' },
+  { labelKey: 'editor.list.numberStyle.lowerRoman',      value: 'lower_roman',     sample: 'i' },
+  { labelKey: 'editor.list.numberStyle.upperRoman',      value: 'upper_roman',     sample: 'I' },
+  { labelKey: 'editor.list.numberStyle.cjkIdeographic',  value: 'cjk_ideographic', sample: '一' }, // i18n-keep: CJK 编号样式的字形样本, 两种语言下都必须是「一」
 ]
 
-const FIELD_ITEMS: { type: string; labelZh: string; labelEn: string; icon: React.ReactNode; shortcut?: string }[] = [
-  { type: 'pageNumber',   labelZh: '页码',         labelEn: 'Page Number',      icon: <Hash size={14} />,    shortcut: 'PAGE' },
-  { type: 'totalPages',   labelZh: '总页数',       labelEn: 'Total Pages',      icon: <FileText size={14} />,shortcut: 'NUMPAGES' },
-  { type: 'currentDate',  labelZh: '当前日期',     labelEn: 'Current Date',     icon: <Calendar size={14} />,shortcut: 'DATE' },
-  { type: 'currentTime',  labelZh: '当前时间',     labelEn: 'Current Time',     icon: <Clock size={14} />,   shortcut: 'TIME' },
-  { type: 'authorName',   labelZh: '作者名称',     labelEn: 'Author',           icon: <User size={14} />,    shortcut: 'AUTHOR' },
-  { type: 'documentTitle',labelZh: '文档标题',     labelEn: 'Document Title',   icon: <FileText size={14} />,shortcut: 'TITLE' },
-  { type: 'lastSavedDate',labelZh: '最后保存日期', labelEn: 'Last Saved Date',  icon: <Clock size={14} />,   shortcut: 'SAVEDATE' },
-  { type: 'printDate',    labelZh: '打印日期',     labelEn: 'Print Date',       icon: <Calendar size={14} />,shortcut: 'PRINTDATE' },
+const FIELD_ITEMS: { type: string; labelKey: keyof LocaleMessages; icon: React.ReactNode; shortcut?: string }[] = [
+  { type: 'pageNumber',   labelKey: 'editor.field.pageNumber',    icon: <Hash size={14} />,    shortcut: 'PAGE' },
+  { type: 'totalPages',   labelKey: 'editor.field.totalPages',    icon: <FileText size={14} />,shortcut: 'NUMPAGES' },
+  { type: 'currentDate',  labelKey: 'editor.field.currentDate',   icon: <Calendar size={14} />,shortcut: 'DATE' },
+  { type: 'currentTime',  labelKey: 'editor.field.currentTime',   icon: <Clock size={14} />,   shortcut: 'TIME' },
+  { type: 'authorName',   labelKey: 'editor.field.authorName',    icon: <User size={14} />,    shortcut: 'AUTHOR' },
+  { type: 'documentTitle',labelKey: 'editor.field.documentTitle', icon: <FileText size={14} />,shortcut: 'TITLE' },
+  { type: 'lastSavedDate',labelKey: 'editor.field.lastSavedDate', icon: <Clock size={14} />,   shortcut: 'SAVEDATE' },
+  { type: 'printDate',    labelKey: 'editor.field.printDate',     icon: <Calendar size={14} />,shortcut: 'PRINTDATE' },
 ]
 
 // ================================================================
@@ -280,7 +283,7 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
           <Indent size={16} />
         </ToolbarButton>
         <ToolbarButton title={t('editor.list.firstLineIndent')} active={(paraStyle?.firstLineIndent ?? 0) > 0} onClick={() => onFormat?.('firstLineIndent')}>
-          <span className="text-sm">首行</span>
+          <span className="text-sm">{t('editor.list.firstLineIndentShort')}</span>
         </ToolbarButton>
       </ToolbarGroup>
 
@@ -373,9 +376,9 @@ function FontDropdown({ onSelect }: { onSelect: (font: string) => void }) {
   const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
   const selected = textStyle?.font || 'SimSun'
   const { t } = useTranslation()
-  const isEN = t('headerBar.brand') === 'EMR Editor' ? false : true
   const found = FONT_FAMILIES.find(f => f.value === selected)
-  const currentLabel = found ? (isEN ? found.labelEn : found.labelZh) : (isEN ? 'SimSun' : '宋体')
+  // 未收录的字体: 直接显示技术名 (它就是用户该看到的标识), 不回退到某个语言的字面量
+  const currentLabel = found ? t(found.labelKey) : selected
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -399,7 +402,7 @@ function FontDropdown({ onSelect }: { onSelect: (font: string) => void }) {
               style={{ fontFamily: f.value }}
               onClick={() => onSelect(f.value)}
             >
-              {isEN ? f.labelEn : f.labelZh}
+              {t(f.labelKey)}
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>
@@ -534,7 +537,6 @@ function ColorPicker({ onSelect }: { onSelect: (color: string) => void }) {
 
 function InsertControlDropdown({ onInsert }: { onInsert?: (type: string) => void }) {
   const { t } = useTranslation()
-  const isEN = t('headerBar.brand') === 'EMR Editor' ? false : true
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -553,7 +555,7 @@ function InsertControlDropdown({ onInsert }: { onInsert?: (type: string) => void
           className="min-w-[200px] bg-chrome rounded-md shadow-lg border border-line py-1 z-50"
           sideOffset={4} align="start"
         >
-          {CONTROLS.map(({ type, labelKey, descZh, descEn, icon }) => (
+          {CONTROLS.map(({ type, labelKey, descKey, icon }) => (
             <DropdownMenu.Item
               key={type}
               className="flex items-center gap-3 px-3 py-2 text-sm text-chrome-ink-body outline-none cursor-default
@@ -563,7 +565,7 @@ function InsertControlDropdown({ onInsert }: { onInsert?: (type: string) => void
               <span className="flex-shrink-0 text-chrome-ink-muted">{icon}</span>
               <div className="flex flex-col min-w-0">
                 <span className="font-medium">{t(labelKey)}</span>
-                <span className="text-xs text-chrome-ink-muted">{isEN ? descEn : descZh}</span>
+                <span className="text-xs text-chrome-ink-muted">{t(descKey)}</span>
               </div>
             </DropdownMenu.Item>
           ))}
@@ -579,9 +581,8 @@ function HeadingDropdown({ onSelect }: { onSelect: (level: number) => void }) {
   const paraStyle = useEditorStoreSnapshot((s) => s.paragraphStyle)
   const selected = paraStyle?.outlineLevel ?? 0
   const { t } = useTranslation()
-  const isEN = t('headerBar.brand') === 'EMR Editor' ? false : true
   const found = HEADING_STYLES.find(h => h.value === selected)
-  const label = found ? (isEN ? found.labelEn : found.labelZh) : (isEN ? 'Body' : '正文')
+  const label = found ? t(found.labelKey) : t('editor.heading.body')
 
   return (
     <DropdownMenu.Root>
@@ -613,7 +614,7 @@ function HeadingDropdown({ onSelect }: { onSelect: (level: number) => void }) {
               } : undefined}
               onClick={() => onSelect(h.value)}
             >
-              {(isEN ? h.labelEn : h.labelZh)}
+              {(t(h.labelKey))}
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>
@@ -650,7 +651,7 @@ function ExportDropdown({ onExportClick }: { onExportClick?: () => void }) {
             onClick={onExportClick}
           >
             <FileText size={14} />
-            <span>导出文档...</span>
+            <span>{t('toolbar.exportDocument')}</span>
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
@@ -736,7 +737,6 @@ function HeaderFooterDropdown({
 
 function FieldDropdown({ onInsert }: { onInsert?: (type: string) => void }) {
   const { t } = useTranslation()
-  const isEN = t('headerBar.brand') === 'EMR Editor' ? false : true
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -765,7 +765,7 @@ function FieldDropdown({ onInsert }: { onInsert?: (type: string) => void }) {
               onClick={() => onInsert?.(item.type)}
             >
               <span className="flex-shrink-0 text-chrome-ink-muted">{item.icon}</span>
-              <span className="flex-1">{isEN ? item.labelEn : item.labelZh}</span>
+              <span className="flex-1">{t(item.labelKey)}</span>
               {item.shortcut && (
                 <span className="text-[10px] text-chrome-ink-muted font-mono">{item.shortcut}</span>
               )}
@@ -839,7 +839,6 @@ function HighlightPicker({ onSelect }: { onSelect: (color: string) => void }) {
 function NumberStyleDropdown({ selected, onSelect }: { selected: string; onSelect: (value: string) => void }) {
   const current = NUMBER_STYLES.find(n => n.value === selected) || NUMBER_STYLES[0]
   const { t } = useTranslation()
-  const isEN = t('headerBar.brand') === 'EMR Editor' ? false : true
 
   return (
     <DropdownMenu.Root>
@@ -869,7 +868,7 @@ function NumberStyleDropdown({ selected, onSelect }: { selected: string; onSelec
               )}
               onClick={() => onSelect(n.value)}
             >
-              <span className="font-mono">{isEN ? n.labelEn : n.labelZh}</span>
+              <span className="font-mono">{t(n.labelKey)}</span>
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>

@@ -11,7 +11,7 @@
 // useUIStore.themePreset → Editor.setTheme, 见 EditorProvider.tsx 与
 // canvasTokens.ts)。
 //
-// v6.1 菜单项 label/hint 按 locale 选 zh-CN / en-US 两套字面量。
+// 文案一律走 LocaleMessages —— preset → 键的映射留在本文件, 字面量不留。
 // ============================================================
 
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -20,7 +20,7 @@ import type { LucideIcon } from 'lucide-react'
 import { useUIStore } from '@/store'
 import { CHROME_PRESETS } from '@/platform/dom/chromeTheme'
 import { useTranslation } from '@/i18n/useTranslation'
-import type { ThemePreset } from '@/engine'
+import type { LocaleMessages, ThemePreset } from '@/engine'
 
 const PRESET_ICONS: Record<ThemePreset, LucideIcon> = {
   standard: Sun,
@@ -29,18 +29,20 @@ const PRESET_ICONS: Record<ThemePreset, LucideIcon> = {
   dark: Moon,
 }
 
-const THEME_TITLE: Record<'zh-CN' | 'en-US', string> = {
-  'zh-CN': '界面主题',
-  'en-US': 'Interface Theme',
+/** preset → 菜单 label/hint 的 i18n 键 */
+const PRESET_KEYS: Record<ThemePreset, { label: keyof LocaleMessages; hint: keyof LocaleMessages }> = {
+  standard: { label: 'theme.standard', hint: 'theme.standardHint' },
+  eyeCare:  { label: 'theme.eyeCare',  hint: 'theme.eyeCareHint' },
+  print:    { label: 'theme.print',    hint: 'theme.printHint' },
+  dark:     { label: 'theme.dark',     hint: 'theme.darkHint' },
 }
 
 export function ThemeMenu() {
   const themePreset = useUIStore((s) => s.themePreset)
   const setThemePreset = useUIStore((s) => s.setThemePreset)
-  const { locale } = useTranslation()
-  const isEN = locale === 'en-US'
-  const titleStr = THEME_TITLE[locale] ?? THEME_TITLE['zh-CN']
-  const current = CHROME_PRESETS.find((p) => p.preset === themePreset) ?? CHROME_PRESETS[0]
+  const { t } = useTranslation()
+  const titleStr = t('headerBar.themeMenu')
+  const currentKeys = PRESET_KEYS[themePreset] ?? PRESET_KEYS.standard
 
   return (
     <DropdownMenu.Root>
@@ -53,7 +55,7 @@ export function ThemeMenu() {
           aria-label={titleStr}
         >
           <Palette size={16} />
-          <span className="hidden sm:inline">{isEN ? current.labelEn : current.label}</span>
+          <span className="hidden sm:inline">{t(currentKeys.label)}</span>
           <ChevronDown size={12} />
         </button>
       </DropdownMenu.Trigger>
@@ -66,6 +68,7 @@ export function ThemeMenu() {
           {CHROME_PRESETS.map((item) => {
             const Icon = PRESET_ICONS[item.preset]
             const active = item.preset === themePreset
+            const keys = PRESET_KEYS[item.preset] ?? PRESET_KEYS.standard
             return (
               <DropdownMenu.Item
                 key={item.preset}
@@ -74,8 +77,8 @@ export function ThemeMenu() {
                 onSelect={() => setThemePreset(item.preset)}
               >
                 <Icon size={14} />
-                <span>{isEN ? item.labelEn : item.label}</span>
-                <span className="text-chrome-ink-muted">{isEN ? item.hintEn : item.hint}</span>
+                <span>{t(keys.label)}</span>
+                <span className="text-chrome-ink-muted">{t(keys.hint)}</span>
                 {active && <Check size={12} className="ml-auto text-chrome-accent-ink" />}
               </DropdownMenu.Item>
             )

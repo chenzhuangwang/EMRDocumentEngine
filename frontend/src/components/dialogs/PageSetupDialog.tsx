@@ -307,6 +307,7 @@ function MarginField({
 
 /** 页面预览 — 缩略图形式显示边距 */
 function PagePreview({ values }: { values: PageSetupValues }) {
+  const { t } = useTranslation()
   const previewW = 120
   const scale = previewW / values.pageWidth
   const previewH = values.pageHeight * scale
@@ -319,7 +320,7 @@ function PagePreview({ values }: { values: PageSetupValues }) {
   return (
     <div className="flex justify-center pt-2">
       <div className="text-center">
-        <label className="text-xs text-chrome-ink-muted mb-1 block">预览</label>
+        <label className="text-xs text-chrome-ink-muted mb-1 block">{t('common.preview')}</label>
         <svg
           width={previewW + 10} height={previewH + 10}
           className="border border-line rounded bg-chrome"

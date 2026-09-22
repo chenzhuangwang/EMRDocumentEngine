@@ -44,15 +44,14 @@ interface PrintDialogProps {
 
 // ---- 组件 ----
 
-const PRINTER_FALLBACK = '默认打印机'
-
 export function PrintDialog({
   open, onClose, totalPages,
   initialSettings, onPrint, onPreview, history,
 }: PrintDialogProps) {
   const { t } = useTranslation()
+  const printerFallback = t('print.printerDefault')
   const [settings, setSettings] = useState<PrintSettings>({
-    printer: PRINTER_FALLBACK,
+    printer: printerFallback,
     pageRange: { start: 1, end: totalPages },
     copies: 1,
     duplex: false,
@@ -72,7 +71,7 @@ export function PrintDialog({
     if (!open) return
     const resume = initialSettings?.resumeFromPage ?? null
     setSettings({
-      printer: PRINTER_FALLBACK,
+      printer: printerFallback,
       pageRange: { start: resume ?? 1, end: totalPages },
       copies: 1,
       duplex: false,

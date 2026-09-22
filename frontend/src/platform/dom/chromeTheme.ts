@@ -26,21 +26,20 @@ export const CHROME_THEME_STORAGE_KEY = 'emr.theme'
 
 export interface ChromePresetMeta {
   preset: ThemePreset
-  /** 菜单显示名 (zh-CN) — 英文版在 ThemeMenu 组件里按 locale 选另套字面量 */
-  label: string
-  /** 菜单副标题 —— zh-CN */
-  hint: string
-  /** 英文显示名 */
-  labelEn: string
-  /** 英文副标题 */
-  hintEn: string
 }
 
+/**
+ * 主题预设清单 —— **只描述"有哪些预设"**, 不带显示名。
+ *
+ * 显示名 (label / hint) 属 i18n 文案, 统一在 `engine/i18n` 的 `theme.*` 键里
+ * (见 ThemeMenu 的 PRESET_KEYS)。此前本文件存过一份 zh/en 双语 label,
+ * 与语言包重复且不随语言包更新 —— 那份副本已删。
+ */
 export const CHROME_PRESETS: readonly ChromePresetMeta[] = [
-  { preset: 'standard', label: '标准',  hint: '默认灰度',     labelEn: 'Standard', hintEn: 'Default grayscale' },
-  { preset: 'eyeCare',  label: '护眼',  hint: '暖色低对比',   labelEn: 'Eye Care', hintEn: 'Warm low-contrast' },
-  { preset: 'print',    label: '打印',  hint: '高对比黑白',   labelEn: 'Print',    hintEn: 'High contrast B&W' },
-  { preset: 'dark',     label: '深色',  hint: '暗色外壳',     labelEn: 'Dark',     hintEn: 'Dark chrome' },
+  { preset: 'standard' },
+  { preset: 'eyeCare' },
+  { preset: 'print' },
+  { preset: 'dark' },
 ]
 
 /** 运行时收窄 —— localStorage / 外部输入可能给出任意字符串 */

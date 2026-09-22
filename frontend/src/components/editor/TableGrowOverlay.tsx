@@ -27,6 +27,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Rows3 } from 'lucide-react'
 import { useEditorReady, useEditorRef, useEditorStoreSnapshot } from './EditorProvider'
+import { useTranslation } from '@/i18n/useTranslation'
 
 /** jsdom 无 rAF → setTimeout 兜底 (与 RuntimeControlOverlay 同法) */
 function raf(cb: FrameRequestCallback): number {
@@ -67,6 +68,7 @@ export function TableGrowOverlay() {
   // (editorRef 是稳定引用, 不会自己触发重跑)。
   const ready = useEditorReady()
   const mode = useEditorStoreSnapshot((s) => s.runtime.view.mode)
+  const { t } = useTranslation()
   /** 可交互: 表尾是「+ 添加行」按钮 */
   const editable = mode === 'edit' || mode === 'form'
   /** 设计态: 表尾是只读标记, 让「可增长」声明在设置它的模式里立即可见 */
@@ -142,7 +144,7 @@ export function TableGrowOverlay() {
           <button
             key={e.tableId}
             type="button"
-            title="在表尾添加一行（克隆末行字段，数据为空）"
+            title={t('tableGrow.addRowTitle')}
             onMouseDown={(ev) => ev.preventDefault()}
             onClick={(ev) => {
               ev.preventDefault()
@@ -154,7 +156,7 @@ export function TableGrowOverlay() {
                        px-2 py-0.5 text-xs text-blue-600 shadow-sm hover:bg-blue-100"
           >
             <Plus size={12} />
-            添加行
+            {t('tableGrow.addRow')}
           </button>
         ) : (
           // 设计态只读标记: 明确不是入口 —— 虚线框 + pointer-events:none,
@@ -162,7 +164,7 @@ export function TableGrowOverlay() {
           <div
             key={e.tableId}
             data-table-growable-marker={e.tableId}
-            title="此表声明了「填写时可增长」—— 填写时表尾会出现「+ 添加行」入口。在表格单元格上右键可切换。"
+            title={t('tableGrow.growableMarkerTitle')}
             style={{
               position: 'fixed', left: e.left + e.width - 88, top: e.top + e.height + 4,
               pointerEvents: 'none',
@@ -171,7 +173,7 @@ export function TableGrowOverlay() {
                        bg-purple-50/80 px-2 py-0.5 text-xs text-purple-600"
           >
             <Rows3 size={12} />
-            可增长
+            {t('tableGrow.growable')}
           </div>
         )
       ))}
