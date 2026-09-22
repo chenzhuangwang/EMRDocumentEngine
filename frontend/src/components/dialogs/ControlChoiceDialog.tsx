@@ -22,6 +22,8 @@ import { cn } from '@/lib/utils'
 import type { ElementMeta, ElementEnumOption, TemplateDefinition } from '@/engine'
 import { CodeBadge, TextField, ToggleField, cleanDefinition, cloneData, inputCls } from './controlConfigShared'
 import type { ControlConfigData } from './controlConfigShared'
+import { useTranslation } from '@/i18n/useTranslation'
+import type { LocaleMessages } from '@/engine'
 
 interface ControlChoiceDialogProps {
   open: boolean
@@ -31,14 +33,16 @@ interface ControlChoiceDialogProps {
   onApply: (result: ControlConfigData) => void
 }
 
-const TABS = [
-  { id: 'type', label: '控件类型' },
-  { id: 'base', label: '基础属性' },
-  { id: 'options', label: '选项设置' },
-  { id: 'numeric', label: '数值属性' },
-  { id: 'list', label: '项目列表' },
-] as const
-type TabId = (typeof TABS)[number]['id']
+type TabId = 'type' | 'base' | 'options' | 'numeric' | 'list'
+
+const TAB_ORDER: readonly TabId[] = ['type', 'base', 'options', 'numeric', 'list']
+const TAB_LABEL_KEYS: Record<TabId, keyof LocaleMessages> = {
+  type: 'choice.tab.type',
+  base: 'choice.tab.base',
+  options: 'choice.tab.options',
+  numeric: 'choice.tab.numeric',
+  list: 'choice.tab.list',
+}
 
 interface OptionDraft extends ElementEnumOption { }
 
@@ -88,6 +92,7 @@ const CELL = 'px-1.5 py-1 align-middle'
 export function ControlChoiceDialog({
   open, mode, initial, onClose, onApply,
 }: ControlChoiceDialogProps) {
+  const { t } = useTranslation()
   const [draft, setDraft] = useState<ChoiceDraft>(() => draftFrom(initial))
   const [tab, setTab] = useState<TabId>('type')
 
@@ -167,20 +172,20 @@ export function ControlChoiceDialog({
         <Dialog.Content onCloseAutoFocus={(e) => e.preventDefault()} className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex max-h-[85vh] w-[620px] flex-col overflow-hidden bg-chrome rounded-lg shadow-xl border border-line">
           <div className="flex flex-shrink-0 items-center justify-between px-4 py-3 border-b border-line-subtle">
             <Dialog.Title className="text-sm font-semibold text-chrome-ink-strong">
-              {mode === 'create' ? '新建单选/复选' : `控件配置 · ${initial.element.name || '单选复选'}`}
+              {mode === 'create' ? t('choice.create') : `${t('dialog.title.controlConfig')} · ${initial.element.name || t('choice.fallbackName')}`}
             </Dialog.Title>
-            <button className="text-chrome-ink-muted hover:text-chrome-ink-secondary" onClick={onClose} aria-label="关闭"><X size={16} /></button>
+            <button className="text-chrome-ink-muted hover:text-chrome-ink-secondary" onClick={onClose} aria-label={t('common.close')}><X size={16} /></button>
           </div>
 
           <Tabs.Root value={tab} onValueChange={(v) => setTab(v as TabId)} className="flex flex-1 min-h-0 flex-col overflow-hidden">
             <Tabs.List className="flex flex-shrink-0 border-b border-line-subtle px-4">
-              {TABS.map((t) => (
+              {TAB_ORDER.map((id) => (
                 <Tabs.Trigger
-                  key={t.id} value={t.id}
+                  key={id} value={id}
                   className={cn('flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
-                    tab === t.id ? 'border-primary-500 text-chrome-accent-ink' : 'border-transparent text-chrome-ink-tertiary hover:text-chrome-ink-body')}
+                    tab === id ? 'border-primary-500 text-chrome-accent-ink' : 'border-transparent text-chrome-ink-tertiary hover:text-chrome-ink-body')}
                 >
-                  {t.label}
+                  {t(TAB_LABEL_KEYS[id])}
                 </Tabs.Trigger>
               ))}
             </Tabs.List>
@@ -190,8 +195,8 @@ export function ControlChoiceDialog({
               <Tabs.Content forceMount value="type" className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   {([
-                    { key: false, label: '单选框', desc: '每次仅可选中一项' },
-                    { key: true, label: '复选框', desc: '可同时选中多项' },
+                    { key: false, labelKey: 'choice.radioLabel' as const, descKey: 'choice.radioDesc' as const },
+                    { key: true, labelKey: 'choice.checkboxLabel' as const, descKey: 'choice.checkboxDesc' as const },
                   ] as const).map((o) => (
                     <button
                       key={String(o.key)} type="button"
@@ -199,45 +204,45 @@ export function ControlChoiceDialog({
                       className={cn('text-left px-3 py-2.5 rounded-md border transition-colors',
                         draft.multiple === o.key ? 'border-blue-500 bg-blue-50' : 'border-line hover:bg-chrome-subtle')}
                     >
-                      <div className={cn('text-sm font-medium', draft.multiple === o.key ? 'text-blue-700' : 'text-chrome-ink-body')}>{o.label}</div>
-                      <div className="text-xs text-chrome-ink-muted mt-0.5">{o.desc}</div>
+                      <div className={cn('text-sm font-medium', draft.multiple === o.key ? 'text-blue-700' : 'text-chrome-ink-body')}>{t(o.labelKey)}</div>
+                      <div className="text-xs text-chrome-ink-muted mt-0.5">{t(o.descKey)}</div>
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-chrome-ink-muted">单选/复选候选项取值均为文本；复选 = 多选枚举，单选 = 单选枚举。</p>
+                <p className="text-xs text-chrome-ink-muted">{t('choice.typeNote')}</p>
               </Tabs.Content>
 
               {/* 基础属性 */}
               <Tabs.Content forceMount value="base" className="space-y-3">
-                <TextField label="数据元名称" value={draft.name} onChange={(v) => patch({ name: v })} placeholder="如 症状" />
+                <TextField label={t('dialog.label.dataElementName')} value={draft.name} onChange={(v) => patch({ name: v })} placeholder={t('choice.namePlaceholder')} />
                 <CodeBadge element={initial.element} />
-                <TextField label="控件标签 (旁注)" value={draft.label} onChange={(v) => patch({ label: v })} placeholder="如 症状：" />
+                <TextField label={t('controlConfig.labelField')} value={draft.label} onChange={(v) => patch({ label: v })} placeholder={t('choice.labelPlaceholder')} />
                 <div className="grid grid-cols-2 gap-x-6 gap-y-1 pt-1">
-                  <ToggleField label="必填" checked={draft.required} onChange={(v) => patch({ required: v })} />
-                  <ToggleField label="只读" checked={draft.readonly} onChange={(v) => patch({ readonly: v })} />
-                  <ToggleField label="可删除" checked={draft.deletable} onChange={(v) => patch({ deletable: v })} />
-                  <ToggleField label="可填写" checked={draft.editable} onChange={(v) => patch({ editable: v })} />
-                  <ToggleField label="单值 (数据元唯一)" checked={draft.single} onChange={(v) => patch({ single: v })} />
+                  <ToggleField label={t('dialog.label.required')} checked={draft.required} onChange={(v) => patch({ required: v })} />
+                  <ToggleField label={t('dialog.label.readonly')} checked={draft.readonly} onChange={(v) => patch({ readonly: v })} />
+                  <ToggleField label={t('controlConfig.deletableLabel')} checked={draft.deletable} onChange={(v) => patch({ deletable: v })} />
+                  <ToggleField label={t('controlConfig.editableLabel')} checked={draft.editable} onChange={(v) => patch({ editable: v })} />
+                  <ToggleField label={t('controlConfig.singleLabel')} checked={draft.single} onChange={(v) => patch({ single: v })} />
                 </div>
                 <div className="pt-1">
-                  <ToggleField label="允许输入自定义值 (不在候选项内)" checked={draft.enumEditable === true} onChange={(v) => patch({ enumEditable: v ? true : undefined })} />
+                  <ToggleField label={t('choice.enumEditableLabel')} checked={draft.enumEditable === true} onChange={(v) => patch({ enumEditable: v ? true : undefined })} />
                 </div>
               </Tabs.Content>
 
               {/* 选项设置 */}
               <Tabs.Content forceMount value="options" className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-chrome-ink-tertiary">候选项</span>
+                  <span className="text-xs font-medium text-chrome-ink-tertiary">{t('choice.optionsHeader')}</span>
                   <button type="button" onClick={addOpt} className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700">
-                    <Plus size={13} /> 新增选项
+                    <Plus size={13} /> {t('choice.addOption')}
                   </button>
                 </div>
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
-                      <th className={THEAD}>名称</th>
-                      <th className={THEAD}>值</th>
-                      <th className={cn(THEAD, 'w-14 text-center')}>互斥</th>
+                      <th className={THEAD}>{t('choice.col.name')}</th>
+                      <th className={THEAD}>{t('choice.col.value')}</th>
+                      <th className={cn(THEAD, 'w-14 text-center')}>{t('choice.col.exclusive')}</th>
                       <th className={cn(THEAD, 'w-8')}></th>
                     </tr>
                   </thead>
@@ -245,21 +250,21 @@ export function ControlChoiceDialog({
                     {draft.options.map((o, i) => (
                       <tr key={i} className="border-b border-line-subtle">
                         <td className={CELL}>
-                          <input className={inputCls} value={o.name} placeholder="名称" onChange={(e) => setOpt(i, { name: e.target.value })} />
+                          <input className={inputCls} value={o.name} placeholder={t('choice.col.name')} onChange={(e) => setOpt(i, { name: e.target.value })} />
                         </td>
                         <td className={CELL}>
-                          <input className={inputCls} value={o.value} placeholder="值" onChange={(e) => setOpt(i, { value: e.target.value })} />
+                          <input className={inputCls} value={o.value} placeholder={t('choice.col.value')} onChange={(e) => setOpt(i, { value: e.target.value })} />
                         </td>
                         <td className={cn(CELL, 'text-center')}>
                           <input type="checkbox" checked={o.exclusive === true} onChange={(e) => setOpt(i, { exclusive: e.target.checked ? true : undefined })} />
                         </td>
                         <td className={cn(CELL, 'text-center')}>
-                          <button type="button" aria-label={`删除选项 ${i + 1}`} onClick={() => removeOpt(i)} className="text-chrome-ink-disabled hover:text-red-500"><Trash2 size={14} /></button>
+                          <button type="button" aria-label={t('choice.removeOption', { n: i + 1 })} onClick={() => removeOpt(i)} className="text-chrome-ink-disabled hover:text-red-500"><Trash2 size={14} /></button>
                         </td>
                       </tr>
                     ))}
                     {draft.options.length === 0 && (
-                      <tr><td colSpan={4} className={cn(CELL, 'text-center text-xs text-chrome-ink-disabled py-3')}>暂无候选项，点右上角新增</td></tr>
+                      <tr><td colSpan={4} className={cn(CELL, 'text-center text-xs text-chrome-ink-disabled py-3')}>{t('choice.optionsEmptyHint')}</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -267,19 +272,19 @@ export function ControlChoiceDialog({
 
               {/* 数值属性 */}
               <Tabs.Content forceMount value="numeric" className="space-y-3">
-                <p className="text-xs text-chrome-ink-muted">为每个候选项(项目)附加一个数值(如评分/权重)；不填表示无。</p>
+                <p className="text-xs text-chrome-ink-muted">{t('choice.numericNote')}</p>
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
-                      <th className={THEAD}>项目</th>
-                      <th className={cn(THEAD, 'w-28')}>数值</th>
+                      <th className={THEAD}>{t('choice.col.item')}</th>
+                      <th className={cn(THEAD, 'w-28')}>{t('choice.col.numeric')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {draft.options.map((o, i) => (
                       <tr key={i} className="border-b border-line-subtle">
                         <td className={CELL}>
-                          <span className="text-sm text-chrome-ink-body">{o.name || o.value || '(空)'}</span>
+                          <span className="text-sm text-chrome-ink-body">{o.name || o.value || t('choice.emptyValue')}</span>
                           {o.value !== o.name && o.name ? <span className="ml-1 text-xs text-chrome-ink-disabled">({o.value})</span> : null}
                         </td>
                         <td className={CELL}>
@@ -291,20 +296,20 @@ export function ControlChoiceDialog({
                         </td>
                       </tr>
                     ))}
-                    {draft.options.length === 0 && <tr><td colSpan={2} className={cn(CELL, 'text-center text-xs text-chrome-ink-disabled py-3')}>暂无候选项</td></tr>}
+                    {draft.options.length === 0 && <tr><td colSpan={2} className={cn(CELL, 'text-center text-xs text-chrome-ink-disabled py-3')}>{t('choice.optionsEmpty')}</td></tr>}
                   </tbody>
                 </table>
               </Tabs.Content>
 
               {/* 项目列表 */}
               <Tabs.Content forceMount value="list" className="space-y-3">
-                <p className="text-xs text-chrome-ink-muted">项目列表与选项/数值同源；可调序或快速删除。</p>
+                <p className="text-xs text-chrome-ink-muted">{t('choice.listNote')}</p>
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
                       <th className={cn(THEAD, 'w-8')}>#</th>
-                      <th className={THEAD}>项目 (值)</th>
-                      <th className={cn(THEAD, 'w-16 text-center')}>数值</th>
+                      <th className={THEAD}>{t('choice.col.itemValue')}</th>
+                      <th className={cn(THEAD, 'w-16 text-center')}>{t('choice.col.numeric')}</th>
                       <th className={cn(THEAD, 'w-8')}></th>
                     </tr>
                   </thead>
@@ -313,18 +318,18 @@ export function ControlChoiceDialog({
                       <tr key={i} className="border-b border-line-subtle">
                         <td className={cn(CELL, 'text-center text-xs text-chrome-ink-muted')}>{i + 1}</td>
                         <td className={CELL}>
-                          <span className="text-sm text-chrome-ink-body">{o.name || '(空名)'}</span>
+                          <span className="text-sm text-chrome-ink-body">{o.name || t('choice.emptyName')}</span>
                           {o.value !== o.name && o.name ? <span className="ml-1 text-xs text-chrome-ink-disabled">({o.value})</span> : null}
                         </td>
                         <td className={cn(CELL, 'text-center text-xs text-chrome-ink-tertiary')}>{o.numericValue ?? '—'}</td>
                         <td className={cn(CELL, 'whitespace-nowrap text-right')}>
-                          <button type="button" aria-label="上移" disabled={i === 0} onClick={() => moveOpt(i, -1)} className="text-chrome-ink-muted hover:text-chrome-ink-secondary disabled:opacity-30"><ArrowUp size={13} /></button>
-                          <button type="button" aria-label="下移" disabled={i === draft.options.length - 1} onClick={() => moveOpt(i, 1)} className="ml-1 text-chrome-ink-muted hover:text-chrome-ink-secondary disabled:opacity-30"><ArrowDown size={13} /></button>
-                          <button type="button" aria-label={`删除 ${rowRead(i)?.value || ''}`} onClick={() => removeOpt(i)} className="ml-1 text-chrome-ink-disabled hover:text-red-500"><Trash2 size={13} /></button>
+                          <button type="button" aria-label={t('choice.moveUp')} disabled={i === 0} onClick={() => moveOpt(i, -1)} className="text-chrome-ink-muted hover:text-chrome-ink-secondary disabled:opacity-30"><ArrowUp size={13} /></button>
+                          <button type="button" aria-label={t('choice.moveDown')} disabled={i === draft.options.length - 1} onClick={() => moveOpt(i, 1)} className="ml-1 text-chrome-ink-muted hover:text-chrome-ink-secondary disabled:opacity-30"><ArrowDown size={13} /></button>
+                          <button type="button" aria-label={t('choice.removeByValue', { value: rowRead(i)?.value || '' })} onClick={() => removeOpt(i)} className="ml-1 text-chrome-ink-disabled hover:text-red-500"><Trash2 size={13} /></button>
                         </td>
                       </tr>
                     ))}
-                    {draft.options.length === 0 && <tr><td colSpan={4} className={cn(CELL, 'text-center text-xs text-chrome-ink-disabled py-3')}>暂无候选项</td></tr>}
+                    {draft.options.length === 0 && <tr><td colSpan={4} className={cn(CELL, 'text-center text-xs text-chrome-ink-disabled py-3')}>{t('choice.optionsEmpty')}</td></tr>}
                   </tbody>
                 </table>
               </Tabs.Content>
@@ -332,12 +337,12 @@ export function ControlChoiceDialog({
           </Tabs.Root>
 
           <div className="flex flex-shrink-0 justify-end gap-2 border-t bg-chrome-subtle px-4 py-3">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-md text-chrome-ink-secondary hover:bg-chrome-muted">取消</button>
+            <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-md text-chrome-ink-secondary hover:bg-chrome-muted">{t('common.cancel')}</button>
             <button
               onClick={() => { if (result) onApply(result) }}
               className="px-4 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
             >
-              {mode === 'create' ? '插入' : '应用'}
+              {mode === 'create' ? t('common.insert') : t('common.apply')}
             </button>
           </div>
         </Dialog.Content>

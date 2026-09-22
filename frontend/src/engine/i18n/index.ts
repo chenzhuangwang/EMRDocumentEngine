@@ -743,6 +743,9 @@ export interface LocaleMessages {
   'controlConfig.dictionaryInlineConflict': string
   'controlConfig.dictionaryCandidateNote': string
   'controlConfig.clear': string
+  'controlConfig.fallbackName': string          // '输入域' (标题兜底)
+  'controlConfig.labelField': string            // '控件标签 (旁注)'
+  'controlConfig.addOptionAction': string       // '+ 添加选项'
   'controlConfig.namePlaceholder': string
   'controlConfig.labelPlaceholder': string
   'controlConfig.styleHint': string
@@ -765,6 +768,40 @@ export interface LocaleMessages {
   'controlConfig.deletableLabel': string
   'controlConfig.editableLabel': string
   'controlConfig.singleLabel': string
+  // ---- ControlChoiceDialog (单选/复选) ----
+  'choice.create': string                       // '新建单选/复选'
+  'choice.fallbackName': string                 // '单选复选'
+  'choice.tab.type': string                     // '控件类型'
+  'choice.tab.base': string                     // '基础属性'
+  'choice.tab.options': string                  // '选项设置'
+  'choice.tab.numeric': string                  // '数值属性'
+  'choice.tab.list': string                     // '项目列表'
+  'choice.radioLabel': string                   // '单选框'
+  'choice.radioDesc': string                    // '每次仅可选中一项'
+  'choice.checkboxLabel': string                // '复选框'
+  'choice.checkboxDesc': string                 // '可同时选中多项'
+  'choice.typeNote': string                     // 单选/复选取值说明
+  'choice.namePlaceholder': string              // '如 症状'
+  'choice.labelPlaceholder': string             // '如 症状：'
+  'choice.enumEditableLabel': string            // '允许输入自定义值 (不在候选项内)'
+  'choice.optionsHeader': string                // '候选项'
+  'choice.addOption': string                    // '新增选项'
+  'choice.col.name': string                     // '名称'
+  'choice.col.value': string                    // '值'
+  'choice.col.exclusive': string                // '互斥'
+  'choice.col.item': string                     // '项目'
+  'choice.col.numeric': string                  // '数值'
+  'choice.col.itemValue': string                // '项目 (值)'
+  'choice.optionsEmptyHint': string             // '暂无候选项，点右上角新增'
+  'choice.optionsEmpty': string                 // '暂无候选项'
+  'choice.numericNote': string                  // 数值属性说明
+  'choice.listNote': string                     // 项目列表说明
+  'choice.emptyName': string                    // '(空名)'
+  'choice.emptyValue': string                   // '(空)'
+  'choice.moveUp': string                       // '上移'
+  'choice.moveDown': string                     // '下移'
+  'choice.removeOption': string                 // '删除选项 {n}'
+  'choice.removeByValue': string                // '删除 {value}'
   // 数据绑定 tab label — 复用 dialog.label.dictionary (它就是字典绑定的设置面板)
   'controlConfig.dataBindingTab': string
   // ============================================================
@@ -1449,6 +1486,9 @@ const zhCN: LocaleMessages = {
   'controlConfig.dictionaryInlineConflict': '该控件已声明内置候选项。内置候选恒优先于码表 (契约 §12.6.4)，此绑定当前不生效。',
   'controlConfig.dictionaryCandidateNote': '候选由平台预加载后注入编辑器；未加载时控件按自由文本处理，不报错。',
   'controlConfig.clear': '清空',
+  'controlConfig.fallbackName': '输入域',
+  'controlConfig.labelField': '控件标签 (旁注)',
+  'controlConfig.addOptionAction': '+ 添加选项',
   'controlConfig.namePlaceholder': '如 主诉',
   'controlConfig.labelPlaceholder': '如 主诉：',
   'controlConfig.styleHint': '控件样式：{kind}',
@@ -1471,6 +1511,39 @@ const zhCN: LocaleMessages = {
   'controlConfig.deletableLabel': '可删除',
   'controlConfig.editableLabel': '可填写',
   'controlConfig.singleLabel': '单值 (数据元唯一)',
+  'choice.create': '新建单选/复选',
+  'choice.fallbackName': '单选复选',
+  'choice.tab.type': '控件类型',
+  'choice.tab.base': '基础属性',
+  'choice.tab.options': '选项设置',
+  'choice.tab.numeric': '数值属性',
+  'choice.tab.list': '项目列表',
+  'choice.radioLabel': '单选框',
+  'choice.radioDesc': '每次仅可选中一项',
+  'choice.checkboxLabel': '复选框',
+  'choice.checkboxDesc': '可同时选中多项',
+  'choice.typeNote': '单选/复选候选项取值均为文本；复选 = 多选枚举，单选 = 单选枚举。',
+  'choice.namePlaceholder': '如 症状',
+  'choice.labelPlaceholder': '如 症状：',
+  'choice.enumEditableLabel': '允许输入自定义值 (不在候选项内)',
+  'choice.optionsHeader': '候选项',
+  'choice.addOption': '新增选项',
+  'choice.col.name': '名称',
+  'choice.col.value': '值',
+  'choice.col.exclusive': '互斥',
+  'choice.col.item': '项目',
+  'choice.col.numeric': '数值',
+  'choice.col.itemValue': '项目 (值)',
+  'choice.optionsEmptyHint': '暂无候选项，点右上角新增',
+  'choice.optionsEmpty': '暂无候选项',
+  'choice.numericNote': '为每个候选项(项目)附加一个数值(如评分/权重)；不填表示无。',
+  'choice.listNote': '项目列表与选项/数值同源；可调序或快速删除。',
+  'choice.emptyName': '(空名)',
+  'choice.emptyValue': '(空)',
+  'choice.moveUp': '上移',
+  'choice.moveDown': '下移',
+  'choice.removeOption': '删除选项 {n}',
+  'choice.removeByValue': '删除 {value}',
   'controlConfig.dataBindingTab': '数据绑定',
   // ===== BookmarkDialog =====
   'bookmark.insertBookmark': '插入书签',
@@ -2138,6 +2211,9 @@ const enUS: LocaleMessages = {
   'controlConfig.dictionaryInlineConflict': 'This control already declares inline options. Inline options always take priority over the dictionary (§12.6.4); this binding is currently a no-op.',
   'controlConfig.dictionaryCandidateNote': 'Candidates are preloaded by the platform and injected into the editor; if not loaded the control behaves as free text without errors.',
   'controlConfig.clear': 'Clear',
+  'controlConfig.fallbackName': 'Input Control',
+  'controlConfig.labelField': 'Control Label (side note)',
+  'controlConfig.addOptionAction': '+ Add Option',
   'controlConfig.namePlaceholder': 'e.g. Chief Complaint',
   'controlConfig.labelPlaceholder': 'e.g. Chief Complaint:',
   'controlConfig.styleHint': 'Control style: {kind}',
@@ -2160,6 +2236,39 @@ const enUS: LocaleMessages = {
   'controlConfig.deletableLabel': 'Deletable',
   'controlConfig.editableLabel': 'Editable',
   'controlConfig.singleLabel': 'Single (unique data element)',
+  'choice.create': 'New Radio/Checkbox',
+  'choice.fallbackName': 'Radio/Checkbox',
+  'choice.tab.type': 'Control Type',
+  'choice.tab.base': 'Basic Properties',
+  'choice.tab.options': 'Options',
+  'choice.tab.numeric': 'Numeric Values',
+  'choice.tab.list': 'Item List',
+  'choice.radioLabel': 'Radio',
+  'choice.radioDesc': 'Only one item can be selected',
+  'choice.checkboxLabel': 'Checkbox',
+  'choice.checkboxDesc': 'Multiple items can be selected',
+  'choice.typeNote': 'Radio/checkbox option values are text; checkbox = multi-select enum, radio = single-select enum.',
+  'choice.namePlaceholder': 'e.g. Symptom',
+  'choice.labelPlaceholder': 'e.g. Symptom:',
+  'choice.enumEditableLabel': 'Allow custom input (not in the option list)',
+  'choice.optionsHeader': 'Options',
+  'choice.addOption': 'Add Option',
+  'choice.col.name': 'Name',
+  'choice.col.value': 'Value',
+  'choice.col.exclusive': 'Exclusive',
+  'choice.col.item': 'Item',
+  'choice.col.numeric': 'Numeric',
+  'choice.col.itemValue': 'Item (value)',
+  'choice.optionsEmptyHint': 'No options yet — use Add in the top right',
+  'choice.optionsEmpty': 'No options yet',
+  'choice.numericNote': 'Attach a numeric value (score / weight) to each option; leave blank for none.',
+  'choice.listNote': 'The item list shares the same source as options/numeric values; reorder or delete quickly.',
+  'choice.emptyName': '(unnamed)',
+  'choice.emptyValue': '(empty)',
+  'choice.moveUp': 'Move up',
+  'choice.moveDown': 'Move down',
+  'choice.removeOption': 'Remove option {n}',
+  'choice.removeByValue': 'Remove {value}',
   'controlConfig.dataBindingTab': 'Data Binding',
   // ===== BookmarkDialog =====
   'bookmark.insertBookmark': 'Insert Bookmark',

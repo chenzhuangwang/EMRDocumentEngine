@@ -7,21 +7,32 @@
 // ================================================================
 // ControlInputDialog 组件测试 (契约 §12.7)
 //
-// Radix Tabs 各 Content 默认全部挂载、以 hidden 控制可见性; jsdom 下
-// inactive 面板不可被默认 query 命中, 故测试统一以 { hidden: true }
-// 直接驱动, 不依赖 tab 切换 (React 状态更新与可见性无关)。
+// 查询口径: Radix Dialog 经 Portal 挂到 document.body, **不在 render() 返回的
+// container 里** —— 凡按 DOM 结构直查 (querySelector) 一律走 screen / document.body;
+// 按语义查询 (getByRole / getByPlaceholderText / getByLabelText) 不受影响。
+//
+// Radix Tabs 各 Content 默认以 hidden 控制可见性 (forceMount 已开), 故按 tab
+// 切换后内容都在 DOM 里, placeholder 直查即可, 无需 { hidden: true }。
+//
+// v6.1: 文案全部走 i18n (zh-CN 为默认 locale)。tab 标签为
+// 常规/格式/高级/数据绑定/内部; 形态按钮为 单行文本/数字/日期/日期时间/下拉。
 // ================================================================
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ControlInputDialog } from '../ControlInputDialog'
 import type { ElementMeta, TemplateDefinition } from '@/engine'
+import { bootstrapLocale } from '@/i18n/bootstrap'
+import { locale } from '@/engine'
 
 const INPUT_EL: ElementMeta = {
   code: { internal: 'CTL_INPUT', dataElement: 'DE99.99.001' }, name: '旧名',
   format: { dataType: 'S1' },
 }
 const INPUT_DEF: TemplateDefinition = { controlType: 'input', label: '旧标签', editable: true }
+
+beforeEach(() => { bootstrapLocale() })
+afterEach(() => { locale.setLocale('zh-CN') })
 
 function renderDialog() {
   const onApply = vi.fn()
@@ -30,12 +41,32 @@ function renderDialog() {
   return { onApply, onClose }
 }
 
+/**
+ * 形态按钮查询。
+ *
+ * Radix Tabs.Content 即使 forceMount, 非激活面板仍带 `hidden` 属性 ——
+ * 于是那些按钮**不在可访问性树里**, getByRole 找不到 (格式 tab 未激活时)。
+ * 这里统一用 getByText + selector:'button' 直查 DOM, 不受 hidden 影响。
+ */
+function kindButton(label: string): HTMLElement {
+  return screen.getByText(label, { selector: 'button' })
+}
+
+/** 点击形态按钮 (格式 tab 内的 kind 选择器) */
+function pickKind(label: string) {
+  fireEvent.click(screen.getByRole('tab', { name: '格式' }))
+  fireEvent.click(kindButton(label))
+}
+
+const insertBtn = () => screen.getByRole('button', { name: '插入' })
+const applyBtn = () => screen.getByRole('button', { name: '应用' })
+
 describe('ControlInputDialog', () => {
   it('常规 tab: 改数据元名称与标签 → 应用 payload 含新 element.name/label', () => {
     const { onApply } = renderDialog()
     fireEvent.change(screen.getByLabelText(/数据元名称/), { target: { value: '新名' } })
     fireEvent.change(screen.getByLabelText(/控件标签/), { target: { value: '新标签：' } })
-    fireEvent.click(screen.getByRole('button', { name: '插入' }))
+    fireEvent.click(insertBtn())
     expect(onApply).toHaveBeenCalledTimes(1)
     const payload = onApply.mock.calls[0][0] as { element: ElementMeta; definition?: TemplateDefinition }
     expect(payload.element.name).toBe('新名')
@@ -46,8 +77,8 @@ describe('ControlInputDialog', () => {
 
   it('格式: 数据类型 S1→数字 (N) → controlType 联动为 number', () => {
     const { onApply } = renderDialog()
-    fireEvent.click(screen.getByText('数字', { selector: 'button', hidden: true } as never))
-    fireEvent.click(screen.getByRole('button', { name: '插入' }))
+    pickKind('数字')
+    fireEvent.click(insertBtn())
     const payload = onApply.mock.calls[0][0] as { element: ElementMeta; definition?: TemplateDefinition }
     expect(payload.element.format?.dataType).toBe('N')
     expect(payload.definition?.controlType).toBe('number')
@@ -55,10 +86,10 @@ describe('ControlInputDialog', () => {
 
   it('校验: 数字录入 scale → payload.format.scale (含格式 N 联动)', () => {
     const { onApply } = renderDialog()
-    fireEvent.click(screen.getByText('数字', { selector: 'button', hidden: true } as never))
-    const scale = screen.getByLabelText(/小数位数/, { hidden: true } as never)
-    fireEvent.change(scale, { target: { value: '2' } })
-    fireEvent.click(screen.getByRole('button', { name: '插入' }))
+    pickKind('数字')
+    fireEvent.click(screen.getByRole('tab', { name: '高级' }))
+    fireEvent.change(screen.getByLabelText(/小数位数/), { target: { value: '2' } })
+    fireEvent.click(insertBtn())
     const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
     expect(payload.element.format?.dataType).toBe('N')
     expect(payload.element.format?.scale).toBe(2)
@@ -71,29 +102,23 @@ describe('ControlInputDialog', () => {
   })
 })
 
-describe('ControlInputDialog — 格式形态 (纯文本/数字/日期/下拉)', () => {
-  it('格式 tab 只含 纯文本/数字/日期/下拉 (无 多行文本/长文本)', () => {
+describe('ControlInputDialog — 格式形态 (单行文本/数字/日期/日期时间/下拉)', () => {
+  it('格式 tab 只含 单行文本/数字/日期/日期时间/下拉 (无 多行文本)', () => {
     renderDialog()
-    expect(screen.getByText('纯文本', { selector: 'button' })).toBeTruthy()
-    expect(screen.getByText('数字', { selector: 'button' })).toBeTruthy()
-    expect(screen.getByText('日期', { selector: 'button' })).toBeTruthy()
-    expect(screen.getByText('日期时间', { selector: 'button' })).toBeTruthy()
-    expect(screen.getByText('下拉', { selector: 'button' })).toBeTruthy()
+    for (const label of ['单行文本', '数字', '日期', '日期时间', '下拉']) {
+      expect(kindButton(label)).toBeTruthy()
+    }
     expect(screen.queryByText('多行文本', { selector: 'button' })).toBeNull()
-    expect(screen.queryByText('长文本', { selector: 'button' })).toBeNull()
   })
 
   it('选下拉 → 填候选 + 勾多选 → 应用 payload controlType=select, enums.data/multiple 正确', () => {
     const { onApply } = renderDialog()
-    fireEvent.click(screen.getByRole('tab', { name: '格式' }))
-    fireEvent.click(screen.getByRole('button', { name: '下拉' }))
-    fireEvent.click(screen.getByRole('button', { name: '+ 添加选项' }))
-    const nameInput = screen.getByPlaceholderText('名称')
-    const valueInput = screen.getByPlaceholderText('值')
-    fireEvent.change(nameInput, { target: { value: '轻度' } })
-    fireEvent.change(valueInput, { target: { value: 'mild' } })
+    pickKind('下拉')
+    fireEvent.click(screen.getByRole('button', { name: /添加选项/ }))
+    fireEvent.change(screen.getByPlaceholderText('显示名 (候选项)'), { target: { value: '轻度' } })
+    fireEvent.change(screen.getByPlaceholderText('值 (候选项值)'), { target: { value: 'mild' } })
     fireEvent.click(screen.getByRole('checkbox', { name: /允许多选/ }))
-    fireEvent.click(screen.getByRole('button', { name: '插入' }))
+    fireEvent.click(insertBtn())
     const payload = onApply.mock.calls[0][0] as { element: ElementMeta; definition?: TemplateDefinition }
     expect(payload.element.format?.dataType).toBe('S1')
     expect(payload.definition?.controlType).toBe('select')
@@ -103,9 +128,8 @@ describe('ControlInputDialog — 格式形态 (纯文本/数字/日期/下拉)',
 
   it('选数字 → 应用 payload controlType=number, dataType=N', () => {
     const { onApply } = renderDialog()
-    fireEvent.click(screen.getByRole('tab', { name: '格式' }))
-    fireEvent.click(screen.getByRole('button', { name: '数字' }))
-    fireEvent.click(screen.getByRole('button', { name: '插入' }))
+    pickKind('数字')
+    fireEvent.click(insertBtn())
     const payload = onApply.mock.calls[0][0] as { element: ElementMeta; definition?: TemplateDefinition }
     expect(payload.element.format?.dataType).toBe('N')
     expect(payload.definition?.controlType).toBe('number')
@@ -117,9 +141,8 @@ describe('ControlInputDialog — 日期时间形态', () => {
     const onApply = vi.fn()
     const onClose = vi.fn()
     render(<ControlInputDialog open mode="create" initial={{ element: INPUT_EL, definition: INPUT_DEF }} onClose={onClose} onApply={onApply} />)
-    fireEvent.click(screen.getByRole('tab', { name: '格式' }))
-    fireEvent.click(screen.getByText('日期时间', { selector: 'button' }))
-    fireEvent.click(screen.getByRole('button', { name: '插入' }))
+    pickKind('日期时间')
+    fireEvent.click(insertBtn())
     const payload = onApply.mock.calls[0][0] as { element: ElementMeta; definition?: TemplateDefinition }
     expect(payload.element.format?.dataType).toBe('DT')
     expect(payload.definition?.controlType).toBe('datetime')
@@ -141,7 +164,8 @@ const SELECT_EL: ElementMeta = {
 }
 const SELECT_DEF: TemplateDefinition = { controlType: 'select', label: '下拉：', editable: true }
 
-function renderSelect() {
+/** 打开「数据绑定」tab 并返回可查询的 scope */
+function renderSelectToBinding() {
   const onApply = vi.fn()
   const onClose = vi.fn()
   render(<ControlInputDialog open mode="edit" initial={{ element: SELECT_EL, definition: SELECT_DEF }} onClose={onClose} onApply={onApply} />)
@@ -149,14 +173,16 @@ function renderSelect() {
   return { onApply }
 }
 
+const hexInput = () => screen.getByPlaceholderText(/32 位 hex/) as HTMLInputElement
+
 describe('ControlInputDialog — 数据绑定 (码表)', () => {
   it('下拉 + 清空 inline 候选 + 绑码表 → payload 含 dictionary 且不含 enums 键', () => {
-    const { onApply } = renderSelect()
+    const { onApply } = renderSelectToBinding()
     // 清掉唯一的 inline 候选项
-    fireEvent.change(screen.getByPlaceholderText('名称'), { target: { value: '' } })
-    fireEvent.change(screen.getByPlaceholderText('值'), { target: { value: '' } })
-    fireEvent.change(screen.getByPlaceholderText('32 位 hex'), { target: { value: DICT_ID } })
-    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+    fireEvent.change(screen.getByPlaceholderText('显示名 (候选项)'), { target: { value: '' } })
+    fireEvent.change(screen.getByPlaceholderText('值 (候选项值)'), { target: { value: '' } })
+    fireEvent.change(hexInput(), { target: { value: DICT_ID } })
+    fireEvent.click(applyBtn())
 
     const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
     expect(payload.element.format?.dictionary).toBe(DICT_ID)
@@ -165,9 +191,9 @@ describe('ControlInputDialog — 数据绑定 (码表)', () => {
   })
 
   it('下拉 + 有 inline 候选 + 绑码表 → 两者并存 (inline 恒优先, 码表不生效)', () => {
-    const { onApply } = renderSelect()
-    fireEvent.change(screen.getByPlaceholderText('32 位 hex'), { target: { value: DICT_ID } })
-    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+    const { onApply } = renderSelectToBinding()
+    fireEvent.change(hexInput(), { target: { value: DICT_ID } })
+    fireEvent.click(applyBtn())
 
     const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
     expect(payload.element.format?.dictionary).toBe(DICT_ID)
@@ -183,7 +209,7 @@ describe('ControlInputDialog — 数据绑定 (码表)', () => {
     }
     render(<ControlInputDialog open mode="edit" initial={{ element: withDict, definition: SELECT_DEF }} onClose={onClose} onApply={onApply} />)
     fireEvent.click(screen.getByRole('tab', { name: '数据绑定' }))
-    expect((screen.getByPlaceholderText('32 位 hex') as HTMLInputElement).value).toBe(DICT_ID)
+    expect(hexInput().value).toBe(DICT_ID)
   })
 
   it('清空按钮 → 解绑 (payload 无 dictionary)', () => {
@@ -193,27 +219,26 @@ describe('ControlInputDialog — 数据绑定 (码表)', () => {
     render(<ControlInputDialog open mode="edit" initial={{ element: withDict, definition: SELECT_DEF }} onClose={onClose} onApply={onApply} />)
     fireEvent.click(screen.getByRole('tab', { name: '数据绑定' }))
     fireEvent.click(screen.getByRole('button', { name: '清空' }))
-    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+    fireEvent.click(applyBtn())
 
     const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
     expect(payload.element.format?.dictionary).toBeUndefined()
   })
 
   it('非下拉形态 → 数据绑定 tab 只给说明, 不提供绑定控件', () => {
-    renderDialog()   // 初始 controlType 'input' → kind S1
+    renderDialog()
     fireEvent.click(screen.getByRole('tab', { name: '数据绑定' }))
-    expect(screen.queryByPlaceholderText('32 位 hex')).toBeNull()
+    expect(screen.queryByPlaceholderText(/32 位 hex/)).toBeNull()
     expect(screen.getByText(/仅「下拉」形态可绑定外部码表/)).toBeTruthy()
   })
 
-  it('显式把下拉改成纯文本 → 清除码表绑定 (形态编辑不残留死引用)', () => {
+  it('显式把下拉改成单行文本 → 清除码表绑定 (形态编辑不残留死引用)', () => {
     const onApply = vi.fn()
     const onClose = vi.fn()
     const withDict: ElementMeta = { ...SELECT_EL, format: { dataType: 'S1', dictionary: DICT_ID } }
     render(<ControlInputDialog open mode="edit" initial={{ element: withDict, definition: SELECT_DEF }} onClose={onClose} onApply={onApply} />)
-    fireEvent.click(screen.getByRole('tab', { name: '格式' }))
-    fireEvent.click(screen.getByText('纯文本', { selector: 'button' }))
-    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+    pickKind('单行文本')
+    fireEvent.click(applyBtn())
 
     const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
     expect(payload.element.format?.dictionary).toBeUndefined()
@@ -228,7 +253,7 @@ describe('ControlInputDialog — 数据绑定 (码表)', () => {
       format: { dataType: 'S1', dictionary: DICT_ID },
     }
     render(<ControlInputDialog open mode="edit" initial={{ element: legacy, definition: undefined }} onClose={onClose} onApply={onApply} />)
-    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+    fireEvent.click(applyBtn())
 
     const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
     expect(payload.element.format?.dictionary).toBe(DICT_ID)

@@ -12,6 +12,9 @@
 // 弹框只持有本地 draft, Apply 才组装 ElementMeta + TemplateDefinition
 // 交给 onApply (§12.7), 不直改引擎。
 // legacy (def.controlType undefined) 且未改形态时保持 undefined 不迁移。
+//
+// v6.1: 全部文案走 i18n。形态按钮复用 dialog.controlType.* (与
+// controlDisplay 的属性面板展示名分开, 后者是目录名)。
 // ================================================================
 
 import { useEffect, useMemo, useState } from 'react'
@@ -23,6 +26,8 @@ import { controlTypeForDataType } from '@/engine'
 import type { ElementMeta, ElementEnumOption, TemplateDefinition } from '@/engine'
 import { cleanDefinition, cloneData, CodeBadge, DictionaryField, Field, NumField, TextField, ToggleField, inputCls } from './controlConfigShared'
 import type { ControlConfigData } from './controlConfigShared'
+import { useTranslation } from '@/i18n/useTranslation'
+import type { LocaleMessages } from '@/engine'
 
 /** 输入域形态: 纯文本/数字/日期/日期时间/下拉 (下拉=select; 日期时间=DT) */
 export type InputKind = 'S1' | 'N' | 'D' | 'DT' | 'select'
@@ -35,22 +40,26 @@ interface ControlInputDialogProps {
   onApply: (result: ControlConfigData) => void
 }
 
-const KIND_OPTIONS: { value: InputKind; label: string }[] = [
-  { value: 'S1', label: '纯文本' },
-  { value: 'N', label: '数字' },
-  { value: 'D', label: '日期' },
-  { value: 'DT', label: '日期时间' },
-  { value: 'select', label: '下拉' },
-]
+type TabId = 'general' | 'format' | 'validate' | 'binding' | 'other'
 
-const TABS = [
-  { id: 'general', label: '常规' },
-  { id: 'format', label: '格式' },
-  { id: 'validate', label: '校验' },
-  { id: 'binding', label: '数据绑定' },
-  { id: 'other', label: '其他' },
-] as const
-type TabId = (typeof TABS)[number]['id']
+/** 形态按钮文案 → i18n 键 (与 dialog.controlType.* 一致) */
+const KIND_LABEL_KEYS: Record<InputKind, keyof LocaleMessages> = {
+  S1: 'dialog.controlType.input',
+  N: 'dialog.controlType.number',
+  D: 'dialog.controlType.date',
+  DT: 'dialog.controlType.datetime',
+  select: 'dialog.controlType.select',
+}
+
+const TAB_LABEL_KEYS: Record<TabId, keyof LocaleMessages> = {
+  general: 'controlConfig.tab.basic',
+  format: 'controlConfig.tab.format',
+  validate: 'controlConfig.tab.advanced',
+  binding: 'controlConfig.dataBindingTab',
+  other: 'controlConfig.internal',
+}
+
+const TAB_ORDER: readonly TabId[] = ['general', 'format', 'validate', 'binding', 'other']
 
 interface OptionDraft { name: string; value: string; numericValue?: number }
 
@@ -117,6 +126,7 @@ function draftFrom(initial: ControlConfigData): Draft {
 export function ControlInputDialog({
   open, mode, initial, onClose, onApply,
 }: ControlInputDialogProps) {
+  const { t } = useTranslation()
   const [draft, setDraft] = useState<Draft>(() => draftFrom(initial))
   const [tab, setTab] = useState<TabId>('general')
 
@@ -208,7 +218,7 @@ export function ControlInputDialog({
     return { element: el, definition: def }
   }, [draft, mode, initial])
 
-  const kindLabel = KIND_OPTIONS.find((o) => o.value === draft.kind)?.label
+  const kindLabel = t(KIND_LABEL_KEYS[draft.kind])
 
   return (
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose() }}>
@@ -217,20 +227,20 @@ export function ControlInputDialog({
         <Dialog.Content onCloseAutoFocus={(e) => e.preventDefault()} className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex max-h-[85vh] w-[520px] flex-col overflow-hidden bg-chrome rounded-lg shadow-xl border border-line">
           <div className="flex flex-shrink-0 items-center justify-between px-4 py-3 border-b border-line-subtle">
             <Dialog.Title className="text-sm font-semibold text-chrome-ink-strong">
-              {mode === 'create' ? '新建输入域' : `控件配置 · ${initial.element.name || '输入域'}`}
+              {mode === 'create' ? t('controlConfig.create') : `${t('dialog.title.controlConfig')} · ${initial.element.name || t('controlConfig.fallbackName')}`}
             </Dialog.Title>
-            <button className="text-chrome-ink-muted hover:text-chrome-ink-secondary" onClick={onClose} aria-label="关闭"><X size={16} /></button>
+            <button className="text-chrome-ink-muted hover:text-chrome-ink-secondary" onClick={onClose} aria-label={t('common.close')}><X size={16} /></button>
           </div>
 
           <Tabs.Root value={tab} onValueChange={(v) => setTab(v as TabId)} className="flex flex-1 min-h-0 flex-col overflow-hidden">
             <Tabs.List className="flex flex-shrink-0 border-b border-line-subtle px-4">
-              {TABS.map((t) => (
+              {TAB_ORDER.map((id) => (
                 <Tabs.Trigger
-                  key={t.id} value={t.id}
+                  key={id} value={id}
                   className={cn('flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
-                    tab === t.id ? 'border-primary-500 text-chrome-accent-ink' : 'border-transparent text-chrome-ink-tertiary hover:text-chrome-ink-body')}
+                    tab === id ? 'border-primary-500 text-chrome-accent-ink' : 'border-transparent text-chrome-ink-tertiary hover:text-chrome-ink-body')}
                 >
-                  {t.label}
+                  {t(TAB_LABEL_KEYS[id])}
                 </Tabs.Trigger>
               ))}
             </Tabs.List>
@@ -238,44 +248,44 @@ export function ControlInputDialog({
             <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
               {/* 常规 */}
               <Tabs.Content forceMount value="general" className="space-y-3">
-                <TextField label="数据元名称" value={draft.name} onChange={(v) => patch({ name: v })} placeholder="如 主诉" />
+                <TextField label={t('dialog.label.dataElementName')} value={draft.name} onChange={(v) => patch({ name: v })} placeholder={t('controlConfig.namePlaceholder')} />
                 <CodeBadge element={initial.element} />
-                <TextField label="控件标签 (旁注)" value={draft.label} onChange={(v) => patch({ label: v })} placeholder="如 主诉：" />
+                <TextField label={t('controlConfig.labelField')} value={draft.label} onChange={(v) => patch({ label: v })} placeholder={t('controlConfig.labelPlaceholder')} />
                 <div className="flex flex-wrap gap-x-6 gap-y-1 pt-1">
-                  <ToggleField label="必填" checked={draft.required} onChange={(v) => patch({ required: v })} />
-                  <ToggleField label="只读" checked={draft.readonly} onChange={(v) => patch({ readonly: v })} />
+                  <ToggleField label={t('dialog.label.required')} checked={draft.required} onChange={(v) => patch({ required: v })} />
+                  <ToggleField label={t('dialog.label.readonly')} checked={draft.readonly} onChange={(v) => patch({ readonly: v })} />
                 </div>
               </Tabs.Content>
 
               {/* 格式 */}
               <Tabs.Content forceMount value="format" className="space-y-3">
-                <Field label="控件形态 (决定控件类型)">
+                <Field label={t('controlConfig.kindLabel')}>
                   <div className="flex flex-wrap gap-2">
-                    {KIND_OPTIONS.map((o) => (
+                    {(['S1', 'N', 'D', 'DT', 'select'] as InputKind[]).map((k) => (
                       <button
-                        key={o.value} type="button"
-                        onClick={() => patch({ kind: o.value })}
+                        key={k} type="button"
+                        onClick={() => patch({ kind: k })}
                         className={cn('px-3 py-1.5 text-xs rounded-md border transition-colors',
-                          draft.kind === o.value ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-line text-chrome-ink-secondary hover:bg-chrome-subtle')}
+                          draft.kind === k ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-line text-chrome-ink-secondary hover:bg-chrome-subtle')}
                       >
-                        {o.label}
+                        {t(KIND_LABEL_KEYS[k])}
                       </button>
                     ))}
                   </div>
                 </Field>
-                <p className="text-xs text-chrome-ink-muted">控件样式：{kindLabel}</p>
+                <p className="text-xs text-chrome-ink-muted">{t('controlConfig.styleHint', { kind: kindLabel })}</p>
 
                 {draft.kind === 'N' && (
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="数字展示">
+                    <Field label={t('controlConfig.numberDisplay')}>
                       <select
                         className={inputCls}
                         value={draft.showType ?? ''}
                         onChange={(e) => patch({ showType: e.target.value === '' ? undefined : e.target.value as 'AN' | 'N' })}
                       >
-                        <option value="">默认</option>
-                        <option value="N">数值 (右对齐)</option>
-                        <option value="AN">文本数字</option>
+                        <option value="">{t('controlConfig.defaultOption')}</option>
+                        <option value="N">{t('controlConfig.numberDisplayN')}</option>
+                        <option value="AN">{t('controlConfig.numberDisplayAN')}</option>
                       </select>
                     </Field>
                   </div>
@@ -284,25 +294,25 @@ export function ControlInputDialog({
                 {draft.kind === 'select' && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-chrome-ink-secondary">候选项</span>
-                      <button type="button" onClick={addOption} className="text-xs text-blue-600 hover:text-blue-700">+ 添加选项</button>
+                      <span className="text-xs font-medium text-chrome-ink-secondary">{t('dialog.label.options')}</span>
+                      <button type="button" onClick={addOption} className="text-xs text-blue-600 hover:text-blue-700">{t('controlConfig.addOptionAction')}</button>
                     </div>
                     {draft.options.map((o, i) => (
                       <div key={i} className="flex items-center gap-2">
-                        <input className={inputCls} placeholder="名称" value={o.name} onChange={(e) => patchOption(i, { name: e.target.value })} />
-                        <input className={inputCls} placeholder="值" value={o.value} onChange={(e) => patchOption(i, { value: e.target.value })} />
+                        <input className={inputCls} placeholder={t('controlConfig.optionName')} value={o.name} onChange={(e) => patchOption(i, { name: e.target.value })} />
+                        <input className={inputCls} placeholder={t('controlConfig.optionValue')} value={o.value} onChange={(e) => patchOption(i, { value: e.target.value })} />
                         <input
-                          className={inputCls} placeholder="数值(可选)"
+                          className={inputCls} placeholder={t('controlConfig.numericValuePlaceholder')}
                           value={o.numericValue ?? ''}
                           onChange={(e) => {
                             const s = e.target.value.trim()
                             patchOption(i, { numericValue: s === '' ? undefined : (Number.isFinite(Number(s)) ? Number(s) : o.numericValue) })
                           }}
                         />
-                        <button type="button" onClick={() => removeOption(i)} className="text-chrome-ink-muted hover:text-red-500" aria-label="删除选项">×</button>
+                        <button type="button" onClick={() => removeOption(i)} className="text-chrome-ink-muted hover:text-red-500" aria-label={t('controlConfig.removeOption')}>×</button>
                       </div>
                     ))}
-                    <ToggleField label="允许多选" checked={draft.multiple} onChange={(v) => patch({ multiple: v })} />
+                    <ToggleField label={t('dialog.label.allowMultiple')} checked={draft.multiple} onChange={(v) => patch({ multiple: v })} />
                   </div>
                 )}
               </Tabs.Content>
@@ -311,18 +321,18 @@ export function ControlInputDialog({
               <Tabs.Content forceMount value="validate" className="space-y-3">
                 {draft.kind === 'S1' && (
                   <div className="grid grid-cols-2 gap-3">
-                    <NumField label="最小长度" value={draft.minLength} min={0} onChange={(v) => patch({ minLength: v })} placeholder="不限" />
-                    <NumField label="最大长度" value={draft.maxLength} min={0} onChange={(v) => patch({ maxLength: v })} placeholder="不限" />
+                    <NumField label={t('dialog.label.minLength')} value={draft.minLength} min={0} onChange={(v) => patch({ minLength: v })} placeholder={t('controlConfig.unlimited')} />
+                    <NumField label={t('dialog.label.maxLength')} value={draft.maxLength} min={0} onChange={(v) => patch({ maxLength: v })} placeholder={t('controlConfig.unlimited')} />
                   </div>
                 )}
                 {draft.kind === 'N' && (
-                  <NumField label="小数位数 (scale)" value={draft.scale} min={0} max={6} onChange={(v) => patch({ scale: v })} placeholder="不限" />
+                  <NumField label={t('dialog.label.scale')} value={draft.scale} min={0} max={6} onChange={(v) => patch({ scale: v })} placeholder={t('controlConfig.unlimited')} />
                 )}
                 {draft.kind === 'D' && (
-                  <p className="text-xs text-chrome-ink-muted">日期按 YYYY-MM-DD 存储与校验。</p>
+                  <p className="text-xs text-chrome-ink-muted">{t('controlConfig.dateFormatHint')}</p>
                 )}
                 {draft.kind === 'DT' && (
-                  <p className="text-xs text-chrome-ink-muted">日期时间按 YYYY-MM-DD HH:mm:ss 存储与校验。</p>
+                  <p className="text-xs text-chrome-ink-muted">{t('controlConfig.dateTimeFormatHint')}</p>
                 )}
               </Tabs.Content>
 
@@ -336,22 +346,20 @@ export function ControlInputDialog({
                   />
                 ) : (
                   <p className="text-xs text-chrome-ink-muted">
-                    仅「下拉」形态可绑定外部码表 —— 它是 format.dictionary 唯一有意义的落点
-                    (单选/复选的候选恒为内置项，会覆盖码表)。当前形态为「{kindLabel}」，
-                    请先在「格式」页切换为「下拉」。
+                    {t('controlConfig.bindingHint', { kind: kindLabel })}
                   </p>
                 )}
               </Tabs.Content>
 
               {/* 其他 */}
               <Tabs.Content forceMount value="other" className="space-y-3">
-                <TextField label="前缀" value={draft.prefix} onChange={(v) => patch({ prefix: v })} placeholder="框前字面量" />
-                <TextField label="后缀" value={draft.suffix} onChange={(v) => patch({ suffix: v })} placeholder="框后字面量" />
-                <TextField label="提示 (tips)" value={draft.tips} onChange={(v) => patch({ tips: v })} placeholder="悬浮提示" />
+                <TextField label={t('controlConfig.prefixLabel')} value={draft.prefix} onChange={(v) => patch({ prefix: v })} placeholder={t('controlConfig.prefixPlaceholder')} />
+                <TextField label={t('controlConfig.suffixLabel')} value={draft.suffix} onChange={(v) => patch({ suffix: v })} placeholder={t('controlConfig.suffixPlaceholder')} />
+                <TextField label={t('controlConfig.tipsLabel')} value={draft.tips} onChange={(v) => patch({ tips: v })} placeholder={t('controlConfig.tipsPlaceholder')} />
                 <div className="flex flex-wrap gap-x-6 gap-y-1 pt-1">
-                  <ToggleField label="可删除" checked={draft.deletable} onChange={(v) => patch({ deletable: v })} />
-                  <ToggleField label="可填写" checked={draft.editable} onChange={(v) => patch({ editable: v })} />
-                  <ToggleField label="单值 (数据元唯一)" checked={draft.single} onChange={(v) => patch({ single: v })} />
+                  <ToggleField label={t('controlConfig.deletableLabel')} checked={draft.deletable} onChange={(v) => patch({ deletable: v })} />
+                  <ToggleField label={t('controlConfig.editableLabel')} checked={draft.editable} onChange={(v) => patch({ editable: v })} />
+                  <ToggleField label={t('controlConfig.singleLabel')} checked={draft.single} onChange={(v) => patch({ single: v })} />
                 </div>
               </Tabs.Content>
             </div>
@@ -359,12 +367,12 @@ export function ControlInputDialog({
 
           {/* Footer */}
           <div className="flex flex-shrink-0 justify-end gap-2 border-t bg-chrome-subtle px-4 py-3">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-md text-chrome-ink-secondary hover:bg-chrome-muted">取消</button>
+            <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-md text-chrome-ink-secondary hover:bg-chrome-muted">{t('common.cancel')}</button>
             <button
               onClick={() => { if (result) onApply(result) }}
               className="px-4 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
             >
-              {mode === 'create' ? '插入' : '应用'}
+              {mode === 'create' ? t('common.insert') : t('common.apply')}
             </button>
           </div>
         </Dialog.Content>
