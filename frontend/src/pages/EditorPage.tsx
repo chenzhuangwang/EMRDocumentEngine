@@ -133,6 +133,7 @@ function EditorPageInner({
   const editorRef = useEditorRef()
   const ready = useEditorReady()
   const navigate = useNavigate()
+  const { t } = useTranslation()
 
   // ---- 控件配置弹框 (契约 §12.7): 向导 (create) + 右键属性 (edit) ----
   type WizardKind = 'textInput' | 'radio' | 'checkbox'
@@ -909,7 +910,7 @@ function EditorPageInner({
   useEffect(() => {
     templateApi.list().then(res => {
       const items = res.data.data || []
-      setTemplates([{ name: '医疗文书', items: items.map((t: { id: string; name: string; description?: string }) => ({ id: t.id, name: t.name, description: t.description })) }])
+      setTemplates([{ name: t('mock.template.medical'), items: items.map((it: { id: string; name: string; description?: string }) => ({ id: it.id, name: it.name, description: it.description })) }])
     }).catch(() => { /* 加载失败, 保持空列表 */ })
   }, [])
 
