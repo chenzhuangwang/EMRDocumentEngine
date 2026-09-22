@@ -170,6 +170,7 @@ export interface LocaleMessages {
   'editor.hf.date': string                  // '日期'
   'editor.hf.closeHeaderTitle': string      // '关闭页眉编辑'
   'editor.hf.closeFooterTitle': string      // '关闭页脚编辑'
+  'editor.hf.title': string                 // '页眉页脚' (工具栏入口)
   // ============================================================
   // 编辑器 — 右键菜单
   // ============================================================
@@ -413,6 +414,7 @@ export interface LocaleMessages {
   'toolbar.headingStyle': string              // 标题样式下拉 title
   'toolbar.numberStyle': string               // 编号样式下拉 title
   'toolbar.insertControl': string             // 插入表单控件 title
+  'toolbar.controlShort': string               // '控件' (工具栏短标签)
   'toolbar.insertField': string               // 插入域代码 title
   'toolbar.lineHeight': string
   // ============================================================
@@ -985,6 +987,7 @@ const zhCN: LocaleMessages = {
   'editor.hf.date': '日期',
   'editor.hf.closeHeaderTitle': '关闭页眉编辑',
   'editor.hf.closeFooterTitle': '关闭页脚编辑',
+  'editor.hf.title': '页眉页脚',
   // ===== 右键菜单 =====
   'editor.contextMenu.cut': '剪切',
   'editor.contextMenu.copy': '复制',
@@ -1194,6 +1197,7 @@ const zhCN: LocaleMessages = {
   'toolbar.headingStyle': '标题样式',
   'toolbar.numberStyle': '编号样式',
   'toolbar.insertControl': '插入表单控件',
+  'toolbar.controlShort': '控件',
   'toolbar.insertField': '插入域代码',
   'toolbar.lineHeight': '行距',
   // ===== RecentDocuments =====
@@ -1710,6 +1714,7 @@ const enUS: LocaleMessages = {
   'editor.hf.date': 'Date',
   'editor.hf.closeHeaderTitle': 'Close header editing',
   'editor.hf.closeFooterTitle': 'Close footer editing',
+  'editor.hf.title': 'Header & Footer',
   // ===== 右键菜单 =====
   'editor.contextMenu.cut': 'Cut',
   'editor.contextMenu.copy': 'Copy',
@@ -1919,6 +1924,7 @@ const enUS: LocaleMessages = {
   'toolbar.headingStyle': 'Heading Style',
   'toolbar.numberStyle': 'Number Style',
   'toolbar.insertControl': 'Insert Form Control',
+  'toolbar.controlShort': 'Control',
   'toolbar.insertField': 'Insert Field Code',
   'toolbar.lineHeight': 'Line Spacing',
   // ===== RecentDocuments =====

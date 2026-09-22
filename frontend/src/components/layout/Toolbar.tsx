@@ -110,6 +110,7 @@ const FIELD_ITEMS: { type: string; labelZh: string; labelEn: string; icon: React
 
 // ================================================================
 export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetup, onWatermark, pluginActions }: ToolbarProps) {
+  const { t } = useTranslation()
   const paraStyle = useEditorStoreSnapshot((s) => s.paragraphStyle)
   const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
   const canUndo = useEditorStoreSnapshot((s) => s.runtime.history.canUndo)
@@ -128,10 +129,10 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
     <div className="h-toolbar bg-chrome border-b border-line-subtle flex items-center px-3 gap-0.5 flex-shrink-0 overflow-x-auto select-none">
       {/* 组1：历史操作 */}
       <ToolbarGroup>
-        <ToolbarButton title="撤销 (Ctrl+Z)" disabled={!canUndo} onClick={() => onFormat?.('undo')}>
+        <ToolbarButton title={`${t('editor.undo')} (Ctrl+Z)`} disabled={!canUndo} onClick={() => onFormat?.('undo')}>
           <Undo2 size={16} />
         </ToolbarButton>
-        <ToolbarButton title="重做 (Ctrl+Y)" disabled={!canRedo} onClick={() => onFormat?.('redo')}>
+        <ToolbarButton title={`${t('editor.redo')} (Ctrl+Y)`} disabled={!canRedo} onClick={() => onFormat?.('redo')}>
           <Redo2 size={16} />
         </ToolbarButton>
       </ToolbarGroup>
@@ -155,29 +156,29 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
 
       {/* 组4：文本样式 */}
       <ToolbarGroup>
-        <ToolbarButton title="格式刷" active={formatPainterActive} onClick={() => onFormat?.('formatPainter')}>
+        <ToolbarButton title={t('editor.formatPainter')} active={formatPainterActive} onClick={() => onFormat?.('formatPainter')}>
           <Paintbrush size={16} />
         </ToolbarButton>
-        <ToolbarButton title="加粗 (Ctrl+B)" active={textStyle?.bold} onClick={() => onFormat?.('bold')}>
+        <ToolbarButton title={`${t('editor.format.bold')} (Ctrl+B)`} active={textStyle?.bold} onClick={() => onFormat?.('bold')}>
           <Bold size={16} />
         </ToolbarButton>
-        <ToolbarButton title="斜体 (Ctrl+I)" active={textStyle?.italic} onClick={() => onFormat?.('italic')}>
+        <ToolbarButton title={`${t('editor.format.italic')} (Ctrl+I)`} active={textStyle?.italic} onClick={() => onFormat?.('italic')}>
           <Italic size={16} />
         </ToolbarButton>
-        <ToolbarButton title="下划线 (Ctrl+U)" active={textStyle?.underline} onClick={() => onFormat?.('underline')}>
+        <ToolbarButton title={`${t('editor.format.underline')} (Ctrl+U)`} active={textStyle?.underline} onClick={() => onFormat?.('underline')}>
           <Underline size={16} />
         </ToolbarButton>
-        <ToolbarButton title="删除线" active={textStyle?.strikeout} onClick={() => onFormat?.('strikeout')}>
+        <ToolbarButton title={t('editor.format.strikethrough')} active={textStyle?.strikeout} onClick={() => onFormat?.('strikeout')}>
           <Strikethrough size={16} />
         </ToolbarButton>
-        <ToolbarButton title="上标" active={textStyle?.superscript} onClick={() => onFormat?.('superscript')}>
+        <ToolbarButton title={t('editor.format.superscript')} active={textStyle?.superscript} onClick={() => onFormat?.('superscript')}>
           <Superscript size={16} />
         </ToolbarButton>
-        <ToolbarButton title="下标" active={textStyle?.subscript} onClick={() => onFormat?.('subscript')}>
+        <ToolbarButton title={t('editor.format.subscript')} active={textStyle?.subscript} onClick={() => onFormat?.('subscript')}>
           <Subscript size={16} />
         </ToolbarButton>
         <ToolbarDivider />
-        <ToolbarButton title="清除格式" onClick={() => onFormat?.('clearFormat')}>
+        <ToolbarButton title={t('editor.clearFormat')} onClick={() => onFormat?.('clearFormat')}>
           <Eraser size={16} />
         </ToolbarButton>
       </ToolbarGroup>
@@ -194,36 +195,36 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
 
       {/* 组6：元素插入 */}
       <ToolbarGroup>
-        <ToolbarButton title="插入分隔线" onClick={() => onInsert?.('separator')}>
+        <ToolbarButton title={t('editor.insert.separator')} onClick={() => onInsert?.('separator')}>
           <Minus size={16} />
         </ToolbarButton>
-        <ToolbarButton title="插入表格" onClick={() => onInsert?.('table')}>
+        <ToolbarButton title={t('editor.insert.table')} onClick={() => onInsert?.('table')}>
           <Table size={16} />
         </ToolbarButton>
-        <ToolbarButton title="合并单元格" onClick={() => onFormat?.('mergeCells')}>
+        <ToolbarButton title={t('editor.table.mergeCell')} onClick={() => onFormat?.('mergeCells')}>
           <Combine size={16} />
         </ToolbarButton>
-        <ToolbarButton title="拆分单元格" onClick={() => onFormat?.('splitCell')}>
+        <ToolbarButton title={t('editor.table.splitCell')} onClick={() => onFormat?.('splitCell')}>
           <Ungroup size={16} />
         </ToolbarButton>
-        <ToolbarButton title="插入行" onClick={() => onFormat?.('insertRow')}>
+        <ToolbarButton title={t('editor.table.insertRow')} onClick={() => onFormat?.('insertRow')}>
           <Rows3 size={16} />
         </ToolbarButton>
-        <ToolbarButton title="删除行" onClick={() => onFormat?.('deleteRow')}>
+        <ToolbarButton title={t('editor.table.deleteRow')} onClick={() => onFormat?.('deleteRow')}>
           <Rows size={16} />
         </ToolbarButton>
-        <ToolbarButton title="插入列" onClick={() => onFormat?.('insertColumn')}>
+        <ToolbarButton title={t('editor.table.insertColumn')} onClick={() => onFormat?.('insertColumn')}>
           <Columns3 size={16} />
         </ToolbarButton>
-        <ToolbarButton title="删除列" onClick={() => onFormat?.('deleteColumn')}>
+        <ToolbarButton title={t('editor.table.deleteColumn')} onClick={() => onFormat?.('deleteColumn')}>
           <Columns size={16} />
         </ToolbarButton>
-        <ToolbarButton title="插入图片" onClick={() => onInsert?.('image')}>
+        <ToolbarButton title={t('editor.insert.image')} onClick={() => onInsert?.('image')}>
           <Image size={16} />
         </ToolbarButton>
         <InsertControlDropdown onInsert={onInsert} />
         <FieldDropdown onInsert={onInsert} />
-        <ToolbarButton title="插入书签" onClick={() => onFormat?.('openBookmark')}>
+        <ToolbarButton title={t('editor.insert.bookmark')} onClick={() => onFormat?.('openBookmark')}>
           <Bookmark size={16} />
         </ToolbarButton>
       </ToolbarGroup>
@@ -232,16 +233,16 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
 
       {/* 组7：段落格式 */}
       <ToolbarGroup>
-        <ToolbarButton title="左对齐" active={paraStyle?.alignment === 'left'} onClick={() => onFormat?.('alignLeft')}>
+        <ToolbarButton title={t('editor.format.alignLeft')} active={paraStyle?.alignment === 'left'} onClick={() => onFormat?.('alignLeft')}>
           <AlignLeft size={16} />
         </ToolbarButton>
-        <ToolbarButton title="居中" active={paraStyle?.alignment === 'center'} onClick={() => onFormat?.('alignCenter')}>
+        <ToolbarButton title={t('editor.format.alignCenter')} active={paraStyle?.alignment === 'center'} onClick={() => onFormat?.('alignCenter')}>
           <AlignCenter size={16} />
         </ToolbarButton>
-        <ToolbarButton title="右对齐" active={paraStyle?.alignment === 'right'} onClick={() => onFormat?.('alignRight')}>
+        <ToolbarButton title={t('editor.format.alignRight')} active={paraStyle?.alignment === 'right'} onClick={() => onFormat?.('alignRight')}>
           <AlignRight size={16} />
         </ToolbarButton>
-        <ToolbarButton title="两端对齐" active={paraStyle?.alignment === 'justify'} onClick={() => onFormat?.('alignJustify')}>
+        <ToolbarButton title={t('editor.format.alignJustify')} active={paraStyle?.alignment === 'justify'} onClick={() => onFormat?.('alignJustify')}>
           <AlignJustify size={16} />
         </ToolbarButton>
         <LineHeightDropdown onSelect={(v) => onFormat?.('lineHeight', v)} />
@@ -251,10 +252,10 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
 
       {/* 组8：列表 + 缩进 */}
       <ToolbarGroup>
-        <ToolbarButton title="无序列表" active={paraStyle?.listType === 'bullet'} onClick={() => onFormat?.('unorderedList')}>
+        <ToolbarButton title={t('editor.list.bullet')} active={paraStyle?.listType === 'bullet'} onClick={() => onFormat?.('unorderedList')}>
           <List size={16} />
         </ToolbarButton>
-        <ToolbarButton title="有序列表" active={paraStyle?.listType === 'ordered'} onClick={() => onFormat?.('orderedList')}>
+        <ToolbarButton title={t('editor.list.ordered')} active={paraStyle?.listType === 'ordered'} onClick={() => onFormat?.('orderedList')}>
           <ListOrdered size={16} />
         </ToolbarButton>
         {paraStyle?.listType === 'ordered' && (
@@ -265,20 +266,20 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
         )}
         {paraStyle?.listType === 'ordered' && (
           <ToolbarButton
-            title="继续上一列表编号"
+            title={t('editor.list.continueNumbering')}
             active={paraStyle?.continueNumbering}
             onClick={() => onFormat?.('continueNumbering')}
           >
             <WrapText size={16} />
           </ToolbarButton>
         )}
-        <ToolbarButton title="清空缩进" onClick={() => onFormat?.('outdent')}>
+        <ToolbarButton title={t('editor.list.outdent')} onClick={() => onFormat?.('outdent')}>
           <Outdent size={16} />
         </ToolbarButton>
-        <ToolbarButton title="增加缩进" onClick={() => onFormat?.('indent')}>
+        <ToolbarButton title={t('editor.list.indent')} onClick={() => onFormat?.('indent')}>
           <Indent size={16} />
         </ToolbarButton>
-        <ToolbarButton title="首行缩进" active={(paraStyle?.firstLineIndent ?? 0) > 0} onClick={() => onFormat?.('firstLineIndent')}>
+        <ToolbarButton title={t('editor.list.firstLineIndent')} active={(paraStyle?.firstLineIndent ?? 0) > 0} onClick={() => onFormat?.('firstLineIndent')}>
           <span className="text-sm">首行</span>
         </ToolbarButton>
       </ToolbarGroup>
@@ -308,13 +309,13 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
 
       {/* 组10：文件操作 */}
       <ToolbarGroup>
-        <ToolbarButton title="页面设置" onClick={onPageSetup}>
+        <ToolbarButton title={t('toolbar.pageSetup')} onClick={onPageSetup}>
           <Settings size={16} />
         </ToolbarButton>
-        <ToolbarButton title="水印" onClick={onWatermark}>
+        <ToolbarButton title={t('toolbar.watermark')} onClick={onWatermark}>
           <Droplets size={16} />
         </ToolbarButton>
-        <ToolbarButton title="打印" onClick={onPrint}>
+        <ToolbarButton title={t('toolbar.print')} onClick={onPrint}>
           <Printer size={16} />
         </ToolbarButton>
         <ExportDropdown onExportClick={onExportClick} />
@@ -449,12 +450,13 @@ const LINE_HEIGHTS = [1, 1.15, 1.5, 2, 2.5]
 
 function LineHeightDropdown({ onSelect }: { onSelect: (v: number) => void }) {
   const paraStyle = useEditorStoreSnapshot((s) => s.paragraphStyle)
+  const { t } = useTranslation()
   const selected = paraStyle?.lineHeight || 1
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          title="行距"
+          title={t('toolbar.lineHeight')}
           className="flex items-center gap-1 px-2 py-1 text-sm text-chrome-ink-body
                      hover:bg-chrome-muted rounded-md min-w-[50px] h-8
                      data-[state=open]:bg-chrome-muted"
@@ -488,6 +490,7 @@ function LineHeightDropdown({ onSelect }: { onSelect: (v: number) => void }) {
 
 function ColorPicker({ onSelect }: { onSelect: (color: string) => void }) {
   const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
+  const { t } = useTranslation()
   const currentColor = textStyle?.color || '#000000'
 
   return (
@@ -495,7 +498,7 @@ function ColorPicker({ onSelect }: { onSelect: (color: string) => void }) {
       <DropdownMenu.Trigger asChild>
         <button
           className="toolbar-btn data-[state=open]:bg-chrome-muted relative"
-          title={`文字颜色 (${currentColor})`}
+          title={`${t('editor.color.text')} (${currentColor})`}
         >
           <Palette size={16} />
           {/* 当前颜色指示器 */}
@@ -541,7 +544,7 @@ function InsertControlDropdown({ onInsert }: { onInsert?: (type: string) => void
           title={t('editor.insert.control')}
         >
           <ChevronsUpDown size={14} />
-          <span className="hidden lg:inline text-xs">{isEN ? 'Control' : '控件'}</span>
+          <span className="hidden lg:inline text-xs">{t('toolbar.controlShort')}</span>
           <ChevronDown size={10} />
         </button>
       </DropdownMenu.Trigger>
@@ -587,7 +590,7 @@ function HeadingDropdown({ onSelect }: { onSelect: (level: number) => void }) {
           className="flex items-center gap-1 px-2 py-1 text-sm text-chrome-ink-body
                      hover:bg-chrome-muted rounded-md min-w-[70px] h-8
                      data-[state=open]:bg-chrome-muted"
-          title={t('editor.heading.h1') === '标题 1' ? '标题样式' : 'Heading Style'}
+          title={t('toolbar.headingStyle')}
         >
           <Heading size={14} />
           <span className="truncate">{label}</span>
@@ -622,16 +625,17 @@ function HeadingDropdown({ onSelect }: { onSelect: (level: number) => void }) {
 // ---- 导出下拉 ----
 
 function ExportDropdown({ onExportClick }: { onExportClick?: () => void }) {
+  const { t } = useTranslation()
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
           className="flex items-center gap-1 px-2 py-1 text-sm text-chrome-ink-secondary
                      hover:bg-chrome-muted rounded-md h-8 data-[state=open]:bg-chrome-muted"
-          title="导出"
+          title={t('toolbar.export')}
         >
           <Download size={14} />
-          <span className="hidden lg:inline">导出</span>
+          <span className="hidden lg:inline">{t('toolbar.export')}</span>
           <ChevronDown size={12} />
         </button>
       </DropdownMenu.Trigger>
@@ -663,6 +667,7 @@ function HeaderFooterDropdown({
   hfEdit: { active: boolean; section: 'header' | 'footer' }
   onEnterEdit: (section: 'header' | 'footer') => void
 }) {
+  const { t } = useTranslation()
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -673,10 +678,10 @@ function HeaderFooterDropdown({
               ? 'bg-blue-50 text-blue-700'
               : 'text-chrome-ink-secondary hover:bg-chrome-muted',
           )}
-          title="页眉页脚"
+          title={t('editor.hf.title')}
         >
           <PanelTop size={15} />
-          <span className="hidden lg:inline text-xs">页眉页脚</span>
+          <span className="hidden lg:inline text-xs">{t('editor.hf.title')}</span>
           <ChevronDown size={10} />
         </button>
       </DropdownMenu.Trigger>
@@ -695,7 +700,7 @@ function HeaderFooterDropdown({
             onClick={() => onEnterEdit('header')}
           >
             <PanelTop size={14} />
-            <span>编辑页眉</span>
+            <span>{t('editor.hf.headerHint')}</span>
           </DropdownMenu.Item>
           <DropdownMenu.Item
             className={cn(
@@ -707,7 +712,7 @@ function HeaderFooterDropdown({
             onClick={() => onEnterEdit('footer')}
           >
             <PanelTop size={14} className="rotate-180" />
-            <span>编辑页脚</span>
+            <span>{t('editor.hf.footerHint')}</span>
           </DropdownMenu.Item>
           {hfEdit.active && (
             <>
@@ -717,7 +722,7 @@ function HeaderFooterDropdown({
                            data-[highlighted]:bg-red-50 data-[highlighted]:text-red-600 transition-colors"
                 onClick={() => onEnterEdit(hfEdit.section)}
               >
-                <span>关闭页眉页脚</span>
+                <span>{t('editor.hf.close')}</span>
               </DropdownMenu.Item>
             </>
           )}
@@ -781,14 +786,16 @@ const HIGHLIGHT_COLORS = [
 
 function HighlightPicker({ onSelect }: { onSelect: (color: string) => void }) {
   const textStyle = useEditorStoreSnapshot((s) => s.textStyle)
+  const { t } = useTranslation()
   const currentHighlight = textStyle?.highlight || 'transparent'
+  const highlightLabel = currentHighlight === 'transparent' ? t('editor.font.highlightNone') : currentHighlight
 
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
           className="toolbar-btn data-[state=open]:bg-chrome-muted relative"
-          title={`文字高亮 (${currentHighlight === 'transparent' ? '无' : currentHighlight})`}
+          title={`${t('editor.color.highlight')} (${highlightLabel})`}
         >
           <Highlighter size={16} />
           <span

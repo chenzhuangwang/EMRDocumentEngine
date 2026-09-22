@@ -17,9 +17,10 @@ import { StatusBar } from './StatusBar'
 import { useEditorStore, useUIStore } from '@/store'
 import type { OutlineItem } from '@/components/sidebar/OutlineNav'
 import type { CommentThread } from '@/engine/document/core/DocumentModel'
-import type { EditorMode, ScoreResult } from '@/engine'
+import type { EditorMode, ScoreResult, LocaleMessages } from '@/engine'
 import type { ToolbarAction } from '@/engine/plugins/PluginManager'
 import type { QCIssue, QCResult } from '@/engine/qc/QCEngine'
+import { useTranslation } from '@/i18n/useTranslation'
 
 interface EditorLayoutProps {
   children: ReactNode
@@ -111,6 +112,7 @@ export function EditorLayout({
   onModeChange,
   scaleScore,
 }: EditorLayoutProps) {
+  const { t } = useTranslation()
   const sidebarOpen = useUIStore((s) => s.sidebarOpen) && !readingMode
   const onlineUsers = useEditorStore((s) => s.onlineUsers)
 
@@ -144,7 +146,7 @@ export function EditorLayout({
         {/* 侧边栏 */}
         {sidebarOpen && (
           <Sidebar
-            templates={templates || DEFAULT_TEMPLATES}
+            templates={templates || defaultTemplates(t)}
             onTemplateSelect={onTemplateSelect}
             outlineItems={outlineItems}
             activeOutlineId={activeOutlineId}
@@ -189,28 +191,39 @@ export function EditorLayout({
   )
 }
 
-// 默认模板数据（Mock）
-const DEFAULT_TEMPLATES = [
+// 默认模板数据（Mock）— 文案存 i18n 键, 渲染时按当前语言展开
+const DEFAULT_TEMPLATE_KEYS: {
+  nameKey: keyof LocaleMessages
+  items: { id: string; nameKey: keyof LocaleMessages; descKey: keyof LocaleMessages }[]
+}[] = [
   {
-    name: '基本信息',
+    nameKey: 'mock.template.basic',
     items: [
-      { id: 'tpl_blank', name: '空白文档', description: '从头开始创建文档' },
+      { id: 'tpl_blank', nameKey: 'mock.template.blank', descKey: 'mock.template.blankDesc' },
     ],
   },
   {
-    name: '医疗文书',
+    nameKey: 'mock.template.medical',
     items: [
-      { id: 'tpl_admission', name: '入院记录', description: '标准入院记录模板' },
-      { id: 'tpl_progress', name: '病程记录', description: '日常病程记录模板' },
-      { id: 'tpl_discharge', name: '出院小结', description: '出院小结模板' },
-      { id: 'tpl_consultation', name: '会诊记录', description: '会诊记录模板' },
+      { id: 'tpl_admission', nameKey: 'mock.template.admission', descKey: 'mock.template.admissionDesc' },
+      { id: 'tpl_progress', nameKey: 'mock.template.progress', descKey: 'mock.template.progressDesc' },
+      { id: 'tpl_discharge', nameKey: 'mock.template.discharge', descKey: 'mock.template.dischargeDesc' },
+      { id: 'tpl_consultation', nameKey: 'mock.template.consultation', descKey: 'mock.template.consultationDesc' },
     ],
   },
   {
-    name: '检查报告',
+    nameKey: 'mock.template.report',
     items: [
-      { id: 'tpl_lab', name: '检验报告', description: '实验室检验报告模板' },
-      { id: 'tpl_imaging', name: '影像报告', description: '影像学检查报告模板' },
+      { id: 'tpl_lab', nameKey: 'mock.template.lab', descKey: 'mock.template.labDesc' },
+      { id: 'tpl_imaging', nameKey: 'mock.template.imaging', descKey: 'mock.template.imagingDesc' },
     ],
   },
 ]
+
+/** 按当前语言展开默认模板 (与 Sidebar 的 TemplateCategory 结构一致) */
+function defaultTemplates(t: (key: keyof LocaleMessages) => string) {
+  return DEFAULT_TEMPLATE_KEYS.map((c) => ({
+    name: t(c.nameKey),
+    items: c.items.map((i) => ({ id: i.id, name: t(i.nameKey), description: t(i.descKey) })),
+  }))
+}
