@@ -29,9 +29,9 @@ interface WatermarkDialogProps {
   onRemove?: () => void
 }
 
-const DEFAULTS: WatermarkConfig = {
+/** 默认值 (text 走 i18n, 在组件内按当前语言 seed) */
+const DEFAULTS: Omit<WatermarkConfig, 'text'> = {
   type: 'tile',
-  text: '内部资料',
   fontSize: 48,
   color: '#000000',
   opacity: 0.08,
@@ -43,9 +43,12 @@ const DEFAULTS: WatermarkConfig = {
 
 export function WatermarkDialog({ open, onClose, initialConfig, onApply, onRemove }: WatermarkDialogProps) {
   const { t } = useTranslation()
-  const [config, setConfig] = useState<WatermarkConfig>({ ...DEFAULTS, ...initialConfig })
+  // 默认水印文字按当前语言 seed (新建水印时的初值; 已有水印仍用 initialConfig)
+  const withDefaults = (base?: Partial<WatermarkConfig>): WatermarkConfig =>
+    ({ ...DEFAULTS, text: t('watermark.internalMark'), ...base })
+  const [config, setConfig] = useState<WatermarkConfig>(() => withDefaults(initialConfig))
 
-  useEffect(() => { if (open) setConfig({ ...DEFAULTS, ...initialConfig }) }, [open, initialConfig])
+  useEffect(() => { if (open) setConfig(withDefaults(initialConfig)) }, [open, initialConfig])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = (patch: Partial<WatermarkConfig>) => setConfig(v => ({ ...v, ...patch }))
 

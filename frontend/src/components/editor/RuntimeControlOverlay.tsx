@@ -24,6 +24,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useEditorRef, useEditorStoreSnapshot } from './EditorProvider'
 import { controlRejectMessage } from './controlMessages'
 import { useTranslation } from '@/i18n/useTranslation'
+import { locale } from '@/engine'
 // 折行口径单一来源: 编辑面的换行位置与布局/静态渲染必须一致 (契约 §12.8)
 import { wrapControlText } from '@/engine/layout/text/TextWrap'
 import type { ControlEditTarget, ControlSnapshot, ControlType, ControlValue, Editor } from '@/engine'
@@ -66,7 +67,8 @@ function sameTarget(a: ControlEditTarget | null, b: ControlEditTarget | null): b
 function valueToText(v: ControlSnapshot['value'] | undefined): string {
   if (v === undefined) return ''
   if (typeof v === 'number') return String(v)
-  if (Array.isArray(v)) return v.join('、')
+  // 多选值拼接分隔符按 locale 取 (zh-CN 顿号 / en-US 逗号), 避免中文标点漏进英文界面
+  if (Array.isArray(v)) return v.join(locale.getLocale() === 'en-US' ? ', ' : '、')
   return v
 }
 
