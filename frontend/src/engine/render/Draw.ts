@@ -17,6 +17,7 @@ import type { NodePool } from '../document/core/NodePool'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 import { getFlatPageItems, tableHeaderRowsHeight } from '../layout/core/SLIF'
 import type { EventBus } from '../interaction/EventBus'
+import { locale } from '../i18n/index'
 import type { EditorRuntimeState } from '../state/EditorRuntimeState'
 import type { EditorHost } from '../host/EditorHost'
 import { CoordinateSystem } from '../state/CoordinateSystem'
@@ -1658,6 +1659,8 @@ export class Draw {
       totalPages: this.pages.length,
       documentTitle: this.document?.title,
       now: new Date(),
+      // 每次渲染现读 —— 语言可变, 缓存会把格式冻在首次渲染那一刻
+      locale: locale.getLocale(),
     })
   }
 

@@ -183,16 +183,20 @@ function EngineErrorChip() {
   const dismiss = useEditorStore((s) => s.dismissEngineError)
   if (!error) return null
 
+  // 有键 → 现读语言包重译 (切语言立刻跟着变); 无键 → 用上报时的 message 快照
+  // (UI 自造的文案, 没有可重译的键)。
+  const msg = error.key ? t(error.key, error.params) : error.message
+
   return (
     <button
       className="flex items-center gap-1 max-w-[280px] text-error-500
                  hover:text-error-500/80 transition-colors"
       onClick={dismiss}
-      title={t('statusBar.errorChipTitle', { code: error.code, msg: error.message })}
-      aria-label={t('statusBar.errorChipAria', { msg: error.message })}
+      title={t('statusBar.errorChipTitle', { code: error.code, msg })}
+      aria-label={t('statusBar.errorChipAria', { msg })}
     >
       <AlertTriangle size={12} className="flex-shrink-0" />
-      <span className="truncate">{error.message}</span>
+      <span className="truncate">{msg}</span>
     </button>
   )
 }

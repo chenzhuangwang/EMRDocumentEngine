@@ -35,6 +35,7 @@ import { controlValueDisplay } from '../../document/factory/ElementFormatter'
 import { CONTROL_BOX_PADDING } from '../../document/control/ControlBox'
 import { smarttextLayoutHint } from '../control/ControlLayoutHint'
 import { representativeFieldText, type FieldReserveContext } from '../../document/factory/FieldFormatter'
+import { locale } from '../../i18n/index'
 import { MergeMatrix } from '../../document/table/MergeMatrix'
 import { FootnoteLayout } from '../footnote/FootnoteLayout'
 import { ListParticle } from '../../render/particles/ListParticle'
@@ -154,7 +155,9 @@ export class LayoutEngine {
 
   /** 单轮布局 (无副作用: 不写 this.pages / 不发事件) */
   private layoutOnce(doc: DocumentTree, pool: NodePool, pageNumberHint: number): SLIFPage[] {
-    this.fieldReserveCtx = { totalPagesHint: pageNumberHint, documentTitle: doc.title }
+    // locale 必须与渲染期 (Draw.resolveFieldText) 同源 —— 否则域的量宽与
+    // 绘制宽会漂移 (en-US 的 '9/22/2026' 比 zh-CN 的 '2026/9/22' 窄)。
+    this.fieldReserveCtx = { totalPagesHint: pageNumberHint, documentTitle: doc.title, locale: locale.getLocale() }
     const measurer = this.measurer
     const lineBreaker = new LineBreaker(measurer)
     const pageBreaker = new PageBreaker()

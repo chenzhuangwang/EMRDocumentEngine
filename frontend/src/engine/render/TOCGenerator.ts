@@ -23,6 +23,7 @@ import type { DocumentTree, Paragraph } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import { smartTextDisplayValue } from '../document/factory/ElementFormatter'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
+import { locale } from '../i18n/index'
 
 // ---- TOC 条目 ----
 
@@ -59,7 +60,9 @@ export interface TOCConfig {
 }
 
 const DEFAULT_TOC_CONFIG: Required<TOCConfig> = {
-  title: '目录',
+  // 目录标题缺省值不在这里固化 —— 它随界面语言变, 由 generatePage 现读语言包
+  // (模块级常量固化 = 把语言冻在模块加载那一刻)。空串表示"用语言包缺省"。
+  title: '',
   showPageNumbers: true,
   leaderChar: '.',
   maxLevel: 3,
@@ -102,7 +105,7 @@ export class TOCGenerator {
 
       entries.push({
         paragraphId: para.id,
-        text: text || `(空标题)`,
+        text: text || locale.t('toc.emptyHeading'),
         level,
         pageNumber,
       })
@@ -121,6 +124,8 @@ export class TOCGenerator {
     _existingPages: SLIFPage[],
   ): SLIFPage {
     const { pageWidth, pageHeight, marginLeft, marginRight, marginTop, leaderChar, showPageNumbers, title } = this.config
+    // 空标题 → 用语言包缺省 (现读, 不缓存)
+    const titleText = title || locale.t('toc.title')
     const contentWidth = pageWidth - marginLeft - marginRight
     const fontSize = 16
     const lineHeight = 24
@@ -133,7 +138,7 @@ export class TOCGenerator {
       nodeId: 'toc-title',
       nodeType: 'text',
       type: 'text',
-      text: title,
+      text: titleText,
       x: marginLeft,
       y,
       width: contentWidth,

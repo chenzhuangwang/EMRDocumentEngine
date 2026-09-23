@@ -16,6 +16,7 @@ import { NodeType } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import { isControlValueComplete } from '../document/control/ControlValue'
 import { hfContainers } from '../document/core/HeaderFooterRegions'
+import { locale, type LocaleMessages } from '../i18n/index'
 
 // ---- 类型 ----
 
@@ -70,35 +71,50 @@ export type QCGrade = 'A' | 'B' | 'C' | 'D'
 
 // ---- 内置规则 ----
 
-const BUILTIN_RULES: QCRule[] = [
+/**
+ * 内置规则 —— 文案存 **i18n 键**而不是字面量。
+ *
+ * 为什么: `QCIssue.ruleName` / `.message` 被 QCResultPanel 直接渲染
+ * (components/panels/QCResultPanel.tsx), 存字面量就等于把「已翻译好的快照」
+ * 塞进结果 —— 切语言后不重跑 runQC() 就永远是旧语言。
+ *
+ * 存键 + 在 check() 里 locale.t() 展开 → 重跑一次就拿到新语言, UI 侧零改动。
+ * 外部自定义规则 (constructor 的 customRules) 不受影响, 仍是现成字符串。
+ */
+type BuiltinRule = Omit<QCRule, 'name' | 'description'> & {
+  nameKey: keyof LocaleMessages
+  descKey: keyof LocaleMessages
+}
+
+const BUILTIN_RULES: BuiltinRule[] = [
   {
-    id: 'qc_001', name: '文档标题不为空', severity: 'error',
-    description: '文档必须包含标题',
+    id: 'qc_001', nameKey: 'qc.rule.title.name', severity: 'error',
+    descKey: 'qc.rule.title.desc',
     check: 'required_not_empty:title',
   },
   {
-    id: 'qc_002', name: '文档包含正文内容', severity: 'error',
-    description: '文档 body 至少包含一个段落',
+    id: 'qc_002', nameKey: 'qc.rule.body.name', severity: 'error',
+    descKey: 'qc.rule.body.desc',
     check: 'field_exists:body.children',
   },
   {
-    id: 'qc_003', name: '段落不包含连续空白段', severity: 'warning',
-    description: '不应有连续两个空段落 (范围: 正文 + 页眉/页脚各变体, 逐容器独立判定)',
+    id: 'qc_003', nameKey: 'qc.rule.emptyParagraph.name', severity: 'warning',
+    descKey: 'qc.rule.emptyParagraph.desc',
     check: 'no_consecutive_empty_paragraphs',
   },
   {
-    id: 'qc_004', name: 'SmartText 必填字段校验', severity: 'warning',
-    description: '标记为 required 的 SmartTextNode 不能为空',
+    id: 'qc_004', nameKey: 'qc.rule.smartTextRequired.name', severity: 'warning',
+    descKey: 'qc.rule.smartTextRequired.desc',
     check: 'smarttext_required_not_empty',
   },
   {
-    id: 'qc_005', name: '文档字数不低于最低阈值', severity: 'info',
-    description: '文档正文至少包含 10 个字符',
+    id: 'qc_005', nameKey: 'qc.rule.minChars.name', severity: 'info',
+    descKey: 'qc.rule.minChars.desc',
     check: 'min_chars:10',
   },
   {
-    id: 'qc_006', name: '段落数量合理', severity: 'info',
-    description: '段落数应在 1-500 之间',
+    id: 'qc_006', nameKey: 'qc.rule.paragraphCount.name', severity: 'info',
+    descKey: 'qc.rule.paragraphCount.desc',
     check: 'paragraph_count:1:500',
   },
 ]
@@ -115,10 +131,11 @@ function computeGrade(score: number): QCGrade {
 // ---- 引擎 ----
 
 export class QCEngine {
-  private rules: QCRule[] = []
+  /** 外部注册的自定义规则 (现成文案, 不参与 i18n) */
+  private customRules: QCRule[]
 
   constructor(customRules?: QCRule[]) {
-    this.rules = [...BUILTIN_RULES, ...(customRules || [])]
+    this.customRules = customRules ?? []
   }
 
   /**
@@ -132,7 +149,8 @@ export class QCEngine {
     // 定位索引一次构建, 供各规则共用 (避免逐规则全池扫描)
     const paraOf = this.buildParagraphIndex(doc, pool)
 
-    for (const rule of this.rules) {
+    // 规则表在**每次 check 时**从语言包现展开 —— 切语言后重跑即得新文案
+    for (const rule of this.getRules()) {
       const result = this.evaluateRule(rule, doc, pool, paraOf)
       if (result) issues.push(result)
     }
@@ -159,8 +177,21 @@ export class QCEngine {
     }
   }
 
-  /** 获取规则列表 */
-  getRules(): QCRule[] { return [...this.rules] }
+  /**
+   * 获取规则列表 (内置规则按**当前语言**展开 name/description)。
+   *
+   * 每次调用现读语言包, 不缓存 —— 缓存就等于把语言冻在首次调用那一刻。
+   */
+  getRules(): QCRule[] {
+    const builtin: QCRule[] = BUILTIN_RULES.map((r) => ({
+      id: r.id,
+      name: locale.t(r.nameKey),
+      description: locale.t(r.descKey),
+      severity: r.severity,
+      check: r.check,
+    }))
+    return [...builtin, ...this.customRules]
+  }
 
   // ---- 内部 ----
 

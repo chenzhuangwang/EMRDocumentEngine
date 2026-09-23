@@ -32,6 +32,7 @@ import {
   type DocumentFormatVersion,
 } from '../version/DocumentFormatVersion'
 import { modelUpgrader, type ModelUpgrader } from '../version/ModelUpgrader'
+import { locale } from '../../i18n/index'
 
 // ---- 模板 store 顶层字段名 (契约 §12.1, 与 DocumentSerializer 保持一致) ----
 
@@ -87,7 +88,8 @@ export function loadDocument(json: string, options?: DocumentLoadOptions): Docum
   try {
     parsed = JSON.parse(json)
   } catch (err) {
-    throw new LoadError('parse', `JSON.parse 失败: ${(err as Error).message}`)
+    const m = (err as Error).message
+    throw new LoadError('parse', locale.t('loader.parseFailed', { msg: m }))
   }
   return loadDocumentFromObject(parsed, options)
 }
@@ -99,7 +101,7 @@ export function loadDocumentFromObject(obj: unknown, options?: DocumentLoadOptio
 
   // ---- [1] detect ----
   if (!obj || typeof obj !== 'object') {
-    throw new LoadError('detect', '文档必须是对象')
+    throw new LoadError('detect', locale.t('loader.notObject'))
   }
   const raw = obj as Record<string, unknown>
   const sourceVer = parseVersion((raw.modelVersion as string) ?? LEGACY_DOCUMENT_VERSION)
@@ -116,7 +118,8 @@ export function loadDocumentFromObject(obj: unknown, options?: DocumentLoadOptio
   try {
     doc = upgrader.upgrade(raw as unknown as DocumentTree, CURRENT_DOCUMENT_VERSION)
   } catch (err) {
-    throw new LoadError('upgrade', `升级失败: ${(err as Error).message}`)
+    const m = (err as Error).message
+    throw new LoadError('upgrade', locale.t('loader.upgradeFailed', { msg: m }))
   }
   recordUpgradePath(doc, sourceVer, upgradePath)
 
@@ -174,23 +177,23 @@ function validateDocument(
   extraNodes: Map<string, BaseNode> | undefined,
 ): void {
   if (!doc.id || typeof doc.id !== 'string') {
-    throw new LoadError('validate', 'doc.id 缺失或非字符串')
+    throw new LoadError('validate', locale.t('loader.badDocId'))
   }
   if (!doc.title || typeof doc.title !== 'string') {
-    throw new LoadError('validate', 'doc.title 缺失或非字符串')
+    throw new LoadError('validate', locale.t('loader.badDocTitle'))
   }
   if (!doc.body || !Array.isArray(doc.body.children)) {
-    throw new LoadError('validate', 'doc.body.children 缺失或非数组')
+    throw new LoadError('validate', locale.t('loader.badBodyChildren'))
   }
   // metadata 若存在必须是普通对象 (契约 §7.7): 升级器已对 <4.3 做白名单收口,
   // 此处兜底拦截「已 4.3 但 metadata 是字符串/数组」这类脏数据。
   if (doc.metadata !== undefined &&
       (typeof doc.metadata !== 'object' || doc.metadata === null || Array.isArray(doc.metadata))) {
-    throw new LoadError('validate', 'doc.metadata 非对象')
+    throw new LoadError('validate', locale.t('loader.badMetadata'))
   }
   for (const id of validatedRootIds(doc)) {
     if (typeof id !== 'string') {
-      throw new LoadError('validate', `children 包含非字符串引用: ${String(id)}`)
+      throw new LoadError('validate', locale.t('loader.badChildRef', { id: String(id) }))
     }
   }
   // 引用不悬空 (在 extraNodes 与 doc 自带 nodes 中都能找到)
@@ -204,7 +207,7 @@ function validateDocument(
   }
   for (const id of validatedRootIds(doc)) {
     if (!knownIds.has(id)) {
-      throw new LoadError('validate', `引用悬空 (节点未在 nodes/extraNodes 中): ${id}`)
+      throw new LoadError('validate', locale.t('loader.danglingRef', { id }))
     }
   }
 }

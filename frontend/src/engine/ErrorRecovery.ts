@@ -17,6 +17,8 @@
 //   setErrorReporter           — 已接 (main.tsx 装到 store → StatusBar 可见)
 // ============================================================
 
+import { locale, type LocaleMessages, type LocaleParams } from './i18n/index'
+
 /** 单页占位图的绘制范围 (与调用时 ctx 的 transform 同一坐标空间) */
 export interface PageRect {
   x: number
@@ -40,7 +42,24 @@ export type EditorErrorCode = (typeof EditorErrorCode)[keyof typeof EditorErrorC
 
 export interface EditorError {
   code: EditorErrorCode
+  /**
+   * 已展开的文案 (zh-CN 字面量或 locale.t 的结果)。
+   *
+   * **保留为必填**: 没接 i18n 的消费方 (console / 测试断言 / 第三方 reporter)
+   * 拿到的仍是可读字符串, 不会因为改造出现 undefined。
+   */
   message: string
+  /**
+   * 文案键 + 参数 —— 供 UI **重译**。
+   *
+   * 为什么需要: `message` 是「已翻译好的快照」, 存进 store 后切语言不会变
+   * (StatusBar 的 EngineErrorChip 就会一直显示旧语言)。带上 key/params 后
+   * UI 侧可以 `t(key, params)` 现算, 语言一变就跟着变。
+   *
+   * 可选: 调用方自造的 message (如 UI 层导入失败) 可以不带键。
+   */
+  key?: keyof LocaleMessages
+  params?: LocaleParams
   cause?: unknown
   context?: Record<string, unknown>
 }
@@ -84,7 +103,9 @@ export function safeRenderParticle(
   } catch (err) {
     globalReporter({
       code: EditorErrorCode.E_PARTICLE_RENDER_FAILED,
-      message: `粒子渲染失败: nodeId=${nodeId}`,
+      key: 'engineError.particleRender',
+      params: { nodeId },
+      message: locale.t('engineError.particleRender', { nodeId }),
       cause: err,
       context: { nodeId },
     })
@@ -113,7 +134,9 @@ export function safeRenderPage(
   } catch (err) {
     globalReporter({
       code: EditorErrorCode.E_RENDER_CONTEXT_LOST,
-      message: `页面渲染失败: pageIndex=${pageIndex}`,
+      key: 'engineError.pageRender',
+      params: { pageIndex },
+      message: locale.t('engineError.pageRender', { pageIndex }),
       cause: err,
       context: { pageIndex },
     })
@@ -130,7 +153,7 @@ export function safeRenderPage(
         ctx.fillStyle = '#DC2626'
         ctx.font = '14px sans-serif'
         ctx.textAlign = 'center'
-        ctx.fillText(`页面 ${pageIndex + 1} 渲染失败`, box.x + box.w / 2, box.y + box.h / 2)
+        ctx.fillText(locale.t('engineError.pagePlaceholder', { page: pageIndex + 1 }), box.x + box.w / 2, box.y + box.h / 2)
         ctx.restore()
       } catch { /* 静默 */ }
     }
@@ -150,14 +173,20 @@ export function safeRenderPage(
 export function safeLoadDocument<T>(
   loadFn: () => T,
   recover: () => T,
-  message = '文档加载失败, 已回退到空白文档',
+  message?: string,
 ): { value: T; recovered: boolean } {
+  const msg = message ?? locale.t('engineError.loadFallback')
   try {
     return { value: loadFn(), recovered: false }
   } catch (err) {
     globalReporter({
       code: EditorErrorCode.E_DOCUMENT_CORRUPTED,
-      message,
+      // 调用方显式给了 message → 那是它自己的文案, 不带键 (无法重译);
+      // 走缺省 → 键来自语言包, UI 可重译
+      ...(message === undefined
+        ? { key: 'engineError.loadFallback' as const }
+        : {}),
+      message: msg,
       cause: err,
     })
     try {
@@ -167,7 +196,8 @@ export function safeLoadDocument<T>(
       // "什么都失败且没人知道"。先把回落失败单独报出去, 再抛原始错误 (根因)。
       globalReporter({
         code: EditorErrorCode.E_DOCUMENT_CORRUPTED,
-        message: '回落文档同样加载失败',
+        key: 'engineError.loadFallbackFailed',
+        message: locale.t('engineError.loadFallbackFailed'),
         cause: recoverErr,
       })
       throw err
@@ -182,12 +212,18 @@ export function safeLoadDocument<T>(
 export async function safeAsync<T>(
   task: () => Promise<T>,
   errorCode: EditorErrorCode = EditorErrorCode.E_UNKNOWN,
-  message = '异步任务失败',
+  message?: string,
 ): Promise<T | null> {
+  const msg = message ?? locale.t('engineError.asyncTask')
   try {
     return await task()
   } catch (err) {
-    globalReporter({ code: errorCode, message, cause: err })
+    globalReporter({
+      code: errorCode,
+      ...(message === undefined ? { key: 'engineError.asyncTask' as const } : {}),
+      message: msg,
+      cause: err,
+    })
     return null
   }
 }

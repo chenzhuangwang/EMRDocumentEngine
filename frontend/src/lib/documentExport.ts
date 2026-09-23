@@ -18,7 +18,7 @@
 // ============================================================
 
 import {
-  hfParagraphsForExport, resolveFieldText, smartTextDisplayValue, buildMergeMatrix,
+  hfParagraphsForExport, resolveFieldText, smartTextDisplayValue, buildMergeMatrix, locale,
 } from '@/engine'
 import type { MergeMatrix } from '@/engine'
 import type { DocumentTree, ListStyle } from '@/engine/document/core/DocumentModel'
@@ -93,7 +93,9 @@ function makeOrderedCounters() {
 
 /** 域代码在导出稿中的解析上下文 (无分页 → 页数类域退化为 1) */
 function exportFieldContext(doc: DocumentTree, now: Date) {
-  return { pageNumber: 1, totalPages: 1, documentTitle: doc.title, now }
+  // locale 现读: 导出件里的日期域格式应与导出那一刻的界面语言一致
+  // (与渲染期 Draw.resolveFieldText 同源, 否则屏幕与导出件不一致)
+  return { pageNumber: 1, totalPages: 1, documentTitle: doc.title, now, locale: locale.getLocale() }
 }
 
 /** 单段落的纯文本 (text + smarttext 显示值 + 域代码), 与 TXT 语义一致 */

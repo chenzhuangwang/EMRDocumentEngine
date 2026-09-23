@@ -10,6 +10,7 @@
 
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { locale } from '@/engine'
 
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs))
@@ -17,7 +18,9 @@ export function cn(...inputs: ClassValue[]): string {
 
 export function formatDate(dateStr: string): string {
   const date = new Date(dateStr)
-  return date.toLocaleDateString('zh-CN', {
+  // 跟随界面语言 (与 CommentPanel / QCResultPanel / RecentDocuments 同法);
+  // 此前硬编码 'zh-CN', 英文界面下首页文档列表仍显示中文日期格式。
+  return date.toLocaleDateString(locale.getLocale(), {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

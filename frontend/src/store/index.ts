@@ -11,7 +11,7 @@
 import { create } from 'zustand'
 import type { UserInfo } from '@/services/api'
 import { readStoredChromePreset } from '@/platform/dom/chromeTheme'
-import type { ThemePreset } from '@/engine'
+import type { ThemePreset, LocaleMessages, LocaleParams } from '@/engine'
 
 // ---- 编辑器状态 (app 级状态, 架构 §7.1) ----
 
@@ -19,15 +19,27 @@ import type { ThemePreset } from '@/engine'
 export interface EngineErrorNotice {
   code: string
   message: string
+  /**
+   * 文案键 + 参数 —— 让状态栏能**重译**。
+   *
+   * `message` 是上报那一刻展开的快照, 切语言不会变; 带键后 UI 可 `t(key, params)`
+   * 现算, 语言一变提示就跟着变。引擎侧的错误都带键; UI 自造的 message 可以不带。
+   */
+  key?: keyof LocaleMessages
+  params?: LocaleParams
 }
 
 /**
- * 用户手动关掉过的错误。同一条 (code+message) 之后不再弹 ——
+ * 用户手动关掉过的错误。同一条之后不再弹 ——
  * 否则逐帧失败的页面每帧都重报一次, 状态栏里那条提示**永远关不掉**。
- * 换一条错误 (key 不同) 就正常显示。
+ *
+ * 去重键**优先用 key+params 而非 message**: message 是当前语言下的展开结果,
+ * 若拿它做键, 切一次语言同一条错误就会"变成新错误"重新弹出, 用户关不掉。
+ * 无键 (UI 自造的 message) 时退回 message, 与既有行为一致。
  */
 let dismissedErrorKey: string | null = null
-const errorKeyOf = (e: EngineErrorNotice) => `${e.code}|${e.message}`
+const errorKeyOf = (e: EngineErrorNotice) =>
+  e.key ? `${e.code}|${e.key}|${JSON.stringify(e.params ?? null)}` : `${e.code}|${e.message}`
 
 interface EditorState {
   /** 在线协作人数 (Phase 2 collab 预留, 当前未接线 → 恒为 0) */

@@ -14,6 +14,7 @@
 // ================================================================
 
 import type { ElementEnumOption } from '../core/DocumentModel'
+import { locale } from '../../i18n/index'
 
 /** 单个内联候选项的横向布局 (x 相对内容区左边缘, px) */
 export interface ControlOptionLayout {
@@ -60,10 +61,20 @@ export function controlOptionsWidth(layout: ControlOptionLayout[]): number {
   return last.x + last.width
 }
 
-/** 空候选项占位文本 (契约 §12.6.3: enums 存在但 data=[] 仍是 enum 语义, 不退化输入框) */
-export const EMPTY_OPTIONS_PLACEHOLDER = '无候选项'
+/**
+ * 空候选项占位文本 (契约 §12.6.3: enums 存在但 data=[] 仍是 enum 语义, 不退化输入框)。
+ *
+ * 是**函数**不是常量: 文案随界面语言变。量宽 (controlOptionsPlaceholderWidth)
+ * 与渲染 (ControlParticle) 必须调同一个函数 —— 各自读一次就会在切语言的瞬间
+ * 量宽与绘制宽不一致 (占位文本长度不同), 表现为候选项盒宽跳动。
+ *
+ * 每次调用现读语言包, 不缓存 (缓存等于把语言冻在首次调用那一刻)。
+ */
+export function emptyOptionsPlaceholder(): string {
+  return locale.t('control.emptyOptions')
+}
 
 /** 空候选项占位宽 (供布局预留 + 渲染占位) */
 export function controlOptionsPlaceholderWidth(measure: (text: string) => number): number {
-  return measure(EMPTY_OPTIONS_PLACEHOLDER)
+  return measure(emptyOptionsPlaceholder())
 }

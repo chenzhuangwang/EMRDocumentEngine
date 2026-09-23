@@ -44,6 +44,7 @@ import { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import type { TemplateDefinition } from '../template/TemplateDefinition'
 import { PresentationStyleStore } from '../render/presentation/PresentationStyle'
 import type { PresentationStyle } from '../render/presentation/PresentationStyle'
+import { locale } from '../i18n/index'
 
 // ================================================================
 // 外部模板 JSON 的松散类型 (不可信第三方输入, 全部可选 + 防御式访问)
@@ -544,7 +545,7 @@ export class TemplateImporter {
   private parseTitle(root: Record<string, unknown>): string {
     return typeof root.categoryId === 'string' && root.categoryId !== ''
       ? root.categoryId
-      : '导入的模板'
+      : locale.t('doc.importedTemplate')
   }
 
   private parseMetadata(root: Record<string, unknown>): DocumentMetadata | undefined {

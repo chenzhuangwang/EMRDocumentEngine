@@ -12,9 +12,17 @@
 //
 // 纯净性: 不读全局时间/文档, 时间与文档事实由调用方经 ctx 注入
 // (引擎不得依赖宿主环境, §1/§28)。
+//
+// locale 同理走 ctx 注入而非读 `locale` 单例 —— 日期/时间域的**格式**随界面
+// 语言变 (zh-CN '2026/9/22' vs en-US '9/22/2026'), 它是"事实"的一部分。
+// 缺省 'zh-CN' 保持既有行为 (既有测试不传 locale, 断言的是中文格式)。
 // ================================================================
 
 import type { FieldType } from '../core/DocumentModel'
+import type { Locale } from '../../i18n/index'
+
+/** 域文本缺省语言 —— 与引擎默认语言一致 (LocaleManager.current 初值) */
+const DEFAULT_FIELD_LOCALE: Locale = 'zh-CN'
 
 export interface FieldTextContext {
   /** 当前页页码 (1-based) — page_number 域 */
@@ -27,6 +35,8 @@ export interface FieldTextContext {
   authorName?: string
   /** 时间基准 — 日期/时间类域 (由调用方注入, 保持本函数纯净) */
   now: Date
+  /** 日期/时间域的格式语言 (由调用方注入; 缺省 zh-CN) */
+  locale?: Locale
 }
 
 /**
@@ -40,15 +50,16 @@ export function resolveFieldText(
   ctx: FieldTextContext,
 ): string {
   if (!fieldType) return fallbackText || ''
+  const lc = ctx.locale ?? DEFAULT_FIELD_LOCALE
   switch (fieldType) {
     case 'page_number': return String(ctx.pageNumber)
     case 'total_pages': return String(ctx.totalPages)
-    case 'current_date': return ctx.now.toLocaleDateString('zh-CN')
-    case 'current_time': return ctx.now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    case 'current_date': return ctx.now.toLocaleDateString(lc)
+    case 'current_time': return ctx.now.toLocaleTimeString(lc, { hour: '2-digit', minute: '2-digit' })
     case 'document_title': return ctx.documentTitle || ''
     case 'author_name': return ctx.authorName || 'user'
-    case 'last_saved_date': return ctx.now.toLocaleDateString('zh-CN')
-    case 'print_date': return ctx.now.toLocaleDateString('zh-CN')
+    case 'last_saved_date': return ctx.now.toLocaleDateString(lc)
+    case 'print_date': return ctx.now.toLocaleDateString(lc)
     default: return fallbackText || `[${fieldType}]`
   }
 }
@@ -62,6 +73,12 @@ export interface FieldReserveContext {
   totalPagesHint: number
   documentTitle?: string
   authorName?: string
+  /**
+   * 日期/时间域的格式语言 —— **必须与渲染期 resolveFieldText 的 ctx.locale 同源**,
+   * 否则量宽与绘制宽会漂移 (en-US 的 '9/22/2026' 比 zh-CN 的 '2026/9/22' 窄,
+   * 用中文样本量宽会在域后拖出空白)。缺省 zh-CN。
+   */
+  locale?: Locale
 }
 
 /** 宽度样本: 固定日期, 仅用于量宽 (与 toLocaleDateString 走同一格式化路径) */
@@ -82,6 +99,7 @@ export function representativeFieldText(
   fallbackText: string | undefined,
   ctx: FieldReserveContext,
 ): string {
+  const lc = ctx.locale ?? DEFAULT_FIELD_LOCALE
   switch (fieldType) {
     case 'page_number':
     case 'total_pages': {
@@ -93,9 +111,9 @@ export function representativeFieldText(
     case 'last_saved_date':
     case 'print_date':
       // 用最大形状 (2 位月/日) 取样, 避免实际日期更长时与后续文字重叠
-      return SAMPLE_DATE.toLocaleDateString('zh-CN')
+      return SAMPLE_DATE.toLocaleDateString(lc)
     case 'current_time':
-      return SAMPLE_DATE.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+      return SAMPLE_DATE.toLocaleTimeString(lc, { hour: '2-digit', minute: '2-digit' })
     case 'document_title':
       return ctx.documentTitle || ''
     case 'author_name':

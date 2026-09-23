@@ -34,6 +34,7 @@ import {
   versionToString,
   type DocumentFormatVersion,
 } from './DocumentFormatVersion'
+import { locale } from '../../i18n/index'
 
 // ---- 升级器接口 ----
 
@@ -54,6 +55,13 @@ export interface CompatibilityResult {
   status: CompatibilityStatus
   /** status === 'current' 时不需要升级/降级 */
   needsUpgrade: boolean
+  /**
+   * 人类可读的说明 (按**当前语言**展开)。
+   *
+   * 注意它只有 `too-new` 分支的 message 会被消费 (DocumentLoader 抛出去),
+   * 其余分支仅作诊断。因为它是"已展开的快照", 上层拿到的就是当时语言的文本 ——
+   * 用户可见的那条由 DocumentLoaderRegistry 用 `loader.failed` 重新组装。
+   */
   message: string
 }
 
@@ -105,19 +113,23 @@ export class ModelUpgrader {
     const cmp = compareVersions(ver, CURRENT_DOCUMENT_VERSION)
 
     if (cmp === 0) {
-      return { status: 'current', needsUpgrade: false, message: '版本一致' }
+      return { status: 'current', needsUpgrade: false, message: locale.t('loader.versionCurrent') }
     }
     if (cmp < 0) {
       return {
         status: 'outdated',
         needsUpgrade: true,
-        message: `需升级: ${versionToString(ver)} → ${versionToString(CURRENT_DOCUMENT_VERSION)}`,
+        message: locale.t('loader.versionOutdated', {
+          ver: versionToString(ver), current: versionToString(CURRENT_DOCUMENT_VERSION),
+        }),
       }
     }
     return {
       status: 'too-new',
       needsUpgrade: false,
-      message: `文档版本 ${versionToString(ver)} 高于引擎支持版本 ${versionToString(CURRENT_DOCUMENT_VERSION)}`,
+      message: locale.t('loader.versionTooNew', {
+        ver: versionToString(ver), current: versionToString(CURRENT_DOCUMENT_VERSION),
+      }),
     }
   }
 }

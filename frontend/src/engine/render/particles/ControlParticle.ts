@@ -27,7 +27,7 @@ import {
   CONTROL_BOX_PADDING, AFFORDANCE_WIDTH, stripPlaceholderBrackets,
 } from '../../document/control/ControlBox'
 import { isControlValueEmpty, controlDisplayLength } from '../../document/control/ControlValue'
-import { layoutControlOptions, GLYPH_PAD, EMPTY_OPTIONS_PLACEHOLDER } from '../../document/control/ControlOptions'
+import { layoutControlOptions, GLYPH_PAD, emptyOptionsPlaceholder } from '../../document/control/ControlOptions'
 import { asRgb } from '../../state/canvasTokens'
 import type { CanvasTokenSet } from '../../state/canvasTokens'
 
@@ -238,7 +238,7 @@ export function createControlParticle(): IParticle {
         if (opts.length === 0) {
           // 空候选项占位, 不退化输入框 (不变量 3)
           ctx.fillStyle = placeholderColor
-          ctx.fillText(EMPTY_OPTIONS_PLACEHOLDER, x + leadW, box.baselineY)
+          ctx.fillText(emptyOptionsPlaceholder(), x + leadW, box.baselineY)
         } else {
           const layout = layoutControlOptions(opts, controlType as 'checkbox' | 'radio', (t) => ctx.measureText(t).width)
           const glyphChar = controlType === 'checkbox' ? '☐' : '○'

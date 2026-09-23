@@ -21,6 +21,7 @@ import type {
 import { NodeType, generateId, DEFAULT_PAGE_SETUP, DEFAULT_HEADER_FOOTER_CONFIG } from '../core/DocumentModel'
 import { NodePool } from '../core/NodePool'
 import { CURRENT_DOCUMENT_VERSION, versionToString } from '../version/DocumentFormatVersion'
+import { locale, type LocaleMessages } from '../../i18n/index'
 
 // ================================================================
 // 工厂函数
@@ -108,17 +109,29 @@ export function smartTextFindReplaceText(node: { text: string; value?: ControlVa
   return v.length > 0 ? v.join('、') : null
 }
 
+/**
+ * 域节点工厂。
+ *
+ * `cachedValue` 是**落盘**的占位文本 (域类型未知/未解析时的显示), 所以它按
+ * **建节点那一刻的语言**固化 —— 这是正确语义: 文档内容不随界面语言回溯改写。
+ * 已存在的历史文档不会被翻译, 只有新建/新插入的域用当前语言。
+ */
 export function createFieldNode(fieldType: FieldType, format?: string, style?: TextStyle): FieldNode {
-  const labels: Record<string, string> = {
-    page_number: '[页码]', total_pages: '[总页数]',
-    current_date: '[日期]', current_time: '[时间]',
-    author_name: '[作者]', document_title: '[标题]',
-    last_saved_date: '[保存日期]', print_date: '[打印日期]',
+  const LABEL_KEYS: Record<string, keyof LocaleMessages> = {
+    page_number: 'field.placeholder.pageNumber',
+    total_pages: 'field.placeholder.totalPages',
+    current_date: 'field.placeholder.currentDate',
+    current_time: 'field.placeholder.currentTime',
+    author_name: 'field.placeholder.authorName',
+    document_title: 'field.placeholder.documentTitle',
+    last_saved_date: 'field.placeholder.lastSavedDate',
+    print_date: 'field.placeholder.printDate',
   }
+  const key = LABEL_KEYS[fieldType]
   return {
     type: NodeType.FIELD, id: generateId(),
     fieldType, format,
-    cachedValue: labels[fieldType] || `[${fieldType}]`,
+    cachedValue: key ? locale.t(key) : `[${fieldType}]`,
     ...style,
   }
 }

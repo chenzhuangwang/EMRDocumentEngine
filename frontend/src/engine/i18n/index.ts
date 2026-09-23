@@ -886,6 +886,66 @@ export interface LocaleMessages {
   // ============================================================
   'error.unknownEngine': string
   // ============================================================
+  // 引擎层文案 (engine/ 内的 chrome —— 领域数据不在此, 见 I18nGate 白名单)
+  // ============================================================
+  // QC 内置规则 (QCEngine.BUILTIN_RULES) — 面板直接渲染 ruleName / message
+  'qc.rule.title.name': string
+  'qc.rule.title.desc': string
+  'qc.rule.body.name': string
+  'qc.rule.body.desc': string
+  'qc.rule.emptyParagraph.name': string
+  'qc.rule.emptyParagraph.desc': string
+  'qc.rule.smartTextRequired.name': string
+  'qc.rule.smartTextRequired.desc': string
+  'qc.rule.minChars.name': string
+  'qc.rule.minChars.desc': string
+  'qc.rule.paragraphCount.name': string
+  'qc.rule.paragraphCount.desc': string
+  // ErrorRecovery — 三级容错上报的消息 (→ StatusBar chip / canvas 占位页)
+  'engineError.particleRender': string        // '粒子渲染失败: nodeId={nodeId}'
+  'engineError.pageRender': string            // '页面渲染失败: pageIndex={pageIndex}'
+  'engineError.pagePlaceholder': string       // '页面 {page} 渲染失败' (画在 canvas 上)
+  'engineError.loadFallback': string          // '文档加载失败, 已回退到空白文档'
+  'engineError.loadFallbackFailed': string    // '回落文档同样加载失败'
+  'engineError.asyncTask': string             // '异步任务失败'
+  // 文档加载 (DocumentLoader / DocumentLoaderRegistry)
+  'loader.failed': string                     // '"{name}" 加载失败：{msg}'
+  'loader.parseFailed': string                // 'JSON.parse 失败: {msg}'
+  'loader.notObject': string
+  'loader.upgradeFailed': string              // '升级失败: {msg}'
+  'loader.badDocId': string
+  'loader.badDocTitle': string
+  'loader.badBodyChildren': string
+  'loader.badMetadata': string
+  'loader.badChildRef': string                // 'children 包含非字符串引用: {id}'
+  'loader.danglingRef': string                // '引用悬空 (节点未在 nodes/extraNodes 中): {id}'
+  'loader.versionTooNew': string              // '文档版本 {ver} 高于引擎支持版本 {current}'
+  'loader.versionOutdated': string            // '需升级: {ver} → {current}'
+  'loader.versionCurrent': string             // '版本一致'
+  'loader.importedHtml': string               // 导入默认标题
+  'loader.importedMarkdown': string
+  'loader.importedXml': string
+  // 文档默认标题 / 模板
+  'doc.untitled': string
+  'doc.recovered': string
+  'doc.importedTemplate': string
+  // 书签交叉引用目标 (getBookmarkTargets)
+  'nav.headingFallback': string               // '标题{level}'
+  'nav.footnoteLabel': string                 // '脚注 {id}'
+  // 目录 / 控件占位
+  'toc.title': string                         // '目录'
+  'toc.emptyHeading': string                  // '(空标题)'
+  'control.emptyOptions': string              // '无候选项'
+  // 域代码占位符 (createFieldNode 写入 cachedValue)
+  'field.placeholder.pageNumber': string
+  'field.placeholder.totalPages': string
+  'field.placeholder.currentDate': string
+  'field.placeholder.currentTime': string
+  'field.placeholder.authorName': string
+  'field.placeholder.documentTitle': string
+  'field.placeholder.lastSavedDate': string
+  'field.placeholder.printDate': string
+  // ============================================================
   // 既有: 插值/复数示范键
   // ============================================================
   /** 插值: `{current}` / `{total}` */
@@ -1645,6 +1705,64 @@ const zhCN: LocaleMessages = {
   'tableGrow.growableMarkerTitle': '此表声明了「填写时可增长」—— 填写时表尾会出现「+ 添加行」入口。在表格单元格上右键可切换。',
   // ===== Engine error chip =====
   'error.unknownEngine': '引擎错误',
+  // ===== 引擎层文案 =====
+  // QC 内置规则 (值必须与 QCEngine.BUILTIN_RULES 原字面量逐字一致)
+  'qc.rule.title.name': '文档标题不为空',
+  'qc.rule.title.desc': '文档必须包含标题',
+  'qc.rule.body.name': '文档包含正文内容',
+  'qc.rule.body.desc': '文档 body 至少包含一个段落',
+  'qc.rule.emptyParagraph.name': '段落不包含连续空白段',
+  'qc.rule.emptyParagraph.desc': '不应有连续两个空段落 (范围: 正文 + 页眉/页脚各变体, 逐容器独立判定)',
+  'qc.rule.smartTextRequired.name': 'SmartText 必填字段校验',
+  'qc.rule.smartTextRequired.desc': '标记为 required 的 SmartTextNode 不能为空',
+  'qc.rule.minChars.name': '文档字数不低于最低阈值',
+  'qc.rule.minChars.desc': '文档正文至少包含 10 个字符',
+  'qc.rule.paragraphCount.name': '段落数量合理',
+  'qc.rule.paragraphCount.desc': '段落数应在 1-500 之间',
+  // ErrorRecovery
+  'engineError.particleRender': '粒子渲染失败: nodeId={nodeId}',
+  'engineError.pageRender': '页面渲染失败: pageIndex={pageIndex}',
+  'engineError.pagePlaceholder': '页面 {page} 渲染失败',
+  'engineError.loadFallback': '文档加载失败, 已回退到空白文档',
+  'engineError.loadFallbackFailed': '回落文档同样加载失败',
+  'engineError.asyncTask': '异步任务失败',
+  // 文档加载
+  'loader.failed': '"{name}" 加载失败：{msg}',
+  'loader.parseFailed': 'JSON.parse 失败: {msg}',
+  'loader.notObject': '文档必须是对象',
+  'loader.upgradeFailed': '升级失败: {msg}',
+  'loader.badDocId': 'doc.id 缺失或非字符串',
+  'loader.badDocTitle': 'doc.title 缺失或非字符串',
+  'loader.badBodyChildren': 'doc.body.children 缺失或非数组',
+  'loader.badMetadata': 'doc.metadata 非对象',
+  'loader.badChildRef': 'children 包含非字符串引用: {id}',
+  'loader.danglingRef': '引用悬空 (节点未在 nodes/extraNodes 中): {id}',
+  'loader.versionTooNew': '文档版本 {ver} 高于引擎支持版本 {current}',
+  'loader.versionOutdated': '需升级: {ver} → {current}',
+  'loader.versionCurrent': '版本一致',
+  'loader.importedHtml': '导入的HTML文档',
+  'loader.importedMarkdown': '导入的Markdown文档',
+  'loader.importedXml': '导入的XML文档',
+  // 文档默认标题 / 模板
+  'doc.untitled': '未命名文档',
+  'doc.recovered': '恢复的文档',
+  'doc.importedTemplate': '导入的模板',
+  // 书签交叉引用目标
+  'nav.headingFallback': '标题{level}',
+  'nav.footnoteLabel': '脚注 {id}',
+  // 目录 / 控件占位
+  'toc.title': '目录',
+  'toc.emptyHeading': '(空标题)',
+  'control.emptyOptions': '无候选项',
+  // 域代码占位符
+  'field.placeholder.pageNumber': '[页码]',
+  'field.placeholder.totalPages': '[总页数]',
+  'field.placeholder.currentDate': '[日期]',
+  'field.placeholder.currentTime': '[时间]',
+  'field.placeholder.authorName': '[作者]',
+  'field.placeholder.documentTitle': '[标题]',
+  'field.placeholder.lastSavedDate': '[保存日期]',
+  'field.placeholder.printDate': '[打印日期]',
   // ===== 既有 ICU 模板 =====
   'editor.pageOf': '第 {current} 页 / 共 {total} 页',
   'editor.controlCount': '{n, plural, other {# 个控件}}',
@@ -2399,6 +2517,63 @@ const enUS: LocaleMessages = {
   'tableGrow.growableMarkerTitle': 'This table is declared growable while filling — an "+ Add Row" entry appears at the end of the table when filling. Right-click a table cell to toggle.',
   // ===== Engine error chip =====
   'error.unknownEngine': 'Engine Error',
+  // ===== 引擎层文案 =====
+  'qc.rule.title.name': 'Document title must not be empty',
+  'qc.rule.title.desc': 'The document must have a title',
+  'qc.rule.body.name': 'Document contains body content',
+  'qc.rule.body.desc': 'The document body must contain at least one paragraph',
+  'qc.rule.emptyParagraph.name': 'No consecutive empty paragraphs',
+  'qc.rule.emptyParagraph.desc': 'There should be no two consecutive empty paragraphs (scope: body + each header/footer variant, judged per container)',
+  'qc.rule.smartTextRequired.name': 'Required SmartText field check',
+  'qc.rule.smartTextRequired.desc': 'A SmartTextNode marked as required must not be empty',
+  'qc.rule.minChars.name': 'Document meets minimum character count',
+  'qc.rule.minChars.desc': 'The document body must contain at least 10 characters',
+  'qc.rule.paragraphCount.name': 'Paragraph count is reasonable',
+  'qc.rule.paragraphCount.desc': 'The paragraph count should be between 1 and 500',
+  // ErrorRecovery
+  'engineError.particleRender': 'Particle render failed: nodeId={nodeId}',
+  'engineError.pageRender': 'Page render failed: pageIndex={pageIndex}',
+  'engineError.pagePlaceholder': 'Page {page} failed to render',
+  'engineError.loadFallback': 'Document failed to load; fell back to a blank document',
+  'engineError.loadFallbackFailed': 'The fallback document also failed to load',
+  'engineError.asyncTask': 'Async task failed',
+  // 文档加载
+  'loader.failed': '"{name}" failed to load: {msg}',
+  'loader.parseFailed': 'JSON.parse failed: {msg}',
+  'loader.notObject': 'The document must be an object',
+  'loader.upgradeFailed': 'Upgrade failed: {msg}',
+  'loader.badDocId': 'doc.id is missing or not a string',
+  'loader.badDocTitle': 'doc.title is missing or not a string',
+  'loader.badBodyChildren': 'doc.body.children is missing or not an array',
+  'loader.badMetadata': 'doc.metadata is not an object',
+  'loader.badChildRef': 'children contains a non-string reference: {id}',
+  'loader.danglingRef': 'Dangling reference (node not found in nodes/extraNodes): {id}',
+  'loader.versionTooNew': 'Document version {ver} is newer than the engine supports ({current})',
+  'loader.versionOutdated': 'Upgrade needed: {ver} → {current}',
+  'loader.versionCurrent': 'Version is current',
+  'loader.importedHtml': 'Imported HTML Document',
+  'loader.importedMarkdown': 'Imported Markdown Document',
+  'loader.importedXml': 'Imported XML Document',
+  // 文档默认标题 / 模板
+  'doc.untitled': 'Untitled Document',
+  'doc.recovered': 'Recovered Document',
+  'doc.importedTemplate': 'Imported Template',
+  // 书签交叉引用目标
+  'nav.headingFallback': 'Heading {level}',
+  'nav.footnoteLabel': 'Footnote {id}',
+  // 目录 / 控件占位
+  'toc.title': 'Contents',
+  'toc.emptyHeading': '(empty heading)',
+  'control.emptyOptions': 'No options',
+  // 域代码占位符
+  'field.placeholder.pageNumber': '[Page Number]',
+  'field.placeholder.totalPages': '[Total Pages]',
+  'field.placeholder.currentDate': '[Date]',
+  'field.placeholder.currentTime': '[Time]',
+  'field.placeholder.authorName': '[Author]',
+  'field.placeholder.documentTitle': '[Title]',
+  'field.placeholder.lastSavedDate': '[Last Saved]',
+  'field.placeholder.printDate': '[Print Date]',
   // ===== 既有 ICU 模板 =====
   'editor.pageOf': 'Page {current} of {total}',
   'editor.controlCount': '{n, plural, one {# control} other {# controls}}',

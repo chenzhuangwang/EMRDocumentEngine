@@ -16,6 +16,7 @@ import { NodeType, generateId } from '../document/core/DocumentModel'
 import { loadDocument } from '../document/io/DocumentLoader'
 import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/version/DocumentFormatVersion'
 import { reportError, EditorErrorCode } from '../ErrorRecovery'
+import { locale } from '../i18n/index'
 
 // ---- 加载结果 ----
 
@@ -85,9 +86,20 @@ export class DocumentLoaderRegistry {
       // "不认识这个格式" 是两回事 —— 原先两者都返回 null, 上层只能把
       // 版本过新报成"格式不支持", 把用户指向完全错误的方向。
       // 先上报真实原因, 再抛给调用方 (它才知道该给用户看什么)。
+      //
+      // 文案保留「哪一个 loader 失败 + 内层原因」的完整形状 (JSON 版与 HTML
+      // 版报错长得一样时, 用户无从判断是哪种文件出的问题)。
+      //
+      // 重译的边界: 外层壳 (loader.failed) 随语言变, 内层详情 msg 是内层
+      // LoadError 在内层语言下展开的快照 —— ICU 单层子集不支持嵌套键, 要
+      // 让内层也重译得改成结构化错误链。内层是 [DocumentLoader.phase] 开头的
+      // 技术详情, 保持原语言可接受。
+      const params = { name: loader.name, msg: err instanceof Error ? err.message : String(err) }
       reportError({
         code: EditorErrorCode.E_DOCUMENT_CORRUPTED,
-        message: `"${loader.name}" 加载失败：${err instanceof Error ? err.message : String(err)}`,
+        key: 'loader.failed',
+        params,
+        message: locale.t('loader.failed', params),
         cause: err,
       })
       throw err
@@ -124,7 +136,7 @@ const HTMLLoader: IDocumentLoader = {
   name: 'HTML',
   extensions: ['.html', '.htm'],
   load(content: string): LoadResult {
-    const title = content.match(/<title>(.*?)<\/title>/)?.[1] || '导入的HTML文档'
+    const title = content.match(/<title>(.*?)<\/title>/)?.[1] || locale.t('loader.importedHtml')
     const bodyText = content.replace(/<[^>]+>/g, '\n').replace(/&nbsp;/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
     const paras = bodyText.split('\n\n').filter(p => p.trim())
 
@@ -164,7 +176,7 @@ const MarkdownLoader: IDocumentLoader = {
   extensions: ['.md', '.markdown'],
   load(content: string): LoadResult {
     const lines = content.split('\n')
-    const title = lines[0]?.replace(/^#+\s*/, '') || '导入的Markdown文档'
+    const title = lines[0]?.replace(/^#+\s*/, '') || locale.t('loader.importedMarkdown')
 
     const docId = generateId()
     const nodes = new Map<string, BaseNode>()
@@ -208,7 +220,7 @@ const XMLLoader: IDocumentLoader = {
     const docId = generateId()
     const doc: DocumentTree = {
       type: 'document', id: docId,
-      title: '导入的XML文档',
+      title: locale.t('loader.importedXml'),
       body: { mode: 'flow', children: [] },
       header: [], footer: [],
       pageSetup: { width: 794, height: 1123, marginTop: 72, marginBottom: 72, marginLeft: 90, marginRight: 90, orientation: 'portrait' },

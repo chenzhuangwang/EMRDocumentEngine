@@ -87,6 +87,7 @@ import { TemplateDefinitionStore } from './template/TemplateDefinition'
 import type { TemplateDefinition, ControlType } from './template/TemplateDefinition'
 import type { PresentationStyleStore } from './render/presentation/PresentationStyle'
 import type { DictionaryProvider } from './document/control/Dictionary'
+import { locale } from './i18n/index'
 import { NodeType } from './document/core/DocumentModel'
 import type { ControlValue, ElementEnumOption, SmartTextNode } from './document/core/DocumentModel'
 import { SetControlValueCommand } from './command/commands/SetControlValueCommand'
@@ -207,7 +208,7 @@ export class Editor {
     this.measurer = new TextMeasurer(host, this.fontManager)
     // 创建默认空文档
     if (!doc) {
-      const d = createDocument('未命名文档')
+      const d = createDocument(locale.t('doc.untitled'))
       const para = createParagraph()
       d.body.children = [para.id]
       doc = d
@@ -234,7 +235,7 @@ export class Editor {
     this.formatPainter = new FormatPainter(this, host)
     this.clipboard = new ClipboardManager(host.platform.clipboard)
     this.findReplace = new FindReplaceEngine()
-    this.autoSave = new AutoSaveManager(doc.id, doc.title || '未命名文档', () => this.getSerializedDocument(), host.platform.storage)
+    this.autoSave = new AutoSaveManager(doc.id, doc.title || locale.t('doc.untitled'), () => this.getSerializedDocument(), host.platform.storage)
     this.autoCorrect = new AutoCorrectEngine()
     this.perfMetrics = new PerformanceMetrics(host)
     // 粒子桥: 插件注册的自定义粒子落到渲染层注册表 (同名已存在则跳过, 不覆盖内置)
@@ -499,6 +500,24 @@ export class Editor {
 
   /** 当前画布主题 (v6.1) */
   getTheme(): ThemePreset { return this.theme.preset }
+
+  /**
+   * 语言变更后刷新画布 (v6.2 公共 API)。
+   *
+   * 为什么**必须重排**而不是只重绘: 域代码的日期/时间文本随语言变格式
+   * (zh-CN '2026/9/22' vs en-US '9/22/2026'), 文字宽度随之变 —— 只重绘会
+   * 让域后的文字重叠或拖出空白。走 `relayout()` (含插件 before/afterLayout
+   * 钩子) 而非直接 `recomputeLayout`, 与 undo/redo 的重排同源。
+   *
+   * 不入 undo 栈、不 markDirty、不动 history —— 语言非文档内容 (同 setTheme)。
+   * 复用既有的 `render:request` 语义不合适: 那条路**不通知 UI**, 而 QC 结果
+   * 与字数统计里的文案也随语言变, 需要 contentChange 让 React 侧重跑。
+   */
+  refreshForLocale(): void {
+    this.relayout()
+    this.draw.render(this.pool, this.store.state.runtime)
+    this.notifyListeners('contentChange', this.doc)
+  }
 
   /**
    * 同步撤销/重做栈深度到 EditorStore.runtime.history (canonical owner, §7.2)。
@@ -1367,7 +1386,7 @@ export class Editor {
     const loaded = safeLoadDocument(
       () => ({ doc, result: loadDocumentFromObject(doc, { extraNodes: nodes }) }),
       () => {
-        const blank = createDocument(doc.title || '恢复的文档')
+        const blank = createDocument(doc.title || locale.t('doc.recovered'))
         return { doc: blank, result: loadDocumentFromObject(blank) }
       },
     )
@@ -1885,14 +1904,14 @@ export class Editor {
           const text = p.children?.map(cid => {
             const cn = this.pool.nodes.get(cid) as { text?: string } | undefined
             return cn?.text || ''
-          }).join('') || `标题${p.outlineLevel}`
+          }).join('') || locale.t('nav.headingFallback', { level: p.outlineLevel })
           targets.push({ id: p.id, label: text, type: 'heading', pageHint: pageOf(p.id) })
         }
       } else if (node.type === 'footnote_content') {
         const fn = node as unknown as { id: string; children?: readonly string[] }
         // 脚注正文的 children 是段落 id; 取首个段落所在页
         targets.push({
-          id: fn.id, label: `脚注 ${fn.id.slice(-4)}`, type: 'footnote',
+          id: fn.id, label: locale.t('nav.footnoteLabel', { id: fn.id.slice(-4) }), type: 'footnote',
           pageHint: fn.children?.[0] ? pageOf(fn.children[0]) : undefined,
         })
       }

@@ -9,7 +9,7 @@
 // ============================================================
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { Editor, createDefaultRuntimeState, type DocumentTree, type EditorStore, type EditorStoreState, type ThemePreset } from '@/engine'
+import { Editor, createDefaultRuntimeState, locale, type DocumentTree, type EditorStore, type EditorStoreState, type ThemePreset } from '@/engine'
 import { createDomEditorHost } from '@/platform/dom'
 import { createDictionaryStore } from '@/platform/data/dictionaryStore'
 import { useUIStore } from '@/store'
@@ -95,6 +95,22 @@ export function EditorProvider({ children, containerRef, document }: EditorProvi
     apply(useUIStore.getState().themePreset)
     const unsub = useUIStore.subscribe((state, prev) => {
       if (state.themePreset !== prev.themePreset) apply(state.themePreset)
+    })
+    return unsub
+  }, [])
+
+  // ---- 画布语言同步 (v6.2) ----
+  // 订阅 locale 变化 → Editor.refreshForLocale → 重排 + 重绘 + contentChange。
+  //
+  // 为什么必须重排: 域代码的日期/时间文本随语言变格式, 文字宽度随之变
+  // (只重绘会让域后文字重叠或拖出空白)。为什么不走 document:changed:
+  // 'none' 不重排; 'full' 会 markDirty (语言不是文档内容, 不该把文档标脏)。
+  //
+  // 注意 locale.subscribe 是**无参回调**签名 (不是 zustand 的 (state, prev)),
+  // 与上面 themePreset 那段不同, 不能照搬参数。
+  useEffect(() => {
+    const unsub = locale.subscribe(() => {
+      editorRef.current?.refreshForLocale()
     })
     return unsub
   }, [])
