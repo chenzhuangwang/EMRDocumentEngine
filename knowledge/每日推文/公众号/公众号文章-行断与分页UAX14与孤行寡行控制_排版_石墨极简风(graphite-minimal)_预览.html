@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wrap-temp · 公众号排版预览</title>
+<style>
+  body{margin:0;background:#eef0f2;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;-webkit-text-size-adjust:100%;}
+  .gzh-toolbar{position:fixed;top:0;left:0;right:0;height:54px;background:#ffffff;box-shadow:0 1px 10px rgba(0,0,0,.08);display:flex;align-items:center;justify-content:space-between;padding:0 16px;z-index:99;}
+  .gzh-hint{font-size:13px;color:#6b7280;line-height:1.4;}
+  .gzh-hint b{color:#111827;}
+  .gzh-copy{background:#059669;color:#fff;border:0;border-radius:9px;padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(5,150,105,.28);white-space:nowrap;transition:transform .08s,background .15s;}
+  .gzh-copy:hover{background:#047857;}
+  .gzh-copy:active{transform:translateY(1px);}
+  .gzh-toast{position:fixed;top:66px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .25s;z-index:100;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:88vw;text-align:center;}
+  .gzh-toast.show{opacity:1;}
+  .gzh-stage{max-width:700px;margin:78px auto 64px;padding:0 8px;}
+  @media(max-width:520px){.gzh-hint{max-width:150px;}}
+</style>
+</head>
+<body>
+<div class="gzh-toolbar">
+  <span class="gzh-hint">👇 下方是排版效果 · 点右侧 <b>复制</b> 直接粘到公众号</span>
+  <button class="gzh-copy" id="gzhCopyBtn" onclick="gzhCopy()">📋 复制到公众号</button>
+</div>
+<div class="gzh-toast" id="gzhToast"></div>
+<div class="gzh-stage">
+  <div id="gzh-content">
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+<!-- ============ 1. 开头引言卡 ============ -->
+<section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+  <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;">
+    <span leaf="">QUOTE</span>
+  </p>
+  <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;">
+    <span leaf="">一行字断在哪里，在网页里是审美问题，在病历里是</span>
+    <span style="border-bottom:2px solid #52525B;"><span leaf="">正确性问题</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;">
+    <span leaf="">—— 旺de碎碎念</span>
+  </p>
+</section>
+
+<!-- ============ 2. 前言正文 ============ -->
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">前一篇讲了三层 Canvas 怎么渲染。这一篇再往下钻一层：在画之前，</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">一行字到底该在哪里断、一段话该不该被拆到两页</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">上一篇文章说，排版引擎会把文档切成「页」，渲染器只负责画。但中间有一块最容易被忽略、也最容易出 bug 的地方——</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">断行和分页</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">先看一个真实的排版事故：</span>
+  </p>
+
+  <section style="margin:0 0 22px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">排版事故</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">血常规：白细胞 12.5×10⁹/L，中性粒</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">细胞百分比 85%，CRP 68 mg/L。</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">问题出在第一行结尾——「中性粒细胞」被从中间劈开，「中性粒」和「细胞」分到了两行。</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">医生的第一反应是「这编辑器排版有问题」</span></span>
+    <span leaf="">，而这一行下面可能正好是一个关键指标。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这类问题，在网页富文本里几乎不会有人管：内容流式排布，断在哪里交给浏览器，看起来差不多就行。但在病历里，「断在哪里」和「分到哪一页」是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">正确性问题</span></span>
+    <span leaf="">——因为它决定了打印出来长什么样，而打印出来的那份，是要进病历、要签字、要归档的。</span>
+  </p>
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这篇就讲清楚两件事：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">断行（一行之内）</span></span>
+    <span leaf="">和</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">分页（页与页之间）</span></span>
+    <span leaf="">，以及它们各自踩过的坑。</span>
+  </p>
+</section>
+
+<!-- ============ 3. 本文看点 ============ -->
+<section style="padding:0 10px 40px;">
+  <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;">
+    <span leaf="">本文看点</span>
+  </p>
+  <section style="display:flex;justify-content:space-between;">
+    <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+      <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+      <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">断行与分页是两件事</span></p>
+    </section>
+    <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+      <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+      <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">避头尾与原子元素</span></p>
+    </section>
+    <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+      <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+      <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">分页为什么是纯函数</span></p>
+    </section>
+  </section>
+</section>
+
+<!-- ============ 4. 章节分割线 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<!-- ============ 5. 第一章 ============ -->
+<section style="margin-top:16px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">01</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">TWO STAGES</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">先分清：断行和分页是两件事</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:24px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">它们经常被混在一起说，但其实是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">两个独立阶段</span></span>
+    <span leaf="">，输入输出都不同：</span>
+  </p>
+
+  <section style="margin:0 0 24px;overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <thead>
+        <tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">阶段</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">模块</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">输入 → 输出</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">解决什么</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">断行</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;"><span leaf="">LineBreaker</span></span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">段落内的元素序列 → 若干行</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">一行放不下时，在哪里断开</span></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">分页</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;"><span leaf="">PageBreaker</span></span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">全部行 → 若干页</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">一页放不下时，在哪里翻页</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">整条排版管道的顺序是固定的：</span>
+  </p>
+
+  <section style="margin:0 0 22px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">pipeline</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">DocumentTree + NodePool</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　　↓</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">LineBreaker（断行）→ PageBreaker（分页）→ PageStartTable（增量索引）</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　　↓</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">SLIFPage[]（供渲染）</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">先断行、再分页，顺序不能反</span></span>
+    <span leaf="">。因为分页要知道「每一行有多高」，而行高是断行算出来的（一行里最高的字决定这一行的高度）。</span>
+  </p>
+</section>
+
+<!-- ============ 6. 分割线 + 第二章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">02</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">LINE BREAKING</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">断行：宽度只是及格线</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:26px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">断行最基础的规则是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">「宽度够了就断」</span></span>
+    <span leaf="">。但如果只做宽度，就会出现开头那种事故。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">2.1 中文避头尾（kinsoku shori）</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">中文排版有一套明确的「禁则」：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">有些标点不能出现在行首，有些不能出现在行尾</span></span>
+    <span leaf="">。</span>
+  </p>
+
+  <section style="margin:0 0 22px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">禁则字符集</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">。，、；：？！）》」』】…　　← 不能出现在行首（后置标点）</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">（《〈「『【〖(　　　　　　← 不能出现在行尾（前置标点）</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">想象一下句号出现在行首——「今天天气不错」换行后跟一个孤零零的「。」——</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">这在中文里是排版错误</span></span>
+    <span leaf="">，任何一份正式文书都不该出现。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">所以断行算法里维护了两个字符集：</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">LINE_START_FORBIDDEN</span></span>
+    <span leaf="">（行头禁止）和</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">LINE_END_FORBIDDEN</span></span>
+    <span leaf="">（行尾禁止）。</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">断行点一旦落在禁则上，就向前或向后调整 1–2 个字符</span></span>
+    <span leaf="">：</span>
+  </p>
+
+  <section style="margin:0 0 22px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">typescript</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">// 行尾禁止字符 → 断行点前移（把标点带到下一行）</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">if (LINE_END_FORBIDDEN.has(lastChar) &amp;&amp; splitIdx &gt; 0) { splitIdx--; continue }</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">// 行头禁止字符 → 断行点后移（把标点留在本行）</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">if (LINE_START_FORBIDDEN.has(nextChar) &amp;&amp; splitIdx &lt; chars.length - 2) { splitIdx++; continue }</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:26px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">调整幅度限制在 </span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">2 个字符</span></span>
+    <span leaf="">以内——不是不能调更多，而是超过 2 个字符就会出现明显的「这行很短、那行很挤」，视觉上更糟。</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">避头尾是在「不违规」和「不破坏行宽均匀」之间取平衡</span></span>
+    <span leaf="">。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">2.2 中英混排：CJK 任意断，Latin 尽量在空格断</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">中文可以任意两个字之间断开，英文不行——</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">measure</span></span>
+    <span leaf="">从中间断成</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">meas</span></span>
+    <span leaf="">/</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">ure</span></span>
+    <span leaf="">是错的。</span>
+  </p>
+  <p style="margin-bottom:26px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">所以</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">splitTextElement</span></span>
+    <span leaf="">的策略是：逐字符累加宽度找到断点后，</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">再向右扫描最近的一个空格</span></span>
+    <span leaf="">，如果空格就在附近（≤5 字符），就把断点挪到空格处，让英文单词完整地留在上一行。CJK 字符之间则允许直接断。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">2.3 原子元素：不能逐字拆开</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这是病历场景特有、也是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">通用富文本最不擅长的部分</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">回想上一篇提过的</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">smarttext</span></span>
+    <span leaf="">结构化字段——体温 [36.8]℃、血压 [128]/[82]。这类元素</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">不能被逐字拆开</span></span>
+    <span leaf="">：你不能把「体温」和输入框拆到两行里去，那在语义上就散了。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">所以断行器在遇到非文本元素（</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">smarttext</span></span>
+    <span leaf="">、图片等）时走的是另一个分支：不参与逐字拆分，</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">放不下就整块换行</span></span>
+    <span leaf="">。</span>
+  </p>
+
+  <section style="margin:0 0 26px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">typescript</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">// smarttext 是原子控件，不参与逐字拆分 — 放不下时整块换行</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">if ((el.type === &#39;text&#39; || el.type === &#39;hyperlink&#39;) &amp;&amp; elWidth &gt; remainingW ...) {</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　// 只有纯文本/超链接才逐字拆分</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">}</span></p>
+    </section>
+  </section>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">2.4 一个很隐蔽的坑：按「整行宽度」还是「剩余宽度」</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">断行器曾经有个 bug：把「这个节点能不能放下」判定成「节点宽度 vs 整行宽度」，而不是「节点宽度 vs </span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">当前行剩余宽度</span></span>
+    <span leaf="">」。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">后果是：当一次格式化操作把一个大文本节点拆成了好几个小节点后，中间那个节点往往</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">「窄于整行、但宽于剩余空间」</span></span>
+    <span leaf="">——于是它被误判为「放不下」，整段被强制下沉到下一行，排版就错位了。</span>
+  </p>
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">修复方式是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">一律按剩余宽度判定</span></span>
+    <span leaf="">，并且文本元素超出剩余空间时逐字拆分填充当前行，而不是整块下沉。这类 bug 不会崩，只会让文字「看起来怪怪的」，但恰恰最难查。</span>
+  </p>
+</section>
+
+<!-- ============ 7. 分割线 + 第三章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">03</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">PAGINATION</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">分页：孤行寡行控制</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">断行解决了「一行之内」，分页要解决「页与页之间」。这里的经典问题是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">孤行（orphan）和寡行（widow）</span></span>
+    <span leaf="">。</span>
+  </p>
+
+  <section style="margin-bottom:24px;">
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">孤行</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">一个段落的最后一行孤零零留在上一页底部，其余部分在下一页；</span>
+      </p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">寡行</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">一个段落的第一行孤零零出现在下一页顶部，其余部分在上一页。</span>
+      </p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这两种情况在正式文书里都算排版缺陷。这套实现里有一条</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">硬约束</span></span>
+    <span leaf="">：</span>
+  </p>
+
+  <section style="margin:0 0 22px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">typescript</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">/** Minimum lines of a paragraph that must stay together (avoid orphans/widows). */</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">const MIN_PARAGRAPH_LINES = 2</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">意思是：一个段落被拆到两页时，</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">每一侧至少要留 2 行</span></span>
+    <span leaf="">。具体怎么落地：</span>
+  </p>
+
+  <section style="margin-bottom:24px;">
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">遇到孤行 → 把上一页底部那 1 行「收回去」，整段一起挪到下一页；</span></p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">遇到寡行 → 从上一页再「拉」1 行过来，让新页顶部至少 2 行。</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:26px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">代码里的做法是：分页时先判断「当前页最后一行是否构成孤行」，再判断「新页第一段是否构成寡行」，命中就调整页边界。判断的依据是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">段落边界标记</span></span>
+    <span leaf="">——一行的最后一个元素如果是 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">\n</span></span>
+    <span leaf="">，它就是段落结尾。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">表格是块边界，不参与孤行寡行</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">有个容易忽略的例外：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">表格行不参与孤行寡行控制</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">表格是「块」级结构，它的跨页逻辑是另一套（见下一节）。所以代码里把 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">pageable</span></span>
+    <span leaf=""> / </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">tableFragment</span></span>
+    <span leaf=""> 的行直接视为段落边界，避免出现「从上一页的表格里拉一行文本过来」这种荒谬结果。</span>
+  </p>
+</section>
+
+<!-- ============ 8. 分割线 + 第四章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">04</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">TABLE ACROSS PAGES</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">表格跨页：表头要重复</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">病历里的检验单、用药单几乎都是长表格，</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">跨页是常态</span></span>
+    <span leaf="">。这里有两个必须做对的事：</span>
+  </p>
+
+  <section style="margin-bottom:24px;">
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">表体可以跨页——一页放不下时，表格被切成多个 fragment，分到不同页；</span></p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">表头必须重复——第二页的表头要重新画一遍，否则读者不知道每列是什么。</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">PageBreaker</span></span>
+    <span leaf=""> 遇到 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">pageable</span></span>
+    <span leaf=""> 行（表格）时，会</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">以当前页的剩余可用高去问表格分页器</span></span>
+    <span leaf="">：</span>
+  </p>
+
+  <section style="margin:0 0 22px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">typescript</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">const avail = pageContentHeight - currentPageHeight</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">const result = line.pageable.paginate(avail)</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">拿回一个 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">TableFragment</span></span>
+    <span leaf="">（这一页能放下的那一片）。如果本页完全放不下，就先结束当前页，换页后再问一次——</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">游标不推进</span></span>
+    <span leaf="">，保证同一张表在整页可用高下一定能前进，不会死循环。表格跨页表头重复的能力，在功能清单里也是独立条目。</span>
+  </p>
+</section>
+
+<!-- ============ 9. 分割线 + 第五章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">05</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">PURE FUNCTION</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">分页是纯函数——这才是病历场景要的</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">回到上一篇反复强调的一条架构约束：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">文档模型不知道分页的存在</span></span>
+    <span leaf="">，分页由排版引擎全权负责。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">它带来的最大好处是：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">分页是一个纯函数</span></span>
+    <span leaf="">。同样的文档 + 同样的页面设置（A4、页边距、页眉页脚），永远得到同样的分页结果——不多一页、不少一页、断点也一样。</span>
+  </p>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+    <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;">
+      <span leaf="">「预览的第 3 页」和「打印出来的第 3 页」必须完全一致。医生签字确认的是打印出来的那份，如果两者对不上，是会出事的。</span>
+    </p>
+  </section>
+
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">所以断行和分页这两个模块都</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">不读浏览器、不读 DOM、不依赖当前视口</span></span>
+    <span leaf="">——它们只吃数据、吐数据。这也是为什么它们能被单元测试直接覆盖（仓库里 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">PageBreaker</span></span>
+    <span leaf=""> 有独立的测试文件）。</span>
+  </p>
+</section>
+
+<!-- ============ 10. 分割线 + 第六章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">06</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">HONEST SCOPE</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">UAX#14：用了多少，就说多少</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这里必须诚实交代一句，免得被过度解读。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">Unicode 的 UAX #14（Unicode Line Breaking Algorithm）是一套完整的换行规则标准，它把字符按换行属性分成几十个类别（</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">LineBreakClass</span></span>
+    <span leaf="">），再定义类与类之间的断行规则。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这套引擎参考了 UAX #14 的思路，但落地实现是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">围绕中文避头尾和原子元素自己写的</span></span>
+    <span leaf="">：核心是「逐字符测宽 + 禁则字符集 + 原子性约束」，而</span>
+    <strong style="color:#27272A;"><span leaf="">不是</span></strong>
+    <span leaf="">完整实现了 UAX #14 的 LineBreakClass 分类与全部规则。</span>
+  </p>
+
+  <section style="border-left:3px solid #F97316;padding:14px 0 14px 22px;margin:0 0 24px;">
+    <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;">
+      <span leaf="">换句话说：「参考思路」不等于「完全实现」——我不会说它是一套完整的 UAX #14 引擎。</span>
+    </p>
+  </section>
+
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">中文病历里的高频问题（避头尾、中英混排、字段原子性）都覆盖到了，但</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">多语言复杂换行不在当前实现范围内</span></span>
+    <span leaf="">（比如泰语、高棉语的字典断行）。</span>
+  </p>
+</section>
+
+<!-- ============ 11. 分割线 + 第七章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">07</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">INCREMENTAL</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">增量：改一个字，不该重排整篇</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">一份上百页的病历，如果每次敲一个字都要重新断行 + 重新分页全篇，</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">编辑体验会直接崩掉</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">所以分页结果被一张</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">增量索引表</span></span>
+    <span leaf="">（</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">PageStartTable</span></span>
+    <span leaf="">）接管：它记录</span>
+    <strong style="color:#27272A;"><span leaf="">每个段落的起始页索引</span></strong>
+    <span leaf="">，支持「逐页早停 + 二分查找 + 增量更新」。目标很具体——</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">上百页文档里改一个字符，重排收敛在 1–2 页</span></span>
+    <span leaf="">，从第 52 页起可以复用旧布局。</span>
+  </p>
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">配合脏区追踪（上一篇的 4.4 节），「改一个字」的代价被压到最小：</span>
+    <strong style="color:#27272A;"><span leaf="">断行只重算受影响段落，分页只重算受影响的页边界。</span></strong>
+  </p>
+</section>
+
+<!-- ============ 12. 分割线 + 第八章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">08</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">HONEST STATUS</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">坦诚与边界</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:20px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">老规矩，把边界说清楚：</span>
+  </p>
+
+  <section style="margin-bottom:24px;">
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">避头尾调整幅度限 2 字符</span></strong><span leaf="">：极端窄栏（比如表格里很窄的单元格）下，可能出现「调整后仍不理想」的情况，这是刻意的取舍；</span></p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">UAX #14 非完全实现</span></strong><span leaf="">：如上节所述，不覆盖多语言复杂换行；</span></p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">增量排版仍有边界</span></strong><span leaf="">：增量断行 + 脏区追踪 + </span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">PageStartTable</span></span><span leaf=""> 三层联动，在编辑后局部重排时仍可能出现漂移，这是仓库里明确标注为「中风险」的待打磨项。</span></p>
+    </section>
+  </section>
+</section>
+
+<!-- ============ 13. 分割线 + 写在最后 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">∞</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">THE END</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">写在最后</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这套内核完整开源（</span>
+    <strong style="color:#27272A;"><span leaf="">MPL-2.0</span></strong>
+    <span leaf="">），前后端一体：前端 React 18 + TypeScript 严格模式 + 自研 Canvas 渲染，后端 Spring Boot 3.3 + Java 17，带 Docker 部署与完整设计文档。</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">从零手写、不依赖任何第三方富文本框架</span></span>
+    <span leaf="">（没有 Quill / ProseMirror / Slate / Tiptap）。</span>
+  </p>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">如果你也在做</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">排版引擎 / 文本断行 / 分页算法</span></span>
+    <span leaf="">，或者正在被医疗文书编辑器折磨，欢迎来看看，或者直接开 Issue 聊：</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">LINKS</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">在线体验：http://139.196.151.15/?utm_source=wechat&amp;utm_medium=article&amp;utm_campaign=W12-linebreak-pagination</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">开源仓库：https://gitee.com/wangwang_1_1665527118/emrdocument-engine?utm_source=wechat&amp;utm_medium=article&amp;utm_campaign=W12-linebreak-pagination</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这是「EMR 文档编辑器」系列的第 </span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">12 篇</span></span>
+    <span leaf="">。上一篇讲三层 Canvas 怎么把渲染拆开、怎么避免全量重绘；这一篇往下钻到排版的最底层：</span>
+    <strong style="color:#27272A;"><span leaf="">一行在哪里断、一段该不该被拆到两页。</span></strong>
+  </p>
+
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">下一篇，我们换一个节奏——把镜头转向读者。</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">《病历编辑器被问最多的 5 个问题》</span></span>
+    <span leaf="">，把这几个月评论区、私信里反复出现的疑问集中回答一次：为什么不用现成框架、导出到底支持哪些格式、协同做了没有、能不能商用、跟 XX 比怎么样。</span>
+  </p>
+</section>
+
+<!-- ============ 14. 公益句 ============ -->
+<p style="font-size:15px;margin:0 10px 24px;text-align:center;color:#27272A;font-weight:700;letter-spacing:1px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;padding:14px 10px;">
+  <span leaf="">一份病历不该是医生的负担。让好的工具，成就更好的医疗。</span>
+</p>
+
+<!-- ============ 15. 往期精选 + 关注引导 ============ -->
+<section style="padding:0 10px 32px;">
+  <p style="font-size:11px;color:#A1A1AA;margin:0 0 14px;letter-spacing:2px;">
+    <span leaf="">往期精选</span>
+  </p>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+    <p style="font-size:15px;font-weight:600;color:#27272A;margin:0 0 10px;line-height:1.7;">
+      <span leaf="">· 三层 Canvas 渲染架构：static / content / interact</span>
+    </p>
+    <p style="font-size:15px;font-weight:600;color:#27272A;margin:0 0 10px;line-height:1.7;">
+      <span leaf="">· 为什么不用 ProseMirror：自研 Canvas 内核的取舍</span>
+    </p>
+    <p style="font-size:15px;font-weight:600;color:#27272A;margin:0;line-height:1.7;">
+      <span leaf="">· 病历编辑器选型地图：商业套件 / 开源内核 / 自研，各适合谁</span>
+    </p>
+  </section>
+
+  <section style="border-left:2px solid #E4E4E7;padding:12px 0 12px 20px;margin:0 0 24px;">
+    <p style="font-size:13px;color:#A1A1AA;margin:0 0 8px;line-height:1.8;text-align:justify;">
+      <span leaf="">如果这篇对你有用，欢迎关注「旺de碎碎念」。</span>
+    </p>
+    <p style="font-size:13px;color:#A1A1AA;margin:0;line-height:1.8;text-align:justify;">
+      <span leaf="">这里持续记录电子病历、医疗信息化与开源工程化的真实实践。</span>
+    </p>
+  </section>
+
+  <p style="margin:0;font-size:15px;line-height:1.8;text-align:center;color:#52525B;">
+    <span leaf="">点个「在看」，让更多同行看到 ↓</span>
+  </p>
+</section>
+
+<!-- ============ 16. END 分割线 ============ -->
+<section style="padding:0 10px;">
+  <section style="text-align:center;margin:0 0 36px;">
+    <section style="display:flex;align-items:center;justify-content:center;">
+      <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+      <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+      <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+    </section>
+  </section>
+</section>
+
+<!-- ============ 17. 尾部签名 ============ -->
+<section style="padding:0 10px 24px;">
+  <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+    <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+      <span leaf="">这里持续记录电子病历、医疗信息化与开源工程化的真实实践。点个「在看」，让更多同行看到。</span>
+    </p>
+    <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+      <span leaf="">如果你觉得今天这篇有收获，欢迎</span>
+      <strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong>
+      <span leaf="">三连，我们下篇见。</span>
+    </p>
+  </section>
+</section>
+
+</section>
+  </div>
+</div>
+<script>
+  function gzhShowToast(msg){
+    var t=document.getElementById('gzhToast');
+    t.textContent=msg;t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer=setTimeout(function(){t.classList.remove('show');},2800);
+  }
+  function gzhCopy(){
+    var el=document.getElementById('gzh-content');
+    // 选中渲染后的富文本节点并复制（等价于手动 Ctrl+A / Ctrl+C，保留全部样式）
+    var range=document.createRange();
+    range.selectNodeContents(el);
+    var sel=window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    var ok=false;
+    try{ok=document.execCommand('copy');}catch(e){ok=false;}
+    sel.removeAllRanges();
+    var btn=document.getElementById('gzhCopyBtn');
+    if(ok){
+      gzhShowToast('✅ 已复制！去公众号编辑器按 Ctrl/⌘+V 粘贴即可');
+      var old=btn.textContent;btn.textContent='✅ 已复制';
+      setTimeout(function(){btn.textContent=old;},2200);
+    }else{
+      gzhShowToast('⚠ 自动复制失败，请手动全选(Ctrl/⌘+A)再复制(Ctrl/⌘+C)');
+    }
+  }
+</script>
+</body>
+</html>

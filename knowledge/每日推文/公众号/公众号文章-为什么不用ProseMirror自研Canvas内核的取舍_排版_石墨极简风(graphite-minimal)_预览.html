@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gzh-temp · 公众号排版预览</title>
+<style>
+  body{margin:0;background:#eef0f2;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;-webkit-text-size-adjust:100%;}
+  .gzh-toolbar{position:fixed;top:0;left:0;right:0;height:54px;background:#ffffff;box-shadow:0 1px 10px rgba(0,0,0,.08);display:flex;align-items:center;justify-content:space-between;padding:0 16px;z-index:99;}
+  .gzh-hint{font-size:13px;color:#6b7280;line-height:1.4;}
+  .gzh-hint b{color:#111827;}
+  .gzh-copy{background:#059669;color:#fff;border:0;border-radius:9px;padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(5,150,105,.28);white-space:nowrap;transition:transform .08s,background .15s;}
+  .gzh-copy:hover{background:#047857;}
+  .gzh-copy:active{transform:translateY(1px);}
+  .gzh-toast{position:fixed;top:66px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .25s;z-index:100;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:88vw;text-align:center;}
+  .gzh-toast.show{opacity:1;}
+  .gzh-stage{max-width:700px;margin:78px auto 64px;padding:0 8px;}
+  @media(max-width:520px){.gzh-hint{max-width:150px;}}
+</style>
+</head>
+<body>
+<div class="gzh-toolbar">
+  <span class="gzh-hint">👇 下方是排版效果 · 点右侧 <b>复制</b> 直接粘到公众号</span>
+  <button class="gzh-copy" id="gzhCopyBtn" onclick="gzhCopy()">📋 复制到公众号</button>
+</div>
+<div class="gzh-toast" id="gzhToast"></div>
+<div class="gzh-stage">
+  <div id="gzh-content">
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+<!-- ============ 1. 开头引言卡 ============ -->
+<section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+  <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;">
+    <span leaf="">QUOTE</span>
+  </p>
+  <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;">
+    <span leaf="">不是技术洁癖，是</span>
+    <span style="border-bottom:2px solid #52525B;"><span leaf="">三个约束</span></span>
+    <span leaf="">逼出来的。</span>
+  </p>
+  <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;">
+    <span leaf="">—— 旺de碎碎念</span>
+  </p>
+</section>
+
+<!-- ============ 2. 前言正文 ============ -->
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">选型时，</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">ProseMirror</span></span>
+    <span leaf="">几乎是很多人的默认答案：文档模型清晰、插件生态庞大、协同方案成熟。我最初也是这么想的——直到把它塞进病历场景，接连</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">撞上三堵墙</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">先把话说在前面：ProseMirror / Slate / Tiptap 都是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">优秀的通用富文本方案</span></span>
+    <span leaf="">。如果你做的是博客、笔记、IM、评论，直接上它们，别自己写。我要做的不是「富文本」，是</span>
+    <strong style="color:#27272A;"><span leaf="">纸张级、可打印、结构化的医疗文书</span></strong>
+    <span leaf="">——而通用富文本框架的核心假设（文档是流式的、渲染交给 DOM、编辑基于 contenteditable），恰好和医疗场景</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">正面冲突</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这篇不吹自研，只讲清楚三件事：</span>
+    <strong style="color:#27272A;"><span leaf="">哪三个约束逼我放弃通用框架、自研付出了什么代价、以及什么情况下你千万别学我</span></strong>
+    <span leaf="">。</span>
+  </p>
+</section>
+
+<!-- ============ 3. 本文看点 ============ -->
+<section style="padding:0 10px 40px;">
+  <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;">
+    <span leaf="">本文看点</span>
+  </p>
+  <section style="display:flex;justify-content:space-between;">
+    <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+      <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+      <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">纸张级分页 ≠ 流式文档</span></p>
+    </section>
+    <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+      <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+      <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">结构化字段是原子节点</span></p>
+    </section>
+    <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+      <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+      <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">宿主无关的引擎内核</span></p>
+    </section>
+  </section>
+</section>
+
+<!-- ============ 4. 章节分割线 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<!-- ============ 5. 第一章 ============ -->
+<section style="margin-top:16px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">01</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">FIRST VERDICT</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">先给结论：不是它们不好，是场景不匹配</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:18px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">我要满足的约束有三条：</span>
+  </p>
+
+  <section style="margin-bottom:24px;">
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <strong style="color:#27272A;"><span leaf="">屏幕上看到的分页，必须等于打印出来的分页</span></strong>
+        <span leaf="">——严格 A4、页边距、页眉页脚、页码、跨页表格表头重复；</span>
+      </p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <span leaf="">病历里的「体温 36.8℃」「用药剂量」「检验值」不</span>
+        <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">是字符串</span></span>
+        <span leaf="">，是</span>
+        <strong style="color:#27272A;"><span leaf="">带元数据的结构化字段</span></strong>
+        <span leaf="">；</span>
+      </p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <span leaf="">引擎要能被</span>
+        <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">不同宿主</span></span>
+        <span leaf="">嵌入（React / Vue / Electron / Web Worker），不能被 DOM 绑死。</span>
+      </p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">前两条是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">文档模型</span></span>
+    <span leaf="">问题，第三条是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">运行时边界</span></span>
+    <span leaf="">问题。而通用富文本框架的假设，恰好和这三条</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">一一冲突</span></span>
+    <span leaf="">。下面逐条拆开讲。</span>
+  </p>
+</section>
+
+<!-- ============ 6. 分割线 + 第二章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">02</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">CONSTRAINT I · PAGINATION</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">约束一：纸张级分页 vs 流式文档</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">通用富文本内核的文档模型是「流」（continuous flow）：内容从上往下排，换行和分页交给浏览器。这没错——网页本来就该这样。但</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">病历不是网页</span></span>
+    <span leaf="">：</span>
+  </p>
+
+  <section style="margin:0 0 28px;overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <thead>
+        <tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">需求</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">流式模型下的做法</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">问题</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">严格 A4 分页</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">用 CSS 分页媒体 / 打印样式模拟</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">屏幕所见 ≠ 打印所得，页边界不可控</span></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">跨页表格表头重复</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">基本做不到</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">病历里的检验单表格必现</span></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">孤行寡行控制</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">依赖浏览器的 orphans / widows</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">各端行为不一致，无法精确控制</span></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">页眉页脚 / 页码域</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">打印时才生成</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">编辑态不可见</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">所以我把「排版」从「渲染」里彻底拆了出来，形成一条</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">单向管道</span></span>
+    <span leaf="">：</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">layout pipeline</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">DocumentModel（纯数据，排版无关）</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　↓</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">LayoutEngine：LineBreaker → PageBreaker → PageStartTable</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　↓</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">Draw / LayeredRenderer（三层 Canvas）</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">对应一条架构硬约束：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">文档模型不知道分页的存在</span></span>
+    <span leaf="">。</span>
+  </p>
+
+  <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 8px;letter-spacing:2px;font-weight:500;">
+      <span leaf="">REFERENCE · 架构契约</span>
+    </p>
+    <p style="font-size:15px;color:#3F3F46;margin:0 0 8px;line-height:1.8;text-align:justify;">
+      <span leaf="">RULE 2：DocumentModel MUST NOT depend on Layout/Render.</span>
+    </p>
+    <p style="font-size:13px;color:#A1A1AA;margin:0;line-height:1.8;">
+      <span leaf="">—— 仓库内架构契约。claude/AI_EDITOR_CONTRACT.md</span>
+    </p>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这条拆分的直接好处是：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">分页变成纯函数</span></span>
+    <span leaf="">——同样的文档 + 同样的页面设置，永远得到同样的分页结果。这在医疗场景里不是性能问题，是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">正确性</span></span>
+    <span leaf="">问题：「预览的第 3 页和打印出来的第 3 页不一样」，是会出事的。</span>
+  </p>
+</section>
+
+<!-- ============ 7. 分割线 + 第三章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">03</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">CONSTRAINT II · STRUCTURED FIELDS</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">约束二：结构化字段不是「一段文本」</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">病历里最不起眼、也最难做对的，是这类东西：</span>
+  </p>
+
+  <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 8px;letter-spacing:2px;font-weight:500;">
+      <span leaf="">STRUCTURED FIELD</span>
+    </p>
+    <p style="font-size:15px;color:#3F3F46;margin:0;line-height:1.8;">
+      <span leaf="">体温 [ 36.8 ] ℃　血压 [128]/[82] mmHg　用药 [ 阿莫西林胶囊 ▾ ]</span>
+    </p>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">在通用富文本里，这只是「一段带样式的文本」。但对我们，它必须是一个</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">原子节点</span></span>
+    <span leaf="">：</span>
+  </p>
+
+  <section style="margin-bottom:24px;">
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <span leaf="">有自己的元数据：</span>
+        <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">字段名、单位、数据类型、必填性、校验规则</span></span>
+        <span leaf="">；</span>
+      </p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <strong style="color:#27272A;"><span leaf="">不能被逐字拆开</span></strong>
+        <span leaf="">——你不能把「体温」和输入框拆到两行里去；</span>
+      </p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <span leaf="">要参与</span>
+        <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">质控</span></span>
+        <span leaf="">（必填字段是否为空）和</span>
+        <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">数据提取</span></span>
+        <span leaf="">（把结构化字段读出来做统计）。</span>
+      </p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">于是文档模型里有了</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 7px;border-radius:3px;font-weight:700;font-size:14px;"><span leaf="">smarttext</span></span>
+    <span leaf="">节点：带 ElementMeta 的结构化节点，当前支持</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">8 类控件</span></span>
+    <span leaf="">（文本 / 多行文本 / 数字 / 下拉 / 日期 / 日期时间 / 复选框 / 单选框），并且在行断算法里被当成</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">不可分割的原子元素</span></span>
+    <span leaf="">处理。整棵文档树共</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">16 类节点类型</span></span>
+    <span leaf="">（段落、表格、单元格、图片、书签、交叉引用、域、脚注、批注等）。</span>
+  </p>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这件事反过来又逼着</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">行断算法重写</span></span>
+    <span leaf="">——见第六节。</span>
+  </p>
+</section>
+
+<!-- ============ 8. 分割线 + 第四章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">04</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">CONSTRAINT III · HOST AGNOSTIC</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">约束三：引擎不能被浏览器绑死</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">ProseMirror / Slate 的渲染最终落在 DOM 上（Slate 甚至以 DOM 为数据源）。在浏览器里，这是最优解。但我要的引擎，</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">宿主是可替换的</span></span>
+    <span leaf="">：今天跑在 React 网页里，明天可能是 Electron 桌面端，甚至要在 Web Worker 里做无头排版（批量生成、服务端预览）。</span>
+  </p>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">所以引擎代码里</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">不允许出现任何浏览器全局</span></span>
+    <span leaf="">——没有 window、没有 document、没有 navigator。所有平台能力必须由宿主注入，这就是 EditorHost</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">六元组</span></span>
+    <span leaf="">：</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">typescript</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">// frontend/src/engine/host/EditorHost.ts</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">export interface EditorHost {</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　text: TextHost　　// 文本度量（measureText 抽象）</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　font: FontHost　　// 字体可用性 / 缺字降级链</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　surface: SurfaceHost　// 渲染表面（Canvas 上下文）</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　viewport: ViewportHost　// 视口尺寸 / 滚动位置</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　input: InputHost　// 键盘 / IME / 指针事件</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　platform: PlatformHost　// 剪贴板 / 定时器 / 本地存储</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">}</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这条约束在架构契约里是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">硬规则</span></span>
+    <span leaf="">，不是「建议」：</span>
+  </p>
+
+  <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 8px;letter-spacing:2px;font-weight:500;">
+      <span leaf="">REFERENCE · 架构契约</span>
+    </p>
+    <p style="font-size:15px;color:#3F3F46;margin:0 0 10px;line-height:1.8;text-align:justify;">
+      <span leaf="">RULE 1：引擎 MUST NOT 依赖 React/UI，MUST NOT 依赖浏览器全局；浏览器能力访问 MUST 经由 Host 接口。</span>
+    </p>
+    <p style="font-size:15px;color:#3F3F46;margin:0;line-height:1.8;text-align:justify;">
+      <span leaf="">RULE 7：引擎模块 MUST 能在非 DOM 运行时被安全 import——导入不得触发任何浏览器副作用。</span>
+    </p>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <strong style="color:#27272A;"><span leaf="">「不得依赖浏览器全局」如果不能被检查，就只是一句口号。</span></strong>
+    <span leaf="">所以它被</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">类型与模块可见性强制</span></span>
+    <span leaf="">：引擎里直接引用 window / document 的代码根本过不了类型检查；单测里用 DomEditorHost 注入替身，引擎本身</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">对 DOM 零感知</span></span>
+    <span leaf="">。</span>
+  </p>
+</section>
+
+<!-- ============ 9. 分割线 + 第五章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">05</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">THE COST</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">自研的代价：先把丑话说在前面</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+    <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;">
+      <span leaf="">「必须把成本讲清楚，否则这篇就是误导。」</span>
+    </p>
+  </section>
+
+  <section style="margin-bottom:24px;">
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <strong style="color:#27272A;"><span leaf="">时间</span></strong>
+        <span leaf="">：从文档模型、排版引擎、渲染管线到 React 外壳，投入以年计；</span>
+      </p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <strong style="color:#27272A;"><span leaf="">边界情况</span></strong>
+        <span leaf="">：行断、分页、光标寻址、IME、剪贴板——每一个都是无底洞。中文输入法的组合态与 Canvas 光标寻址的交互，单独就耗掉很久；</span>
+      </p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <strong style="color:#27272A;"><span leaf="">生态为零</span></strong>
+        <span leaf="">：ProseMirror 有庞大的插件生态，我们这里是 0，任何新能力都得自己写；</span>
+      </p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">4</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <strong style="color:#27272A;"><span leaf="">人才</span></strong>
+        <span leaf="">：招人时「会 ProseMirror」的简历一大把，「写过 Canvas 富文本内核」的几乎没有。</span>
+      </p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">所以下面不是「自研有多爽」，而是「自研之后，我们得到了哪几个</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">别人给不了</span></span>
+    <span leaf="">的东西」。</span>
+  </p>
+</section>
+
+<!-- ============ 10. 分割线 + 第六章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">06</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">WHAT WE GOT</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">自研换来了什么</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:0 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">6.1　排版与渲染的分离</span>
+  </p>
+  <p style="margin-bottom:28px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">分页可预测、可缓存、可增量——</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 7px;border-radius:3px;font-weight:700;font-size:14px;"><span leaf="">IncrementalLayout</span></span>
+    <span leaf="">用</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">脏区追踪</span></span>
+    <span leaf="">只重排受影响的段落，长文档编辑不必全量重排。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:0 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">6.2　三层 Canvas + 粒子化渲染</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">render layers</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">static　 (z = 1)　页面背景 / 阴影 / 水印</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">content　(z = 2)　文本 / 表格 / 图片 / 公式</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">interact (z = 3)　光标 / 选区 / IME 预览</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:28px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">三层各自独立重绘，配合 rAF 帧合并与脏区裁剪：几十页病历滚动时</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">不会整体重绘</span></span>
+    <span leaf="">。每种元素被抽象成一个「粒子」（IParticle），注册到 ParticleRegistry，由渲染器统一调度——要加一种新元素，实现一个 particle 注册进去，</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">不用碰渲染主流程</span></span>
+    <span leaf="">。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:0 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">6.3　所有变更必须走 Command，且只有一个 owner</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这条如果不做，撤销栈迟早会坏。而病历场景里</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">「撤不回去」是致命的</span></span>
+    <span leaf="">。架构契约对应四条硬规则：</span>
+  </p>
+
+  <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 8px;letter-spacing:2px;font-weight:500;">
+      <span leaf="">REFERENCE · 架构契约</span>
+    </p>
+    <p style="font-size:15px;color:#3F3F46;margin:0 0 10px;line-height:1.8;text-align:justify;">
+      <strong style="color:#27272A;"><span leaf="">RULE 4</span></strong>
+      <span leaf="">：ALL document mutations MUST pass through the Command system；</span>
+    </p>
+    <p style="font-size:15px;color:#3F3F46;margin:0 0 10px;line-height:1.8;text-align:justify;">
+      <strong style="color:#27272A;"><span leaf="">RULE 5</span></strong>
+      <span leaf="">：文档变更必须有受控的「变更咽喉」，且用</span>
+      <strong style="color:#27272A;"><span leaf="">类型</span></strong>
+      <span leaf="">强制（NodePool 受控方法），不靠约定或注释；</span>
+    </p>
+    <p style="font-size:15px;color:#3F3F46;margin:0 0 10px;line-height:1.8;text-align:justify;">
+      <strong style="color:#27272A;"><span leaf="">RULE 9</span></strong>
+      <span leaf="">：撤销/重做栈只能有</span>
+      <strong style="color:#27272A;"><span leaf="">一个</span></strong>
+      <span leaf=""> owner，HistoryState 是纯投影，不得存命令；</span>
+    </p>
+    <p style="font-size:15px;color:#3F3F46;margin:0;line-height:1.8;text-align:justify;">
+      <strong style="color:#27272A;"><span leaf="">RULE 11</span></strong>
+      <span leaf="">：一次用户级编辑若产生多步子变更（如「剪切」 = 剪贴板捕获 + 区间删除），必须收敛为</span>
+      <strong style="color:#27272A;"><span leaf="">单个</span></strong>
+      <span leaf="">可撤销单元。</span>
+    </p>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">落地方式是把 NodePool 的内部 nodes 私有化，只暴露受控 API——外部拿不到那个 Map，就</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">没法绕过 Command 偷偷改文档</span></span>
+    <span leaf="">。</span>
+    <strong style="color:#27272A;"><span leaf="">约束由编译器执行，而不是靠 reviewer 的眼睛。</span></strong>
+    <span leaf="">目前引擎里有</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">30+ 种可撤销命令</span></span>
+    <span leaf="">；连续输入 / 删除按</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">500ms 窗口自动合并</span></span>
+    <span leaf="">成一个不可分割的操作。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:0 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">6.4　中文行断：避头尾是刚需</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">自研排版里最容易被低估的一块。中英混排 + 中文标点，如果按「到宽度就断」，会断成这样：</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">wrong break</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">……患者主诉头晕、恶心，</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　呕吐 3 天。　　← 逗号跑到行首（排版错误）</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">中文排版有明确的「避头尾」（禁则）规则：某些字符不能出现在行首（</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 7px;border-radius:3px;font-weight:700;font-size:14px;"><span leaf="">。，、；：？！）》」』】</span></span>
+    <span leaf="">），某些不能出现在行尾（</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 7px;border-radius:3px;font-weight:700;font-size:14px;"><span leaf="">（《〈「『【</span></span>
+    <span leaf="">）。行断算法遇到禁则要向前 / 后调整 1–2 个字符。</span>
+  </p>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">再叠加第三节的原子性约束——smarttext、图片、公式不能逐字拆开——行断器要同时处理</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">宽度、禁则、原子性</span></span>
+    <span leaf="">三个约束。LineBreaker 的换行策略参考了 UAX #14 的思路，但落地是围绕</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">中文避头尾和原子元素</span></span>
+    <span leaf="">自己实现的。</span>
+  </p>
+</section>
+
+<!-- ============ 11. 分割线 + 第七章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">07</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">WHEN NOT TO BUILD</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">什么情况下你不该自研</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:18px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">把丑话说在前面，免得误导人：</span>
+  </p>
+
+  <section style="margin-bottom:24px;">
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <span leaf="">如果你的场景是</span>
+        <strong style="color:#27272A;"><span leaf="">流式内容</span></strong>
+        <span leaf="">（博客 / 笔记 / IM / 评论）——直接用 ProseMirror / Slate / Tiptap，自己写只会死在没必要的复杂度上；</span>
+      </p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <span leaf="">如果你需要</span>
+        <strong style="color:#27272A;"><span leaf="">成熟的协同编辑生态</span></strong>
+        <span leaf="">——先评估现有框架的协作方案。自研内核 + 自研协同是双重风险；</span>
+      </p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <span leaf="">如果你的团队</span>
+        <strong style="color:#27272A;"><span leaf="">没有长期投入的打算</span></strong>
+        <span leaf="">——编辑器内核是需要几年打磨的东西，做一半比不做更糟；</span>
+      </p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">4</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <span leaf="">如果你只是想</span>
+        <strong style="color:#27272A;"><span leaf="">在 contenteditable 上贴一个工具栏</span></strong>
+        <span leaf="">——那本来就不需要「内核」。</span>
+      </p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">我们之所以该自研，只有一个理由：</span>
+    <strong style="color:#27272A;"><span leaf="">「纸张级分页 + 结构化字段 + 宿主无关」这三个约束同时成立，且都无法在通用富文本模型里优雅落地。</span></strong>
+  </p>
+</section>
+
+<!-- ============ 12. 分割线 + 第八章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">08</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">HONEST STATUS</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">坦诚：还没做完的事</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">不想让这篇文章看起来像一份自夸清单，所以把现状列清楚：</span>
+  </p>
+
+  <section style="margin:0 0 28px;overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <thead>
+        <tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">能力</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">真实状态</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">PDF / DOCX 导出</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">规划中</span></strong><span leaf="">。当前可用导出格式：JSON / TXT / HTML</span></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">多人实时协同</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">yjs / y-websocket 依赖已就位，编辑流</span><strong style="color:#27272A;"><span leaf="">尚未接入</span></strong></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">HarfBuzz 文本塑形</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">规划中，用于高精度多语言排版</span></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">Playwright E2E</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">规划中，目前以 Vitest 单元测试为主</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+    <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;">
+      <span leaf="">PDF / Word 导出与多人协同仍在推进中，当前可用导出格式为 JSON / TXT / HTML。</span>
+    </p>
+  </section>
+</section>
+
+<!-- ============ 13. 分割线 + 写在最后 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">∞</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">THE END</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">写在最后</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这套内核完整开源（</span>
+    <strong style="color:#27272A;"><span leaf="">MPL-2.0</span></strong>
+    <span leaf="">），前后端一体：前端 React 18 + TypeScript 严格模式 + 自研 Canvas 渲染，后端 Spring Boot 3.3 + Java 17，带 Docker 部署与完整设计文档。</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">从零手写、不依赖任何第三方富文本框架</span></span>
+    <span leaf="">（没有 Quill / ProseMirror / Slate / Tiptap）。</span>
+  </p>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">如果你也在做</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">排版引擎 / 富文本内核 / Canvas 渲染</span></span>
+    <span leaf="">，或者正在被医疗文书编辑器折磨，欢迎来看看，或者直接开 Issue 聊：</span>
+  </p>
+
+  <section style="border:1px solid #E4E4E7;padding:16px 20px;margin:0 0 24px;">
+    <p style="font-size:14px;color:#52525B;margin:0 0 10px;line-height:1.8;">
+      <span leaf="">开源仓库：</span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;"><span leaf="">gitee.com/wangwang_1_1665527118/emrdocument-engine</span></span>
+    </p>
+    <p style="font-size:14px;color:#52525B;margin:0;line-height:1.8;">
+      <span leaf="">在线体验：</span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;"><span leaf="">139.196.151.15</span></span>
+    </p>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这是「EMR 文档编辑器」系列的</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">第 10 篇</span></span>
+    <span leaf="">。上一篇是一张</span>
+    <strong style="color:#27272A;"><span leaf="">选型决策地图</span></strong>
+    <span leaf="">，聊了「买 / 用开源 / 自研」三条路各适合谁；这一篇往下钻了一层，回答一个更具体的问题：</span>
+    <strong style="color:#27272A;"><span leaf="">既然选了自研，为什么偏偏是 Canvas，而不是站在 ProseMirror 肩上。</span></strong>
+  </p>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">下一篇，我们把镜头再推近——</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">《三层 Canvas 渲染架构：static / content / interact》</span></span>
+    <span leaf="">，聊聊这层分层到底怎么切、每层各管什么、为什么这样切能让几十页病历滚动时不掉帧。</span>
+  </p>
+</section>
+
+<!-- ============ 14. 公益句 ============ -->
+<p style="font-size:15px;margin:0 10px 24px;text-align:center;color:#27272A;font-weight:700;letter-spacing:1px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;padding:14px 10px;">
+  <span leaf="">一份病历不该是医生的负担。让好的工具，成就更好的医疗。</span>
+</p>
+
+<!-- ============ 15. 往期精选 + 关注引导 ============ -->
+<section style="padding:0 10px 32px;">
+  <p style="font-size:11px;color:#A1A1AA;margin:0 0 14px;letter-spacing:2px;">
+    <span leaf="">往期精选</span>
+  </p>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+    <p style="font-size:15px;font-weight:600;color:#27272A;margin:0 0 10px;line-height:1.7;">
+      <span leaf="">· 病历编辑器选型地图：商业套件 / 开源内核 / 自研，各适合谁</span>
+    </p>
+    <p style="font-size:15px;font-weight:600;color:#27272A;margin:0 0 10px;line-height:1.7;">
+      <span leaf="">· 架构契约：如何让 AI 不写坏你的代码</span>
+    </p>
+    <p style="font-size:15px;font-weight:600;color:#27272A;margin:0;line-height:1.7;">
+      <span leaf="">· 电子病历编辑器怎么选？按成熟度分三梯队，帮你少走弯路</span>
+    </p>
+  </section>
+
+  <section style="border-left:2px solid #E4E4E7;padding:12px 0 12px 20px;margin:0 0 24px;">
+    <p style="font-size:13px;color:#A1A1AA;margin:0 0 8px;line-height:1.8;text-align:justify;">
+      <span leaf="">如果这篇对你有用，欢迎关注「旺de碎碎念」。</span>
+    </p>
+    <p style="font-size:13px;color:#A1A1AA;margin:0;line-height:1.8;text-align:justify;">
+      <span leaf="">这里持续记录电子病历、医疗信息化与开源工程化的真实实践。</span>
+    </p>
+  </section>
+
+  <p style="margin:0;font-size:15px;line-height:1.8;text-align:center;color:#52525B;">
+    <span leaf="">点个「在看」，让更多同行看到 ↓</span>
+  </p>
+</section>
+
+<!-- ============ 16. END 分割线 ============ -->
+<section style="padding:0 10px;">
+  <section style="text-align:center;margin:0 0 36px;">
+    <section style="display:flex;align-items:center;justify-content:center;">
+      <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+      <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+      <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+    </section>
+  </section>
+</section>
+
+<!-- ============ 17. 尾部签名 ============ -->
+<section style="padding:0 10px 24px;">
+  <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+    <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+      <span leaf="">我是 {{作者名}}，{{一句话简介，如：热衷于分享 AI 观察与干货}}。</span>
+    </p>
+    <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+      <span leaf="">如果你觉得今天这篇有收获，欢迎</span>
+      <strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong>
+      <span leaf="">三连，我们下篇见。</span>
+    </p>
+  </section>
+</section>
+
+</section>
+  </div>
+</div>
+<script>
+  function gzhShowToast(msg){
+    var t=document.getElementById('gzhToast');
+    t.textContent=msg;t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer=setTimeout(function(){t.classList.remove('show');},2800);
+  }
+  function gzhCopy(){
+    var el=document.getElementById('gzh-content');
+    // 选中渲染后的富文本节点并复制（等价于手动 Ctrl+A / Ctrl+C，保留全部样式）
+    var range=document.createRange();
+    range.selectNodeContents(el);
+    var sel=window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    var ok=false;
+    try{ok=document.execCommand('copy');}catch(e){ok=false;}
+    sel.removeAllRanges();
+    var btn=document.getElementById('gzhCopyBtn');
+    if(ok){
+      gzhShowToast('✅ 已复制！去公众号编辑器按 Ctrl/⌘+V 粘贴即可');
+      var old=btn.textContent;btn.textContent='✅ 已复制';
+      setTimeout(function(){btn.textContent=old;},2200);
+    }else{
+      gzhShowToast('⚠ 自动复制失败，请手动全选(Ctrl/⌘+A)再复制(Ctrl/⌘+C)');
+    }
+  }
+</script>
+</body>
+</html>

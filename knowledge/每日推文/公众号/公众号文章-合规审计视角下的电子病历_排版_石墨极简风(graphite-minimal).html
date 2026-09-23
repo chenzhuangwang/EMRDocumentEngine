@@ -1,0 +1,652 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+<!-- ============ 1. 开头引言卡 ============ -->
+<section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+  <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;">
+    <span leaf="">QUOTE</span>
+  </p>
+  <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;">
+    <span leaf="">合规审计的落点，从来不是「加一个日志文件」那么简单，而是</span>
+    <span style="border-bottom:2px solid #52525B;"><span leaf="">一条能被独立验证的证据链</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;">
+    <span leaf="">—— 旺de碎碎念</span>
+  </p>
+</section>
+
+<!-- ============ 2. 前言正文 ============ -->
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">前一篇回答的是「大家最关心什么」。这一篇换个视角——从</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">审计、质控、留痕</span></span>
+    <span leaf="">的角度，看一份电子病历里藏着哪些「看不见的坑」，以及编辑器能在这里帮上什么忙。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">先设想一个真实的场景。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">质控科的人坐在你对面，翻开一份病历，问：</span>
+  </p>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+    <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;">
+      <span leaf="">「这份病史，第 3 页的『诊断』是谁改的？什么时候改的？改之前写的是什么？」</span>
+    </p>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">你能当场答上来吗？</span>
+  </p>
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">很多医院的答案是——</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">答不上来</span></span>
+    <span leaf="">。或者说，要靠翻纸质、打电话、问当事医生，才能勉强拼出一条时间线。而这，正是「合规审计」真正要解决的事。</span>
+  </p>
+</section>
+
+<!-- ============ 3. 本文看点 ============ -->
+<section style="padding:0 10px 40px;">
+  <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;">
+    <span leaf="">本文看点</span>
+  </p>
+  <section style="display:flex;justify-content:space-between;">
+    <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+      <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+      <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">审计到底在问什么</span></p>
+    </section>
+    <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+      <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+      <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">证据链的四块拼图</span></p>
+    </section>
+    <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+      <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+      <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">还没接上的那几根线</span></p>
+    </section>
+  </section>
+</section>
+
+<!-- ============ 4. 章节分割线 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<!-- ============ 5. 第一章 ============ -->
+<section style="margin-top:16px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">01</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">AUDIT QUESTIONS</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">合规审计，到底在问什么</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:20px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">抛开条文，审计的核心就三个问题：</span>
+  </p>
+
+  <section style="margin-bottom:24px;">
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">谁改的？</span></strong><span leaf="">——身份；</span></p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">改了什么、什么时候？</span></strong><span leaf="">——内容与时间；</span></p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">这条记录，能不能被验证、有没有被动过？</span></strong><span leaf="">——完整性。</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">电子病历理论上比纸质</span>
+    <strong style="color:#27272A;"><span leaf="">更该做到</span></strong>
+    <span leaf="">这三件事：时间戳天然精确、操作天然可记录。但如果系统在最初设计时没把这三件事放进去，电子病历反而可能</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">比纸质更难追溯</span></span>
+    <span leaf="">——纸质还有笔迹，电子改完就「无痕」了。</span>
+  </p>
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">所以合规审计的落点，从来不是「加一个日志文件」那么简单，而是——</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">一条能被独立验证的证据链</span></span>
+    <span leaf="">。</span>
+  </p>
+</section>
+
+<!-- ============ 6. 分割线 + 第二章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">02</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">EVIDENCE CHAIN</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">一条「证据链」，由哪几块拼起来</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:24px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">我习惯把它拆成四块：</span>
+  </p>
+
+  <section style="margin:0 0 24px;overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <thead>
+        <tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;width:34%;"><span leaf="">拼图</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">它回答的问题</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:10px 12px;border-bottom:1px solid #E4E4E7;color:#27272A;font-weight:700;"><span leaf="">版本历史</span></td>
+          <td style="padding:10px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">这份文书一共经历了几版？每一版长什么样？</span></td>
+        </tr>
+        <tr>
+          <td style="padding:10px 12px;border-bottom:1px solid #E4E4E7;color:#27272A;font-weight:700;background:#FAFAFA;"><span leaf="">操作日志</span></td>
+          <td style="padding:10px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">谁、在什么时间、对哪份文档、做了什么动作？</span></td>
+        </tr>
+        <tr>
+          <td style="padding:10px 12px;border-bottom:1px solid #E4E4E7;color:#27272A;font-weight:700;"><span leaf="">溯源标识</span></td>
+          <td style="padding:10px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">这份导出的副本，出自哪个系统、哪个版本？</span></td>
+        </tr>
+        <tr>
+          <td style="padding:10px 12px;border-bottom:1px solid #E4E4E7;color:#27272A;font-weight:700;background:#FAFAFA;"><span leaf="">不可篡改</span></td>
+          <td style="padding:10px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">归档之后，还能不能偷偷改？</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">缺任何一块，证据链都是断的</span></span>
+    <span leaf="">。下面如实说说：这套引擎，目前拼上了哪几块，还差哪几块。</span>
+  </p>
+</section>
+
+<!-- ============ 7. 分割线 + 第三章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">03</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">WHAT WORKS</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">已经做到的</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:0 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">1. 改前改后，能直接对比</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">审计最常问的一句是「这一版和上一版差在哪」。引擎里有</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">文档比对</span></span>
+    <span leaf="">能力：对两个版本的文档做差异计算，输出结构化的变更项（新增 / 删除 / 修改），再由对比视图可视化呈现，路由形如 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">/compare/:oldId/:newId</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:32px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">增删改一目了然，不必人工逐字核对——</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">差异是算出来的，不是看出来的</span></span>
+    <span leaf="">。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:0 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">2. 历史版本，可以回溯</span>
+  </p>
+  <p style="margin-bottom:32px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">配套的是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">版本管理</span></span>
+    <span leaf="">：文档的历史版本有记录、可回溯。后端也有对应的版本实体与数据访问层，让「调出某一版」这件事有地方落。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:0 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">3. 格式在演进，旧档不丢</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这一点最容易被忽略，却直接关系到「档案能不能长期保存」。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">病历是要</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">存几十年</span></span>
+    <span leaf="">的。如果文档格式升级一次、旧文件就打不开了，那所谓的「电子档案」就是空的。引擎把</span>
+    <strong style="color:#27272A;"><span leaf="">文档格式版本</span></strong>
+    <span leaf="">与</span>
+    <strong style="color:#27272A;"><span leaf="">引擎代码版本</span></strong>
+    <span leaf="">严格分开，并配了一条</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">链式升级通道</span></span>
+    <span leaf="">：</span>
+  </p>
+
+  <section style="margin-bottom:24px;">
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">格式版本 4.5.0</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">与引擎代码版本（21.0.0）是两套独立编号；</span>
+      </p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">升级链 8 段</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">v1 → v2 → … → v4.5，打开旧文档时按链逐段迁移到当前版本。</span>
+      </p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:32px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">格式可以长大，但旧档要一直读得开</span></span>
+    <span leaf="">——这是档案保存的底线。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:0 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">4. 过程不中断，记录才不会断</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">「改到一半断电，内容丢了」，在审计上等于</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">记录断裂</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:32px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">引擎的自动保存写在浏览器本地存储里：</span>
+    <strong style="color:#27272A;"><span leaf="">3 秒防抖</span></strong>
+    <span leaf="">触发，保留</span>
+    <strong style="color:#27272A;"><span leaf="">最近 3 个版本</span></strong>
+    <span leaf="">，并带</span>
+    <strong style="color:#27272A;"><span leaf="">崩溃恢复检测</span></strong>
+    <span leaf="">——下次打开时会提示恢复。过程连续，记录才连续。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:0 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">5. 质控意见，能挂进文档</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">审核者不该直接在病历上「涂改」，正确做法是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">批注</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">引擎的批注带着线程 ID 与文本范围，能展示、能回复、能解决，并在正文对应位置以</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">黄色高亮</span></span>
+    <span leaf="">标出——意见和正文对得上，不靠「另附一张纸」。</span>
+  </p>
+
+  <section style="border-left:2px solid #E4E4E7;padding:12px 0 12px 20px;margin:0 0 32px;">
+    <p style="font-size:13px;color:#A1A1AA;margin:0;line-height:1.8;text-align:justify;">
+      <span leaf="">如实补一句：批注面板已具备展示 / 回复 / 解决的能力，但当前还没有「新建批注」的交互入口。这是界面层明确的待补项。</span>
+    </p>
+  </section>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:0 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">6. 导出的副本，能溯源</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">一份病历一旦导出成 HTML / TXT / JSON，就「流出了系统」。为了</span>
+    <strong style="color:#27272A;"><span leaf="">流出去还能查来源</span></strong>
+    <span leaf="">，导出物里会带一个</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">取证溯源标识</span></span>
+    <span leaf="">：</span>
+  </p>
+
+  <section style="margin-bottom:24px;">
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">用零宽字符编码（显示宽度为 0，不改变渲染、不影响搜索）；</span></p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">HTML 里额外写入可读的 </span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">&lt;meta&gt;</span></span><span leaf="">，JSON 里写入 </span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">_provenance</span></span><span leaf=""> 字段，记录生成器与版本。</span></p>
+    </section>
+  </section>
+
+  <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 32px;">
+    <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;">
+      <span leaf="">必须诚实说明：这是取证备用手段，不是防盗手段——标识可以被一条正则一次性剥离。真正的证据底座，是前面说的版本历史与时间戳，不是这枚「水印」。</span>
+    </p>
+  </section>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:0 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">7. 归档之后，不可改</span>
+  </p>
+  <p style="margin-bottom:32px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">引擎提供</span>
+    <strong style="color:#27272A;"><span leaf="">只读模式</span></strong>
+    <span leaf="">与</span>
+    <strong style="color:#27272A;"><span leaf="">打印模式</span></strong>
+    <span leaf="">：进入归档态后编辑被锁死，只能看、只能打。</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">归档即冻结</span></span>
+    <span leaf="">——这是「不可篡改」最朴素的一层实现。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:0 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">8. 权限，按角色来</span>
+  </p>
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">后端是 JWT + Spring Security 的认证授权，用户带</span>
+    <strong style="color:#27272A;"><span leaf="">角色</span></strong>
+    <span leaf="">，接口按角色鉴权。谁能看、谁能改，</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">从入口就分开</span></span>
+    <span leaf="">。</span>
+  </p>
+</section>
+
+<!-- ============ 8. 分割线 + 第四章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">04</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">NOT WIRED YET</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">还没接上的，也一并说清</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:24px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">如果只讲「已经有的」，那就不叫合规视角了。下面这几条，</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">必须讲明白</span></span>
+    <span leaf="">：</span>
+  </p>
+
+  <section style="margin-bottom:26px;">
+    <section style="margin-bottom:18px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">质控规则引擎</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">引擎在，接线没接。内置 20+ 条质控规则、能评分分级，代码与单测都齐——但它在整个仓库里从未被实例化，对应的结果面板也从未被渲染。</span>
+      </p>
+    </section>
+    <section style="margin-bottom:18px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">修改留痕（track changes）</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">只到「渲染」这一步。引擎已经能按「插入 / 删除 / 修改」三种语义给文本上色（打印时统一收成黑色），但产生这些修订标记的编辑流程没有接入——现在正常编辑文档，不会自动生成「谁改了哪一处」的留痕。</span>
+      </p>
+    </section>
+    <section style="margin-bottom:18px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">审计日志</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">结构就位，自动写入未接。后端有审计日志的实体（文档、用户、动作、详情、IP、时间）和数据访问层，但没有把「每次操作自动写一条日志」的拦截器接上。</span>
+      </p>
+    </section>
+    <section style="margin-bottom:18px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">字段级脱敏 / 分级保护</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">规划中。</span>
+      </p>
+    </section>
+  </section>
+
+  <section style="border-left:3px solid #F97316;padding:14px 0 14px 22px;margin:0 0 24px;">
+    <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;">
+      <span leaf="">一句话：能力写好了，界面够不着。</span>
+    </p>
+  </section>
+
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">把这四句和上面八条放在一起看，你才好判断：这套引擎在合规上</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">已经能承担什么</span></span>
+    <span leaf="">，以及</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">还不能承担什么</span></span>
+    <span leaf="">。</span>
+  </p>
+</section>
+
+<!-- ============ 9. 分割线 + 第五章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">05</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">LESS HASSLE</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">把「合规」翻译成「省事」</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">最后，落回场景。</span>
+  </p>
+  <p style="margin-bottom:26px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">合规不是给医生加负担。恰恰相反——</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">真正好的合规设计，是把「事后找证据」的麻烦，变成「事中顺手留痕」的自然。</span></span>
+  </p>
+
+  <section style="margin-bottom:26px;">
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">质控要追溯？不用打电话问医生，直接调两个版本做比对；</span></p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">病案要长期保存？格式升级链保证几十年后还打得开；</span></p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">审核要提意见？批注挂在正文上，闭环可查；</span></p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">4</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">副本流出去了？溯源标识能指回出处。</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <strong style="color:#27272A;"><span leaf="">这些能力，不需要医生额外「操作一下」——它们应该长在编辑器里。</span></strong>
+    <span leaf="">这才是「合规」对一线真正的意义：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">不是多填一张表，而是少一次扯皮</span></span>
+    <span leaf="">。</span>
+  </p>
+</section>
+
+<!-- ============ 10. 分割线 + 写在最后 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">∞</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">THE END</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">写在最后</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">合规审计这件事，说到底是在问一个朴素的问题：</span>
+  </p>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+    <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;">
+      <span leaf="">「这份病历，经得起回头查吗？」</span>
+    </p>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这套内核在「能查」这件事上，已经铺了相当多的地基：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">版本可比、历史可溯、格式可迁、过程可恢复、副本可溯源、归档可锁定</span></span>
+    <span leaf="">。同时，我也把</span>
+    <strong style="color:#27272A;"><span leaf="">还没接上的那几根线</span></strong>
+    <span leaf="">（质控接线、留痕编辑流、审计日志自动写入）原原本本写在了上面。</span>
+  </p>
+
+  <section style="border-left:3px solid #F97316;padding:14px 0 14px 22px;margin:0 0 28px;">
+    <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;">
+      <span leaf="">地基，和管线，是两回事。我不会把「管线还没接」说成「已经通了」。</span>
+    </p>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">仓库与在线体验：</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">LINKS</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">在线体验：http://139.196.151.15/?utm_source=wechat&amp;utm_medium=article&amp;utm_campaign=W14-compliance-audit</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">开源仓库：https://gitee.com/wangwang_1_1665527118/emrdocument-engine?utm_source=wechat&amp;utm_medium=article&amp;utm_campaign=W14-compliance-audit</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这是「EMR 文档编辑器」系列的第 </span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">14 篇</span></span>
+    <span leaf="">。前面有讲内核的（三层 Canvas、断行分页），有回答读者问题的；这一篇回到场景——</span>
+    <strong style="color:#27272A;"><span leaf="">从审计的视角，看一份电子病历该怎么「经得起查」。</span></strong>
+  </p>
+
+  <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">下一篇换到开发实录：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">《性能实录：从 8s 压到 400ms》</span></span>
+    <span leaf="">——讲这套内核在「打开慢、编辑卡」上踩过的坑，以及最后靠哪几件事把时间压了下来。</span>
+  </p>
+</section>
+
+<!-- ============ 11. 公益句 ============ -->
+<p style="font-size:15px;margin:0 10px 24px;text-align:center;color:#27272A;font-weight:700;letter-spacing:1px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;padding:14px 10px;">
+  <span leaf="">一份病历不该是医生的负担。让好的工具，成就更好的医疗。</span>
+</p>
+
+<!-- ============ 12. 往期精选 + 关注引导 ============ -->
+<section style="padding:0 10px 32px;">
+  <p style="font-size:11px;color:#A1A1AA;margin:0 0 14px;letter-spacing:2px;">
+    <span leaf="">往期精选</span>
+  </p>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+    <p style="font-size:15px;font-weight:600;color:#27272A;margin:0 0 10px;line-height:1.7;">
+      <span leaf="">· 病历编辑器被问最多的 5 个问题</span>
+    </p>
+    <p style="font-size:15px;font-weight:600;color:#27272A;margin:0 0 10px;line-height:1.7;">
+      <span leaf="">· 病历数据的「活」与「死」</span>
+    </p>
+    <p style="font-size:15px;font-weight:600;color:#27272A;margin:0;line-height:1.7;">
+      <span leaf="">· 医院信息科的时间都去哪了</span>
+    </p>
+  </section>
+
+  <section style="border-left:2px solid #E4E4E7;padding:12px 0 12px 20px;margin:0 0 24px;">
+    <p style="font-size:13px;color:#A1A1AA;margin:0 0 8px;line-height:1.8;text-align:justify;">
+      <span leaf="">如果这篇对你有用，欢迎关注「旺de碎碎念」。</span>
+    </p>
+    <p style="font-size:13px;color:#A1A1AA;margin:0;line-height:1.8;text-align:justify;">
+      <span leaf="">这里持续记录电子病历、医疗信息化与开源工程化的真实实践。</span>
+    </p>
+  </section>
+
+  <p style="margin:0;font-size:15px;line-height:1.8;text-align:center;color:#52525B;">
+    <span leaf="">点个「在看」，让更多同行看到 ↓</span>
+  </p>
+</section>
+
+<!-- ============ 13. END 分割线 ============ -->
+<section style="padding:0 10px;">
+  <section style="text-align:center;margin:0 0 36px;">
+    <section style="display:flex;align-items:center;justify-content:center;">
+      <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+      <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+      <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+    </section>
+  </section>
+</section>
+
+<!-- ============ 14. 尾部签名 ============ -->
+<section style="padding:0 10px 24px;">
+  <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+    <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+      <span leaf="">这里持续记录电子病历、医疗信息化与开源工程化的真实实践。点个「在看」，让更多同行看到。</span>
+    </p>
+    <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+      <span leaf="">如果你觉得今天这篇有收获，欢迎</span>
+      <strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong>
+      <span leaf="">三连，我们下篇见。</span>
+    </p>
+  </section>
+</section>
+
+</section>

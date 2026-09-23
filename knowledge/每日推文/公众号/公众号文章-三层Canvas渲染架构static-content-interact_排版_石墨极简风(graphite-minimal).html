@@ -1,0 +1,895 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+<!-- ============ 1. 开头引言卡 ============ -->
+<section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+  <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;">
+    <span leaf="">QUOTE</span>
+  </p>
+  <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;">
+    <span leaf="">一张 Canvas 不够用，不是因为画不下，而是</span>
+    <span style="border-bottom:2px solid #52525B;"><span leaf="">重绘的粒度太粗</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;">
+    <span leaf="">—— 旺de碎碎念</span>
+  </p>
+</section>
+
+<!-- ============ 2. 前言正文 ============ -->
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">上一篇讲了「为什么是 Canvas」。这一篇讲一个更具体的问题：用 Canvas 之后，怎么保证</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">几十页病历滚动时还不掉帧</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">上一篇文章里我说，这套病历编辑器选了自研 Canvas，而不是站在 ProseMirror 肩上。评论区有人追问了一个更实在的问题：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">Canvas 不是「整屏重绘」吗</span></span>
+    <span leaf="">？一个几十页的病历，每次打字都要重画一遍？那不得卡死。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这个担心是对的。Canvas 和 DOM 最本质的区别就在这里——DOM 有浏览器帮你做增量更新，你改一个字的样式，浏览器只重排那一块；而 Canvas 是一张白纸，</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">你画什么它显示什么</span></span>
+    <span leaf="">，不画的地方就空着。</span>
+    <strong style="color:#27272A;"><span leaf="">所以「性能」这件事，从你决定用 Canvas 的那一刻起，就得自己负责。</span></strong>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这篇就把这层责任讲清楚：三层 Canvas 怎么切、每层管什么、以及为了「不掉帧」到底做了哪些事。</span>
+  </p>
+</section>
+
+<!-- ============ 3. 本文看点 ============ -->
+<section style="padding:0 10px 40px;">
+  <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;">
+    <span leaf="">本文看点</span>
+  </p>
+  <section style="display:flex;justify-content:space-between;">
+    <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+      <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+      <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">一张 Canvas 为什么不够</span></p>
+    </section>
+    <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+      <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+      <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">绘制顺序就是层级关系</span></p>
+    </section>
+    <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+      <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+      <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">全量重绘的四道防线</span></p>
+    </section>
+  </section>
+</section>
+
+<!-- ============ 4. 章节分割线 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<!-- ============ 5. 第一章 ============ -->
+<section style="margin-top:16px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">01</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">WHY NOT ONE</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">先想清楚：一张 Canvas 为什么不够</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">如果只用一张 Canvas 画所有东西，会立刻撞上一个问题：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">重绘的粒度太粗</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">光标每 530 毫秒要闪一次。如果光标和正文画在同一张 Canvas 上，那么每次闪烁，都要把整页的正文、表格、页眉页脚</span>
+    <strong style="color:#27272A;"><span leaf="">全部重画一遍</span></strong>
+    <span leaf="">——只为了那根 2 像素宽的竖线。这在第 1 页也许看不出来，但一份几十页的病历，滚动到中段时，代价就明显了。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">于是第一刀就很自然：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">按「重绘频率」和「图层语义」把 Canvas 切开</span></span>
+    <span leaf="">。</span>
+  </p>
+</section>
+
+<!-- ============ 6. 分割线 + 第二章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">02</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">THREE LAYERS</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">三层各管什么</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">layers</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">static   (z = 1)  页面背景 / 阴影 / 边距线 / 页码 / 水印 / 四角标记</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">content  (z = 2)  正文文本 / 表格 / 结构化控件 / 图片 / 页眉页脚</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">interact (z = 3)  光标 / 选区高亮 / IME 预览 / 拖拽参考线</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:18px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">三层的分工逻辑不是「按内容类型」，而是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">按变化的频率</span></span>
+    <span leaf="">：</span>
+  </p>
+
+  <section style="margin:0 0 28px;overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <thead>
+        <tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">层</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">什么时候变</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">典型内容</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">static</span></strong></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">几乎不变（换页、换主题、改水印时）</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">页面底板、水印、页码</span></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><strong style="color:#27272A;"><span leaf="">content</span></strong></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">编辑时变（但通常是局部）</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">文字、表格、图片</span></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">interact</span></strong></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">高频变（每次光标移动 / 闪烁）</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">光标、选区、IME 候选预览</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这样切完，最贵的「高频」和最重的「正文」就被</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">物理隔离</span></span>
+    <span leaf="">了：</span>
+    <strong style="color:#27272A;"><span leaf="">光标闪烁只需要清掉最上面那层，重画一根线；下面两层的像素原封不动。</span></strong>
+    <span leaf="">反过来，正文变化时也不会误伤光标层。</span>
+  </p>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">实现上，三层是三个独立的 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">CanvasSurface</span></span>
+    <span leaf="">，各自持有自己的 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">CanvasRenderingContext2D</span></span>
+    <span leaf="">，通过 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">host.surface.createLayer(key)</span></span>
+    <span leaf=""> 创建（</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">LayeredRenderer.ts</span></span>
+    <span leaf="">）。三个 ctx 存在一个 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">layers</span></span>
+    <span leaf=""> / </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">ctxs</span></span>
+    <span leaf=""> 字典里，绘制时按 </span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">static → content → interact</span></span>
+    <span leaf=""> 的固定顺序调用。</span>
+  </p>
+</section>
+
+<!-- ============ 7. 分割线 + 第三章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">03</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">DRAW ORDER</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">渲染顺序：为什么是「从下往上」</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:18px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">主渲染入口在 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">Draw.render()</span></span>
+    <span leaf="">，代码里第一行注释就把顺序钉死了：</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">draw order</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">顺序：静态层(背景) → 内容层(文本) → interact层(选区→光标)</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:18px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这个顺序不是随便定的，它对应着一条</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">绘制语义</span></span>
+    <span leaf="">：</span>
+  </p>
+
+  <section style="margin-bottom:24px;">
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <strong style="color:#27272A;"><span leaf="">static 在最下</span></strong>
+        <span leaf="">，所以「必须垫在文字下面」的东西都放这一层——页面底色、水印，以及</span>
+        <strong style="color:#27272A;"><span leaf="">批注高亮</span></strong>
+        <span leaf="">。注意批注高亮虽然语义上属于「内容」，但它必须画在文字</span>
+        <strong style="color:#27272A;"><span leaf="">底下</span></strong>
+        <span leaf="">，于是它被作为 </span>
+        <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">decoratePage</span></span>
+        <span leaf=""> 回调注入静态层，而不是画在内容层。</span>
+      </p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <strong style="color:#27272A;"><span leaf="">content 在中间</span></strong>
+        <span leaf="">，正文、表格、页眉页脚。</span>
+      </p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <strong style="color:#27272A;"><span leaf="">interact 在最上</span></strong>
+        <span leaf="">，光标、选区。这里还有一层细分：</span>
+        <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">选区高亮画在光标之前</span></span>
+        <span leaf="">（在文字「下方」），</span>
+        <strong style="color:#27272A;"><span leaf="">光标画在最后</span></strong>
+        <span leaf="">（在文字「上方」）——同一次绘制里，</span>
+        <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">renderSelectionUnified</span></span>
+        <span leaf=""> 先跑，光标 </span>
+        <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">fillRect</span></span>
+        <span leaf=""> 后跑。</span>
+      </p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">同一张 Canvas 里，</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">绘制顺序就是层级关系</span></span>
+    <span leaf="">。这套顺序在代码里是硬编码的，不是靠样式或配置。</span>
+  </p>
+</section>
+
+<!-- ============ 8. 分割线 + 第四章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">04</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">FOUR DEFENSES</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">真正的对手：Canvas 的「全量重绘」</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">分层解决了「光标闪烁连累正文」，但没解决「滚动时要不要重画所有页」。这里才是 Canvas 性能的主战场。</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">有四道防线</span></span>
+    <span leaf="">。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">4.1　Canvas 只有一屏多一点，不是整个文档</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">最容易被忽略、但收益最大的一点：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">Canvas 元素的物理尺寸，不等于文档高度</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">很多人以为「一个长文档 = 一张很长的 Canvas」，于是撑出一张几万像素高的画布。这在浏览器里是灾难——</span>
+    <strong style="color:#27272A;"><span leaf="">GPU 纹理有上限，超了直接不渲染或崩溃</span></strong>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:18px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这套实现里的做法是：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">Canvas 尺寸 = 视口高度 + 一页的 overscan</span></span>
+    <span leaf="">。</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">typescript</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">// LayeredRenderer.ts</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">private readonly OVERSCAN_PAGES = 1</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">...</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">const pagesInView = Math.ceil(docViewportH / avgSlot) + this.OVERSCAN_PAGES * 2</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">也就是说，画布只覆盖「当前视口 + 上下各留一点余量」。滚动时不是重画，而是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">移动画布</span></span>
+    <span leaf="">：三层 Canvas 都是 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">absolute 定位</span></span>
+    <span leaf="">、固定在视口顶部，内容根据滚动偏移 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">setTransform</span></span>
+    <span leaf=""> 平移。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">那「长文档的滚动条」从哪来？答案是一个</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">占位元素（spacer）</span></span>
+    <span leaf="">：</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">syncSizes()</span></span>
+    <span leaf=""> 里把 spacer 的高度设成「全文档高度 × 缩放」，用它撑出原生滚动条；真正的画布始终只画视口那一块。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">4.2　只画看得见的页</span>
+  </p>
+  <p style="margin-bottom:18px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">画布尺寸限制了「画多大」，</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">getVisiblePages</span></span>
+    <span leaf=""> 决定了「画哪几页」：</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">typescript</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">const visible = this.layoutEngine.getVisiblePages(scrollY, docViewportH)</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">for (let i = visible.start; i &lt;= visible.end; i++) { ... }</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">getVisiblePages(scrollY, viewportHeight)</span></span>
+    <span leaf=""> 会遍历页面累加高度，算出当前滚动位置覆盖的页区间 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">{ start, end }</span></span>
+    <span leaf="">。</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">区间外的页直接跳过</span></span>
+    <span leaf="">——不测量、不绘制。配合 4.1 的 overscan，滚动手感上「下一页」已经提前画好了，不会出现白屏。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">4.3　同一帧内的多次重绘，合并成一次</span>
+  </p>
+  <p style="margin-bottom:18px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">连续打字时，「每个字符触发一次渲染」是浪费。渲染调度走的是 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">requestAnimationFrame</span></span>
+    <span leaf=""> 合并：</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">typescript</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">scheduleRender(pool?, runtimeState?): void {</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　if (this._rafId !== null) return   // 已有待执行的渲染帧</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　this._rafId = this.host.surface.requestFrame(() => {</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　this._rafId = null</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　this.render(pool, runtimeState)</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　})</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">}</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">关键在于那句 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">if (this._rafId !== null) return</span></span>
+    <span leaf="">：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">只要已经排了一个帧，后续调用全部丢弃</span></span>
+    <span leaf="">。一帧内不管触发多少次重绘请求，最终只执行最后一次 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">render()</span></span>
+    <span leaf="">。这在连续输入、滚动、缩放这类高频场景里，直接把渲染次数压到「显示器刷新率」的上限。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">4.4　变了哪里，就只清哪里</span>
+  </p>
+  <p style="margin-bottom:18px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">最后一道是脏区裁剪。内容层重绘前，如果记录了脏矩形 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">dirtyRect</span></span>
+    <span leaf="">，就用 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">ctx.clip()</span></span>
+    <span leaf=""> 把重绘限制在这个矩形内：</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">typescript</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">if (this.dirtyRect) {</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　ctx.save()</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　ctx.beginPath()</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　ctx.rect(this.dirtyRect.x, this.dirtyRect.y, this.dirtyRect.w, this.dirtyRect.h)</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　ctx.clip()</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　this.dirtyRect = null</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">}</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">改了一个段落，就不必清整屏</span></span>
+    <span leaf="">。脏区由排版侧的 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">DirtyTracker</span></span>
+    <span leaf=""> 在三层（段落 / 页面 / 节点）上标记，命令执行后自动打点。</span>
+  </p>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+    <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;">
+      <span leaf="">「一句话总结这四道防线：画布只留一屏（4.1）、只画可见页（4.2）、一帧只画一次（4.3）、只清变化区（4.4）。」</span>
+    </p>
+  </section>
+</section>
+
+<!-- ============ 9. 分割线 + 第五章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">05</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">PARTICLES</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">粒子化：加一种元素，不碰主流程</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">分层和裁剪解决的是「画多少、画多快」。还有一个</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">工程可维护性</span></span>
+    <span leaf="">问题：正文里的元素种类是会涨的——今天是文字、表格、图片，明天要加公式、图表、条码、脚注。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">如果每加一种元素就往 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">render()</span></span>
+    <span leaf=""> 里塞一个 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">if/else</span></span>
+    <span leaf="">，主渲染函数很快会变成一个谁都不敢动的巨型分支。</span>
+  </p>
+  <p style="margin-bottom:18px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这里的做法是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">粒子化</span></span>
+    <span leaf="">：每种可渲染元素抽象成一个「粒子」，实现同一个接口：</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">typescript</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">export interface IParticle {</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　readonly type: string</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　render(ctx, item, x, y, options?): void</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">}</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:18px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">粒子注册到 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">ParticleRegistry</span></span>
+    <span leaf="">，渲染时</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">按类型查表调度</span></span>
+    <span leaf="">，而不是 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">switch</span></span>
+    <span leaf="">：</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">typescript</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">const textRenderer = particleRegistry.get(item.nodeType || item.type)</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　　　　　　　　 || particleRegistry.get('text')</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <strong style="color:#27272A;"><span leaf="">要加一种新元素，只需要实现一个 particle 并注册进去，主渲染流程一行都不用改。</span></strong>
+    <span leaf="">目前注册的粒子包括：</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 7px;border-radius:3px;font-weight:700;font-size:14px;"><span leaf="">文本 · 表格 · 分隔线 · 列表标记 · 图片 · 公式 · 脚注 · 批注 · 图表 · 条码</span></span>
+    <span leaf="">——它们共用一套调度入口。</span>
+  </p>
+</section>
+
+<!-- ============ 10. 分割线 + 第六章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">06</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">DETAILS</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">细节里的取舍</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">前面是主干。真正让「手感」不一样的，往往是这些不起眼的地方。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">6.1　光标闪烁为什么用 setInterval，不用 rAF</span>
+  </p>
+  <p style="margin-bottom:18px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">光标闪烁如果用 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">requestAnimationFrame</span></span>
+    <span leaf=""> 驱动，意味着</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">每秒 60 次唤醒整个渲染流程</span></span>
+    <span leaf="">，只为翻转一个布尔值。而光标闪烁是「每 530 毫秒变一次」的低频事件，跟帧率毫无关系。</span>
+  </p>
+  <p style="margin-bottom:18px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">所以这里的实现很直接——一个独立的定时器：</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">typescript</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">this.blinkTimer = setInterval(() => {</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　this.cursorVisible = !this.cursorVisible</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　state.cursor.visible = this.cursorVisible</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　if (this._renderCallback) this._renderCallback()</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">}, 530)</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <strong style="color:#27272A;"><span leaf="">低频事件就别占用高频通道。</span></strong>
+    <span leaf="">闪烁只翻转可见性并触发一次重绘，不参与每帧的渲染循环。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">6.2　水印：离屏预渲染成 pattern</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">水印是「铺满整页、内容完全一样、只是重复」的典型场景。如果每页都重新画一遍旋转文字，纯属浪费。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这里的做法是</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">离屏 Canvas 预渲染</span></span>
+    <span leaf="">：先在离屏表面画一次旋转文字，</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">createPattern(..., 'repeat')</span></span>
+    <span leaf=""> 生成可平铺的图案，正式渲染时 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">fillRect</span></span>
+    <span leaf=""> 一次铺满（</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">prepareTileWatermark</span></span>
+    <span leaf="">）。图案只在配置变化时重算一次。文字水印和图片水印各有路径，切换文档时通过显式传入 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">null</span></span>
+    <span leaf=""> 来清除，避免上一份文档的水印残留。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">6.3　渲染器不创建 Canvas</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">一个容易被忽视、但决定了「能不能被不同宿主嵌入」的细节：</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">渲染器自己从不创建 Canvas 元素</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">LayeredRenderer</span></span>
+    <span leaf=""> 的所有画布能力——创建层、创建离屏表面、请求下一帧、加载图片——全部通过 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">host.surface</span></span>
+    <span leaf=""> 拿。构造函数里也是 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">surface.createLayer(key)</span></span>
+    <span leaf=""> 而不是 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">document.createElement('canvas')</span></span>
+    <span leaf="">。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这条约束的收益是：引擎里</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">没有浏览器全局</span></span>
+    <span leaf="">（无 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">window</span></span>
+    <span leaf=""> / </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">document</span></span>
+    <span leaf="">）。换成 Electron、放进 Web Worker 做无头排版，渲染层不需要改——它只知道「宿主给了我一个 surface」。</span>
+  </p>
+
+  <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+    <span leaf="">6.4　一页坏了，不能让整帧白屏</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">渲染是「每帧重画」的，一旦某页的某个节点抛错，如果异常冒泡到 rAF 回调，</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">整帧都不会画</span></span>
+    <span leaf="">——其余页和光标一起消失，用户看到的是全屏空白。</span>
+  </p>
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">所以渲染路径包了两层容错：</span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">safeRenderPage</span></span>
+    <span leaf="">（逐页）和 </span>
+    <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">safeRenderParticle</span></span>
+    <span leaf="">（逐节点）。</span>
+    <strong style="color:#27272A;"><span leaf="">单页失败只损失这一页，单节点失败只丢这个节点</span></strong>
+    <span leaf="">，渲染继续往下走。这在医疗场景里不是「体验优化」，而是「不能因为一个坏数据点就让整份病历不可见」。</span>
+  </p>
+</section>
+
+<!-- ============ 11. 分割线 + 第七章 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">07</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">THE COST</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">代价与边界（还是得说清楚）</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:18px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">三层 Canvas 不是没有成本的，我把代价也列出来：</span>
+  </p>
+
+  <section style="margin-bottom:24px;">
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <strong style="color:#27272A;"><span leaf="">内存换性能</span></strong>
+        <span leaf="">：三层各持一个 Canvas，物理像素 = 视口 × DPR × 层数。高 DPR 屏上内存占用是单层的数倍——这是「用空间换掉帧」的明确取舍；</span>
+      </p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <strong style="color:#27272A;"><span leaf="">一切要手写</span></strong>
+        <span leaf="">：命中检测、滚动、光标定位、文本测量，DOM 免费给的东西，这里都得自己实现（这也是上一篇说「自研要长期投入」的原因）；</span>
+      </p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;">
+        <strong style="color:#27272A;"><span leaf="">脏区裁剪依赖脏标记的准确性</span></strong>
+        <span leaf="">：</span>
+        <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">DirtyTracker</span></span>
+        <span leaf=""> 标错区间，就会留下残影或重绘不足。增量排版和脏区追踪是这套架构里最需要测试覆盖的部分。</span>
+      </p>
+    </section>
+  </section>
+
+  <section style="border-left:3px solid #F97316;padding:14px 0 14px 22px;margin:0 0 24px;">
+    <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;">
+      <span leaf="">换句话说：这套架构解决的是「几十页文档 + 高频交互」的性能问题；如果你的场景是一屏内的短文本，它的复杂度就是净负担。</span>
+    </p>
+  </section>
+</section>
+
+<!-- ============ 12. 分割线 + 写在最后 ============ -->
+<section style="padding:0 10px;">
+  <section style="height:1px;background:#E4E4E7;margin:0;">
+    <span leaf=""><br></span>
+  </section>
+</section>
+
+<section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+  <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+    <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+      <span leaf="">∞</span>
+    </p>
+    <section style="margin-top:-8px;">
+      <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+        <span leaf="">THE END</span>
+      </p>
+      <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+        <span leaf="">写在最后</span>
+      </h3>
+    </section>
+  </section>
+</section>
+
+<section style="padding:0 10px 36px;">
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这套内核完整开源（</span>
+    <strong style="color:#27272A;"><span leaf="">MPL-2.0</span></strong>
+    <span leaf="">），前后端一体：前端 React 18 + TypeScript 严格模式 + 自研 Canvas 渲染，后端 Spring Boot 3.3 + Java 17，带 Docker 部署与完整设计文档。</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">从零手写、不依赖任何第三方富文本框架</span></span>
+    <span leaf="">（没有 Quill / ProseMirror / Slate / Tiptap）。</span>
+  </p>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">如果你也在做</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">渲染引擎 / 富文本内核 / Canvas 性能优化</span></span>
+    <span leaf="">，或者正在被医疗文书编辑器折磨，欢迎来看看，或者直接开 Issue 聊：</span>
+  </p>
+
+  <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+    <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">LINKS</span></span>
+    </section>
+    <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">在线体验：http://139.196.151.15/?utm_source=wechat&amp;utm_medium=article&amp;utm_campaign=W11-layered-canvas</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">开源仓库：https://gitee.com/wangwang_1_1665527118/emrdocument-engine?utm_source=wechat&amp;utm_medium=article&amp;utm_campaign=W11-layered-canvas</span></p>
+    </section>
+  </section>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">这是「EMR 文档编辑器」系列的第 </span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">11 篇</span></span>
+    <span leaf="">。上一篇回答「为什么不用 ProseMirror，偏要自研 Canvas 内核」；这一篇往下钻了一层：</span>
+    <strong style="color:#27272A;"><span leaf="">既然用了 Canvas，三层怎么切、全量重绘的代价怎么还。</span></strong>
+  </p>
+
+  <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+    <span leaf="">下一篇，我们把镜头推到排版的底层——</span>
+    <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">《行断与分页：UAX#14 + 孤行寡行控制》</span></span>
+    <span leaf="">，聊聊中文病历里「一行字该在哪里断、一段话该不该被拆到两页」，以及避头尾、原子元素、孤行寡行这三件事为什么必须一起解决。</span>
+  </p>
+</section>
+
+<!-- ============ 13. 公益句 ============ -->
+<p style="font-size:15px;margin:0 10px 24px;text-align:center;color:#27272A;font-weight:700;letter-spacing:1px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;padding:14px 10px;">
+  <span leaf="">一份病历不该是医生的负担。让好的工具，成就更好的医疗。</span>
+</p>
+
+<!-- ============ 14. 往期精选 + 关注引导 ============ -->
+<section style="padding:0 10px 32px;">
+  <p style="font-size:11px;color:#A1A1AA;margin:0 0 14px;letter-spacing:2px;">
+    <span leaf="">往期精选</span>
+  </p>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+    <p style="font-size:15px;font-weight:600;color:#27272A;margin:0 0 10px;line-height:1.7;">
+      <span leaf="">· 为什么不用 ProseMirror：自研 Canvas 内核的取舍</span>
+    </p>
+    <p style="font-size:15px;font-weight:600;color:#27272A;margin:0 0 10px;line-height:1.7;">
+      <span leaf="">· 病历编辑器选型地图：商业套件 / 开源内核 / 自研，各适合谁</span>
+    </p>
+    <p style="font-size:15px;font-weight:600;color:#27272A;margin:0;line-height:1.7;">
+      <span leaf="">· 架构契约：如何让 AI 不写坏你的代码</span>
+    </p>
+  </section>
+
+  <section style="border-left:2px solid #E4E4E7;padding:12px 0 12px 20px;margin:0 0 24px;">
+    <p style="font-size:13px;color:#A1A1AA;margin:0 0 8px;line-height:1.8;text-align:justify;">
+      <span leaf="">如果这篇对你有用，欢迎关注「旺de碎碎念」。</span>
+    </p>
+    <p style="font-size:13px;color:#A1A1AA;margin:0;line-height:1.8;text-align:justify;">
+      <span leaf="">这里持续记录电子病历、医疗信息化与开源工程化的真实实践。</span>
+    </p>
+  </section>
+
+  <p style="margin:0;font-size:15px;line-height:1.8;text-align:center;color:#52525B;">
+    <span leaf="">点个「在看」，让更多同行看到 ↓</span>
+  </p>
+</section>
+
+<!-- ============ 15. END 分割线 ============ -->
+<section style="padding:0 10px;">
+  <section style="text-align:center;margin:0 0 36px;">
+    <section style="display:flex;align-items:center;justify-content:center;">
+      <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+      <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+      <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+    </section>
+  </section>
+</section>
+
+<!-- ============ 16. 尾部签名 ============ -->
+<section style="padding:0 10px 24px;">
+  <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+    <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+      <span leaf="">这里持续记录电子病历、医疗信息化与开源工程化的真实实践。点个「在看」，让更多同行看到。</span>
+    </p>
+    <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+      <span leaf="">如果你觉得今天这篇有收获，欢迎</span>
+      <strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong>
+      <span leaf="">三连，我们下篇见。</span>
+    </p>
+  </section>
+</section>
+
+</section>
