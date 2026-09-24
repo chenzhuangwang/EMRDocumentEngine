@@ -42,7 +42,7 @@ import { createBarcodeParticle } from './particles/BarcodeParticle'
 import { particleRegistry } from './particles/ParticleRegistry'
 import { textParticle, separatorParticle, listParticle, fieldParticle } from './particles/ParticleAdapters'
 import { buildCellGrid } from '../document/table/TableOps'
-import { flattenTextContainers, regionIdOf, selectionSpine, paragraphTextLength } from '../document/selection/SelectionCollector'
+import { regionIdOf, selectionSpine, paragraphTextLength, bodyParagraphSpine } from '../document/selection/SelectionCollector'
 import { COMMENT_HIGHLIGHT, commentHighlight } from './particles/CommentParticle'
 import { safeRenderParticle, safeRenderPage } from '../ErrorRecovery'
 import { resolveHfParagraphLocation } from '../document/core/HeaderFooterRegions'
@@ -322,8 +322,8 @@ export class Draw {
     // 文档空间滚动位置 — 直接读取, 每次都准确反映当前滚动
     const scrollY = this.coordSystem.transform.scrollY
 
-    // 判断该段落属于 body / header / footer 哪个区域
-    const section = this.resolveParagraphSection(paraId)
+    // 判断该段落属于 body / header / footer 哪个**带** (band)
+    const section = this.resolveBandOf(paraId)
     let charCount = 0
 
     // 遍历所有页面查找 (而非 visible.start..visible.end) — 避免与画布 overscan 不一致。
@@ -463,10 +463,13 @@ export class Draw {
   }
 
   /**
-   * 判断段落 ID 属于 body / header / footer 哪个区域
-   * (归属唯一经 HeaderFooterRegions 解析 — 含首页/偶数页变体, 契约 §7.9)
+   * 段落属于 body / header / footer 哪个**页带** (band)。
+   *
+   * 命名刻意避开 "Section": 本引擎里 `Section` 是文档结构容器 (契约 §31),
+   * 而这里回答的是"页眉带 / 页脚带 / 正文"—— 两个概念无关, 同名会误导。
+   * 归属唯一经 HeaderFooterRegions 解析 (含首页/偶数页变体, 契约 §7.9)。
    */
-  private resolveParagraphSection(paraId: string): 'body' | 'header' | 'footer' {
+  private resolveBandOf(paraId: string): 'body' | 'header' | 'footer' {
     if (!this.document) return 'body'
     return resolveHfParagraphLocation(this.document, paraId)?.band ?? 'body'
   }
@@ -828,10 +831,10 @@ export class Draw {
       return
     }
 
-    // 展平 body → 阅读顺序 (表格展开为 cell 段落)。cell 段落不在 body.children,
-    // 若不展平, body↔table 跨域选区 indexOf=-1 被整体丢弃 (「全选/拖选选不中表格」)。
-    const bodyChildren = pool.getChildren(pool.rootIds.body)
-    const spine = flattenTextContainers(pool, bodyChildren)
+    // 展平 body → 阅读顺序 (契约 §31.3 W3: 表格展开为 cell 段落)。cell 段落不在
+    // body.children, 若不展平, body↔table 跨域选区 indexOf=-1 被整体丢弃
+    // (「全选/拖选选不中表格」)。
+    const spine = this.document ? bodyParagraphSpine(this.document, pool) : []
     const aIdx = spine.indexOf(anchorParaId)
     const fIdx = spine.indexOf(focusParaId)
     if (aIdx < 0 || fIdx < 0) return

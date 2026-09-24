@@ -13,6 +13,7 @@
 
 import type { DocumentTree } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
+import { bodyBlockSpine } from '../document/selection/SelectionCollector'
 
 // ---- 类型 ----
 
@@ -53,7 +54,7 @@ function findBookmarkTarget(doc: DocumentTree, pool: NodePool, ref: string): str
   }
 
   // 回退: 历史实现 (书签作为正文段落直接子节点时够用)
-  for (const blockId of doc.body.children) {
+  for (const blockId of bodyBlockSpine(doc, pool)) {
     const para = pool.nodes.get(blockId) as { children?: readonly string[] } | undefined
     if (!para?.children) continue
     for (const childId of para.children) {
@@ -114,7 +115,7 @@ export class BookmarkRenderer {
   ): ResolvedReference[] {
     const results: ResolvedReference[] = []
 
-    for (const blockId of doc.body.children) {
+    for (const blockId of bodyBlockSpine(doc, pool)) {
       const block = pool.nodes.get(blockId) as { children?: readonly string[]; type?: string } | undefined
       if (!block || block.type !== 'paragraph') continue
 
@@ -196,7 +197,7 @@ export class BookmarkRenderer {
     const direct = pool.nodes.get(text) as { type?: string; outlineLevel?: number } | undefined
     if (direct && direct.type === 'paragraph' && (direct.outlineLevel ?? 0) > 0) return text
 
-    for (const blockId of doc.body.children) {
+    for (const blockId of bodyBlockSpine(doc, pool)) {
       const block = pool.nodes.get(blockId) as {
         type?: string; outlineLevel?: number; children?: readonly string[]
       } | undefined

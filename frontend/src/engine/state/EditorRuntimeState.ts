@@ -17,13 +17,20 @@ import type { HistoryState } from './HistoryState'
 
 export interface CursorState {
   /**
-   * 段落定位: ID 链路路径
-   * 格式: [documentRootId, regionRootId, ..., paragraphId]
-   * 末段永远是"可定位的文本容器节点"(Paragraph 或 FootnoteContent 等)
+   * 段落定位: `[documentRootId, paragraphId]` —— **恒为 2 元素** (契约 §31.4)。
    *
-   * 示例:
-   *   ['doc_1', 'body_root', 'para_3']    — 正文第 3 段
-   *   ['doc_1', 'header_root', 'para_h1'] — 页眉内段落
+   * 末元素永远是"可定位的文本容器节点"(Paragraph / FootnoteContent 等)。
+   * 全仓库的构造点 (HitTestIndex / Editor / MouseHandler / 派生命令的
+   * `[...path.slice(0,-1), newParaId]`) 都产 2 元素路径; 不存在 3+ 元素路径,
+   * 也不存在 `body_root` / `header_root` 这类中间节点。
+   *
+   * **祖先信息不在此承载**: 段落所在的容器 (body / cell / header / footer /
+   * section) 一律在使用点现场解析 —— `resolveParagraphRegion` /
+   * `resolveCellPosition` / `resolveHfParagraphLocation`, 走的是"段落 id → 扫池
+   * 找父", 与路径深度无关。因此 Section 的加入**不改变**本字段的格式。
+   *
+   * 不要在路径里插入容器 id: `path[length-2]` 的兜底语义
+   * (SplitParagraphCommand / InsertNodesCommand) 会随之静默改变。
    */
   paragraphPath: string[]
   /** 字符偏移: 在该段落全部可见文本中的 UTF-16 码元偏移 (0..totalTextLength) */

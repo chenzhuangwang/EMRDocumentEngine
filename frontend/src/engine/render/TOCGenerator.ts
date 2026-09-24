@@ -21,6 +21,7 @@
 
 import type { DocumentTree, Paragraph } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
+import { bodyBlockSpine } from '../document/selection/SelectionCollector'
 import { smartTextDisplayValue } from '../document/factory/ElementFormatter'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 import { locale } from '../i18n/index'
@@ -92,7 +93,7 @@ export class TOCGenerator {
   ): TOCEntry[] {
     const entries: TOCEntry[] = []
 
-    for (const blockId of doc.body.children) {
+    for (const blockId of bodyBlockSpine(doc, pool)) {
       const block = pool.nodes.get(blockId)
       if (!block || block.type !== 'paragraph') continue
 

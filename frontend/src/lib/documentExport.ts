@@ -19,14 +19,15 @@
 
 import {
   hfParagraphsForExport, resolveFieldText, smartTextDisplayValue, buildMergeMatrix, locale,
+  bodyBlockSpine,
 } from '@/engine'
 import type { MergeMatrix } from '@/engine'
 import type { DocumentTree, ListStyle } from '@/engine/document/core/DocumentModel'
 import { ListParticle } from '@/engine/render/particles/ListParticle'
 
-/** 导出期读取池的最小结构 (只读) */
+/** 导出期读取池的最小结构 (只读; 结构上满足引擎的 SpinePool, 契约 §31) */
 export interface ExportPool {
-  nodes: ReadonlyMap<string, unknown>
+  nodes: ReadonlyMap<string, { type: string; children?: readonly string[] }>
 }
 
 interface ParaLike {
@@ -206,7 +207,7 @@ export function buildExportText(doc: DocumentTree, pool: ExportPool, now: Date =
   const blocks: string[] = []
   const blocksToEmit: Array<readonly string[]> = [
     hfParagraphsForExport(doc, 'header'),
-    doc.body.children,
+    bodyBlockSpine(doc, pool),
     hfParagraphsForExport(doc, 'footer'),
   ]
   for (const ids of blocksToEmit) {
@@ -385,7 +386,7 @@ export function buildExportHtml(doc: DocumentTree, pool: ExportPool, now: Date =
     out.push('</header>')
   }
 
-  emitHtmlBlock(doc.body.children, pool, doc, now, out)
+  emitHtmlBlock(bodyBlockSpine(doc, pool), pool, doc, now, out)
 
   const footer = hfParagraphsForExport(doc, 'footer')
   if (footer.length > 0) {

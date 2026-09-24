@@ -162,6 +162,14 @@ MUST resolve "which variant applies to page N" and "which array owns
 this paragraph id" through that resolver — never by re-implementing
 the field mapping or the page rule.
 
+A Section is document STRUCTURE: a container node that groups
+body-level content (a whole chapter / clinical block) and owns its
+own children array. It is NOT a heading (§31.10) and it is NOT a page
+boundary (§31.10 SectionBreak). Content inside a Section is reached
+through the logical document flow, never by re-walking body children
+— see §31, which fixes the boundary between the STRUCTURE TREE and
+the LOGICAL FLOW and is binding for every consumer.
+
 ------------------------------------------------------------
 2.1 SmartText / EMR Field boundary
 ------------------------------------------------------------
@@ -2342,6 +2350,23 @@ again an explicit NO-OP step (4.5.0 → 4.6.0, breaking: false, upgrade
 returns the document unchanged). A pre-4.6 document has no
 Table.dynamicRows, so every table is fixed — exactly the old behavior.
 
+Section (§31) advances the format from 4.6.0 to 4.7.0, again an
+explicit NO-OP step (4.6.0 → 4.7.0, breaking: false, upgrade returns
+the document unchanged). A pre-4.7 document has no Section nodes, so
+every document reads exactly as before.
+
+Two caveats about the version mechanism itself (see §31.12):
+
+  - The version gate is a REAL safety mechanism, and it works: a
+    client that is too old rejects a newer document at load, BEFORE
+    any node is parsed — so a document containing a node type the
+    old client does not know is never silently half-read.
+  - It is NOT sufficient on its own. A document that misreports its
+    version, or omits `modelVersion` entirely (falling back to
+    LEGACY), bypasses the gate. Hence the SECOND line of defence:
+    load-time validation of modelVersion ↔ node-type consistency
+    (§7.3 / §31), not the gate alone.
+
 
 ============================================================
 15. EVENT BUS ARCHITECTURE
@@ -3154,3 +3179,322 @@ Principle:
     "Host boundary" ranks above "directory cosmetics".
 
     "Feature actually works" ranks above "directory looks clean".
+
+============================================================
+31. STRUCTURE TREE vs LOGICAL DOCUMENT FLOW
+============================================================
+
+The document is read in TWO DIFFERENT WAYS, and conflating them is
+the single largest source of silent failure in this engine:
+
+    STRUCTURE TREE      "who is whose child"      — the real node
+                        graph, real sibling arrays, real indices.
+
+    LOGICAL FLOW        "what comes next in reading order" — a
+                        DERIVED, READ-ONLY projection.
+
+Neither may be used in place of the other.
+
+The one-line boundary:
+
+    "WHAT IT IS" goes through the structure tree.
+    "IN WHAT ORDER YOU READ IT" goes through the logical flow.
+    They are never swapped.
+
+------------------------------------------------------------
+31.1 The two entry points
+------------------------------------------------------------
+
+    Structure tree — the ONLY entry point:
+
+        pool.getChildren(id)        // type-agnostic; works for
+                                    // body / section / cell / row /
+                                    // table / paragraph alike
+
+    Logical flow — the ONLY implementation:
+
+        engine/document/selection/SelectionCollector.ts
+        (walker functions W1–W4 / R1–R2 below)
+
+MUST:
+
+- Code outside the walker module MUST NOT iterate
+  `doc.body.children` (or re-implement the walk by hand).
+  This is enforced by a static gate —
+  `engine/__tests__/DocumentWalkGate.test.ts` — which fails CI on
+  any traversal outside the walker and outside an explicit,
+  justified whitelist. Adding a whitelist entry means declaring
+  "this site is STRUCTURE semantics", not "this is debt".
+
+- The whitelist is exactly the Q9 set below plus the walker
+  itself, the serializer/loader, the version migration, the
+  structural commands and R2. Anything else is a violation.
+
+------------------------------------------------------------
+31.2 The walkers
+------------------------------------------------------------
+
+    W1  collectDocumentNodes(doc, pool)
+        Reachable node set, DFS, INCLUDING every container node
+        (Section included). Use: serialization.
+
+    W2  bodyBlockSpine(doc, pool)
+        Block-level reading order. Section is expanded IN PLACE and
+        the Section node itself is NOT emitted. Use: layout line
+        emission, keyboard/mouse block navigation, bookmark
+        resolution, TOC extraction, TXT/HTML export, QC block rules,
+        document diff, word count.
+
+    W3  bodyParagraphSpine(doc, pool)
+        Paragraph-level reading order = W2 ∘ table expansion
+        (each table expanded in place into its cell paragraphs, in
+        row-major then cell order). Section is NOT emitted. Use:
+        selection spine, find & replace scope, Ctrl+A, render
+        selection highlight.
+
+    W4  sectionsOf(doc, pool)                 — later phase
+        Pre-order enumeration of Section nodes, INCLUDING Section
+        itself.
+
+    R1  sectionOf(nodeId, doc, pool)          — later phase
+        Nearest enclosing Section (NOT the outermost one); null when
+        the node has no Section content.
+
+    R2  resolveParagraphRegion(paraId, doc, pool)
+        (engine/state/CaretScope.ts) The paragraph's region plus its
+        REAL sibling array and REAL index. This is STRUCTURE, not
+        flow: structural commands need the true container.
+
+MUST NOT:
+
+    W2/W3 are READ-ONLY. They MUST NOT be used for structural
+    mutation, serialization, container identity, or ownership
+    resolution.
+
+    The following five sites MUST use the structure tree and MUST
+    NOT be rewritten onto W2/W3:
+
+      1. serialization (collectDocumentNodes) — otherwise Section
+         nodes are lost from the flat node table.
+      2. resolveParagraphRegion — structural commands need the real
+         sibling array and the real index.
+      3. RemoveNodesCommand's `Container` — snapshot/restore needs
+         the true container identity.
+      4. section-level commands — deleting a whole section needs the
+         Section's real index inside body.
+      5. sectionsOf / sectionOf — ownership is a structural fact,
+         not a reading order.
+
+------------------------------------------------------------
+31.3 Walker output contract (exact)
+------------------------------------------------------------
+
+W2:
+
+    - Section is expanded in place; the Section node is NOT emitted.
+    - SectionBreak IS emitted (Layout needs it to produce a marker
+      line; PageBreaker consumes it).
+    - Every other body-level block (paragraph / table / image /
+      separator) is emitted as itself.
+    - `visited` semantics: an id is emitted AT MOST ONCE. Documents
+      with cross-parent duplicate ownership MUST NOT produce
+      duplicated output (duplicate rendering, duplicate counting,
+      corrupted selection).
+
+W3:
+
+    - W3 = W2 ∘ table expansion. Section expansion happens in the W2
+      stage only; a table is expanded in place into its cell
+      paragraphs.
+    - Section is NOT emitted. SectionBreak is NOT emitted.
+    - For a document with NO Section, W3's output MUST be
+      element-by-element IDENTICAL to the old
+      `flattenTextContainers(pool, doc.body.children)`. This
+      equality is the P0 acceptance signal and is locked by test.
+
+------------------------------------------------------------
+31.4 `paragraphPath` — 2 elements, and container resolution
+     does not go through it
+------------------------------------------------------------
+
+`CursorState.paragraphPath` is ALWAYS `[documentRootId, paragraphId]`
+— exactly two elements.
+
+There is no 3+ element form, and no `body_root` / `header_root`
+intermediate node exists. Ancestor information is NOT carried in the
+path.
+
+MUST:
+
+- Container resolution (which body / cell / header / footer / section
+  a paragraph lives in) MUST be resolved AT THE USE SITE, via
+  `resolveParagraphRegion` / `resolveCellPosition` /
+  `resolveHfParagraphLocation` — all of which answer "paragraph id →
+  scan the pool for its parent" and are therefore independent of path
+  depth.
+
+- Code MUST NOT insert container ids into the path. The
+  `path[length - 2]` fallback in SplitParagraphCommand /
+  InsertNodesCommand would silently change meaning.
+
+The consequence: the introduction of Section does NOT require any
+change to this field.
+
+------------------------------------------------------------
+31.5 Failure semantics — never silently drop content
+------------------------------------------------------------
+
+A walker that meets a body-level node type it does not know MUST
+THROW (`BodySpineError`). Silently skipping it produces a document
+that renders, exports, counts and searches as if content had been
+deleted — a far worse failure than an error.
+
+Consequently, the P0 acceptance criterion is phrased precisely:
+
+    P0 is ZERO BEHAVIOR CHANGE **for legal documents**.
+    Illegal documents (unknown body-level type) now throw instead of
+    being silently ignored. This is intentional and is not a
+    regression.
+
+Related:
+
+- Initial caret placement MUST be "first paragraph of W3 → else first
+  block of W2 → else `[]`". Placing the caret on
+  `body.children[0]` without a type check puts it on a non-text
+  container when the first block is a table or an image — a silent
+  failure.
+
+------------------------------------------------------------
+31.6 Real index vs flow index — do not mix them
+------------------------------------------------------------
+
+`doc.body.children` indices and W2 indices are DIFFERENT NUMBERS once
+a Section exists, and they already differ from W3 indices for
+documents containing tables.
+
+MUST:
+
+- Structural commands (insert / remove / restore / move), the delete
+  guard, and `cursorAfterBlockRemoval` MUST use the REAL structural
+  index.
+- Reading-order navigation (arrow keys, Home/End, PageUp/PageDown,
+  nearest-paragraph search) MUST use the FLOW index, and the index
+  and the sequence it indexes MUST come from the same call — an index
+  computed on one sequence and consumed against another silently
+  lands on the wrong node.
+
+------------------------------------------------------------
+31.7 Delete guard semantics
+------------------------------------------------------------
+
+The "body must keep at least one paragraph" guard is defined over the
+paragraph count of the block spine (W2 + paragraph filter), NOT over
+`body.children.length`. Counting raw body children makes the guard
+wrong in both directions once non-paragraph blocks (tables,
+separators, section breaks) or Sections are present.
+
+------------------------------------------------------------
+31.8 R2 MUST cover `section`, and structural ops MUST NOT be
+     silent no-ops
+------------------------------------------------------------
+
+`resolveParagraphRegion` returning `null` is the structural command
+layer's "silently refuse" signal: split / merge / paste / block
+insert all degrade to a no-op. A paragraph that lives inside a
+Section would hit that path and the user's action would vanish
+without feedback.
+
+MUST:
+
+- R2 MUST cover `section` (a `{ type: 'section'; sectionId }` region
+  alongside body / cell / header / footer).
+- Structural commands MUST NOT silently no-op on a paragraph the
+  walker can see. A command that cannot resolve its container MUST
+  fail visibly (or be fixed to resolve it), never silently.
+
+------------------------------------------------------------
+31.9 Counting口径 — body-only, and the table gap is pre-existing
+------------------------------------------------------------
+
+`min_chars`, `paragraph_count` and `Editor.getWordCount()` count only
+what is reachable from body-level blocks. They therefore:
+
+- already exclude table cell paragraphs today (a PRE-EXISTING gap,
+  not a Section regression);
+- will exclude Section-inner text unless they are migrated to the
+  flow.
+
+P0 changes only their TRAVERSAL (onto W2), keeping their口径
+identical for Section-free documents. Migrating the口径 itself
+(word/QC counting over W3) is a later phase. This limitation MUST be
+recorded in the code where the rule lives, never silently ignored.
+
+------------------------------------------------------------
+31.10 `Section` vs `SectionBreak` vs `outlineLevel` — three
+      different things
+------------------------------------------------------------
+
+    Section        a STRUCTURAL CONTAINER of content. It has
+                   children and no visible content of its own. It is
+                   a NODE TYPE (this supersedes the blanket
+                   "headings do not create a node type" statement in
+                   the historical architecture doc §2.11 — that
+                   statement is about HEADINGS, and it remains true
+                   for headings).
+
+    SectionBreak   a PAGE-SETUP BOUNDARY marker. It produces a marker
+                   line and never carries clinical meaning.
+
+    outlineLevel   a Word heading LEVEL on a Paragraph. It is an
+                   ATTRIBUTE, not an identity.
+
+MUST:
+
+- `Section` and `outlineLevel` stay ORTHOGONAL. Neither is derived
+  from the other. A Section is not a heading, and a heading does not
+  create a Section.
+
+- `SectionBreak` MUST NOT appear inside `Section.children`. It is a
+  body-level page-setup boundary only, and MUST NEVER be used to
+  express clinical structure (that is what `Section` is for).
+
+- Heading-level features (TOC, outline navigation, bookmark targets)
+  MUST see headings THROUGH a Section boundary — i.e. by walking W2,
+  not by treating the Section itself as a heading. Two independent
+  implementations producing two different "list of headings" for the
+  same document is exactly the drift this forbids.
+
+- `Section` MUST NOT be inferred from `outlineLevel`, and Section
+  semantics MUST NOT enter `ElementMeta` or the template-design
+  stores (§12.1).
+
+------------------------------------------------------------
+31.11 Naming
+------------------------------------------------------------
+
+The engine's `Section` is a document-structure container (§31.10).
+Any OTHER use of the word for an unrelated concept MUST be renamed to
+avoid collision — e.g. Draw's page-band resolver is `resolveBandOf`
+(header band / footer band / body), not `resolveParagraphSection`.
+
+------------------------------------------------------------
+31.12 Known limitations (recorded, NOT silently ignored)
+------------------------------------------------------------
+
+- Flattened export formats (TXT/HTML) cannot represent an EMPTY
+  Section: it contributes zero characters and is therefore
+  indistinguishable from "no such section" in the output text. This
+  is an inherent limitation of flat formats, not a Section
+  regression. Structured export (CDA) can emit it.
+
+- `ModelUpgrader.upgrade` catches a per-step failure, logs it and
+  CONTINUES, then unconditionally writes the target version onto the
+  document — "migration failed but the version number advanced".
+  Harmless for the no-op steps registered so far, but it weakens the
+  "the version number is a safety mechanism" claim of §14. It is
+  recorded here as a known limitation.
+
+- A format version bump does NOT mean `wasUpgraded === false`. The
+  flag means "source version ≠ final version"; a document upgraded
+  through a pure NO-OP step still reports `wasUpgraded === true`.
+  "No data rewrite" ≠ "wasUpgraded false".

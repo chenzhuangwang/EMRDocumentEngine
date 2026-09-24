@@ -21,6 +21,7 @@ import { screenToDoc, screenToPage, findPageByDocY, pageCenteringOffset } from '
 import { getCellGridPosition, clampColumnPair } from '../document/table/TableOps'
 import type { ColumnBorderHit } from '../render/HitTestIndex'
 import { resolveParagraphRegion, hfBandEndCaret } from '../state/CaretScope'
+import { bodyBlockSpine, nearestParagraphInSpine } from '../document/selection/SelectionCollector'
 import { findControlItemEntryAt, findRuntimeControlHitAt } from './ControlHitTest'
 import type { RuntimeControlHit } from './ControlHitTest'
 import { controlVisualRecipe, controlVisualType } from '../document/control/ControlBox'
@@ -884,22 +885,19 @@ export class MouseHandler {
 
   /**
    * 定位非段落正文块 (image/separator/section_break) 附近的段落。
-   * 优先取正文块序列中前一个最近的段落, 否则取后一个。
+   * 优先取块级逻辑流 (契约 §31.3 W2) 中前一个最近的段落, 否则取后一个。
+   * 旧实现在 `doc.body.children` 上 indexOf —— 块落在 Section 内时返回 -1
+   * → 点击这些块附近的空白静默不落光标。
    */
   private findNearestParagraph(nodeId: string): Paragraph | null {
     const doc = this.editor.getDocument()
     const pool = this.editor.getPool()
-    const idx = doc.body.children.indexOf(nodeId)
+    const spine = bodyBlockSpine(doc, pool)
+    const idx = spine.indexOf(nodeId)
     if (idx < 0) return null
-    for (let i = idx - 1; i >= 0; i--) {
-      const n = pool.nodes.get(doc.body.children[i])
-      if (n?.type === 'paragraph') return n as unknown as Paragraph
-    }
-    for (let i = idx + 1; i < doc.body.children.length; i++) {
-      const n = pool.nodes.get(doc.body.children[i])
-      if (n?.type === 'paragraph') return n as unknown as Paragraph
-    }
-    return null
+    const id = nearestParagraphInSpine(spine, pool, idx, -1)
+      ?? nearestParagraphInSpine(spine, pool, idx, 1)
+    return id ? (pool.nodes.get(id) as unknown as Paragraph) : null
   }
 
   private computeOffsetAtX(para: Paragraph, docX: number, docY: number, page: SLIFPage): number {

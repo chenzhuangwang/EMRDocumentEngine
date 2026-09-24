@@ -13,6 +13,7 @@
 
 import type { DocumentTree, Paragraph } from './document/core/DocumentModel'
 import { NodePool } from './document/core/NodePool'
+import { bodyBlockSpine } from './document/selection/SelectionCollector'
 
 // ---- 类型 ----
 
@@ -141,7 +142,9 @@ export class DocumentDiffer {
 
   private getParagraphs(doc: DocumentTree, pool: NodePool): Paragraph[] {
     const paras: Paragraph[] = []
-    for (const childId of doc.body.children) {
+    // 块级逻辑流 (契约 §31.3 W2) + 段落过滤 —— **不得**改用 W3: 本模块有意
+    // 不比对表格 cell 内段落, 换 W3 会静默改变 diff 行为。
+    for (const childId of bodyBlockSpine(doc, pool)) {
       const node = pool.nodes.get(childId)
       if (node && (node as { type?: string }).type === 'paragraph') {
         paras.push(node as unknown as Paragraph)

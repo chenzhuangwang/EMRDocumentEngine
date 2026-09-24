@@ -144,6 +144,16 @@ export type {
   HeaderFooterBand, HeaderFooterVariant, HfParagraphLocation,
 } from './document/core/HeaderFooterRegions'
 
+// ---- 文档遍历器 (契约 §31): 结构树 vs 逻辑文档流 ----
+// 逻辑流 (按阅读顺序读) 的唯一实现。写路径 / 序列化 / 容器身份 / 归属解析
+// 一律不得用它们 —— 那五类走结构树 `pool.getChildren` (契约 §31.2 Q9)。
+export {
+  bodyBlockSpine, bodyParagraphSpine,
+  bodyIndexOf, bodyParagraphCount, initialCursorParaPath,
+  flattenTextContainers,
+} from './document/selection/SelectionCollector'
+export type { SpinePool } from './document/selection/SelectionCollector'
+
 // ---- 域代码显示文本 (渲染/导出共用) ----
 export { resolveFieldText } from './document/factory/FieldFormatter'
 export type { FieldTextContext } from './document/factory/FieldFormatter'

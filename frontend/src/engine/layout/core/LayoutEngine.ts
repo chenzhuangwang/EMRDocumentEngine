@@ -20,6 +20,7 @@ import type { NodePool } from '../../document/core/NodePool'
 import {
   isVariantEnabled, resolveVariantForPage, type HeaderFooterVariant,
 } from '../../document/core/HeaderFooterRegions'
+import { bodyBlockSpine } from '../../document/selection/SelectionCollector'
 import type { ControlType } from '../../template/TemplateDefinition'
 import type { SLIFPage, SLIFItem, SLIFRow, SLIFCell } from './SLIF'
 import type { EventBus } from '../../interaction/EventBus'
@@ -197,7 +198,7 @@ export class LayoutEngine {
     const bodyBottom = this.config.pageHeight - Math.max(this.config.marginBottom, maxFooterH)
     const bodyArea = Math.max(0, bodyBottom - bodyTop - footnoteReserve)
 
-    for (const blockId of doc.body.children) {
+    for (const blockId of bodyBlockSpine(doc, pool)) {
       const block = pool.nodes.get(blockId)
       if (!block) continue
       const blockType = (block as unknown as Record<string, unknown>).type as string
@@ -1031,7 +1032,9 @@ export class LayoutEngine {
     let count = 0
     let lastOrderedCount = 0  // 记住上一个有序列表序列的计数，供 continueNumbering 使用
 
-    for (const bid of doc.body.children) {
+    // 编号序列必须走块级逻辑流 (契约 §31.3 W2): 否则 Section 内的有序列表
+    // 在 Section 边界处重新从 1 开始 (Section 自身不是块, 不计入序列)。
+    for (const bid of bodyBlockSpine(doc, pool)) {
       const b = pool.nodes.get(bid) as Record<string, unknown> | undefined
       const bl = b?.list as { type?: string; level?: number; startAt?: number; continueNumbering?: boolean } | undefined
 

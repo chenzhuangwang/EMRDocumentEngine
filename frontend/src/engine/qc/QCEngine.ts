@@ -16,6 +16,7 @@ import { NodeType } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import { isControlValueComplete } from '../document/control/ControlValue'
 import { hfContainers } from '../document/core/HeaderFooterRegions'
+import { bodyBlockSpine } from '../document/selection/SelectionCollector'
 import { locale, type LocaleMessages } from '../i18n/index'
 
 // ---- 类型 ----
@@ -229,7 +230,7 @@ export class QCEngine {
         }
       }
     }
-    visit(doc.body.children)
+    visit(bodyBlockSpine(doc, pool))
     for (const band of hfContainers(doc)) visit(band)
     return map
   }
@@ -264,9 +265,9 @@ export class QCEngine {
         return (Array.isArray(val) ? val.length > 0 : !!val) ? null : {}
       }
       case 'no_consecutive_empty_paragraphs': {
-        // 覆盖正文 + 页眉/页脚全部变体 (契约 §7.9); lastEmpty 按容器重置
-        // (尾部空页眉段不得与正文首个空段配对)。
-        for (const container of [doc.body.children, ...hfContainers(doc)]) {
+        // 覆盖正文块级逻辑流 (契约 §31.3 W2) + 页眉/页脚全部变体 (§7.9);
+        // lastEmpty 按容器重置 (尾部空页眉段不得与正文首个空段配对)。
+        for (const container of [bodyBlockSpine(doc, pool), ...hfContainers(doc)]) {
           let lastEmpty = false
           for (const childId of container) {
             const node = pool.nodes.get(childId) as { type?: string; children?: readonly string[] } | undefined
@@ -298,9 +299,12 @@ export class QCEngine {
         return null
       }
       case 'min_chars': {
+        // 已知限制 (契约 §31.9): 本规则**只统计 body 直接子块内的文本** ——
+        // 表格 cell 内段落与 Section 内段落的文本不计入 (对表格早已失效, 非
+        // Section 回归)。P0 只把遍历改走 W2 保持口径不变, 口径本身留待 P2。
         const min = parseInt(args[0], 10) || 0
         let count = 0
-        for (const childId of doc.body.children) {
+        for (const childId of bodyBlockSpine(doc, pool)) {
           const para = pool.nodes.get(childId) as { children?: readonly string[] } | undefined
           if (para?.children) {
             for (const cid of para.children) {
@@ -312,9 +316,12 @@ export class QCEngine {
         return count >= min ? null : {}
       }
       case 'paragraph_count': {
+        // 已知限制 (契约 §31.9): 当前口径是「body 直接子块数」, 表格/分隔线/
+        // 分节符都各算 1。P0 改走 W2 保持该口径 (对无 Section 文档逐元素一致),
+        // 真正收敛到 W3 段落口径留待 P2。
         const min = parseInt(args[0], 10) || 1
         const max = parseInt(args[1], 10) || 500
-        const count = doc.body.children.length
+        const count = bodyBlockSpine(doc, pool).length
         return count >= min && count <= max ? null : {}
       }
       default:

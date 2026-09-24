@@ -47,6 +47,17 @@ export interface SelectionSegment {
 
 const INF = Number.MAX_SAFE_INTEGER
 
+/**
+ * 遍历器所需的最小只读池视图 (契约 §31)。
+ *
+ * 逻辑流只回答"按阅读顺序下一个是什么", 只需按 id 查类型 —— 故此处刻意不依赖
+ * `NodePool` 的完整 API: document/io 的序列化与 lib/ 的导出这类只读消费方
+ * 不必持有可变池引用。NodePool 结构上满足本接口。
+ */
+export interface SpinePool {
+  nodes: ReadonlyMap<string, { type: string; children?: readonly string[] }>
+}
+
 /** 段落内全部可见文本的总字符数 (文本节点计 text.length, 非文本计 1) */
 export function paragraphTextLength(pool: NodePool, paraId: string): number {
   const para = pool.nodes.get(paraId)
@@ -136,18 +147,20 @@ export function findFirstTextNodeInRange(
 }
 
 /**
- * 展平 body 为「阅读顺序的文本容器序列」— 表格展开为 cell 内段落
+ * 展平块级序列为「阅读顺序的文本容器序列」— 表格展开为 cell 内段落
  * (行主序、每行按 cell 顺序), 其余块 (paragraph/image/separator/...) 保留原 id。
  *
  * 选区、复制、渲染的线性定位都基于此序列: cell 段落不在 body.children,
  * 若不展平, body↔table 跨域选区会 indexOf=-1 被整体丢弃
  * (「全选选不中表格」/ 从正文拖拽选区进表格选不中的根因)。
+ *
+ * 低层原语 — 新调用方请用 `bodyParagraphSpine` (契约 §31.3 W3),
+ * 它先经 `bodyBlockSpine` 做类型校验与 Section 展开。
  */
 export function flattenTextContainers(
-  pool: NodePool,
+  pool: SpinePool,
   bodyChildIds: readonly string[],
-): string[] {
-  const out: string[] = []
+): string[] {  const out: string[] = []
   for (const id of bodyChildIds) {
     const node = pool.nodes.get(id)
     if (node?.type === NodeType.TABLE) {
@@ -166,6 +179,142 @@ export function flattenTextContainers(
     }
   }
   return out
+}
+
+// ================================================================
+// 文档遍历器 (契约 §31) — 结构树 vs 逻辑文档流的唯一实现
+//
+// 铁律: 「是什么」走结构树 (`pool.getChildren`), 「按什么顺序读」走这里。
+// 两者永不互换 —— 写路径 / 序列化 / 容器身份 / 归属解析一律不得用本模块。
+//
+//   W1  collectDocumentNodes   序列化可达节点 (document/io/DocumentSerializer)
+//   W2  bodyBlockSpine         块级逻辑流 (Section 就地展开, 自身不入列)
+//   W3  bodyParagraphSpine     段落逻辑流 = W2 ∘ 表格展开
+//   W4  sectionsOf             节枚举 (前序, 含 Section 自身)     — P3
+//   R1  sectionOf              节归属 (最近祖先)                  — P3
+//   R2  resolveParagraphRegion 段落所在区域 + 真实兄弟数组 (state/CaretScope)
+//
+// 本模块是唯一允许遍历 `doc.body.children` 的逻辑流入口; 静态闸门
+// (DocumentWalkGate.test.ts) 保证模块外不得自行遍历。
+// ================================================================
+
+/** body 直接子节点允许出现的类型 — 未知类型是数据损坏, 遍历器必须显式失败 */
+const BODY_BLOCK_TYPES: ReadonlySet<string> = new Set<string>([
+  NodeType.PARAGRAPH, NodeType.TABLE, NodeType.IMAGE,
+  NodeType.SEPARATOR, NodeType.SECTION_BREAK,
+])
+
+/** 逻辑流遇到未知块类型时抛出 — 静默丢弃内容是比报错更坏的失败 (契约 §31.5) */
+export class BodySpineError extends Error {
+  constructor(nodeId: string, type: string) {
+    // 开发者可见的不变量诊断 (与 NodePool 的 addNode/removeOrphanLeaf 报错同构),
+    // 不是用户可见文案 —— 故不接 i18n (I18nGate 的 EXEMPT 判据即"中文在这里是不是内容")。
+    super(`bodyBlockSpine: unknown body child type ${type} (node ${nodeId})`)
+    this.name = 'BodySpineError'
+  }
+}
+
+/**
+ * W2 — 块级逻辑流: body 的阅读顺序块序列 (契约 §31.3)。
+ *
+ * - Section 就地展开, **Section 自身不入列** (它不是内容, 是容器)
+ * - section_break **入列** (Layout 需要它产出标记行)
+ * - visited 语义: 每个 id 至多产出一次 —— 跨父重复归属的脏数据不得重复产出
+ * - 未知类型 → 抛 BodySpineError
+ */
+export function bodyBlockSpine(doc: DocumentTree, pool: SpinePool): string[] {
+  const out: string[] = []
+  const visited = new Set<string>()
+  pushBlockIds(doc.body.children, pool, out, visited)
+  return out
+}
+
+function pushBlockIds(
+  ids: readonly string[],
+  pool: SpinePool,
+  out: string[],
+  visited: Set<string>,
+): void {
+  for (const id of ids) {
+    if (visited.has(id)) continue
+    visited.add(id)
+    const node = pool.nodes.get(id)
+    if (!node) continue // 悬空引用已由 DocumentLoader.validate 拦截, 此处静默跳过
+    if (!BODY_BLOCK_TYPES.has(node.type)) throw new BodySpineError(id, node.type)
+    out.push(id)
+  }
+}
+
+/**
+ * W3 — 段落逻辑流 = W2 ∘ 表格展开 (契约 §31.3)。
+ *
+ * 对**无 Section 文档**输出与旧 `flattenTextContainers(pool, doc.body.children)`
+ * 逐元素一致 (P0 零行为变更的判据)。
+ */
+export function bodyParagraphSpine(doc: DocumentTree, pool: SpinePool): string[] {
+  return flattenTextContainers(pool, bodyBlockSpine(doc, pool))
+}
+
+// ---- 结构侧助手 (真实下标 / 真实兄弟, 不是逻辑流) ----
+
+/** body 直接子节点下标 (真实结构下标) — 容器身份 / 删除守卫用 (契约 §31.6) */
+export function bodyIndexOf(doc: DocumentTree, nodeId: string): number {
+  return doc.body.children.indexOf(nodeId)
+}
+
+/** body 中段落数 (守卫口径, 契约 §31.7) — 遍历走 W2, 保证 Section 展开后口径一致 */
+export function bodyParagraphCount(doc: DocumentTree, pool: SpinePool): number {
+  let n = 0
+  for (const id of bodyBlockSpine(doc, pool)) {
+    if (pool.nodes.get(id)?.type === NodeType.PARAGRAPH) n++
+  }
+  return n
+}
+
+/**
+ * 初始光标落点 — W3 首个段落 → 否则 W2 首个块 → 否则 [] (契约 §31.5)。
+ * 旧实现取 `body.children[0]` 而不校验类型, 首块是表格/图片时光标落在一个
+ * 非文本容器上 (静默失效)。
+ */
+export function initialCursorParaPath(doc: DocumentTree, pool: SpinePool): string[] {
+  for (const id of bodyParagraphSpine(doc, pool)) {
+    if (pool.nodes.get(id)?.type === NodeType.PARAGRAPH) return [doc.id, id]
+  }
+  const blocks = bodyBlockSpine(doc, pool)
+  return blocks.length > 0 ? [doc.id, blocks[0]] : []
+}
+
+/**
+ * 从 body 某下标起沿 dir 找最近的段落 id (删除块后光标回落用, 真实兄弟语义)。
+ * 找不到返回 null —— 调用方决定是"继续反方向找"还是"放弃"。
+ *
+ * 下标是**真实结构下标** (容器身份 / 删除命令用), 故查的是 `doc.body.children`
+ * 而非逻辑流 (契约 §31.6 Q9②③)。
+ */
+export function nearestParagraphInBody(
+  doc: DocumentTree,
+  pool: SpinePool,
+  fromIndex: number,
+  dir: 1 | -1,
+): string | null {
+  const children = doc.body.children
+  for (let i = fromIndex + dir; i >= 0 && i < children.length; i += dir) {
+    if (pool.nodes.get(children[i])?.type === NodeType.PARAGRAPH) return children[i]
+  }
+  return null
+}
+
+/** 同上, 但在**块级逻辑流**上找 (契约 §31.3 W2) — 供方向键跨块导航 */
+export function nearestParagraphInSpine(
+  spine: readonly string[],
+  pool: SpinePool,
+  fromIndex: number,
+  dir: 1 | -1,
+): string | null {
+  for (let i = fromIndex + dir; i >= 0 && i < spine.length; i += dir) {
+    if (pool.nodes.get(spine[i])?.type === NodeType.PARAGRAPH) return spine[i]
+  }
+  return null
 }
 
 /**
@@ -249,7 +398,7 @@ export function selectionSpine(
 ): { section: SelectionSection; variant: HeaderFooterVariant | null; spine: string[] } | null {
   const aLoc = resolveHfParagraphLocation(doc, anchorParaId)
   if (regionIdOf(anchorParaId, doc) !== regionIdOf(focusParaId, doc)) return null
-  if (!aLoc) return { section: 'body', variant: null, spine: flattenTextContainers(pool, doc.body.children) }
+  if (!aLoc) return { section: 'body', variant: null, spine: bodyParagraphSpine(doc, pool) }
   return {
     section: aLoc.band,
     variant: aLoc.variant,
@@ -265,7 +414,7 @@ export function regionSpine(
   variant: HeaderFooterVariant = 'default',
 ): string[] {
   if (section === 'header' || section === 'footer') return [...hfArrayOf(doc, section, variant)]
-  return flattenTextContainers(pool, doc.body.children)
+  return bodyParagraphSpine(doc, pool)
 }
 
 /**
@@ -284,7 +433,7 @@ export function documentSpine(doc: DocumentTree, pool: NodePool): string[] {
     seen.add(id)
     out.push(id)
   }
-  for (const id of flattenTextContainers(pool, doc.body.children)) push(id)
+  for (const id of bodyParagraphSpine(doc, pool)) push(id)
   for (const arr of hfContainers(doc)) for (const id of arr) push(id)
   return out
 }

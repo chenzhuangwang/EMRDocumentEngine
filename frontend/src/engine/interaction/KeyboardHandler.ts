@@ -30,6 +30,9 @@ import {
   hfArrayOf, resolveHfParagraphLocation,
   type HeaderFooterVariant,
 } from '../document/core/HeaderFooterRegions'
+import {
+  bodyBlockSpine, nearestParagraphInSpine, type SpinePool,
+} from '../document/selection/SelectionCollector'
 
 export class KeyboardHandler {
   private editor: Editor
@@ -595,8 +598,12 @@ export class KeyboardHandler {
    *
    *  v20.35: 单元格内段落返回扩展 siblings, 包含表格前后段落,
    *  使 ArrowUp/ArrowDown 可以跳出/跳入表格。
+   *
+   *  body 分支走块级逻辑流 (契约 §31.3 W2) —— 旧实现用
+   *  `doc.body.children.includes(paraId)`, 段落一旦落在 Section 内就返回 `[]`,
+   *  方向键/Home/End/PageUp/PageDown 全部静默失效。
    */
-  private getParagraphSiblings(paraId: string, doc: DocumentTree, pool?: { nodes: ReadonlyMap<string, { type: string; children?: readonly string[] }> }): string[] {
+  private getParagraphSiblings(paraId: string, doc: DocumentTree, pool?: SpinePool): string[] {
     const filterParas = (ids: readonly string[]) => {
       if (!pool) return ids.filter(id => id === paraId || true)  // 无 pool 时不过滤
       return ids.filter(id => {
@@ -605,7 +612,10 @@ export class KeyboardHandler {
         return node?.type === 'paragraph'
       })
     }
-    if (doc.body.children.includes(paraId)) return filterParas(doc.body.children)
+    if (pool) {
+      const blocks = bodyBlockSpine(doc, pool)
+      if (blocks.includes(paraId)) return filterParas(blocks)
+    }
 
     // 检查 paraId 是否在表格单元格内 — 向上回溯到 table, 返回扩展 siblings
     if (pool) {
@@ -637,23 +647,13 @@ export class KeyboardHandler {
 
         if (!tableId) return cellParas  // 无法定位 table, 保留 cell 内段落
 
-        // 在 body.children 中定位 table, 查找前后段落
-        const tableIdx = doc.body.children.indexOf(tableId)
+        // 在块级逻辑流中定位 table, 查找前后段落 (契约 §31.3 W2)
+        const blocks = bodyBlockSpine(doc, pool)
+        const tableIdx = blocks.indexOf(tableId)
         if (tableIdx < 0) return cellParas
 
-        let prevPara: string | null = null
-        let nextPara: string | null = null
-
-        // 向前查找最近的 paragraph
-        for (let i = tableIdx - 1; i >= 0; i--) {
-          const node = pool.nodes.get(doc.body.children[i])
-          if (node?.type === 'paragraph') { prevPara = doc.body.children[i]; break }
-        }
-        // 向后查找最近的 paragraph
-        for (let i = tableIdx + 1; i < doc.body.children.length; i++) {
-          const node = pool.nodes.get(doc.body.children[i])
-          if (node?.type === 'paragraph') { nextPara = doc.body.children[i]; break }
-        }
+        const prevPara = nearestParagraphInSpine(blocks, pool, tableIdx, -1)
+        const nextPara = nearestParagraphInSpine(blocks, pool, tableIdx, 1)
 
         // 构建扩展 siblings: [prevPara?, ...cellParas, nextPara?]
         const result: string[] = []
@@ -690,7 +690,13 @@ export class KeyboardHandler {
   //   3. cell 边界 ArrowLeft/Right 沿阅读顺序移动, 越过边界跳出表格。
   // ================================================================
 
-  /** 段落定位: 正文块下标 / 单元格(阅读坐标) / 页眉页脚下标 */
+  /**
+   * 段落定位: 正文块下标 / 单元格(阅读坐标) / 页眉页脚下标。
+   *
+   * body 下标是**块级逻辑流下标** (契约 §31.3 W2) —— 与 navigateSequence 消费的
+   * 序列必须是同一个, 否则方向键落点错位; 旧实现用 `doc.body.children`, 段落落进
+   * Section 后 indexOf 返回 -1 → 整条方向键导航链静默失效。
+   */
   private locateParagraph(
     paraId: string,
     doc: DocumentTree,
@@ -701,11 +707,12 @@ export class KeyboardHandler {
     | { kind: 'header'; index: number; variant: HeaderFooterVariant }
     | { kind: 'footer'; index: number; variant: HeaderFooterVariant }
     | null {
-    const bi = doc.body.children.indexOf(paraId)
+    const blocks = bodyBlockSpine(doc, pool)
+    const bi = blocks.indexOf(paraId)
     if (bi >= 0) return { kind: 'body', index: bi }
     const cellPos = resolveCellPosition(paraId, pool)
     if (cellPos) {
-      const ti = doc.body.children.indexOf(cellPos.tableId)
+      const ti = blocks.indexOf(cellPos.tableId)
       return { kind: 'cell', tableId: cellPos.tableId, tableIndex: ti, row: cellPos.row, col: cellPos.col }
     }
     const hfLoc = resolveHfParagraphLocation(doc, paraId)
@@ -737,7 +744,7 @@ export class KeyboardHandler {
     }
 
     if (loc.kind === 'body') {
-      return this.navigateSequence(doc.body.children, pool, loc.index, dir, mode, cursorOffset)
+      return this.navigateSequence(bodyBlockSpine(doc, pool), pool, loc.index, dir, mode, cursorOffset)
     }
 
     // cell 段落: 先在 cell 内部段落/块序列上移动, 边界再跨 cell
@@ -797,7 +804,7 @@ export class KeyboardHandler {
     }
     // 表格边界 → 跳出到相邻块
     if (loc.tableIndex < 0) return null
-    return this.navigateSequence(doc.body.children, pool, loc.tableIndex, dir, 'horizontal', 0)
+    return this.navigateSequence(bodyBlockSpine(doc, pool), pool, loc.tableIndex, dir, 'horizontal', 0)
   }
 
   /** cell 内垂直移动 (网格坐标), 越界跳出表格 */
@@ -826,7 +833,7 @@ export class KeyboardHandler {
     }
     // 越过表格边界 → 跳出
     if (loc.tableIndex < 0) return null
-    return this.navigateSequence(doc.body.children, pool, loc.tableIndex, dir, 'vertical', cursorOffset)
+    return this.navigateSequence(bodyBlockSpine(doc, pool), pool, loc.tableIndex, dir, 'vertical', cursorOffset)
   }
 
   /** 落点偏移: 垂直保列, 水平按方向到段首(→)/段尾(←) */

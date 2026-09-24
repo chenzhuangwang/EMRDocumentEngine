@@ -60,7 +60,9 @@ import type { CellRange } from './document/table/TableOps'
 import {
   collectTextNodeIds, collectSelectionSegments,
   paragraphTextLength, paragraphTextInRange, findFirstTextNodeInRange,
-  flattenTextContainers, selectionSpine, regionSpine,
+  selectionSpine, regionSpine,
+  bodyBlockSpine, bodyParagraphSpine, bodyIndexOf, bodyParagraphCount,
+  initialCursorParaPath, nearestParagraphInBody,
 } from './document/selection/SelectionCollector'
 import type { FormatRange } from './document/selection/SelectionCollector'
 import {
@@ -349,10 +351,7 @@ export class Editor {
     this.relayout()
 
     // 初始化光标 — 必须在 render() 之前, 确保首帧即绘制光标
-    const cursorPath = this.doc.body.children.length > 0
-      ? [this.doc.id, this.doc.body.children[0]]
-      : []
-    this.store.setCursor({ paragraphPath: cursorPath, offset: 0, visible: true })
+    this.store.setCursor({ paragraphPath: initialCursorParaPath(this.doc, this.pool), offset: 0, visible: true })
 
     this.draw.render(this.pool, this.store.state.runtime)
 
@@ -473,7 +472,7 @@ export class Editor {
     console.debug(
       `[Editor] document:changed(${invalidation}) → recomputeLayout ${(t1 - t0).toFixed(1)}ms, ` +
       `cursor=(${cursor.paragraphPath.join('/')}, offset=${cursor.offset}), ` +
-      `bodyChildren=[${this.doc.body.children.join(',')}]`
+      `bodyBlocks=[${bodyBlockSpine(this.doc, this.pool).join(',')}]`
     )
     this.perfMetrics.recordLayout(t1 - t0)
     this.draw.render(this.pool, this.store.state.runtime)
@@ -619,22 +618,19 @@ export class Editor {
     return null
   }
 
-  /** 在 body 中查找第一个段落 ID (跳过 table/separator/section_break), 无则 null */
+  /** 块级逻辑流中第一个段落 ID (跳过 table/image/separator/section_break), 无则 null */
   private findFirstParagraphId(): string | null {
-    const bodyChildren = this.doc.body.children
-    for (let i = 0; i < bodyChildren.length; i++) {
-      const node = this.pool.nodes.get(bodyChildren[i])
-      if (node && node.type === 'paragraph') return bodyChildren[i]
+    for (const id of bodyBlockSpine(this.doc, this.pool)) {
+      if (this.pool.nodes.get(id)?.type === 'paragraph') return id
     }
     return null
   }
 
-  /** 在 body 中查找最后一个段落 ID (跳过 table/separator/section_break), 无则 null */
+  /** 块级逻辑流中最后一个段落 ID (跳过 table/image/separator/section_break), 无则 null */
   private findLastParagraphId(): string | null {
-    const bodyChildren = this.doc.body.children
-    for (let i = bodyChildren.length - 1; i >= 0; i--) {
-      const node = this.pool.nodes.get(bodyChildren[i])
-      if (node && node.type === 'paragraph') return bodyChildren[i]
+    const spine = bodyBlockSpine(this.doc, this.pool)
+    for (let i = spine.length - 1; i >= 0; i--) {
+      if (this.pool.nodes.get(spine[i])?.type === 'paragraph') return spine[i]
     }
     return null
   }
@@ -1233,14 +1229,13 @@ export class Editor {
 
     switch (node.type) {
       case 'paragraph': {
-        // 仅 body 级段落可整段删除; cell 内段落由表格结构 API 管理, 拒绝
-        const bodyIdx = this.doc.body.children.indexOf(nodeId)
+        // 仅 body 级段落可整段删除; cell 内段落由表格结构 API 管理, 拒绝。
+        // 容器身份/下标必须用**真实结构下标** (契约 §31.6 Q9②③): 删除命令要按
+        // 真容器真下标快照恢复, 不能用逻辑流下标代替。
+        const bodyIdx = bodyIndexOf(this.doc, nodeId)
         if (bodyIdx < 0) return false
-        // 守卫: body 必须保留 ≥1 段落
-        const bodyParaCount = this.doc.body.children.filter(
-          (id) => this.pool.nodes.get(id)?.type === 'paragraph',
-        ).length
-        if (bodyParaCount <= 1) return false
+        // 守卫: body 必须保留 ≥1 段落 (口径经 W2, 契约 §31.7)
+        if (bodyParagraphCount(this.doc, this.pool) <= 1) return false
         this.execCommand(new RemoveNodesCommand(
           generateCommandId(), Date.now(), 'user',
           [{ container: { kind: 'body' }, nodeIds: [nodeId] }],
@@ -1250,7 +1245,7 @@ export class Editor {
       }
       case 'image': {
         // body 级块级图片: 直接从 body 摘除
-        const bodyIdx = this.doc.body.children.indexOf(nodeId)
+        const bodyIdx = bodyIndexOf(this.doc, nodeId)
         if (bodyIdx >= 0) {
           this.execCommand(new RemoveNodesCommand(
             generateCommandId(), Date.now(), 'user',
@@ -1275,7 +1270,7 @@ export class Editor {
       case 'separator':
       case 'section_break':
       case 'table': {
-        const bodyIdx = this.doc.body.children.indexOf(nodeId)
+        const bodyIdx = bodyIndexOf(this.doc, nodeId)
         if (bodyIdx < 0) return false
         this.execCommand(new RemoveNodesCommand(
           generateCommandId(), Date.now(), 'user',
@@ -1296,20 +1291,14 @@ export class Editor {
         return false
     }
   }
-  /** 删除 body 块级节点后, 光标回落到最近段落 (后一个优先, 否则前一个) */
+  /**
+   * 删除 body 块级节点后, 光标回落到最近段落 (后一个优先, 否则前一个)。
+   * 下标是**真实结构下标** (删除命令用它做容器身份), 查找走结构兄弟 (契约 §31.6)。
+   */
   private cursorAfterBlockRemoval(bodyIdx: number): Partial<CursorState> | undefined {
-    const children = this.doc.body.children
-    for (let i = bodyIdx + 1; i < children.length; i++) {
-      if (this.pool.nodes.get(children[i])?.type === 'paragraph') {
-        return { paragraphPath: [this.doc.id, children[i]], offset: 0, visible: true }
-      }
-    }
-    for (let i = bodyIdx - 1; i >= 0; i--) {
-      if (this.pool.nodes.get(children[i])?.type === 'paragraph') {
-        return { paragraphPath: [this.doc.id, children[i]], offset: 0, visible: true }
-      }
-    }
-    return undefined
+    const id = nearestParagraphInBody(this.doc, this.pool, bodyIdx, 1)
+      ?? nearestParagraphInBody(this.doc, this.pool, bodyIdx, -1)
+    return id ? { paragraphPath: [this.doc.id, id], offset: 0, visible: true } : undefined
   }
   /** 表现层样式 (契约 §2.2) — 渲染消费 */
   getPresentationStyles(): PresentationStyleStore | null { return this.presentationStyles }
@@ -1415,10 +1404,7 @@ export class Editor {
     // 若不清除, 上一份文档的水印会留在渲染器上 (watermarkConfig 是渲染守卫)。
     this.draw.setWatermark(doc.pageSetup?.watermark ?? null)
 
-    const cursorPath = doc.body.children.length > 0
-      ? [doc.id, doc.body.children[0]]
-      : []
-    this.store.setCursor({ paragraphPath: cursorPath, offset: 0, visible: true })
+    this.store.setCursor({ paragraphPath: initialCursorParaPath(doc, this.pool), offset: 0, visible: true })
     this.draw.render(this.pool, this.store.state.runtime)
     this.notifyListeners('contentChange', doc)
   }
@@ -2611,7 +2597,7 @@ export class Editor {
     if (hf.active && (hf.section === 'header' || hf.section === 'footer')) {
       spine = [...hfParagraphsForPage(this.doc, hf.section, hf.pageIndex + 1)]
     } else {
-      spine = flattenTextContainers(this.pool, this.doc.body.children)
+      spine = bodyParagraphSpine(this.doc, this.pool)
     }
     if (spine.length === 0) return
     const firstParaId = spine[0]
@@ -2667,13 +2653,19 @@ export class Editor {
     this.commandManager.execute(new SetHeaderFooterConfigCommand(generateCommandId(), Date.now(), 'user', patch))
     this.store.setHeaderFooterConfig(this.getHeaderFooterConfig())
   }
-  /** 获取字数统计 (R36) */
+  /**
+   * 获取字数统计 (R36)。
+   *
+   * 口径: 块级逻辑流 (契约 §31.3 W2) 上的**段落**块 —— 与旧的「body 直接子节点
+   * 过滤 paragraph」在无 Section 文档上逐元素等价。已知限制 (契约 §31.9): 表格
+   * cell 内段落与页眉/页脚不计入, 属既有口径, 不在本轮变更范围。
+   */
   getWordCount(): { chars: number; words: number; paragraphs: number; selectedChars?: number; selectedWords?: number } {
     let chars = 0
     let words = 0
-    const bodyChildren = this.doc.body.children
+    const blocks = bodyBlockSpine(this.doc, this.pool)
 
-    for (const childId of bodyChildren) {
+    for (const childId of blocks) {
       const node = this.pool.nodes.get(childId)
       if (!node) continue
       const n = node as { type?: string; children?: readonly string[] }
@@ -2691,10 +2683,7 @@ export class Editor {
       }
     }
 
-    const paragraphs = bodyChildren.filter(id => {
-      const n = this.pool.nodes.get(id)
-      return n && (n as { type?: string }).type === 'paragraph'
-    }).length
+    const paragraphs = bodyParagraphCount(this.doc, this.pool)
 
     // 选区统计
     let selectedChars: number | undefined
