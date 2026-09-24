@@ -19,6 +19,7 @@
 // ================================================================
 
 import type { BaseNode, DocumentTree } from '../core/DocumentModel'
+import { NodeType } from '../core/DocumentModel'
 import { buildNodePool, type NodePool } from '../core/NodePool'
 import { TemplateDefinitionStore } from '../../template/TemplateDefinition'
 import type { TemplateDefinition } from '../../template/TemplateDefinition'
@@ -27,6 +28,7 @@ import type { PresentationStyle } from '../../render/presentation/PresentationSt
 import {
   CURRENT_DOCUMENT_VERSION,
   LEGACY_DOCUMENT_VERSION,
+  compareVersions,
   parseVersion,
   versionToString,
   type DocumentFormatVersion,
@@ -124,7 +126,10 @@ export function loadDocumentFromObject(obj: unknown, options?: DocumentLoadOptio
   recordUpgradePath(doc, sourceVer, upgradePath)
 
   // ---- [4] validate ----
-  validateDocument(doc, opts.extraNodes)
+  // 传入 **sourceVer** 而非升级后的 modelVersion: 升级链会把 modelVersion 推到
+  // CURRENT, 若用升级后的版本做"类型↔版本"一致性校验, 该校验恒真、形同虚设。
+  // 谎报版本 / 缺失 modelVersion 的文档正是靠这一步被拦下 (契约 §31.12 X12)。
+  validateDocument(doc, opts.extraNodes, sourceVer)
 
   // ---- [5] buildModel — 补默认字段 ----
   if (!doc.header) doc.header = []
@@ -175,6 +180,7 @@ function recordUpgradePath(
 function validateDocument(
   doc: DocumentTree,
   extraNodes: Map<string, BaseNode> | undefined,
+  sourceVersion: DocumentFormatVersion,
 ): void {
   if (!doc.id || typeof doc.id !== 'string') {
     throw new LoadError('validate', locale.t('loader.badDocId'))
@@ -210,7 +216,81 @@ function validateDocument(
       throw new LoadError('validate', locale.t('loader.danglingRef', { id }))
     }
   }
+
+  // 结构语义 + 版本一致性 (契约 §31.12 X12 / §14)。
+  // 版本闸门只挡"声称更新"的文档; 谎报旧版本 (或缺失 modelVersion 落到 LEGACY)
+  // 却含新节点类型的文档必须在这里被拦住 —— 否则新节点会被下游静默丢弃。
+  validateStructure(doc, knownIds, knownNodeOf(embedded, extraNodes), sourceVersion)
 }
+
+/**
+ * 已知 id → 节点 (内嵌扁平表 + 加载器额外解析的节点)。
+ * 供结构校验查类型; 两者都没有时返回 undefined (悬空引用已在上一步拦截)。
+ */
+function knownNodeOf(
+  embedded: Record<string, BaseNode> | undefined,
+  extraNodes: Map<string, BaseNode> | undefined,
+): (id: string) => BaseNode | undefined {
+  return (id) => extraNodes?.get(id) ?? embedded?.[id]
+}
+
+/** 已知的节点类型集合 — 未知类型即数据损坏 */
+const KNOWN_NODE_TYPES: ReadonlySet<string> = new Set<string>(Object.values(NodeType))
+
+/** 结构深度上限 — 防环之外的兜底 (合法文档远达不到: 表→行→格→段→内联 = 5 层) */
+const MAX_STRUCTURE_DEPTH = 100
+
+/**
+ * 结构语义校验 (契约 §31.12 X12 / §31.10):
+ *
+ *   1. 节点类型白名单 —— 未知类型不得进入引擎
+ *   2. 单父归属 —— 同一节点被两个父引用会让逻辑流重复产出
+ *   3. 环检测 —— 自引用/环状引用
+ *   4. 深度上限 —— 兜底
+ *   5. **modelVersion ↔ 节点类型一致性** —— Section 要求 >= 4.7.0
+ *
+ * 前四项在 P0 即生效 (它们是"遍历器不会重复产出"的保证); 第五项是版本闸门
+ * 之外的第二道防线。两者都要: 闸门挡"声称更新", 一致性校验挡"谎报旧版本"。
+ */
+function validateStructure(
+  doc: DocumentTree,
+  knownIds: ReadonlySet<string>,
+  nodeOf: (id: string) => BaseNode | undefined,
+  docVer: DocumentFormatVersion,
+): void {
+  const parentOf = new Map<string, string>()
+
+  const walk = (ids: readonly string[], depth: number, owner: string): void => {
+    if (depth > MAX_STRUCTURE_DEPTH) {
+      throw new LoadError('validate', locale.t('loader.structureTooDeep', { max: String(MAX_STRUCTURE_DEPTH) }))
+    }
+    for (const id of ids) {
+      if (!knownIds.has(id)) continue // 悬空引用已由上面的循环拦截
+      const prev = parentOf.get(id)
+      if (prev !== undefined) {
+        throw new LoadError('validate', locale.t('loader.multiParent', { id, a: prev, b: owner }))
+      }
+      parentOf.set(id, owner)
+      const node = nodeOf(id)
+      if (!node) continue
+      if (!KNOWN_NODE_TYPES.has(node.type)) {
+        throw new LoadError('validate', locale.t('loader.unknownNodeType', { id, type: String(node.type) }))
+      }
+      if (node.type === NodeType.SECTION && compareVersions(docVer, SECTION_MIN_VERSION) < 0) {
+        throw new LoadError('validate', locale.t('loader.sectionVersionMismatch', {
+          id, ver: versionToString(docVer), min: versionToString(SECTION_MIN_VERSION),
+        }))
+      }
+      const children = (node as { children?: readonly string[] }).children
+      if (Array.isArray(children)) walk(children, depth + 1, id)
+    }
+  }
+
+  walk(validatedRootIds(doc), 1, doc.id)
+}
+
+/** 引入 Section 节点类型的最低文档格式版本 (契约 §31.10 / §14) */
+const SECTION_MIN_VERSION: DocumentFormatVersion = { major: 4, minor: 7, patch: 0 }
 
 /**
  * 受校验的文档根 id 引用 — 正文 + 页眉/页脚全部变体 (契约 §7.9)。

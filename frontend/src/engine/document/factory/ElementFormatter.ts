@@ -13,7 +13,7 @@
 import type {
   DocumentTree, Paragraph, TextNode, SmartTextNode,
   ImageNode, Table, TableRow, TableCell, SeparatorNode,
-  SectionBreak, PageSetup, TextStyle, ParagraphStyle,
+  SectionBreak, Section, PageSetup, TextStyle, ParagraphStyle,
   ElementMeta, ColumnDefinition, FlowBody,
   FieldNode, FieldType, FootnoteRef, FootnoteContent,
   ControlValue,
@@ -178,6 +178,12 @@ export function createSimpleTable(rows: number, cols: number): Table {
     children: rowIds,
   }
   return table
+}
+
+export function createSection(children?: readonly string[], sectionCode?: string): Section {
+  const node: Section = { type: NodeType.SECTION, id: generateId(), children: children ?? [] }
+  if (sectionCode !== undefined) node.sectionCode = sectionCode
+  return node
 }
 
 export function createSeparatorNode(style?: Partial<SeparatorNode>): SeparatorNode {

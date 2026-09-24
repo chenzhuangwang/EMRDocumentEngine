@@ -18,6 +18,7 @@ import {
 } from '../document/version/DocumentFormatVersion'
 import { MergeMatrix, buildMergeMatrix } from '../document/table/MergeMatrix'
 import { createDocument, createSimpleTable } from '../document/factory/ElementFormatter'
+import { loadDocumentFromObject } from '../document/io/DocumentLoader'
 
 // ---- ModelUpgrader ----
 
@@ -93,7 +94,7 @@ describe('4.4.0 → 4.5.0 页眉页脚变体字段 (契约 §7.9)', () => {
   it('SLIF 版本不随文档格式版本变动 (契约 §26.13/§26.14)', () => {
     const slif = CURRENT_SLIF_VERSION as unknown as SLIFVersion
     const [maj, min, pat] = versionToString(slif).split('.').map(Number)
-    // 仍为 4.2.0 — 与文档格式版本 (现 4.6.0) 独立
+    // 仍为 4.2.0 — 与文档格式版本 (现 4.7.0) 独立
     expect([maj, min, pat]).toEqual([4, 2, 0])
   })
 
@@ -123,16 +124,13 @@ describe('4.4.0 → 4.5.0 页眉页脚变体字段 (契约 §7.9)', () => {
 })
 
 describe('4.5.0 → 4.6.0 Table.dynamicRows (契约 §12.9)', () => {
-  it('CURRENT_DOCUMENT_VERSION 为 4.6.0', () => {
-    expect(versionToString(CURRENT_DOCUMENT_VERSION)).toBe('4.6.0')
-  })
-
-  it('4.5.0 文档 (无 dynamicRows) 可升级且为 no-op (不写回该字段)', () => {
+  it('4.5.0 文档可升级到当前版本 (no-op, 不写回任何表字段)', () => {
     const doc = createDocument('测试') as unknown as Record<string, unknown>
     doc.modelVersion = '4.5.0'
 
     const upgraded = modelUpgrader.upgrade(doc as never) as unknown as Record<string, unknown>
-    expect(upgraded.modelVersion).toBe('4.6.0')
+    // 升级链会一路走到 CURRENT_DOCUMENT_VERSION (4.5 → 4.6 → 4.7, 后段亦为 no-op)
+    expect(upgraded.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
     // 缺失 ≡ 固定表 (即旧行为): 升级器不得猜测/回填任何表
     const raw = (doc as unknown as { nodes?: Record<string, { type?: string; dynamicRows?: unknown }> }).nodes
     for (const node of Object.values(raw ?? {})) {
@@ -154,6 +152,56 @@ describe('4.5.0 → 4.6.0 Table.dynamicRows (契约 §12.9)', () => {
 
     const json = JSON.parse(JSON.stringify(doc)) as { nodes: Record<string, { dynamicRows?: boolean }> }
     expect(json.nodes[table.id].dynamicRows).toBe(true)
+  })
+})
+
+describe('4.6.0 → 4.7.0 Section 结构容器 (契约 §31)', () => {
+  it('CURRENT_DOCUMENT_VERSION 为 4.7.0', () => {
+    expect(versionToString(CURRENT_DOCUMENT_VERSION)).toBe('4.7.0')
+  })
+
+  it('CURRENT_SLIF_VERSION 未随之变动 (契约 §26.13/§26.14)', () => {
+    const v = CURRENT_SLIF_VERSION as SLIFVersion
+    expect([v.major, v.minor, v.patch]).toEqual([4, 2, 0])
+    expect(CURRENT_SLIF_VERSION).not.toBe(CURRENT_DOCUMENT_VERSION)
+  })
+
+  it('4.6.0 文档 (无 Section 节点) 可升级且为 no-op (不注入 Section)', () => {
+    const doc = createDocument('测试') as unknown as Record<string, unknown>
+    doc.modelVersion = '4.6.0'
+
+    const upgraded = modelUpgrader.upgrade(doc as never) as unknown as Record<string, unknown>
+    expect(upgraded.modelVersion).toBe('4.7.0')
+    // Section 是新增节点类型: 旧文档里没有就不该有, 升级器不得凭空注入
+    const raw = (doc as unknown as { nodes?: Record<string, { type?: string }> }).nodes
+    for (const node of Object.values(raw ?? {})) {
+      expect(node?.type).not.toBe('section')
+    }
+  })
+
+  it('4.6.0 视为 outdated 且需要升级', () => {
+    const result = modelUpgrader.checkCompatibility('4.6.0')
+    expect(result.status).toBe('outdated')
+    expect(result.needsUpgrade).toBe(true)
+  })
+
+  it('4.7.0 视为当前版本, 无需升级', () => {
+    const result = modelUpgrader.checkCompatibility('4.7.0')
+    expect(result.status).toBe('current')
+    expect(result.needsUpgrade).toBe(false)
+  })
+
+  it('纯 NO-OP 升级步骤仍令 wasUpgraded 为真 (契约 §31.12)', () => {
+    // "无数据重写" ≠ "wasUpgraded === false" —— 该标志的含义是 source ≠ final
+    const r = loadDocumentFromObject({
+      type: 'document', id: 'd1', title: 't',
+      pageSetup: { width: 794, height: 1123, marginTop: 72, marginBottom: 72, marginLeft: 90, marginRight: 90, orientation: 'portrait' },
+      body: { mode: 'flow', children: [] },
+      modelVersion: '4.6.0',
+      nodes: {},
+    })
+    expect(r.wasUpgraded).toBe(true)
+    expect(r.upgradePath).toEqual(['4.6.0', '4.7.0'])
   })
 })
 

@@ -919,6 +919,10 @@ export interface LocaleMessages {
   'loader.badMetadata': string
   'loader.badChildRef': string                // 'children 包含非字符串引用: {id}'
   'loader.danglingRef': string                // '引用悬空 (节点未在 nodes/extraNodes 中): {id}'
+  'loader.multiParent': string                // '节点被多个父引用 (单父归属): {id} ({a} / {b})'
+  'loader.unknownNodeType': string            // '未知节点类型: {id} (type={type})'
+  'loader.structureTooDeep': string           // '文档结构嵌套超过上限 {max}'
+  'loader.sectionVersionMismatch': string     // '文档版本 {ver} 低于 Section 所需 {min}: {id}'
   'loader.versionTooNew': string              // '文档版本 {ver} 高于引擎支持版本 {current}'
   'loader.versionOutdated': string            // '需升级: {ver} → {current}'
   'loader.versionCurrent': string             // '版本一致'
@@ -1737,6 +1741,10 @@ const zhCN: LocaleMessages = {
   'loader.badMetadata': 'doc.metadata 非对象',
   'loader.badChildRef': 'children 包含非字符串引用: {id}',
   'loader.danglingRef': '引用悬空 (节点未在 nodes/extraNodes 中): {id}',
+  'loader.multiParent': '节点被多个父引用 (违反单父归属): {id} ({a} / {b})',
+  'loader.unknownNodeType': '未知节点类型: {id} (type={type})',
+  'loader.structureTooDeep': '文档结构嵌套超过上限 {max} 层',
+  'loader.sectionVersionMismatch': '文档版本 {ver} 低于 Section 所需的最低版本 {min}: {id}',
   'loader.versionTooNew': '文档版本 {ver} 高于引擎支持版本 {current}',
   'loader.versionOutdated': '需升级: {ver} → {current}',
   'loader.versionCurrent': '版本一致',
@@ -2548,6 +2556,10 @@ const enUS: LocaleMessages = {
   'loader.badMetadata': 'doc.metadata is not an object',
   'loader.badChildRef': 'children contains a non-string reference: {id}',
   'loader.danglingRef': 'Dangling reference (node not found in nodes/extraNodes): {id}',
+  'loader.multiParent': 'Node is referenced by more than one parent: {id} ({a} / {b})',
+  'loader.unknownNodeType': 'Unknown node type: {id} (type={type})',
+  'loader.structureTooDeep': 'Document structure nests deeper than the limit of {max}',
+  'loader.sectionVersionMismatch': 'Document version {ver} is below the minimum {min} required by Section: {id}',
   'loader.versionTooNew': 'Document version {ver} is newer than the engine supports ({current})',
   'loader.versionOutdated': 'Upgrade needed: {ver} → {current}',
   'loader.versionCurrent': 'Version is current',

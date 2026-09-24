@@ -26,7 +26,7 @@ import type { SpinePool } from '../document/selection/SelectionCollector'
 import type { DocumentTree, BaseNode } from '../document/core/DocumentModel'
 import {
   createDocument, createParagraph, createTextNode, createTable,
-  createTableRow, createTableCell, createSeparatorNode, createSectionBreak,
+  createTableRow, createTableCell, createSeparatorNode, createSectionBreak, createSection,
 } from '../document/factory/ElementFormatter'
 import docJson from '@/mocks/admissionRecord.json'
 
@@ -58,8 +58,15 @@ function addParagraph(b: Built, text: string): string {
   return p.id
 }
 
-/** 追加一张 1×(cols) 表, 每格一个段落 */
+/** 追加一张 1×(cols) 表, 每格一个段落, 并挂到 body 末尾 */
 function addTable(b: Built, cellTexts: string[]): string {
+  const id = makeTable(b, cellTexts)
+  attachToBody(b, id)
+  return id
+}
+
+/** 建一张 1×(cols) 表 (每格一个段落) 但**不**挂到 body (供放进 Section) */
+function makeTable(b: Built, cellTexts: string[]): string {
   const cells = cellTexts.map(t => {
     const tn = createTextNode(t)
     const p = createParagraph([tn.id])
@@ -73,9 +80,14 @@ function addTable(b: Built, cellTexts: string[]): string {
   const table = createTable([{ width: 100 }], [row])
   b.nodes.set(row.id, row as unknown as BaseNode)
   b.nodes.set(table.id, table as unknown as BaseNode)
-  b.bodyIds.push(table.id)
-  b.doc.body.children = b.bodyIds
   return table.id
+}
+
+/** 把已有节点挂到 body 末尾 */
+function attachToBody(b: Built, id: string): string {
+  b.bodyIds.push(id)
+  b.doc.body.children = b.bodyIds
+  return id
 }
 
 /** 追加一个无子节点的分隔线 */
@@ -85,6 +97,24 @@ function addSeparator(b: Built): string {
   b.bodyIds.push(sep.id)
   b.doc.body.children = b.bodyIds
   return sep.id
+}
+
+/** 追加一个 Section (children 为给定 id 列表) */
+function addSection(b: Built, childIds: string[], sectionCode?: string): string {
+  const sec = createSection(childIds, sectionCode)
+  b.nodes.set(sec.id, sec as unknown as BaseNode)
+  b.bodyIds.push(sec.id)
+  b.doc.body.children = b.bodyIds
+  return sec.id
+}
+
+/** 追加一个段落节点但**不**挂到 body (供放进 Section) */
+function makeParagraph(b: Built, text: string): string {
+  const tn = createTextNode(text)
+  const p = createParagraph([tn.id])
+  b.nodes.set(tn.id, tn as unknown as BaseNode)
+  b.nodes.set(p.id, p as unknown as BaseNode)
+  return p.id
 }
 
 function loadDemo(): { doc: DocumentTree; pool: SpinePool } {
@@ -228,6 +258,111 @@ describe('结构侧助手 — 真实下标 / 真实兄弟 (契约 §31.6)', () =
     expect(nearestParagraphInSpine(spine, b.pool, spine.indexOf(t), 1)).toBe(p2)
     expect(nearestParagraphInSpine(spine, b.pool, spine.indexOf(t), -1)).toBe(p1)
     expect(nearestParagraphInSpine(spine, b.pool, spine.length - 1, 1)).toBeNull()
+  })
+})
+
+describe('Section 展开 (契约 §31.3) — 结构树里的容器, 逻辑流里就地展平', () => {
+  it('W2: Section 就地展开且自身不入列', () => {
+    const b = makeDoc()
+    const p1 = makeParagraph(b, 'A1')
+    const p2 = makeParagraph(b, 'A2')
+    const sec = addSection(b, [p1, p2])
+    const px = addParagraph(b, 'X')
+    expect(bodyBlockSpine(b.doc, b.pool)).toEqual([p1, p2, px])
+    expect(bodyBlockSpine(b.doc, b.pool)).not.toContain(sec)
+  })
+
+  it('W3: Section 内段落与表格展开按阅读顺序交织, 逐元素确定', () => {
+    const b = makeDoc()
+    const p1 = makeParagraph(b, 'A1')
+    const t = makeTable(b, ['C1', 'C2'])
+    const p2 = makeParagraph(b, 'A2')
+    addSection(b, [p1, t, p2])
+    const px = addParagraph(b, 'X')
+
+    const w2 = bodyBlockSpine(b.doc, b.pool)
+    expect(w2).toEqual([p1, t, p2, px])
+
+    const w3 = bodyParagraphSpine(b.doc, b.pool)
+    expect(w3).not.toContain(t)
+    expect(w3[0]).toBe(p1)
+    expect(w3[w3.length - 1]).toBe(px)
+    expect(w3).toHaveLength(5) // A1 + C1 + C2 + A2 + X
+    // 顺序: A1 → 表内 C1, C2 → A2 → X (Section 边界不打断阅读顺序)
+    expect(w3.slice(0, 3)).toEqual([p1, ...w3.slice(1, 3)])
+  })
+
+  it('风险 A 证否: 有 Section 与无 Section 的 W3 同构 (Section 边界不影响顺序)', () => {
+    // body=[Section[P1, Table], P2] 与 body=[P1, Table, P2] 应产出同一**形状**
+    const withSec = makeDoc()
+    const a1 = makeParagraph(withSec, 'A')
+    const at = makeTable(withSec, ['B'])
+    addSection(withSec, [a1, at])
+    const a2 = addParagraph(withSec, 'C')
+
+    const plain = makeDoc()
+    const b1 = addParagraph(plain, 'A')
+    const bt = addTable(plain, ['B'])
+    const b2 = addParagraph(plain, 'C')
+
+    const s1 = bodyParagraphSpine(withSec.doc, withSec.pool)
+    const s2 = bodyParagraphSpine(plain.doc, plain.pool)
+    expect(s1).toHaveLength(s2.length)
+    expect(s1[0]).toBe(a1); expect(s2[0]).toBe(b1)
+    expect(s1[s1.length - 1]).toBe(a2); expect(s2[s2.length - 1]).toBe(b2)
+    // 表内段落的位置一致 (索引 1): table → row → cell → paragraph
+    const firstCellPara = (tableId: string, nodes: Map<string, BaseNode>): string => {
+      const rowId = (nodes.get(tableId) as unknown as { children: string[] }).children[0]
+      const cellId = (nodes.get(rowId) as unknown as { children: string[] }).children[0]
+      return (nodes.get(cellId) as unknown as { children: string[] }).children[0]
+    }
+    expect(s1[1]).toBe(firstCellPara(at, withSec.nodes))
+    expect(s2[1]).toBe(firstCellPara(bt, plain.nodes))
+  })
+
+  it('嵌套 Section: 递归展开, 内层 Section 亦不入列', () => {
+    const b = makeDoc()
+    const p1 = makeParagraph(b, 'A1')
+    const inner = makeParagraph(b, 'A1-1')
+    const secInner = createSection([inner], 'inner')
+    b.nodes.set(secInner.id, secInner as unknown as BaseNode)
+    const secOuter = addSection(b, [p1, secInner.id], 'outer')
+    const p2 = makeParagraph(b, 'A2')
+    const secOuterNode = b.nodes.get(secOuter) as unknown as { children: readonly string[] }
+    ;(secOuterNode as { children: string[] }).children = [p1, secInner.id, p2]
+
+    expect(bodyBlockSpine(b.doc, b.pool)).toEqual([p1, inner, p2])
+    expect(bodyBlockSpine(b.doc, b.pool)).not.toContain(secOuter)
+    expect(bodyBlockSpine(b.doc, b.pool)).not.toContain(secInner.id)
+  })
+
+  it('环状 Section 不会无限递归 (visited 语义, 契约 §31.3 X2)', () => {
+    const b = makeDoc()
+    const inner = makeParagraph(b, 'A1')
+    const secA = createSection([inner])
+    const secB = createSection([secA.id])
+    b.nodes.set(secA.id, secA as unknown as BaseNode)
+    b.nodes.set(secB.id, secB as unknown as BaseNode)
+    // 自引用环: A 的 children 里放进 B
+    ;(secA as unknown as { children: string[] }).children = [inner, secB.id]
+    addSection(b, [secB.id])
+    expect(() => bodyBlockSpine(b.doc, b.pool)).not.toThrow()
+    expect(bodyBlockSpine(b.doc, b.pool)).toEqual([inner])
+  })
+
+  it('Section 内禁止出现 SectionBreak (它是 body 级页面设置边界, 契约 §31.10)', () => {
+    const b = makeDoc()
+    const sb = createSectionBreak('next_page')
+    b.nodes.set(sb.id, sb as unknown as BaseNode)
+    addSection(b, [sb.id])
+    expect(() => bodyBlockSpine(b.doc, b.pool)).toThrow(BodySpineError)
+  })
+
+  it('Section 自身可被 body 直接引用或嵌套引用, 两者输出一致', () => {
+    const b = makeDoc()
+    const p1 = makeParagraph(b, 'A1')
+    addSection(b, [p1])
+    expect(bodyBlockSpine(b.doc, b.pool)).toEqual([p1])
   })
 })
 

@@ -204,6 +204,12 @@ const BODY_BLOCK_TYPES: ReadonlySet<string> = new Set<string>([
   NodeType.SEPARATOR, NodeType.SECTION_BREAK,
 ])
 
+/** Section 的直接子节点允许出现的类型 — 块级内容或嵌套 Section (契约 §31.10) */
+const SECTION_CHILD_TYPES: ReadonlySet<string> = new Set<string>([
+  NodeType.PARAGRAPH, NodeType.TABLE, NodeType.IMAGE,
+  NodeType.SEPARATOR,
+])
+
 /** 逻辑流遇到未知块类型时抛出 — 静默丢弃内容是比报错更坏的失败 (契约 §31.5) */
 export class BodySpineError extends Error {
   constructor(nodeId: string, type: string) {
@@ -217,15 +223,16 @@ export class BodySpineError extends Error {
 /**
  * W2 — 块级逻辑流: body 的阅读顺序块序列 (契约 §31.3)。
  *
- * - Section 就地展开, **Section 自身不入列** (它不是内容, 是容器)
+ * - Section 就地展开 (递归), **Section 自身不入列** (它不是内容, 是容器)
  * - section_break **入列** (Layout 需要它产出标记行)
- * - visited 语义: 每个 id 至多产出一次 —— 跨父重复归属的脏数据不得重复产出
+ * - visited 语义: 每个 id 至多产出一次 —— 跨父重复归属的脏数据不得重复产出,
+ *   也同时使自引用/环状 Section 不可能无限递归
  * - 未知类型 → 抛 BodySpineError
  */
 export function bodyBlockSpine(doc: DocumentTree, pool: SpinePool): string[] {
   const out: string[] = []
   const visited = new Set<string>()
-  pushBlockIds(doc.body.children, pool, out, visited)
+  pushBlockIds(doc.body.children, pool, out, visited, false)
   return out
 }
 
@@ -234,13 +241,22 @@ function pushBlockIds(
   pool: SpinePool,
   out: string[],
   visited: Set<string>,
+  nested: boolean,
 ): void {
   for (const id of ids) {
     if (visited.has(id)) continue
     visited.add(id)
     const node = pool.nodes.get(id)
     if (!node) continue // 悬空引用已由 DocumentLoader.validate 拦截, 此处静默跳过
-    if (!BODY_BLOCK_TYPES.has(node.type)) throw new BodySpineError(id, node.type)
+    if (node.type === NodeType.SECTION) {
+      // Section 是容器: 就地展开, 自身不入列 (契约 §31.3)。Section 恒可为
+      // body 直接子节点或另一 Section 的子节点 —— 与是否嵌套无关。
+      const children = (node as { children?: readonly string[] }).children ?? []
+      pushBlockIds(children, pool, out, visited, true)
+      continue
+    }
+    const allowed = nested ? SECTION_CHILD_TYPES : BODY_BLOCK_TYPES
+    if (!allowed.has(node.type)) throw new BodySpineError(id, node.type)
     out.push(id)
   }
 }

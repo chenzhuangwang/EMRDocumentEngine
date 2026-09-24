@@ -110,7 +110,7 @@ export type {
   FootnoteRef, FootnoteContent, CommentMarker,
   InlineNode, Paragraph, Table, ColumnDefinition,
   TablePageBreakRule, TableRow, TableCell,
-  SeparatorNode, SectionBreak,
+  SeparatorNode, SectionBreak, Section, SectionChild,
   BlockNode, BodyChild, FlowBody,
   CommentEntry, CommentThread,
   PageSetup, DocumentTree, HeaderFooterConfig, WatermarkConfig,
@@ -120,7 +120,7 @@ export type {
 export {
   createDocument, createParagraph, createTextNode, createSmartTextNode,
   createImageNode, createTable, createTableRow, createTableCell,
-  createSimpleTable, createSeparatorNode, createSectionBreak,
+  createSimpleTable, createSeparatorNode, createSectionBreak, createSection,
   insertAt, removeAt, findById, findByDE, findByInternal,
   takeSnapshot, restoreSnapshot, extractStyle, sameStyle, smartTextDisplayValue,
 } from './document/factory/ElementFormatter'

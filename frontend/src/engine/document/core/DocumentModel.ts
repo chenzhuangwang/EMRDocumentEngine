@@ -24,6 +24,7 @@ export const NodeType = {
   SMART_TEXT: 'smarttext',
   IMAGE: 'image',
   SEPARATOR: 'separator',
+  SECTION: 'section',
   SECTION_BREAK: 'section_break',
   BOOKMARK: 'bookmark',
   CROSS_REFERENCE: 'cross_reference',
@@ -308,7 +309,31 @@ export interface CommentMarker extends BaseNode {
 }
 
 export type BlockNode = Paragraph | Table | ImageNode | SeparatorNode
-export type BodyChild = BlockNode | SectionBreak
+
+// ---- Section: 文档结构容器 (契约 §31.10) ----
+//
+// Section 是**结构容器**, 不是一个标题, 也不是分页边界:
+//   - 它有自己的 children, 自身不产出可见内容
+//   - 它与 Paragraph.outlineLevel 完全正交 (标题不产生 Section, Section 不是标题)
+//   - 它与 SectionBreak 完全不同: 后者是 body 级的页面设置边界标记, 只产出
+//     标记行, **禁止进入 Section.children**
+//
+// 内容读取一律经逻辑文档流 (契约 §31.3 W2/W3): Section 在 W2 阶段就地展开,
+// Section 自身不入列。序列化 / 容器身份 / 归属解析走结构树 (契约 §31.2 Q9)。
+//
+// 格式版本 4.7.0 (契约 §14, 显式 NO-OP 迁移)。
+export interface Section extends BaseNode {
+  type: typeof NodeType.SECTION
+  children: readonly string[]
+  /** 节代码 (临床语义标识, 如 'past_history') — 可选, 缺失即匿名节 */
+  sectionCode?: string
+}
+
+/** Section 的直接子节点 — 块级内容或嵌套 Section */
+export type SectionChild = BlockNode | Section
+
+/** body 的直接子节点 — 块级内容 + 分页边界 + 结构容器 */
+export type BodyChild = BlockNode | SectionBreak | Section
 
 // ---- CommentThread (独立存后端) ----
 
@@ -337,6 +362,11 @@ export interface CommentThread {
 // 正文模式
 // ================================================================
 
+/**
+ * 正文流容器。children 是 `BodyChild` 的 ID 列表 ——
+ * 块级内容 (BlockNode) + 分页边界 (SectionBreak) + 结构容器 (Section)。
+ * 读取顺序经逻辑文档流 (契约 §31.3 W2/W3), 不在此处自行遍历。
+ */
 export interface FlowBody {
   mode: 'flow'
   children: readonly string[]

@@ -19,6 +19,7 @@
 //   v4.3.0 → v4.4.0  TemplateDefinition 新增可选字段 controlType (控件 widget 形态)
 //   v4.4.0 → v4.5.0  页眉页脚逐页变体 (firstPage/evenPage 段落数组, 契约 §7.9) — 显式 NO-OP
 //   v4.5.0 → v4.6.0  Table 新增可选字段 dynamicRows (填写时可增长, 契约 §12.9) — 显式 NO-OP
+//   v4.6.0 → v4.7.0  新增 Section 结构容器节点类型 (契约 §31) — 显式 NO-OP
 //
 // 不实现 downgrade(): EMR 场景下不需要"用旧引擎开新文档"。
 // 详见 knowledge/document-version-system-design.md §4 决策 4。
@@ -248,6 +249,25 @@ modelUpgrader.register({
 modelUpgrader.register({
   from: { major: 4, minor: 5, patch: 0 },
   to: { major: 4, minor: 6, patch: 0 },
+  breaking: false,
+  upgrade(doc: DocumentTree): DocumentTree {
+    return doc
+  },
+})
+
+// v4.6→v4.7: 新增 Section 结构容器节点类型 (契约 §31.10)
+// 纯向后兼容: Section 是**新增的节点类型**, 旧的 body.children 结构完全不变
+// (没有任何既有节点被改写或删除), 旧文档里没有 Section 节点, 读出来就是原样。
+// 不重写、不回填 —— 与 4.3→4.4 (controlType) / 4.4→4.5 (页眉脚变体) / 4.5→4.6
+// (dynamicRows) 同一约定。
+//
+// 注意: 类型新增意味着"文档里出现了本引擎可能不认识的节点"这件事本身需要
+// 防线 —— 版本闸门只挡住**声称更新**的文档, 挡不住**谎报旧版本**的文档
+// (契约 §31.12 / §14)。第二条防线是 load-time 的 modelVersion ↔ 节点类型
+// 一致性校验, 见 DocumentLoader.validateDocument。
+modelUpgrader.register({
+  from: { major: 4, minor: 6, patch: 0 },
+  to: { major: 4, minor: 7, patch: 0 },
   breaking: false,
   upgrade(doc: DocumentTree): DocumentTree {
     return doc
