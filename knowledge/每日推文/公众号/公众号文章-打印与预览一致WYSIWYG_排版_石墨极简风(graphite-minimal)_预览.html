@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gzh_tmp_wysiwyg · 公众号排版预览</title>
+<style>
+  body{margin:0;background:#eef0f2;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;-webkit-text-size-adjust:100%;}
+  .gzh-toolbar{position:fixed;top:0;left:0;right:0;height:54px;background:#ffffff;box-shadow:0 1px 10px rgba(0,0,0,.08);display:flex;align-items:center;justify-content:space-between;padding:0 16px;z-index:99;}
+  .gzh-hint{font-size:13px;color:#6b7280;line-height:1.4;}
+  .gzh-hint b{color:#111827;}
+  .gzh-copy{background:#059669;color:#fff;border:0;border-radius:9px;padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(5,150,105,.28);white-space:nowrap;transition:transform .08s,background .15s;}
+  .gzh-copy:hover{background:#047857;}
+  .gzh-copy:active{transform:translateY(1px);}
+  .gzh-toast{position:fixed;top:66px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .25s;z-index:100;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:88vw;text-align:center;}
+  .gzh-toast.show{opacity:1;}
+  .gzh-stage{max-width:700px;margin:78px auto 64px;padding:0 8px;}
+  @media(max-width:520px){.gzh-hint{max-width:150px;}}
+</style>
+</head>
+<body>
+<div class="gzh-toolbar">
+  <span class="gzh-hint">👇 下方是排版效果 · 点右侧 <b>复制</b> 直接粘到公众号</span>
+  <button class="gzh-copy" id="gzhCopyBtn" onclick="gzhCopy()">📋 复制到公众号</button>
+</div>
+<div class="gzh-toast" id="gzhToast"></div>
+<div class="gzh-stage">
+  <div id="gzh-content">
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <!-- ===== 引言卡 ===== -->
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">医生签字确认的是那张纸，不是屏幕——所以「预览的第 3 页」和「打印出来的第 3 页」之间，不该有</span><span style="border-bottom:2px solid #52525B;"><span leaf="">任何解释空间</span></span><span leaf="">。</span></p>
+  </section>
+
+  <!-- ===== 前言 ===== -->
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">打印一份三十页的病历，最容易出事的不是内容，是</span><strong style="color:#27272A;"><span leaf="">页脚</span></strong><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这不是假设。仓库里躺着一条带注释的回归记录：打印稿里，</span><strong style="color:#27272A;"><span leaf="">页眉页脚整块消失</span></strong><span leaf="">，正文的页码域打印成了两个字面量——</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">[页码]</span></span><span leaf="">。屏幕上明明一切正常。原因也不复杂：打印走的是</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">「另一条路」</span></span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这一篇就讲清楚，「打出来和看到的一样」这件事，到底要同时做对哪几件事。</span></p>
+  </section>
+
+  <!-- ===== 本文看点 ===== -->
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">为什么最容易走样：第二个渲染器</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">三件事同时做对</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">对话框里哪些真的生效</span></p>
+      </section>
+    </section>
+  </section>
+
+  <!-- ===== 01 ===== -->
+  <section style="margin-top:16px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE SECOND RENDERER</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">打印为什么最容易「走样」</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">打印出问题，八成不是因为排版错了，而是因为</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">出现了第二个渲染器</span></span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">屏幕渲染和打印输出，天然像是两条路：屏幕画在可见的 canvas 上，打印要交给浏览器的新窗口、要落到纸上。很多实现在这里会「顺手再写一套」——一套给屏幕，一套给打印。于是同一份文档有了</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">两个真相</span></span><span leaf="">：屏幕上有页眉，打印稿里没有；屏幕上是「第 7 页」，纸上印着「</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">[页码]</span></span><span leaf="">」。</span></p>
+    <p style="margin-bottom:16px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这套内核给自己立了一条硬约束：</span></p>
+  </section>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 10px 28px;">
+    <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;"><span leaf="">「打印是渲染管线的投影，不得有第二个渲染器，也不得有第二份域代码解析。」</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">代码里的原话写得更直白——屏幕画布（</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">render</span></span><span leaf="">）与打印离屏（</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">renderPageToContext</span></span><span leaf="">）</span><strong style="color:#27272A;"><span leaf="">共用同一分派</span></strong><span leaf="">。（</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">Draw.ts</span></span><span leaf="">）</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这条约束不是口号，它落到三个具体的地方。三个都做对，「一样」才成立；缺一个，就会回到上面那条回归记录。</span></p>
+  </section>
+
+  <!-- ===== 02 ===== -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THREE ALIGNMENTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">三件事同时做对，才叫「一样」</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin:0 10px 24px;overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <thead>
+        <tr>
+          <th style="background:#27272A;color:#FFFFFF;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">环节</span></th>
+          <th style="background:#27272A;color:#FFFFFF;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">要解决的问题</span></th>
+          <th style="background:#27272A;color:#FFFFFF;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">做错会怎样</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">同一份分页结果</span></strong></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">一页装多少、在哪里断</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">屏幕第 7 页和纸上第 7 页装的内容不一样</span></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><strong style="color:#27272A;"><span leaf="">同一条渲染管线</span></strong></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">页眉页脚、域代码、批注怎么画</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">打印稿缺页眉、页码变字面量</span></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">同一批页面图</span></strong></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">预览和打印读的是不是同一个东西</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">预览好好的，一点打印就换了个样</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">下面逐个说。</span></p>
+  </section>
+
+  <!-- ===== 03 ===== -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">ONE PAGINATION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">第一件事：分页先算准，而且必须是纯函数</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">打印一致的地基，是</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">分页结果只有一份</span></span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">分页由 </span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">PageBreaker</span></span><span leaf=""> 负责，它是个</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">纯函数</span></span><span leaf="">：同样的文档 + 同样的页面设置（A4、页边距、页眉页脚），永远得到同样的分页结果——不多一页、不少一页、断点也一样。它不读浏览器、不读 DOM、不依赖当前视口。</span></p>
+    <p style="margin-bottom:16px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">真正难的从来不是「切页」，而是切得</span><strong style="color:#27272A;"><span leaf="">像人排的</span></strong><span leaf="">。这里有三条硬规矩：</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">孤行寡行控制</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">一个段落被拆到两页时，每一侧至少留 2 行。常量就一行：</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">typescript</span></span>
+      </section>
+      <section style="padding:11px 14px;">
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">/** Minimum lines of a paragraph that must stay together (avoid orphans/widows). */</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">const MIN_PARAGRAPH_LINES = 2</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">跨页表头重复</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">长表格被切成多个 fragment 分到不同页时，第二页的表头要重新画一遍——否则读者不知道每列是什么。分页器在切页时把 </span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">headerLines</span></span><span leaf=""> 一路带着走。</span></p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">表格是块边界</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">表格行不参与孤行寡行控制，它的跨页逻辑是另一套（以当前页剩余可用高去问表格分页器，拿回一个 </span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">TableFragment</span></span><span leaf="">）。</span></p>
+    </section>
+  </section>
+
+  <section style="border-left:2px solid #E4E4E7;padding:12px 0 12px 20px;margin:0 10px 24px;">
+    <p style="font-size:13px;color:#A1A1AA;margin:0;line-height:1.8;text-align:justify;"><span leaf="">相关代码：PageBreaker.ts（分页主体）、表格分页分支、孤行判定。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">分页是纯函数，所以「预览第 7 页装什么」在算完那一刻就定死了</span></strong><span leaf="">——不会因为你换个屏幕、缩放下、换个窗口就变。这是「打印一致」能被保证的第一层前提。</span></p>
+  </section>
+
+  <!-- ===== 04 ===== -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">ONE PIPELINE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">第二件事：打印必须复用同一条渲染管线</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">分页算完，接下来是画。这里是最容易「分裂出第二个渲染器」的地方。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">引擎的做法是：打印时</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">不另写渲染代码</span></span><span leaf="">，而是把每一页交给同一个渲染函数去画。</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">preparePrintPages()</span></span><span leaf=""> 干的就是这件事：</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">typescript</span></span>
+      </section>
+      <section style="padding:11px 14px;">
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">preparePrintPages(): string[] {</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　const pages = this.draw.getPages()</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　for (const page of pages) {</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　const offscreen = surface.createOffscreen(page.width * dpr, page.height * dpr)</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　// 渲染页面内容 (复用现有渲染管线)</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　this.draw.renderPageToContext(pctx, page, page.width)</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　result.push(offscreen.toDataURL(&#39;image/png&#39;))</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　}</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　return result</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">}</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">关键在那句注释：</span><strong style="color:#27272A;"><span leaf="">复用现有渲染管线</span></strong><span leaf="">。而 </span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">renderPageToContext</span></span><span leaf=""> 自己的注释也写明了它必须包含什么——「与屏幕渲染（render）同源，必须包含</span><strong style="color:#27272A;"><span leaf="">页眉 + 页脚</span></strong><span leaf="">，并复用粒子管线（</span><strong style="color:#27272A;"><span leaf="">域代码逐页解析</span></strong><span leaf=""> / 控件 presentation 上下文）」。（</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">Editor.ts</span></span><span leaf="">、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">Draw.ts</span></span><span leaf="">）</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">同一条约束还管到了别处。比如批注高亮——它没有走粒子管线，而是直接从文档的批注数据解析，理由写在注释里：</span><strong style="color:#27272A;"><span leaf="">屏幕（静态层）与打印（renderPageToContext）共用同一实现，保证两边一致</span></strong><span leaf="">。（</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">Draw.ts</span></span><span leaf="">）</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">还有一个反过来的要求：</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">编辑标记不许进打印稿</span></span><span leaf="">。不可见字符、编辑辅助线在屏幕上可以显示，打印时必须强制关掉——参数注释里写的是「打印必须强制 false（编辑标记不进打印稿）」。（</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">Draw.ts</span></span><span leaf="">）</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">于是那条回归记录的存在就很好理解了：它正是「有人绕开了同一条管线」的结果。修好之后，仓库里还专门留了一个测试文件守着这条线，文件头的注释就是那次回归的墓志铭。（</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">PrintRender.test.ts</span></span><span leaf="">）</span></p>
+  </section>
+
+  <!-- ===== 05 ===== -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">ONE SET OF PAGES</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">第三件事：预览和打印，用的是同一批图</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">到这一步，「打印稿画对了」已经成立。但还差最后一环——</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">预览和打印，读的是不是同一个东西？</span></span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">如果预览是「重新排一遍给你看」，打印是「再排一遍拿去印」，那两边就有</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">两次机会不一致</span></span><span leaf="">。</span></p>
+    <p style="margin-bottom:16px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">引擎把这一环也掐掉了：预览和打印</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">共用同一条输出路径</span></span><span leaf="">。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">点「预览」</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">setPrintPages(ed.preparePrintPages())</span></span><span leaf=""> —— 生成一批页面图，预览窗口逐页显示其中的第 N 张。</span></p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">点「打印」</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">openPrintWindow(selectPrintPages(all, range))</span></span><span leaf=""> —— </span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">all</span></span><span leaf=""> 还是 </span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">ed.preparePrintPages()</span></span><span leaf=""> 生成的那批图。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">EditorPage</span></span><span leaf=""> 里那句注释说得很清楚：</span><strong style="color:#27272A;"><span leaf="">打印与打印预览共用同一条输出路径——预览后点打印看到的就是这里的结果。</span></strong><span leaf="">（</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">EditorPage.tsx</span></span><span leaf="">）</span></p>
+    <p style="margin-bottom:16px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">打印窗口里的那几行 CSS 才是「最后一米」：</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">css</span></span>
+      </section>
+      <section style="padding:11px 14px;">
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">@page{size:A4;margin:0}</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">img{width:210mm;height:auto;page-break-after:always}</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">意思是：</span><strong style="color:#27272A;"><span leaf="">纸张就是 A4，页边距为零；一张图就是一页，宽度锁死在 210mm（A4 的宽），图与图之间强制分页。</span></strong><span leaf=""> 浏览器拿到的是已经排好的整页图，它不再重新断行、不再重新分页——它只负责把图印到纸上。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这也解释了一个细节：预览对话框在深色外壳下，中间那块纸面</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">仍然是白的</span></span><span leaf="">，代码里还专门留了豁免标记——「A4 纸面本体，打印必须 WYSIWYG」。（</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">PrintPreviewDialog.tsx</span></span><span leaf="">）</span></p>
+  </section>
+
+  <!-- ===== 06 ===== -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">06</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">WHAT REALLY WORKS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">打印对话框里，哪些是真的生效</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">「打出来一样」还有个容易被忽略的前提：</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">你在对话框里填的，得真的被用上</span></span><span leaf="">。</span></p>
+    <p style="margin-bottom:16px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这里要说一句实在话，因为应用侧能管的和不能管的，界限很清楚：</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">页码范围是真的生效的</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">用户填的范围会先被钳到 </span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">[1, 总页数]</span></span><span leaf="">，再按范围切片，然后才交给打印窗口。代码注释里留了一句自查：「原先这里直接丢掉 settings —— 页码框、续打断点全是摆设。」（</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">printJob.ts</span></span><span leaf="">、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">EditorPage.tsx</span></span><span leaf="">）</span></p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">打印机、份数、单双面</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">由系统打印窗口生效。JS 无法操控浏览器原生打印对话框，所以这三个控件的作用是「把用户的选择带进打印历史」。界面上有如实说明，没让人误以为在这里选了份数就生效了。（</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">PrintDialog.tsx</span></span><span leaf="">）</span></p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">续打断点的语义</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">是「这一轮有没有打到末页」，而不是「浏览器有没有弹完打印窗口」（那个信号 JS 拿不到）。没打到末页，才留一枚断点，下次打开提示从下一页继续；打完了还留断点，会让人误以为要续打。（</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">printJob.ts</span></span><span leaf="">）</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">顺带一提，「打印模式」（</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">print</span></span><span leaf="">）在这套引擎里是一种</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">只读模式</span></span><span leaf="">——进到打印模式后，编辑是被锁住的，只能看、只能打。（</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">EditorRuntimeState.ts</span></span><span leaf="">、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">KeyboardHandler.ts</span></span><span leaf="">）</span></p>
+  </section>
+
+  <!-- ===== ∞ 坦诚与边界 ===== -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">∞</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE END</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">坦诚与边界</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:16px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">老规矩，把边界说清楚——尤其打印这件事，</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">最后一米并不完全在应用手里</span></span><span leaf="">：</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">打印输出是「页面图」，不是矢量 PDF</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">每一页是渲染成 PNG 再交给打印窗口的，分辨率取决于页面像素尺寸与设备像素比；它不是矢量格式，不存在「无限放大不失真」。</span></p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">最后一环仍在浏览器和系统手里</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">系统打印窗口里的「缩放」「适应纸张」这类设置会二次缩放，应用侧控制不了；要打出一比一的效果，那些选项需要保持默认（100% / 实际大小）。</span></p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">分页靠 page-break-after 交给浏览器</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">这是浏览器打印路径，不是 PDF / PostScript 级别的分页控制；页面图高度与 A4 比例一致时是一图一页，但这条链路本身不是「绝对物理分页」。</span></p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">页面图渲染复用主渲染管线</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">所以主渲染的边界它都有。例如文本塑形目前仍用 Canvas measureText，更高精度的塑形引擎是规划项。</span></p>
+    </section>
+  </section>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:28px 10px 28px;">
+    <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;"><span leaf="">「PDF / Word 导出与多人协同仍在推进中，当前可用导出格式为 JSON / TXT / HTML。」</span></p>
+  </section>
+
+  <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 10px 28px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 10px;letter-spacing:2px;font-weight:500;"><span leaf="">仓库与在线体验</span></p>
+    <p style="font-size:14px;color:#3F3F46;margin:0 0 8px;line-height:1.8;word-break:break-all;"><span leaf="">开源仓库：</span><span style="color:#27272A;border-bottom:1px solid #A1A1AA;"><span leaf="">https://gitee.com/wangwang_1_1665527118/emrdocument-engine?utm_source=wechat&amp;utm_medium=article&amp;utm_campaign=W16-print-wysiwyg</span></span></p>
+    <p style="font-size:14px;color:#3F3F46;margin:0;line-height:1.8;word-break:break-all;"><span leaf="">在线体验：</span><span style="color:#27272A;border-bottom:1px solid #A1A1AA;"><span leaf="">http://139.196.151.15/?utm_source=wechat&amp;utm_medium=article&amp;utm_campaign=W16-print-wysiwyg</span></span></p>
+  </section>
+
+  <!-- ===== 分割线 ===== -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;"><span leaf=""><br></span></section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin:28px 0 16px;font-size:14px;line-height:1.8;color:#71717A;text-align:justify;"><span leaf="">这是「EMR 文档编辑器」系列的第 16 篇。上一篇《性能实录：从 8s 压到 400ms》聊的是「打开慢、编辑卡、滚动掉帧」这三笔账；这一篇换到另一个最朴素的要求上——</span><span style="color:#27272A;font-weight:700;"><span leaf="">打出来的，必须就是看到的。</span></span></p>
+    <p style="margin-bottom:16px;font-size:14px;line-height:1.8;color:#71717A;text-align:justify;"><span leaf="">内核深潜这条线写到这一篇，其实已经绕了排版一圈：怎么断行、怎么分页、表格怎么跨页、页面怎么画出来。而「打印一致」是把它们全部收口的那一步——前面每一环只要有一个「另一条路」，这里就会露馅。</span></p>
+    <p style="margin-bottom:16px;font-size:14px;line-height:1.8;color:#71717A;text-align:justify;"><span leaf="">下一篇借假期换个场景：</span><span style="color:#27272A;font-weight:700;"><span leaf="">《国庆值班：一个人守病房，怎么把病历写得又快又不漏》</span></span><span leaf="">——把前面讲过的机制，落到值班这张真实的桌子上：</span><span style="color:#27272A;font-weight:700;"><span leaf="">接得上、找得到、断不了。</span></span></p>
+  </section>
+
+  <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 10px 28px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 10px;letter-spacing:2px;font-weight:500;"><span leaf="">往期精选</span></p>
+    <p style="font-size:14px;color:#3F3F46;margin:0 0 6px;line-height:1.8;"><span leaf="">· 行断与分页：UAX#14 + 孤行寡行控制</span></p>
+    <p style="font-size:14px;color:#3F3F46;margin:0 0 6px;line-height:1.8;"><span leaf="">· 表格跨页与合并矩阵算法：一张表格怎么「活」着穿过分页线</span></p>
+    <p style="font-size:14px;color:#3F3F46;margin:0;line-height:1.8;"><span leaf="">· 三层 Canvas 渲染架构：static / content / interact</span></p>
+  </section>
+
+  <p style="font-size:15px;margin:0 10px 28px;text-align:center;color:#27272A;font-weight:700;letter-spacing:1px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;padding:14px 10px;"><span leaf="">一份病历不该是医生的负担。让好的工具，成就更好的医疗。</span></p>
+
+  <!-- ===== END ===== -->
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <!-- ===== 签名区 ===== -->
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;"><span leaf="">如果这篇对你有用，欢迎关注</span><strong style="color:#27272A;"><span leaf="">「旺de碎碎念」</span></strong><span leaf="">。</span></p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;"><span leaf="">这里持续记录电子病历、医疗信息化与开源工程化的真实实践。</span></p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;"><span leaf="">点个</span><strong style="color:#27272A;"><span leaf="">「在看」</span></strong><span leaf="">，让更多同行看到 ↓</span></p>
+    </section>
+  </section>
+
+</section>
+  </div>
+</div>
+<script>
+  function gzhShowToast(msg){
+    var t=document.getElementById('gzhToast');
+    t.textContent=msg;t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer=setTimeout(function(){t.classList.remove('show');},2800);
+  }
+  function gzhCopy(){
+    var el=document.getElementById('gzh-content');
+    // 选中渲染后的富文本节点并复制（等价于手动 Ctrl+A / Ctrl+C，保留全部样式）
+    var range=document.createRange();
+    range.selectNodeContents(el);
+    var sel=window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    var ok=false;
+    try{ok=document.execCommand('copy');}catch(e){ok=false;}
+    sel.removeAllRanges();
+    var btn=document.getElementById('gzhCopyBtn');
+    if(ok){
+      gzhShowToast('✅ 已复制！去公众号编辑器按 Ctrl/⌘+V 粘贴即可');
+      var old=btn.textContent;btn.textContent='✅ 已复制';
+      setTimeout(function(){btn.textContent=old;},2200);
+    }else{
+      gzhShowToast('⚠ 自动复制失败，请手动全选(Ctrl/⌘+A)再复制(Ctrl/⌘+C)');
+    }
+  }
+</script>
+</body>
+</html>

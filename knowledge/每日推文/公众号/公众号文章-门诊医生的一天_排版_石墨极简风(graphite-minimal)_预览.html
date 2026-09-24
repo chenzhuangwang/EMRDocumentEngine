@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gzh_tmp_doc · 公众号排版预览</title>
+<style>
+  body{margin:0;background:#eef0f2;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;-webkit-text-size-adjust:100%;}
+  .gzh-toolbar{position:fixed;top:0;left:0;right:0;height:54px;background:#ffffff;box-shadow:0 1px 10px rgba(0,0,0,.08);display:flex;align-items:center;justify-content:space-between;padding:0 16px;z-index:99;}
+  .gzh-hint{font-size:13px;color:#6b7280;line-height:1.4;}
+  .gzh-hint b{color:#111827;}
+  .gzh-copy{background:#059669;color:#fff;border:0;border-radius:9px;padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(5,150,105,.28);white-space:nowrap;transition:transform .08s,background .15s;}
+  .gzh-copy:hover{background:#047857;}
+  .gzh-copy:active{transform:translateY(1px);}
+  .gzh-toast{position:fixed;top:66px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .25s;z-index:100;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:88vw;text-align:center;}
+  .gzh-toast.show{opacity:1;}
+  .gzh-stage{max-width:700px;margin:78px auto 64px;padding:0 8px;}
+  @media(max-width:520px){.gzh-hint{max-width:150px;}}
+</style>
+</head>
+<body>
+<div class="gzh-toolbar">
+  <span class="gzh-hint">👇 下方是排版效果 · 点右侧 <b>复制</b> 直接粘到公众号</span>
+  <button class="gzh-copy" id="gzhCopyBtn" onclick="gzhCopy()">📋 复制到公众号</button>
+</div>
+<div class="gzh-toast" id="gzhToast"></div>
+<div class="gzh-stage">
+  <div id="gzh-content">
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <!-- ===== 引言卡 ===== -->
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">这篇不给统计数字——它给一个</span><span style="border-bottom:2px solid #52525B;"><span leaf="">“明天就能自己做”</span></span><span leaf="">的数一数的方法。</span></p>
+  </section>
+
+  <!-- ===== 前言 ===== -->
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">门诊结束，你记得今天看了</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">40 个病人</span></span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">但你说不清，其中</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">多少时间花在“写”上</span></span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">不是因为没有时间统计工具，而是因为“写病历”这件事</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">从来没有被单独计过时</span></span><span leaf="">——它混在问诊、查体、开单、叫号之间，一段一段地发生，每段几十秒，加起来却是一天里</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">最长的那块</span></span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">先把口径说清楚。</span></strong><span leaf=""> 市面上“医生 XX% 的时间花在写病历”这类说法口径很多，但</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">我没有可复核的数据源</span></span><span leaf="">，所以这篇一个统计数字都不引用。这篇真正能拿出来的，是把“写病历”拆成</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">可数的动作</span></span><span leaf="">，然后回答两个问题：</span><strong style="color:#27272A;"><span leaf="">哪几个动作是工具能替你回收的，哪几个回收不了。</span></strong></p>
+  </section>
+
+  <!-- ===== 口径旁注 ===== -->
+  <section style="border-left:2px solid #E4E4E7;padding:12px 0 12px 20px;margin:0 10px 28px;">
+    <p style="font-size:13px;color:#A1A1AA;margin:0;line-height:1.8;text-align:justify;"><span leaf="">标题里的“40 个病人”是门诊场景设定，不是统计结论。</span></p>
+  </section>
+
+  <!-- ===== 本文看点 ===== -->
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">五个可数的动作</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">三笔能回收的重复</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">回收不了的部分</span></p>
+      </section>
+    </section>
+  </section>
+
+  <!-- ===== 01 ===== -->
+  <section style="margin-top:16px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">FIVE ACTIONS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">把“写病历”拆成 5 个动作</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">“写病历慢”是个笼统的说法。拆开看，它其实是</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">五件不同的事</span></span><span leaf="">：</span></p>
+  </section>
+
+  <section style="margin:0 10px 24px;overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <thead>
+        <tr>
+          <th style="background:#27272A;color:#FFFFFF;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">动作</span></th>
+          <th style="background:#27272A;color:#FFFFFF;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">你实际在做什么</span></th>
+          <th style="background:#27272A;color:#FFFFFF;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">工具能回收吗</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">打模板段</span></strong></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">主诉、现病史、既往史、系统回顾——大半是重复结构</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">✅ 能（模板 + 结构化控件）</span></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><strong style="color:#27272A;"><span leaf="">敲缩写</span></strong></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">i.v.g.t.t.</span></span><span leaf="">、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">q.d.</span></span><span leaf="">、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">Bp</span></span><span leaf="">、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">SpO2</span></span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">✅ 能（医学缩写自动更正）</span></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">填已知信息</span></strong></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">日期、时间、页码、标题、作者</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">✅ 能（动态域代码）</span></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><strong style="color:#27272A;"><span leaf="">找位置</span></strong></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">上次写到哪、那个书签在哪、第几页</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">🟡 部分能（查找替换 / 书签 / 交叉引用）</span></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">判断与表达</span></strong></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">这一次的病史该怎么写才准确</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">❌ 不能，也不该被回收</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这个拆法有个好处：</span><strong style="color:#27272A;"><span leaf="">每一行你都能自己数。</span></strong><span leaf="">后面第 07 节给了一个两分钟就能做完的自测。</span></p>
+  </section>
+
+  <!-- ===== 02 ===== -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE TYPING COST</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">第一笔：打字的重复</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">门诊病历里最耗人的不是“写字”，是</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">反复写同一段结构</span></span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这套引擎的应对是</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">模板</span></span><span leaf="">：公共模板 + 私有模板，一键套用；模板里存的不是“一段固定文字”，而是</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">结构</span></span><span leaf="">——哪些字段、什么类型、能不能改。模板被拆成四层（语义 / 运行时值 / 模板设计期 / 表现），各管一件事。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">配合的是</span><strong style="color:#27272A;"><span leaf="">结构化录入控件（8 类）</span></strong><span leaf="">：文本 / 多行文本 / 数字 / 下拉 / 日期 / 日期时间 / 复选框 / 单选框。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这里有个容易被忽略的区别：下拉框和复选框</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">省下的不只是字数</span></span><span leaf="">。</span></p>
+  </section>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 10px 28px;">
+    <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;"><span leaf="">「下拉框和复选框省下的不只是字数。」</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">少敲几个字</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">这是最表层的好处，也是最容易被注意到的那一层。</span></p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">这一格从此可被程序读到</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">它不再是一段带样式的文字，而是文档树里一个独立的节点。质控要扫描它、编码要提取它、统计要汇总它，都不需要靠关键词去猜。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">反过来，如果字段只是“一段看起来像字段的文字”，那所有下游能力都只能靠正则硬猜——</span><strong style="color:#27272A;"><span leaf="">省下的那几秒，会在别的地方加倍还回去。</span></strong></p>
+  </section>
+
+  <!-- ===== 03 ===== -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE ABBREVIATION COST</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">第二笔：缩写的重复</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">门诊里高频出现的，是一批</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">“打起来很别扭、读起来很标准”</span></span><span leaf="">的缩写。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">引擎内置了一份医学缩写词库，</span><strong style="color:#27272A;"><span leaf="">共 25 条</span></strong><span leaf="">，输入后触发匹配、自动替换。举几条实际的：</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">给药途径</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">i.v.g.t.t.</span></span><span leaf=""> → 静脉滴注、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">i.v.</span></span><span leaf=""> → 静脉注射、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">i.m.</span></span><span leaf=""> → 肌肉注射、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">i.h.</span></span><span leaf=""> → 皮下注射、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">p.o.</span></span><span leaf=""> → 口服；</span></p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">频次</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">q.d.</span></span><span leaf=""> → 每日 1 次、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">b.i.d.</span></span><span leaf=""> → 每日 2 次、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">t.i.d.</span></span><span leaf=""> → 每日 3 次、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">q.i.d.</span></span><span leaf=""> → 每日 4 次、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">q.o.d.</span></span><span leaf=""> → 隔日 1 次、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">q.n.</span></span><span leaf=""> → 每晚、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">q.m.</span></span><span leaf=""> → 每晨、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">p.r.n.</span></span><span leaf=""> → 必要时、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">s.t.</span></span><span leaf=""> → 立即；</span></p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">常见指标</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">Bp</span></span><span leaf=""> → 血压、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">HR</span></span><span leaf=""> → 心率、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">RR</span></span><span leaf=""> → 呼吸频率、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">T</span></span><span leaf=""> → 体温、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">SpO2</span></span><span leaf=""> → 血氧饱和度、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">WBC</span></span><span leaf=""> → 白细胞计数、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">Hb</span></span><span leaf=""> → 血红蛋白、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">PLT</span></span><span leaf=""> → 血小板计数。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">两个细节值得单独说，因为它们决定了这东西</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">能不能放心用</span></span><span leaf="">：</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#FFFFFF;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">全词匹配</span></strong><span leaf="">：触发词前后必须是空白、标点或行边界。否则 </span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">T</span></span><span leaf=""> 这种单字母缩写会误伤正常单词——那就不是省事，是</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">制造事故</span></span><span leaf="">。</span></p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#FFFFFF;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">大小写敏感</span></strong><span leaf="">：</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">Bp</span></span><span leaf="">、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">HR</span></span><span leaf="">、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">T</span></span><span leaf="">、</span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">SpO2</span></span><span leaf=""> 这类要求大小写完全一致才替换。</span></p>
+    </section>
+  </section>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 10px 28px;">
+    <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;"><span leaf="">「宁可漏替换，不可错替换。」</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">词库本身是可配置的——</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">科室有科室的习惯缩写</span></span><span leaf="">。</span></p>
+  </section>
+
+  <!-- ===== 04 ===== -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE KNOWN FIELDS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">第三笔：已知信息的重复录入</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">有一类信息，系统</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">本来就知道</span></span><span leaf="">，却常常要人手填：日期、时间、页码、总页数、文档标题、作者、保存日期、打印日期。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">引擎把这 8 类做成了</span><strong style="color:#27272A;"><span leaf="">动态域代码</span></strong><span leaf="">——</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">共 8 种</span></span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">域和“填进去的字”的区别在于：</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">域是会跟着变的</span></span><span leaf="">。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">页码是域</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">增删内容后，页码自动重排，不用手改。</span></p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">打印日期是域</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">打印那一刻取当前时间，不是上次手填的那天。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:14px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这挡掉的是一类很典型的错误：</span><strong style="color:#27272A;"><span leaf="">昨天填的日期，今天忘了改。</span></strong></p>
+  </section>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 10px 28px;">
+    <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;"><span leaf="">「这种错不会报错、不会崩，</span><span style="border-bottom:2px solid #52525B;"><span leaf="">只会安静地留在病历里</span></span><span leaf="">。」</span></p>
+  </section>
+
+  <!-- ===== 05 ===== -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE SEARCH COST</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">还有一笔隐性的：找</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">门诊场景里，最容易被忽略的一笔时间是</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">“翻来翻去”</span></span><span leaf="">：上次写到哪了、那个书签在哪、上次那个诊断在第几页。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这一笔工具只能部分回收：</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">查找替换</span></span><span leaf="">（含页眉页脚区域）、</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">书签</span></span><span leaf="">、</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">交叉引用</span></span><span leaf="">、</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">目录</span></span><span leaf="">（导出的 JSON 里带 </span><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;"><span leaf="">_toc</span></span><span leaf="">）。</span></p>
+  </section>
+
+  <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 10px 24px;">
+    <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">它回收不干净——因为“找”往往是因为写的时候没想清楚，而不是因为工具不好用。这一点得认。</span></p>
+  </section>
+
+  <!-- ===== 06 ===== -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">06</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">HONEST LIMITS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">回收不了的部分，也说清楚</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">写到这里必须停一下，否则就成了</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">功能宣讲</span></span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">工具不该碰的部分</span></strong><span leaf="">：病史采集、临床判断、个体化表达。这些是病历的</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">价值本体</span></span><span leaf="">，任何“帮你自动生成”的承诺都要小心。</span></p>
+  </section>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 10px 28px;">
+    <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;"><span leaf="">「一份不准确的病历，</span><span style="border-bottom:2px solid #F97316;font-weight:700;color:#27272A;"><span leaf="">比一份慢的病历危险得多</span></span><span leaf="">。」</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">工具自己还没做到的部分</span></strong><span leaf="">，一并说清：</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">自动查漏，现在还不该指望它</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">引擎里有质控规则引擎（6 条内置规则，支持自定义扩展），但它在整个仓库里从未被实例化，对应的结果面板也从未被渲染——能力写好了，界面够不着。</span></p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">修改留痕只到“渲染”这一步</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">插入 / 删除 / 修改三种语义的着色已经就绪，但产生修订标记的编辑流程没有接入。</span></p>
+    </section>
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;"><span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">PDF / Word 导出仍未实现</span></span></p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;"><span leaf="">当前可用导出格式是 JSON / TXT / HTML（另加页面打印）。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">能救命的那一条，是真做到了</span></strong><span leaf="">：自动保存——3 秒防抖触发、环形保留最近 3 个版本、页面加载时检测残留数据并提示恢复。但它</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">只保护“不丢”，不保护“写得对”</span></span><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">这两件事不能混为一谈。</span></strong></p>
+  </section>
+
+  <!-- ===== 07 ===== -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">07</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">COUNT FOUR</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">一个明天就能做的自测</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">不用等工具给你出报告。</span><strong style="color:#27272A;"><span leaf="">门诊结束时，花两分钟数四个数：</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#FFFFFF;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">今天有几条既往史是</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">重新打</span></span><span leaf="">的？</span></p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#FFFFFF;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">有几个缩写是</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">手敲全称</span></span><span leaf="">的？</span></p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#FFFFFF;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">有几次</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">日期或页码是手填</span></span><span leaf="">的？</span></p>
+    </section>
+    <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#FFFFFF;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">4</span></span>
+      <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">有几次为了找一个东西</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">翻了三页以上</span></span><span leaf="">？</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin:22px 0 22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这四个数不需要任何统计工具，</span><strong style="color:#27272A;"><span leaf="">你自己数得出来</span></strong><span leaf="">。数完之后你会知道：</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">该先改哪一个</span></span><span leaf="">——而这比任何“行业平均”都有用，因为它是</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">你自己的账</span></span><span leaf="">。</span></p>
+  </section>
+
+  <!-- ===== 08 ===== -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">08</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">BACK TO THE SCENE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">回到场景</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">“写病历慢”，通常不是打字慢，是</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">重复动作太多</span></span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">重复动作的特点是：单次只花几秒，所以你不觉得是问题；一天下来几十次，加起来就是</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">一天里最长的那块</span></span><span leaf="">。</span></p>
+  </section>
+
+  <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 10px 28px;">
+    <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;"><span leaf="">「工具的职责不是替你判断，而是</span><span style="border-bottom:2px solid #52525B;"><span leaf="">把重复的从你手里拿走</span></span><span leaf="">。」</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">剩下的那部分——想清楚这次该怎么写——本来就该是你的时间，</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">不该被“再敲一遍”挤掉</span></span><span leaf="">。</span></p>
+  </section>
+
+  <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 10px 28px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 10px;letter-spacing:2px;font-weight:500;"><span leaf="">仓库与在线体验</span></p>
+    <p style="font-size:14px;color:#3F3F46;margin:0 0 8px;line-height:1.8;word-break:break-all;"><span leaf="">开源仓库：</span><span style="color:#27272A;border-bottom:1px solid #A1A1AA;"><span leaf="">https://gitee.com/wangwang_1_1665527118/emrdocument-engine?utm_source=wechat&amp;utm_medium=article&amp;utm_campaign=W19-outpatient-day</span></span></p>
+    <p style="font-size:14px;color:#3F3F46;margin:0;line-height:1.8;word-break:break-all;"><span leaf="">在线体验：</span><span style="color:#27272A;border-bottom:1px solid #A1A1AA;"><span leaf="">http://139.196.151.15/?utm_source=wechat&amp;utm_medium=article&amp;utm_campaign=W19-outpatient-day</span></span></p>
+  </section>
+
+  <!-- ===== 分割线 ===== -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;"><span leaf=""><br></span></section>
+  </section>
+
+  <!-- ===== ∞ 写在最后 ===== -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">∞</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE END</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">写在最后</span></h3>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这是「EMR 文档编辑器」系列的第 19 篇。上一篇《1500+ 个测试是怎么攒出来的》在工程侧；这一篇回到门诊——不讲架构，只把“写病历”这件事</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">拆成能数的动作</span></span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">如果你愿意在留言区报一下自己数出来的那四个数，</span><strong style="color:#27272A;"><span leaf="">我会把门诊量、科室、数值整理出来</span></strong><span leaf="">——那才是一份</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">有出处的“时间账”</span></span><span leaf="">，比我编一个百分比有意义得多。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">下一篇换个更硬的问题：</span><strong style="color:#27272A;"><span leaf="">《电子病历改完留痕吗？一次说清“谁改的、改了啥、什么时候改的”》</span></strong><span leaf="">——把“审计三问”拆成四件能分别回答的事，能答的说能答，答不了的说清卡在哪。</span></p>
+  </section>
+
+  <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 10px 28px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 10px;letter-spacing:2px;font-weight:500;"><span leaf="">往期精选</span></p>
+    <p style="font-size:14px;color:#3F3F46;margin:0 0 6px;line-height:1.8;"><span leaf="">· 病历模板化书写：科室经验怎么沉淀</span></p>
+    <p style="font-size:14px;color:#3F3F46;margin:0 0 6px;line-height:1.8;"><span leaf="">· 医院信息科的时间都去哪了</span></p>
+    <p style="font-size:14px;color:#3F3F46;margin:0;line-height:1.8;"><span leaf="">· 病历质量，不是查出来的，是录进去的</span></p>
+  </section>
+
+  <p style="font-size:15px;margin:0 10px 28px;text-align:center;color:#27272A;font-weight:700;letter-spacing:1px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;padding:14px 10px;"><span leaf="">一份病历不该是医生的负担。让好的工具，成就更好的医疗。</span></p>
+
+  <!-- ===== END ===== -->
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <!-- ===== 签名区 ===== -->
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;"><span leaf="">如果这篇对你有用，欢迎关注</span><strong style="color:#27272A;"><span leaf="">「旺de碎碎念」</span></strong><span leaf="">。</span></p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;"><span leaf="">这里持续记录电子病历、医疗信息化与开源工程化的真实实践。</span></p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;"><span leaf="">点个</span><strong style="color:#27272A;"><span leaf="">「在看」</span></strong><span leaf="">，让更多同行看到 ↓</span></p>
+    </section>
+  </section>
+
+</section>
+  </div>
+</div>
+<script>
+  function gzhShowToast(msg){
+    var t=document.getElementById('gzhToast');
+    t.textContent=msg;t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer=setTimeout(function(){t.classList.remove('show');},2800);
+  }
+  function gzhCopy(){
+    var el=document.getElementById('gzh-content');
+    // 选中渲染后的富文本节点并复制（等价于手动 Ctrl+A / Ctrl+C，保留全部样式）
+    var range=document.createRange();
+    range.selectNodeContents(el);
+    var sel=window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    var ok=false;
+    try{ok=document.execCommand('copy');}catch(e){ok=false;}
+    sel.removeAllRanges();
+    var btn=document.getElementById('gzhCopyBtn');
+    if(ok){
+      gzhShowToast('✅ 已复制！去公众号编辑器按 Ctrl/⌘+V 粘贴即可');
+      var old=btn.textContent;btn.textContent='✅ 已复制';
+      setTimeout(function(){btn.textContent=old;},2200);
+    }else{
+      gzhShowToast('⚠ 自动复制失败，请手动全选(Ctrl/⌘+A)再复制(Ctrl/⌘+C)');
+    }
+  }
+</script>
+</body>
+</html>
