@@ -36,6 +36,7 @@ import type {
   TextStyle, Paragraph, TextNode, SmartTextNode,
   Table, TableRow, TableCell, ColumnDefinition, PageSetup,
   DocumentMetadata, ControlValue, ElementEnums, ElementEnumOption,
+  Section,
 } from '../document/core/DocumentModel'
 import { NodeType, generateId, normalizeDocumentMetadata } from '../document/core/DocumentModel'
 import { isControlValueEmpty } from '../document/control/ControlValue'
@@ -206,12 +207,51 @@ export class TemplateImporter {
     return ids
   }
 
+  /**
+   * 块级节点路由 (契约 §12.2 / §31.10)。
+   *
+   * **未知类型必须抛错**, 不得静默丢弃 —— `default: return null` 会让整棵子树
+   * 无声消失, 导入方拿到一份"少了几节"的模板却看不出任何异常 (契约 §31.5 的
+   * 同一原则: 静默丢内容比报错更坏)。
+   *
+   * 显式跳过 (白名单, 不抛错):
+   *   - `insert` / `delete` —— 修订痕迹标记, 无 children, 兄弟内容照常导入
+   *     (契约 §12.2 已声明推迟项)。它们在块级位置出现时同样是"无内容标记"。
+   */
   private parseBlock(node: ExtNode): string | null {
     switch (node.type) {
       case 'paragraph': return this.parseParagraph(node)
       case 'table': return this.parseTable(node)
-      default: return null
+      case 'section': return this.parseSectionNode(node)
+      case 'insert':
+      case 'delete':
+        // 修订痕迹标记: 块级位置的 insert/delete 只包裹内容, 无自有语义
+        return null
+      default:
+        throw new Error(locale.t('import.unknownBlockType', { type: String(node.type) }))
     }
+  }
+
+  /**
+   * 外部 `section` 节点 → 引擎 Section 容器 (契约 §31.10)。
+   *
+   * Section 是**结构容器**, 不是标题也不是分页边界 —— 外部模板用它表达
+   * "主诉/现病史/既往史"这类临床分节。sectionCode 取外部 code, 缺失即匿名节。
+   * children 递归走 parseBlock (块级), 故节内可含表格与嵌套节。
+   */
+  private parseSectionNode(node: ExtNode): string | null {
+    const id = node.id
+    if (!id) return null
+    const childIds: string[] = []
+    for (const child of node.children ?? []) {
+      const cid = this.parseBlock(child)
+      if (cid) childIds.push(cid)
+    }
+    const section: Section = { type: NodeType.SECTION, id, children: childIds }
+    const code = typeof node.code === 'string' ? node.code.trim() : ''
+    if (code !== '') section.sectionCode = code
+    this.nodeMap.set(id, section)
+    return id
   }
 
   private parseParagraph(node: ExtNode): string | null {

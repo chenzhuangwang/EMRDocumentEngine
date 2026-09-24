@@ -43,6 +43,7 @@ import { getMockDocumentDetail } from '@/mocks/documents'
 import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
 import { templateImporter, isExternalTemplate, hfParagraphsForPage, reportError, EditorErrorCode, locale } from '@/engine'
 import { TOCGenerator } from '@/engine/render/TOCGenerator'
+import { sectionsOf } from '@/engine/document/selection/SelectionCollector'
 import { buildExportHtml, buildExportText } from '@/lib/documentExport'
 import {
   provenanceMetaTags, stampExportHtml, stampExportObject, stampExportText,
@@ -53,6 +54,25 @@ import type { QCIssue, QCResult } from '@/engine/qc/QCEngine'
 
 /** 质控防抖窗口 —— 质控比字数统计贵得多, 不该跟着每次按键跑 */
 const QC_DEBOUNCE_MS = 600
+
+/**
+ * 节内第一个段落 id (前序深搜; 无则 null) —— 供大纲的节占位条目定位。
+ * 节是容器, 大纲跳转要落到节内的**可编辑位置**, 不是容器本身。
+ */
+function firstDescendantParagraph(
+  sectionId: string,
+  pool: { nodes: ReadonlyMap<string, { type: string; children?: readonly string[] }> },
+): string | null {
+  const stack = [...(pool.nodes.get(sectionId)?.children ?? [])]
+  while (stack.length > 0) {
+    const id = stack.shift()!
+    const node = pool.nodes.get(id)
+    if (!node) continue
+    if (node.type === 'paragraph') return id
+    if (node.children) stack.push(...node.children)
+  }
+  return null
+}
 
 /**
  * 把已渲染的页面图交给浏览器打印 (开新窗口 + w.print())。
@@ -355,7 +375,9 @@ function EditorPageInner({
       // 性能汇总 (原先 PerformanceMetrics 只写不读, getPerfMetrics 零调用)
       setPerfSummary(editor.getPerfMetrics()?.summarize() ?? null)
 
-      // 大纲: 提取所有 outlineLevel > 0 的标题段落
+      // 大纲: outlineLevel > 0 的标题段落 + **没有标题段的节**占位条目
+      // (契约 §31.10)。节与标题正交: 有标题的节由标题代表, 无标题的节 (含空节)
+      // 否则在大纲里完全不可见 —— 用户看不出"既往史节还在"。
       const doc = editor.getDocument()
       const pool = editor.getPool()
       const pages = editor.getDraw().getPages()
@@ -377,7 +399,9 @@ function EditorPageInner({
       const items: OutlineItem[] = []
       const tocGen = new TOCGenerator({ maxLevel: 6 })
       const entries = tocGen.extractEntries(doc, pool, paraPageMap)
+      const coveredSectionIds = new Set<string>()
       for (const entry of entries) {
+        if (entry.sectionId) coveredSectionIds.add(entry.sectionId)
         items.push({
           id: entry.paragraphId,
           paragraphPath: [doc.id, entry.paragraphId],
@@ -385,6 +409,29 @@ function EditorPageInner({
           text: entry.text,
           pageIndex: entry.pageNumber - 1,
         })
+      }
+      // 节占位条目 (无标题段的节): 插在其节内首个段落的位置, 保持文档顺序
+      for (const sectionId of sectionsOf(doc, pool)) {
+        if (coveredSectionIds.has(sectionId)) continue
+        const sec = pool.nodes.get(sectionId) as unknown as
+          { sectionCode?: string; children?: readonly string[] } | undefined
+        if (!sec) continue
+        const anchor = firstDescendantParagraph(sectionId, pool)
+        const label = sec.sectionCode || locale.t('outline.sectionFallback')
+        const entry: OutlineItem = {
+          id: sectionId,
+          paragraphPath: anchor ? [doc.id, anchor] : [doc.id, sectionId],
+          level: 1,
+          text: label,
+          pageIndex: anchor ? (paraPageMap.get(anchor) ?? -1) : -1,
+          kind: 'section',
+          sectionCode: sec.sectionCode,
+        }
+        const at = anchor
+          ? items.findIndex((it) => it.id === anchor || it.paragraphPath[1] === anchor)
+          : -1
+        if (at >= 0) items.splice(at, 0, entry)
+        else items.push(entry)
       }
       setOutlineItems(items)
     }

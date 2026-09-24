@@ -21,7 +21,7 @@
 
 import type { DocumentTree, Paragraph } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
-import { bodyBlockSpine } from '../document/selection/SelectionCollector'
+import { bodyBlockSpine, sectionOf } from '../document/selection/SelectionCollector'
 import { smartTextDisplayValue } from '../document/factory/ElementFormatter'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 import { locale } from '../i18n/index'
@@ -37,6 +37,14 @@ export interface TOCEntry {
   level: number
   /** 所在页码 (从 1 开始) */
   pageNumber: number
+  /**
+   * 所属 Section id (契约 §31.2 W4/R1), 无节则为 null。
+   *
+   * 目录条目必须能表达"这一章属于哪一节" —— 大标题(outlineLevel)与节
+   * (Section) 是**正交**的两个维度 (§31.10): 一个节里可以有多个标题,
+   * 一个标题也完全可以不在节里。UI 用它做大纲分组/面包屑, 不参与排序。
+   */
+  sectionId?: string | null
 }
 
 // ---- TOC 配置 ----
@@ -109,6 +117,7 @@ export class TOCGenerator {
         text: text || locale.t('toc.emptyHeading'),
         level,
         pageNumber,
+        sectionId: sectionOf(para.id, pool),
       })
     }
 

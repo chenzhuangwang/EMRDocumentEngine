@@ -72,7 +72,7 @@ import {
   InsertInlineNodeCommand, InsertBlockCommand, InsertFootnoteCommand,
   CreateCommentCommand, AddCommentReplyCommand, ResolveCommentCommand,
   SetPageSetupCommand, TableStructureCommand, EnsureHeaderFooterParagraphCommand,
-  EnsureBodyParagraphCommand, RemoveNodesCommand,
+  EnsureBodyParagraphCommand, RemoveNodesCommand, MoveBlockCommand,
 } from './command/commands/StructuralCommands'
 import { AppendTableRowCommand } from './command/commands/AppendTableRowCommand'
 import { SetTableGrowableCommand } from './command/commands/SetTableGrowableCommand'
@@ -1320,7 +1320,37 @@ export class Editor {
     }
     return undefined
   }
-  /** 表现层样式 (契约 §2.2) — 渲染消费 */
+
+  /**
+   * 移动块级节点 (段落 / 表格 / 图片 / 分隔线 / **整个 Section**) 到另一个容器
+   * 或位置 —— 契约 §31: 跨父移动此前**根本不存在**。
+   *
+   * 走 MoveBlockCommand (单命令, undo 原路移回)。非法移动 (目标是自己的子树,
+   * 或跨父重复归属) 由 NodePool.moveChildTo 抛错 → 命令返回 null → **不产生
+   * undo 条目**, 由返回值告诉调用方"没动"。
+   *
+   * @returns 是否实际移动
+   */
+  moveBlock(nodeId: string, toParentId: string, toIndex: number): boolean {
+    if (!this.pool.nodes.has(nodeId)) return false
+    const before = this.pool.getChildren(toParentId).indexOf(nodeId)
+    this.execCommand(new MoveBlockCommand(
+      generateCommandId(), Date.now(), 'user', nodeId, toParentId, toIndex,
+    ))
+    // 同父同位置 = 无操作; 跨父或异位置 = 已移动
+    const after = this.pool.getChildren(toParentId).indexOf(nodeId)
+    return before !== after
+  }
+
+  /**
+   * 移动整个 Section 到 body 的指定下标 (整章重排的引擎侧入口)。
+   * 节级命令: 目标是**真容器真下标** (契约 §31.6), 不是逻辑流下标。
+   */
+  moveSection(sectionId: string, toIndex: number): boolean {
+    const node = this.pool.nodes.get(sectionId)
+    if (!node || node.type !== 'section') return false
+    return this.moveBlock(sectionId, this.doc.id, toIndex)
+  }
   getPresentationStyles(): PresentationStyleStore | null { return this.presentationStyles }
   /** 序列化文档为 JSON 字符串 (含全部节点 payload, 供保存/自动保存使用) */
   getSerializedDocument(): string {

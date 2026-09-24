@@ -16,7 +16,7 @@ import { NodeType } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import { isControlValueComplete } from '../document/control/ControlValue'
 import { hfContainers } from '../document/core/HeaderFooterRegions'
-import { bodyBlockSpine, bodyParagraphSpine } from '../document/selection/SelectionCollector'
+import { bodyBlockSpine, bodyParagraphSpine, sectionsOf } from '../document/selection/SelectionCollector'
 import { locale, type LocaleMessages } from '../i18n/index'
 
 // ---- 类型 ----
@@ -117,6 +117,16 @@ const BUILTIN_RULES: BuiltinRule[] = [
     id: 'qc_006', nameKey: 'qc.rule.paragraphCount.name', severity: 'info',
     descKey: 'qc.rule.paragraphCount.desc',
     check: 'paragraph_count:1:500',
+  },
+  {
+    id: 'qc_007', nameKey: 'qc.rule.unnamedSection.name', severity: 'warning',
+    descKey: 'qc.rule.unnamedSection.desc',
+    check: 'section_unnamed',
+  },
+  {
+    id: 'qc_008', nameKey: 'qc.rule.emptySection.name', severity: 'warning',
+    descKey: 'qc.rule.emptySection.desc',
+    check: 'section_empty',
   },
 ]
 
@@ -324,8 +334,81 @@ export class QCEngine {
         }
         return count >= min && count <= max ? null : {}
       }
+      case 'section_unnamed': {
+        // 节级规则 (契约 §31.10): 有内容却没有 sectionCode 的节 —— 结构化导出
+        // (CDA) 与节级质控都靠 sectionCode 定位, 匿名节在这些消费方里不可引用。
+        for (const sectionId of sectionsOf(doc, pool)) {
+          const sec = pool.nodes.get(sectionId) as unknown as
+            { children?: readonly string[]; sectionCode?: string } | undefined
+          if (!sec) continue
+          if (!sec.sectionCode && (sec.children?.length ?? 0) > 0) {
+            return { nodeId: sectionId, ...sectionLocator(sectionId, pool) }
+          }
+        }
+        return null
+      }
+      case 'section_empty': {
+        // 空节 (契约 §31.10): 节存在但整个子树没有任何文本。
+        // 空节本身是**合法状态** (序列化/校验都不误伤), 这里只是提醒"这一节还没写"。
+        for (const sectionId of sectionsOf(doc, pool)) {
+          if (sectionSubtreeHasText(sectionId, pool)) continue
+          return { nodeId: sectionId, ...sectionLocator(sectionId, pool) }
+        }
+        return null
+      }
       default:
         return null // 未知规则不报错
     }
   }
+}
+
+// ================================================================
+// 节级规则定位助手 (契约 §31.2 W4 / §31.10)
+//
+// 节级问题必须**可跳转** —— 面板的「点击问题 → 跳到位置」靠 paragraphPath。
+// 节不是段落, 故定位到节内**第一个段落**; 空节没有可跳转的段落, 则只给 nodeId
+// (调用方据此定位到节容器), 这是有意的降级, 不是漏填。
+// ================================================================
+
+/** 节内第一个段落 id (前序深搜; 无则 null) */
+function firstParagraphInSection(sectionId: string, pool: NodePool): string | null {
+  const stack = [...(pool.getChildren(sectionId) ?? [])]
+  while (stack.length > 0) {
+    const id = stack.shift()!
+    const node = pool.nodes.get(id)
+    if (!node) continue
+    if (node.type === NodeType.PARAGRAPH) return id
+    const children = (node as unknown as { children?: readonly string[] }).children
+    if (children) stack.push(...children)
+  }
+  return null
+}
+
+/** 节内子树是否含任何文本 (含表格 cell 内段落) */
+function sectionSubtreeHasText(sectionId: string, pool: NodePool): boolean {
+  const first = firstParagraphInSection(sectionId, pool)
+  if (first === null) return false
+  // 只要节内**存在任意一个有文本的段落**即视为非空
+  const stack: string[] = [sectionId]
+  const seen = new Set<string>()
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (seen.has(id)) continue
+    seen.add(id)
+    const node = pool.nodes.get(id)
+    if (!node) continue
+    if (node.type === NodeType.TEXT && (node as { text?: string }).text) return true
+    const children = (node as unknown as { children?: readonly string[] }).children
+    if (children) stack.push(...children)
+  }
+  return false
+}
+
+/** 节级问题的定位载荷: 有段落跳段落, 无段落只给 nodeId */
+function sectionLocator(
+  sectionId: string,
+  pool: NodePool,
+): { paragraphPath?: string[] } {
+  const paraId = firstParagraphInSection(sectionId, pool)
+  return paraId ? { paragraphPath: [pool.rootIds.body, paraId] } : {}
 }

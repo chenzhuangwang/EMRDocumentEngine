@@ -3252,11 +3252,11 @@ MUST:
         selection spine, find & replace scope, Ctrl+A, render
         selection highlight.
 
-    W4  sectionsOf(doc, pool)                 — later phase
+    W4  sectionsOf(doc, pool)
         Pre-order enumeration of Section nodes, INCLUDING Section
         itself.
 
-    R1  sectionOf(nodeId, doc, pool)          — later phase
+    R1  sectionOf(nodeId, doc, pool)
         Nearest enclosing Section (NOT the outermost one); null when
         the node has no Section content.
 
@@ -3284,6 +3284,20 @@ MUST NOT:
          Section's real index inside body.
       5. sectionsOf / sectionOf — ownership is a structural fact,
          not a reading order.
+
+Cross-parent move — `MoveBlockCommand` + `NodePool.moveChildTo`:
+
+    The engine has exactly one cross-parent move primitive. It exists
+    because "move a whole chapter" cannot be expressed with
+    `moveChild` (which only reorders WITHIN one parent). It is a
+    controlled NodePool method (the §6.1 choke point), and it FAILS
+    LOUDLY rather than silently: moving a node into its own subtree,
+    or creating a second parent reference, throws and the command
+    produces NO undo entry.
+
+    A block move is a DETACH + INSERT, not a rebuild: subtree node identity
+    is preserved (undo therefore needs only the source container and
+    index, never a subtree snapshot).
 
 ------------------------------------------------------------
 31.3 Walker output contract (exact)
@@ -3413,21 +3427,21 @@ MUST:
   fail visibly (or be fixed to resolve it), never silently.
 
 ------------------------------------------------------------
-31.9 Counting口径 — body-only, and the table gap is pre-existing
+31.9 Counting口径 — over the paragraph flow (W3)
 ------------------------------------------------------------
 
-`min_chars`, `paragraph_count` and `Editor.getWordCount()` count only
-what is reachable from body-level blocks. They therefore:
+`min_chars`, `paragraph_count` and `Editor.getWordCount()` count over the
+**paragraph flow (W3)**, so they include Section-inner paragraphs AND
+table cell paragraphs. Counting only body-level blocks (the historical
+口径) silently dropped every table's content — a PRE-EXISTING gap that
+this section closes rather than a Section regression.
 
-- already exclude table cell paragraphs today (a PRE-EXISTING gap,
-  not a Section regression);
-- will exclude Section-inner text unless they are migrated to the
-  flow.
+Header/footer content is still NOT counted: it is band content that
+repeats on every page, so counting it would inflate the number with page
+count.
 
-P0 changes only their TRAVERSAL (onto W2), keeping their口径
-identical for Section-free documents. Migrating the口径 itself
-(word/QC counting over W3) is a later phase. This limitation MUST be
-recorded in the code where the rule lives, never silently ignored.
+All three口径 are the SAME source, so the status bar's word count and
+QC's paragraph count can no longer contradict each other.
 
 ------------------------------------------------------------
 31.10 `Section` vs `SectionBreak` vs `outlineLevel` — three
@@ -3498,3 +3512,28 @@ avoid collision — e.g. Draw's page-band resolver is `resolveBandOf`
   flag means "source version ≠ final version"; a document upgraded
   through a pure NO-OP step still reports `wasUpgraded === true`.
   "No data rewrite" ≠ "wasUpgraded false".
+
+- Section-level QC lives in QCEngine as `section_unnamed` /
+  `section_empty`. Both are WARNINGS, not errors: an anonymous or
+  still-empty SECTION is a legal document state (serialization,
+  validation and the walkers all accept it) — the rules only remark
+  that the section cannot be referenced by section code, or has not
+  been filled in yet. A section-level issue MUST be locatable: it
+  carries the Section's nodeId, plus the paragraph path of the
+  section's FIRST paragraph when one exists. An empty section has no
+  paragraph to jump to, so it carries the nodeId only — a deliberate
+  degradation, not a missing field.
+
+- The OUTLINE projection shows sections that have no heading of their
+  own, so that "this section exists but is empty" is visible. Such an
+  entry is marked as a section (distinct icon/style) and MUST NOT
+  masquerade as a heading: Section and outlineLevel are orthogonal
+  (§31.10). A section WITH headings is represented by those headings.
+
+- The template IMPORTER routes an external `section` node to a Section
+  container and MUST THROW on a block type it does not know. The
+  historical `default: return null` silently discarded the whole
+  subtree, so an imported template could quietly lose entire chapters
+  (the §31.5 principle applies to the import boundary too). The
+  revision markers `insert` / `delete` remain an explicit skip
+  whitelist — they are content-free wrappers, not unknown types.

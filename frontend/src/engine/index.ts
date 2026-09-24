@@ -77,6 +77,7 @@ export {
   EnsureBodyParagraphCommand,
   EnsureCellParagraphCommand,
   TableStructureCommand,
+  MoveBlockCommand,
 } from './command/commands/StructuralCommands'
 export { normalizeParagraph } from './command/commands/ParagraphUtils'
 export { CommandUndoRedoStack } from './command/CommandUndoRedoStack'
@@ -149,6 +150,7 @@ export type {
 // 一律不得用它们 —— 那五类走结构树 `pool.getChildren` (契约 §31.2 Q9)。
 export {
   bodyBlockSpine, bodyParagraphSpine,
+  sectionsOf, sectionOf,
   bodyParagraphCount, initialCursorParaPath,
   flattenTextContainers,
 } from './document/selection/SelectionCollector'

@@ -190,8 +190,8 @@ export function flattenTextContainers(
 //   W1  collectDocumentNodes   序列化可达节点 (document/io/DocumentSerializer)
 //   W2  bodyBlockSpine         块级逻辑流 (Section 就地展开, 自身不入列)
 //   W3  bodyParagraphSpine     段落逻辑流 = W2 ∘ 表格展开
-//   W4  sectionsOf             节枚举 (前序, 含 Section 自身)     — P3
-//   R1  sectionOf              节归属 (最近祖先)                  — P3
+//   W4  sectionsOf             节枚举 (前序, 含 Section 自身)
+//   R1  sectionOf              节归属 (最近祖先)
 //   R2  resolveParagraphRegion 段落所在区域 + 真实兄弟数组 (state/CaretScope)
 //
 // 本模块是唯一允许遍历 `doc.body.children` 的逻辑流入口; 静态闸门
@@ -271,6 +271,63 @@ export function bodyParagraphSpine(doc: DocumentTree, pool: SpinePool): string[]
   return flattenTextContainers(pool, bodyBlockSpine(doc, pool))
 }
 
+// ---- 节遍历器 (契约 §31.2 W4 / R1) ----
+
+/**
+ * W4 — `sectionsOf(doc, pool)`: 文档中的全部 Section, **前序** (文档顺序),
+ * **含 Section 自身** (契约 §31.2)。
+ *
+ * 与 W2/W3 的区别是刻意的: W2/W3 回答"按阅读顺序下一个是什么" (Section 是容器,
+ * 就地展开、自身不入列); W4 回答"有哪些节" —— 这是**结构事实**, 用于大纲投影、
+ * 节级命令、结构化导出。二者不可互换 (契约 §31.1)。
+ *
+ * 嵌套 Section 一并收入, 且父先于子 (前序)。
+ */
+export function sectionsOf(doc: DocumentTree, pool: SpinePool): string[] {
+  const out: string[] = []
+  const visited = new Set<string>()
+  const walk = (ids: readonly string[]): void => {
+    for (const id of ids) {
+      if (visited.has(id)) continue
+      visited.add(id)
+      const node = pool.nodes.get(id)
+      if (!node || node.type !== NodeType.SECTION) continue
+      out.push(id)
+      const children = (node as { children?: readonly string[] }).children ?? []
+      walk(children)
+    }
+  }
+  walk(doc.body.children)
+  return out
+}
+
+/**
+ * R1 — `sectionOf(nodeId, pool)`: nodeId 的**最近**祖先 Section, 无则 null
+ * (契约 §31.2)。
+ *
+ * "最近"是硬要求: `Section A > Section A1 > Paragraph` 时返回 A1, 不是 A。
+ * Section 自身作为 nodeId 时返回其**父** Section (不是它自己) —— 归属问的是
+ * "我被谁拥有"。
+ */
+export function sectionOf(nodeId: string, pool: SpinePool): string | null {
+  let current = nodeId
+  const seen = new Set<string>([nodeId])
+  for (;;) {
+    let parent: string | null = null
+    for (const [id, node] of pool.nodes) {
+      if (seen.has(id)) continue
+      const children = (node as { children?: readonly string[] }).children
+      if (children?.includes(current)) { parent = id; break }
+    }
+    if (parent === null) return null
+    const p = pool.nodes.get(parent)
+    if (p?.type === NodeType.SECTION) return parent
+    if (seen.has(parent)) return null // 环状脏数据: 不无限上溯
+    seen.add(parent)
+    current = parent
+  }
+}
+
 // ---- 结构侧助手 (真实下标 / 真实兄弟, 不是逻辑流) ----
 
 /** body 中段落数 (守卫口径, 契约 §31.7) — 遍历走 W2, 保证 Section 展开后口径一致 */
@@ -301,8 +358,7 @@ export function nearestParagraphInSpine(
   pool: SpinePool,
   fromIndex: number,
   dir: 1 | -1,
-): string | null {
-  for (let i = fromIndex + dir; i >= 0 && i < spine.length; i += dir) {
+): string | null {  for (let i = fromIndex + dir; i >= 0 && i < spine.length; i += dir) {
     if (pool.nodes.get(spine[i])?.type === NodeType.PARAGRAPH) return spine[i]
   }
   return null

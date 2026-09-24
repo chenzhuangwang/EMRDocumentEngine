@@ -461,6 +461,8 @@ export interface LocaleMessages {
   'outline.title': string
   'outline.empty': string
   'outline.headingTitle': string             // 'Heading {level}: {text}'
+  'outline.sectionTitle': string             // 'Section: {text}'
+  'outline.sectionFallback': string          // 匿名节/无名节的显示名
   // ============================================================
   // CommentPanel
   // ============================================================
@@ -901,6 +903,11 @@ export interface LocaleMessages {
   'qc.rule.minChars.desc': string
   'qc.rule.paragraphCount.name': string
   'qc.rule.paragraphCount.desc': string
+  'import.unknownBlockType': string          // '外部模板含未知块类型: {type}'
+  'qc.rule.unnamedSection.name': string      // '节缺少节代码'
+  'qc.rule.unnamedSection.desc': string
+  'qc.rule.emptySection.name': string        // '节内容为空'
+  'qc.rule.emptySection.desc': string
   // ErrorRecovery — 三级容错上报的消息 (→ StatusBar chip / canvas 占位页)
   'engineError.particleRender': string        // '粒子渲染失败: nodeId={nodeId}'
   'engineError.pageRender': string            // '页面渲染失败: pageIndex={pageIndex}'
@@ -1331,6 +1338,8 @@ const zhCN: LocaleMessages = {
   'outline.title': '文档大纲',
   'outline.empty': '暂无标题 — 使用 Heading 1-6 样式创建大纲',
   'outline.headingTitle': 'Heading {level}: {text}',
+  'outline.sectionTitle': '节: {text}',
+  'outline.sectionFallback': '未命名节',
   // ===== CommentPanel =====
   'comment.title': '批注',
   'comment.filter.all': '全部 ({n})',
@@ -1723,6 +1732,11 @@ const zhCN: LocaleMessages = {
   'qc.rule.minChars.desc': '文档正文至少包含 10 个字符',
   'qc.rule.paragraphCount.name': '段落数量合理',
   'qc.rule.paragraphCount.desc': '段落数应在 1-500 之间',
+  'import.unknownBlockType': '外部模板含未知块类型: {type}',
+  'qc.rule.unnamedSection.name': '节缺少节代码',
+  'qc.rule.unnamedSection.desc': '该节有内容但未设置节代码, 结构化导出与节级定位无法引用它',
+  'qc.rule.emptySection.name': '节内容为空',
+  'qc.rule.emptySection.desc': '该节尚未填写任何内容',
   // ErrorRecovery
   'engineError.particleRender': '粒子渲染失败: nodeId={nodeId}',
   'engineError.pageRender': '页面渲染失败: pageIndex={pageIndex}',
@@ -2147,6 +2161,8 @@ const enUS: LocaleMessages = {
   'outline.title': 'Document Outline',
   'outline.empty': 'No headings — use Heading 1-6 styles to build an outline',
   'outline.headingTitle': 'Heading {level}: {text}',
+  'outline.sectionTitle': 'Section: {text}',
+  'outline.sectionFallback': 'Untitled section',
   // ===== CommentPanel =====
   'comment.title': 'Comments',
   'comment.filter.all': 'All ({n})',
@@ -2538,6 +2554,11 @@ const enUS: LocaleMessages = {
   'qc.rule.minChars.desc': 'The document body must contain at least 10 characters',
   'qc.rule.paragraphCount.name': 'Paragraph count is reasonable',
   'qc.rule.paragraphCount.desc': 'The paragraph count should be between 1 and 500',
+  'import.unknownBlockType': 'External template contains an unknown block type: {type}',
+  'qc.rule.unnamedSection.name': 'Section has no section code',
+  'qc.rule.unnamedSection.desc': 'This section has content but no section code; structured export and section-level targeting cannot reference it',
+  'qc.rule.emptySection.name': 'Section is empty',
+  'qc.rule.emptySection.desc': 'Nothing has been entered in this section yet',
   // ErrorRecovery
   'engineError.particleRender': 'Particle render failed: nodeId={nodeId}',
   'engineError.pageRender': 'Page render failed: pageIndex={pageIndex}',

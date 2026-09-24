@@ -17,16 +17,29 @@ import { useTranslation } from '@/i18n/useTranslation'
 // ---- 类型 ----
 
 export interface OutlineItem {
-  /** 段落 ID */
+  /** 段落 ID (节占位条目为 Section id) */
   id: string
-  /** 段落路径 (ID 链路) */
+  /** 段落路径 (ID 链路); 节占位条目为 [docId, sectionId] */
   paragraphPath: string[]
-  /** 标题级别 (1-6) */
+  /** 标题级别 (1-6); 节占位条目固定 1 */
   level: number
   /** 标题文本 (纯文本) */
   text: string
   /** 所在页面索引 (供跳转, -1 表示未知) */
   pageIndex: number
+  /**
+   * 条目种类 (契约 §31.10)。
+   *
+   *   'heading' (缺省) — 一个 outlineLevel > 0 的段落
+   *   'section'        — 一个**没有标题段**的节 (含空节)
+   *
+   * 为什么需要: 大纲此前只认 outlineLevel > 0 的段落, 于是"既往史节存在但为空"
+   * 在大纲里完全不可见 —— 用户看不出这一节还在。节占位条目把"节存在"这件事
+   * 显示出来, 但**不冒充标题**: 图标与样式都不同, 点击跳到节内首段 (空节跳节容器)。
+   */
+  kind?: 'heading' | 'section'
+  /** 节代码 (kind === 'section' 时的显示名, 缺失即匿名节) */
+  sectionCode?: string
 }
 
 interface OutlineNavProps {
@@ -83,12 +96,18 @@ export function OutlineNav({
           )}
           style={{ paddingLeft: `${8 + (item.level - 1) * 16}px` }}
           onClick={() => onItemClick?.(item)}
-          title={t('outline.headingTitle', { level: item.level, text: item.text })}
+          title={item.kind === 'section'
+            ? t('outline.sectionTitle', { text: item.text })
+            : t('outline.headingTitle', { level: item.level, text: item.text })}
         >
           <span className="flex-shrink-0">
-            {LEVEL_ICONS[item.level] ?? <FileText size={14} className="text-chrome-ink-muted" />}
+            {item.kind === 'section'
+              ? <ListTree size={14} className="text-chrome-ink-muted" />
+              : (LEVEL_ICONS[item.level] ?? <FileText size={14} className="text-chrome-ink-muted" />)}
           </span>
-          <span className="truncate flex-1 min-w-0">{item.text}</span>
+          <span className={cn('truncate flex-1 min-w-0', item.kind === 'section' && 'italic')}>
+            {item.text}
+          </span>
           {item.pageIndex >= 0 && (
             <span className="text-xs text-chrome-ink-muted flex-shrink-0 tabular-nums">
               p{item.pageIndex + 1}

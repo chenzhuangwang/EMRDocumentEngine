@@ -122,6 +122,55 @@ export class NodePool {
   }
 
   /**
+   * 跨父移动: 把 childId 从 fromParentId 移到 toParentId 的 toIndex。
+   *
+   * 与同父 moveChild 的区别是**容器身份也变了** —— 这是"整节移动"这类命令
+   * 需要的能力 (契约 §31: 节可以被挪到另一个位置/另一个父容器)。此前本仓库
+   * **根本没有**跨父移动能力: `moveChild` 只在单个父内重排, 且零调用者。
+   *
+   * 受控语义 (契约 §6.1):
+   *   - 必须先查两边都是已注册节点, 且 childId 确在 fromParentId 下 (否则抛错,
+   *     不做静默 no-op —— 静默失败会让 undo 把内容还原到错误位置)
+   *   - 移动是**摘除 + 插入**, 子树节点身份不变 (它们仍在池中, 只是父换了)
+   *   - 目标父若已含 childId (跨父重复归属的脏数据) → 抛错, 不制造第二个引用
+   *   - **toIndex 与 moveChild 同一约定**: 它是「摘除之后」目标数组中的下标。
+   *     同父内向后移动时, 调用方给的"我想让它到第 N 位"会因自身被摘除而左移一位,
+   *     这是既有 API 的语义, 不在此另立一套 (两个同族方法语义不同才是真陷阱)。
+   *
+   * @returns 实际插入下标
+   */
+  moveChildTo(
+    childId: string,
+    fromParentId: string,
+    toParentId: string,
+    toIndex: number,
+  ): number {
+    const from = this.resolveChildren(fromParentId)
+    const fromIndex = from.indexOf(childId)
+    if (fromIndex < 0) {
+      throw new Error(`NodePool.moveChildTo: ${childId} is not a child of ${fromParentId}`)
+    }
+    const sameParent = fromParentId === toParentId
+    const to = sameParent ? from : this.resolveChildren(toParentId)
+    // 同父重排时 childId 本来就在 to 里 (那是它自己), 只在**跨父**时查重
+    if (!sameParent && to.includes(childId)) {
+      throw new Error(`NodePool.moveChildTo: duplicate ID in parent ${toParentId}: ${childId}`)
+    }
+    // 自环防护: 不能把一个节点移进它自己的子树 (会让树变成环)
+    if (childId === toParentId || this.collectDescendants(childId).includes(toParentId)) {
+      throw new Error(`NodePool.moveChildTo: cannot move ${childId} into its own subtree (${toParentId})`)
+    }
+    from.splice(fromIndex, 1)
+    // 与 moveChild 逐字同一语义: 直接 splice 到 toIndex (该下标是**摘除后**数组中的
+    // 位置)。同父内向后移动时调用方给的"第 N 位"因此会左移一位 —— 这是既有约定,
+    // 两个同族方法必须一致, 不能各立一套。
+    const clamped = Math.max(0, Math.min(toIndex, to.length))
+    to.splice(clamped, 0, childId)
+    this._structureVersion++
+    return clamped
+  }
+
+  /**
    * 截断 children 尾部 (fromIndex 起全部摘除), detach 但不删除子树。
    * 返回被摘除的 child id 列表, 供调用方挪到别的父节点。
    * 替代裸 children.splice(fromIndex)。

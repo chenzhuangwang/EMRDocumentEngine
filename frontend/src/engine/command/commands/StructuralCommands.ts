@@ -1066,3 +1066,81 @@ class RestoreTableCommand implements ICommand {
     return { type: 'restore-table', id: this.id, timestamp: this.timestamp, author: this.author }
   }
 }
+
+// ================================================================
+// MoveBlockCommand — 把块级节点 (含整个 Section) 移到另一个容器/位置
+//
+// 契约 §31: 跨父移动此前**根本不存在** —— NodePool.moveChild 只在单个父内
+// 重排且零调用者, 仓库里没有任何 MoveXxxCommand。"移动整章"因此需要新能力,
+// 不是既有命令的扩展 (P3 冻结方案把它列为新命令是正确的)。
+//
+// 单命令完成跨父移动: forward 记录来源容器/下标, invert 原路移回。
+// 子树节点身份不变 (它们仍在池中, 只换了父) —— 无需快照整棵子树。
+// ================================================================
+
+export class MoveBlockCommand implements ICommand {
+  readonly type = 'move-block'
+  readonly id: string
+  readonly timestamp: number
+  readonly author: string
+  private nodeId: string
+  private toParentId: string
+  private toIndex: number
+  /** forward 时解析出的来源容器/下标 (invert 原路移回) */
+  private fromParentId: string | null = null
+  private fromIndex = -1
+  constructor(
+    id: string, timestamp: number, author: string,
+    nodeId: string, toParentId: string, toIndex: number,
+  ) {
+    this.id = id; this.timestamp = timestamp; this.author = author
+    this.nodeId = nodeId; this.toParentId = toParentId; this.toIndex = toIndex
+  }
+
+  forward(ctx: CommandContext): StatePatch | null {
+    if (ctx.mode !== 'local') return null
+    const { pool } = ctx
+    // 来源容器: 用结构侧解析 (真容器真下标, 契约 §31.6) —— 不假设是 body
+    const fromParent = findParentIdOf(pool, this.nodeId)
+    if (!fromParent) return null
+    const fromIndex = pool.getChildren(fromParent).indexOf(this.nodeId)
+    if (fromIndex < 0) return null
+
+    try {
+      pool.moveChildTo(this.nodeId, fromParent, this.toParentId, this.toIndex)
+    } catch {
+      return null // 非法移动 (自环 / 目标已含该节点) → 显式拒绝, 不静默半途修改
+    }
+    this.fromParentId = fromParent
+    this.fromIndex = fromIndex
+    return { invalidation: 'flowbody' }
+  }
+
+  invert(_ctx: CommandContext): ICommand | null {
+    if (!this.fromParentId || this.fromIndex < 0) return null
+    return new MoveBlockCommand(
+      generateCommandId(), Date.now(), this.author,
+      this.nodeId, this.fromParentId, this.fromIndex,
+    )
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: 'move-block', id: this.id, timestamp: this.timestamp, author: this.author,
+      changes: { nodeId: this.nodeId, toParentId: this.toParentId, toIndex: this.toIndex },
+    }
+  }
+}
+
+/**
+ * 池中某节点的**直接父** id (无则 null)。
+ *
+ * 经 `pool.getChildren` 判定, 而不是直接读 `.children` —— 文档根的 children
+ * 挂在 `body.children` 上, 直接读 `.children` 会把 body 级节点判成"没有父"。
+ */
+function findParentIdOf(pool: NodePool, nodeId: string): string | null {
+  for (const [id] of pool.nodes) {
+    if (pool.getChildren(id).includes(nodeId)) return id
+  }
+  return null
+}
