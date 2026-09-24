@@ -66,9 +66,6 @@ const STRUCTURE_EXEMPT = new Map<string, string>([
     '加载: 引用校验 / buildPool 走真结构 (§14 / §31.2 Q9①)'],
   ['/src/engine/document/version/ModelUpgrader.ts',
     '版本迁移: 直接改写 body.children 的数据迁移路径 (§14)'],
-  ['/src/engine/command/commands/StructuralCommands.ts',
-    '结构命令: 真容器身份 + 真下标 (快照/恢复/插入位置, §31.2 Q9②③④)。' +
-    'P0 保留现状 (零行为变更); P2 收敛为 R2 后本项应随之收窄。'],
   ['/src/engine/state/CaretScope.ts',
     'R2: 段落区域 + **真实兄弟数组** (结构命令需要真兄弟真下标, §31.2 Q9②)'],
 ])

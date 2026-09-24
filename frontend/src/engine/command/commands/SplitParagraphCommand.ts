@@ -14,7 +14,7 @@ import type { Paragraph, TextNode, DocumentTree } from '../../document/core/Docu
 import { createParagraph, createTextNode, extractStyle } from '../../document/factory/ElementFormatter'
 import { ICommand, CommandContext, StatePatch, SerializedCommand, PositionalCommand } from '../ICommand'
 import { MergeParagraphCommand } from './MergeParagraphCommand'
-import { resolveParagraphRegion } from '../../state/CaretScope'
+import { resolveParagraphRegion, isPoolRegion } from '../../state/CaretScope'
 
 export class SplitParagraphCommand extends PositionalCommand {
   readonly type = 'split-paragraph'
@@ -124,8 +124,9 @@ export class SplitParagraphCommand extends PositionalCommand {
   ): StatePatch | null {
     const region = resolveParagraphRegion(para.id, doc, pool)
     if (region) {
-      // 直接在新段落所属区域的原段落之后插入 (body/header/footer/cell 数组)
-      if (region.type === 'body' || region.type === 'cell') {
+      // 直接在新段落所属区域的原段落之后插入 (body/section/cell 走 NodePool;
+      // header/footer 是文档级 string[] 数组, 直接 splice)
+      if (isPoolRegion(region)) {
         pool.insertChild(region.containerId, newPara.id, region.index + 1)
       } else {
         region.siblings.splice(region.index + 1, 0, newPara.id)

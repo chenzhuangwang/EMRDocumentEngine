@@ -205,7 +205,7 @@ export function getCaretScope(
   return { type: 'body' }
 }
 
-// ---- 段落区域解析 (body / cell / header / footer) ----
+// ---- 段落区域解析 (body / section / cell / header / footer) ----
 
 /**
  * 段落所在区域 + 可直接操作的兄弟数组。
@@ -213,13 +213,30 @@ export function getCaretScope(
  * 与 getCaretScope 不同: 此处把 header/footer 视为独立区域 (而非 body),
  * 供结构编辑命令 (拆段/并段/删除) 确定正确的兄弟容器, 避免误写入 body。
  *
+ * 返回的 siblings 是**真实兄弟数组** (真容器真下标, 契约 §31.2 Q9②) ——
+ * 这是 R2 的职责, 不得用逻辑流 (W2/W3) 代替: 结构命令要按真容器快照与恢复。
+ *
  * @returns 区域 + 兄弟数组 (可变引用) + 段落在其中的下标; 未找到返回 null
  */
 export type ParagraphRegion =
   | { type: 'body'; siblings: readonly string[]; containerId: string; index: number }
+  | { type: 'section'; siblings: readonly string[]; containerId: string; index: number }
   | { type: 'cell'; siblings: readonly string[]; containerId: string; index: number }
   | { type: 'header'; siblings: string[]; index: number; variant: HeaderFooterVariant }
   | { type: 'footer'; siblings: string[]; index: number; variant: HeaderFooterVariant }
+
+/**
+ * 区域是否为 **pool 内容器** (children 数组挂在池中节点上)。
+ *
+ * 是 → 结构变更必须经 NodePool 受控 API (`insertChild`/`detachChild`), 用
+ * `containerId` 定位; 不是 → 文档级 string[] 数组 (页眉/页脚变体/脚注),
+ * 直接 splice (§6.2 的域划分)。
+ */
+export function isPoolRegion(
+  region: ParagraphRegion,
+): region is Extract<ParagraphRegion, { containerId: string }> {
+  return region.type === 'body' || region.type === 'section' || region.type === 'cell'
+}
 
 export function resolveParagraphRegion(
   paraId: string,
@@ -242,7 +259,16 @@ export function resolveParagraphRegion(
     }
   }
 
-  // 3. 页眉/页脚段落 (6 个变体数组 — 非 children 数组, 不在 PROBLEM B choke point 范围)
+  // 3. Section 内段落 (section.children — children 数组, 经 containerId=sectionId 走 NodePool)
+  //    Section 是结构容器 (契约 §31.10), 返回的 siblings 就是它**真实**的 children
+  //    数组 —— 拆段/并段/粘贴据此插回节内, 而不是落回 body。
+  const section = findParentSection(paraId, pool)
+  if (section) {
+    const si = section.children.indexOf(paraId)
+    if (si >= 0) return { type: 'section', siblings: section.children, containerId: section.id, index: si }
+  }
+
+  // 4. 页眉/页脚段落 (6 个变体数组 — 非 children 数组, 不在 PROBLEM B choke point 范围)
   //    归属解析唯一经 HeaderFooterRegions (契约 §7.9): 变体不同 → 兄弟数组不同。
   const loc = resolveHfParagraphLocation(doc, paraId)
   if (loc) {
@@ -252,6 +278,51 @@ export function resolveParagraphRegion(
     return { type: 'footer', siblings: loc.ids, index: loc.index, variant: loc.variant }
   }
 
+  return null
+}
+
+/**
+ * 直接父 Section (段落/块的**最近** Section 容器), 无则 null。
+ *
+ * 按 pool 扫描找 children 含 nodeId 的 Section。嵌套 Section 下返回**最近**那个
+ * —— 与 R1 `sectionOf` 的"最近祖先"语义一致 (契约 §31.2 R1)。
+ */
+export function findParentSection(
+  nodeId: string,
+  pool: NodePool,
+): { id: string; children: readonly string[] } | null {
+  for (const [, node] of pool.nodes) {
+    if (node.type !== 'section') continue
+    const sec = node as unknown as { id: string; children?: readonly string[] }
+    if (sec.children?.includes(nodeId)) return { id: sec.id, children: sec.children }
+  }
+  return null
+}
+
+/**
+ * 块级节点 (段落 / 表格 / 图片 / 分隔线 / 分节符 / Section) 的**真实**父容器
+ * 与下标 (契约 §31.6)。
+ *
+ * 结构侧助手 —— 结构命令与删除守卫要的是**真容器真下标**, 不是逻辑流下标
+ * (Section 存在时二者不同)。cell / row / header / footer 内的块不在此列
+ * (由各自的表格结构 API / 归属解析负责)。
+ */
+export type BlockParent =
+  | { kind: 'body'; containerId: string; index: number }
+  | { kind: 'section'; containerId: string; index: number }
+
+export function resolveBlockParent(
+  nodeId: string,
+  doc: DocumentTree,
+  pool: NodePool,
+): BlockParent | null {
+  const bi = doc.body.children.indexOf(nodeId)
+  if (bi >= 0) return { kind: 'body', containerId: doc.id, index: bi }
+  const sec = findParentSection(nodeId, pool)
+  if (sec) {
+    const si = sec.children.indexOf(nodeId)
+    if (si >= 0) return { kind: 'section', containerId: sec.id, index: si }
+  }
   return null
 }
 
@@ -281,14 +352,14 @@ export function hfBandEndCaret(
 
 /** 选区两段是否同容器 + 其兄弟/下标 (删除/并段跨段用, region 感知) */
 export interface SiblingRange {
-  regionType: 'body' | 'cell' | 'header' | 'footer'
+  regionType: 'body' | 'section' | 'cell' | 'header' | 'footer'
   siblings: readonly string[]
   aIdx: number
   fIdx: number
   isCell: boolean
 }
 
-/** anchor/focus 必须落在同一区域容器 (body / header / footer / 同一 cell), 否则 null */
+/** anchor/focus 必须落在同一区域容器 (body / section / header / footer / 同一 cell), 否则 null */
 export function resolveSiblingRange(
   doc: DocumentTree,
   pool: NodePool,
@@ -301,6 +372,10 @@ export function resolveSiblingRange(
   if (ra.type === 'cell' || rf.type === 'cell') {
     if (ra.type !== 'cell' || rf.type !== 'cell') return null // body/cell 混选
     if (ra.containerId !== rf.containerId) return null          // 不同 cell
+  } else if (isPoolRegion(ra) || isPoolRegion(rf)) {
+    // 池内容器 (body / section): 必须同类型同容器 —— body↔section、
+    // 相邻两个 section 之间的跨容器选区一律拒绝 (真兄弟数组不同, 不得混排)
+    if (!isPoolRegion(rf) || ra.type !== rf.type || ra.containerId !== rf.containerId) return null
   } else if (ra.type !== rf.type) {
     return null // body↔header / header↔footer 混选
   } else if ((ra.type === 'header' || ra.type === 'footer') &&

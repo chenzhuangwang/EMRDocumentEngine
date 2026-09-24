@@ -49,7 +49,7 @@ import type { FindOptions, MatchResult } from './FindReplaceEngine'
 import { computeOffsetInItems } from './layout/text/CharWidthHelper'
 import { FontManager } from './layout/text/FontManager'
 import { TextMeasurer } from './layout/text/TextMeasurer'
-import { resolveCellPosition, getCaretScope, resolveParagraphRegion, resolveSiblingRange } from './state/CaretScope'
+import { resolveCellPosition, getCaretScope, resolveParagraphRegion, resolveSiblingRange, isPoolRegion, resolveBlockParent } from './state/CaretScope'
 import type { CellPosition } from './state/CaretScope'
 import { screenToDoc, findPageByDocY, pageCenteringOffset, getTotalDocHeight as docHeightOf } from './layout/table/TableCoordUtil'
 import { findControlItemAt } from './interaction/ControlHitTest'
@@ -61,8 +61,8 @@ import {
   collectTextNodeIds, collectSelectionSegments,
   paragraphTextLength, paragraphTextInRange, findFirstTextNodeInRange,
   selectionSpine, regionSpine,
-  bodyBlockSpine, bodyParagraphSpine, bodyIndexOf, bodyParagraphCount,
-  initialCursorParaPath, nearestParagraphInBody,
+  bodyBlockSpine, bodyParagraphSpine, bodyParagraphCount,
+  initialCursorParaPath,
 } from './document/selection/SelectionCollector'
 import type { FormatRange } from './document/selection/SelectionCollector'
 import {
@@ -789,7 +789,7 @@ export class Editor {
     if (!textHit) return undefined
     const region = resolveParagraphRegion(textHit.paragraphId, this.doc, this.pool)
     if (!region) return undefined
-    if (region.type === 'body' || region.type === 'cell') return region.siblings
+    if (isPoolRegion(region)) return region.siblings
     return undefined
   }
 
@@ -1223,37 +1223,53 @@ export class Editor {
    *   - smarttext: RemoveControlCommand (deletable 守卫 §12.1)
    *   - cell / row / column / header·footer 内节点: 拒绝 (P2 再定)
    */
+  /**
+   * 节点删除门面 (设计 v2 §6) — 按节点类型路由到既有 Command,
+   * 返回是否实际删除 (拒绝/守卫失败返回 false)。
+   *
+   * 路由:
+   *   - 段落 (body 或 Section 内): RemoveNodesCommand, body 必须保留 ≥1 段落
+   *   - image: 块级图从**真实父容器**摘除; 段落内联图从所属段落 children 摘除
+   *   - separator/section_break/table: RemoveNodesCommand (真实父容器)
+   *   - section: RemoveNodesCommand 删整个节 (含其子树快照, 可 undo)
+   *   - smarttext: RemoveControlCommand (deletable 守卫 §12.1)
+   *   - cell / row / column / header·footer 内节点: 拒绝 (P2 再定)
+   *
+   * 容器身份与下标一律用 **R2 的真实结构下标** (契约 §31.6 Q9②③): 删除命令按
+   * 真容器快照与恢复, 用逻辑流下标代替会让 undo 把内容还原到错误的容器。
+   */
   deleteNode(nodeId: string): boolean {
     const node = this.pool.nodes.get(nodeId)
     if (!node) return false
 
+    /** 从真实父容器 (body / section) 摘除块级节点, 光标回落到最近段落 */
+    const removeBlock = (): boolean => {
+      const parent = resolveBlockParent(nodeId, this.doc, this.pool)
+      if (!parent) return false
+      const container: { kind: 'body' } | { kind: 'section'; sectionId: string } =
+        parent.kind === 'section'
+          ? { kind: 'section', sectionId: parent.containerId }
+          : { kind: 'body' }
+      this.execCommand(new RemoveNodesCommand(
+        generateCommandId(), Date.now(), 'user',
+        [{ container, nodeIds: [nodeId] }],
+        [], this.cursorAfterBlockRemoval(parent.containerId, parent.index),
+      ))
+      return true
+    }
+
     switch (node.type) {
       case 'paragraph': {
-        // 仅 body 级段落可整段删除; cell 内段落由表格结构 API 管理, 拒绝。
-        // 容器身份/下标必须用**真实结构下标** (契约 §31.6 Q9②③): 删除命令要按
-        // 真容器真下标快照恢复, 不能用逻辑流下标代替。
-        const bodyIdx = bodyIndexOf(this.doc, nodeId)
-        if (bodyIdx < 0) return false
+        // 仅 body / Section 内段落可整段删除; cell 内段落由表格结构 API 管理, 拒绝
+        const parent = resolveBlockParent(nodeId, this.doc, this.pool)
+        if (!parent) return false
         // 守卫: body 必须保留 ≥1 段落 (口径经 W2, 契约 §31.7)
         if (bodyParagraphCount(this.doc, this.pool) <= 1) return false
-        this.execCommand(new RemoveNodesCommand(
-          generateCommandId(), Date.now(), 'user',
-          [{ container: { kind: 'body' }, nodeIds: [nodeId] }],
-          [], this.cursorAfterBlockRemoval(bodyIdx),
-        ))
-        return true
+        return removeBlock()
       }
       case 'image': {
-        // body 级块级图片: 直接从 body 摘除
-        const bodyIdx = bodyIndexOf(this.doc, nodeId)
-        if (bodyIdx >= 0) {
-          this.execCommand(new RemoveNodesCommand(
-            generateCommandId(), Date.now(), 'user',
-            [{ container: { kind: 'body' }, nodeIds: [nodeId] }],
-            [], this.cursorAfterBlockRemoval(bodyIdx),
-          ))
-          return true
-        }
+        // 块级图片: 从真实父容器摘除
+        if (resolveBlockParent(nodeId, this.doc, this.pool)) return removeBlock()
         // 段落内联图片 (insertImage 默认): 从所属段落 children 摘除, 光标回落到图片原位
         const para = this.findParagraphContaining(nodeId)
         if (para) {
@@ -1269,16 +1285,9 @@ export class Editor {
       }
       case 'separator':
       case 'section_break':
-      case 'table': {
-        const bodyIdx = bodyIndexOf(this.doc, nodeId)
-        if (bodyIdx < 0) return false
-        this.execCommand(new RemoveNodesCommand(
-          generateCommandId(), Date.now(), 'user',
-          [{ container: { kind: 'body' }, nodeIds: [nodeId] }],
-          [], this.cursorAfterBlockRemoval(bodyIdx),
-        ))
-        return true
-      }
+      case 'table':
+      case 'section':
+        return removeBlock()
       case 'smarttext': {
         const para = this.findParagraphContaining(nodeId)
         if (!para) return false
@@ -1292,13 +1301,24 @@ export class Editor {
     }
   }
   /**
-   * 删除 body 块级节点后, 光标回落到最近段落 (后一个优先, 否则前一个)。
-   * 下标是**真实结构下标** (删除命令用它做容器身份), 查找走结构兄弟 (契约 §31.6)。
+   * 删除块级节点后, 光标回落到最近段落 (后一个优先, 否则前一个)。
+   *
+   * 下标是**真实结构下标** (删除命令用它做容器身份), 查找走**该容器的真实
+   * 兄弟数组** (契约 §31.6) —— body 与 Section 是两个不同的兄弟序列。
    */
-  private cursorAfterBlockRemoval(bodyIdx: number): Partial<CursorState> | undefined {
-    const id = nearestParagraphInBody(this.doc, this.pool, bodyIdx, 1)
-      ?? nearestParagraphInBody(this.doc, this.pool, bodyIdx, -1)
-    return id ? { paragraphPath: [this.doc.id, id], offset: 0, visible: true } : undefined
+  private cursorAfterBlockRemoval(
+    containerId: string,
+    blockIdx: number,
+  ): Partial<CursorState> | undefined {
+    const siblings = this.pool.getChildren(containerId)
+    for (const dir of [1, -1] as const) {
+      for (let i = blockIdx + dir; i >= 0 && i < siblings.length; i += dir) {
+        if (this.pool.nodes.get(siblings[i])?.type === 'paragraph') {
+          return { paragraphPath: [this.doc.id, siblings[i]], offset: 0, visible: true }
+        }
+      }
+    }
+    return undefined
   }
   /** 表现层样式 (契约 §2.2) — 渲染消费 */
   getPresentationStyles(): PresentationStyleStore | null { return this.presentationStyles }
@@ -1862,7 +1882,13 @@ export class Editor {
     ))
   }
 
-  /** 获取文档中所有书签/标题/脚注目标 (供 BookmarkDialog 使用) */
+  /**
+   * 获取文档中所有书签/标题/脚注目标 (供 BookmarkDialog 使用)。
+   *
+   * 标题清单经**块级逻辑流** (契约 §31.3 W2) 收集 —— 旧实现扫整个 pool, 与
+   * TOCGenerator 的 body-only 扫描是**两份独立实现**, 同一份文档会给出两个不同的
+   * "标题清单" (书签对话框看得见节内标题, 侧边栏大纲看不见)。统一到 W2 后二者同源。
+   */
   getBookmarkTargets(): { id: string; label: string; type: 'heading' | 'bookmark' | 'footnote'; pageHint?: number }[] {
     const targets: { id: string; label: string; type: 'heading' | 'bookmark' | 'footnote'; pageHint?: number }[] = []
     // pageHint 是 1-based 页号 (对话框显示 p.N); 布局未就绪时为 undefined, 由 UI 自行省略
@@ -1884,23 +1910,30 @@ export class Editor {
           id: bm.id, label: bm.name || bm.id, type: 'bookmark',
           pageHint: bm.targetId ? pageOfNode(bm.targetId) : undefined,
         })
-      } else if (node.type === 'paragraph') {
-        const p = node as unknown as { id: string; outlineLevel?: number; children?: readonly string[] }
-        if (p.outlineLevel && p.outlineLevel > 0) {
-          const text = p.children?.map(cid => {
-            const cn = this.pool.nodes.get(cid) as { text?: string } | undefined
-            return cn?.text || ''
-          }).join('') || locale.t('nav.headingFallback', { level: p.outlineLevel })
-          targets.push({ id: p.id, label: text, type: 'heading', pageHint: pageOf(p.id) })
-        }
-      } else if (node.type === 'footnote_content') {
-        const fn = node as unknown as { id: string; children?: readonly string[] }
-        // 脚注正文的 children 是段落 id; 取首个段落所在页
-        targets.push({
-          id: fn.id, label: locale.t('nav.footnoteLabel', { id: fn.id.slice(-4) }), type: 'footnote',
-          pageHint: fn.children?.[0] ? pageOf(fn.children[0]) : undefined,
-        })
       }
+    }
+    // 标题: 与 TOCGenerator 同源 (W2), 使对话框与侧边栏大纲一致
+    for (const blockId of bodyBlockSpine(this.doc, this.pool)) {
+      const p = this.pool.nodes.get(blockId) as unknown as
+        { id: string; type?: string; outlineLevel?: number; children?: readonly string[] } | undefined
+      if (!p || p.type !== 'paragraph') continue
+      if (p.outlineLevel && p.outlineLevel > 0) {
+        const text = p.children?.map(cid => {
+          const cn = this.pool.nodes.get(cid) as { text?: string } | undefined
+          return cn?.text || ''
+        }).join('') || locale.t('nav.headingFallback', { level: p.outlineLevel })
+        targets.push({ id: p.id, label: text, type: 'heading', pageHint: pageOf(p.id) })
+      }
+    }
+    // 脚注: 独立于 body 流 (脚注内容不在 body.children 里)
+    for (const [, node] of this.pool.nodes) {
+      if (node.type !== 'footnote_content') continue
+      const fn = node as unknown as { id: string; children?: readonly string[] }
+      // 脚注正文的 children 是段落 id; 取首个段落所在页
+      targets.push({
+        id: fn.id, label: locale.t('nav.footnoteLabel', { id: fn.id.slice(-4) }), type: 'footnote',
+        pageHint: fn.children?.[0] ? pageOf(fn.children[0]) : undefined,
+      })
     }
     return targets
   }
@@ -2656,34 +2689,31 @@ export class Editor {
   /**
    * 获取字数统计 (R36)。
    *
-   * 口径: 块级逻辑流 (契约 §31.3 W2) 上的**段落**块 —— 与旧的「body 直接子节点
-   * 过滤 paragraph」在无 Section 文档上逐元素等价。已知限制 (契约 §31.9): 表格
-   * cell 内段落与页眉/页脚不计入, 属既有口径, 不在本轮变更范围。
+   * 口径: **段落逻辑流** (契约 §31.3 W3) 上的段落文本 —— 含 Section 内段落与
+   * 表格 cell 内段落。旧实现只遍历 body 直接子节点, 页眉/正文里的表格与 Section
+   * 内容都漏计 (既有缺口 X9, P2 一并收敛)。
+   *
+   * 页眉/页脚不计入 (它们是页带内容, 会随页重复; 计进去会让字数随页数上涨)。
    */
   getWordCount(): { chars: number; words: number; paragraphs: number; selectedChars?: number; selectedWords?: number } {
     let chars = 0
     let words = 0
-    const blocks = bodyBlockSpine(this.doc, this.pool)
+    let paragraphs = 0
 
-    for (const childId of blocks) {
-      const node = this.pool.nodes.get(childId)
-      if (!node) continue
-      const n = node as { type?: string; children?: readonly string[] }
-
-      if (n.type === 'paragraph' && n.children) {
-        for (const cid of n.children) {
-          const cn = this.pool.nodes.get(cid) as { type?: string; text?: string } | undefined
-          if (cn?.type === 'text' && cn.text) {
-            const t = cn.text
-            chars += [...t].length  // 字符数 (含CJK)
-            // 英文单词数: 按空白/标点分割
-            words += (t.match(/[\w一-鿿]+/g) || []).length
-          }
+    for (const paraId of bodyParagraphSpine(this.doc, this.pool)) {
+      const para = this.pool.nodes.get(paraId) as { type?: string; children?: readonly string[] } | undefined
+      if (!para?.children || para.type !== 'paragraph') continue
+      paragraphs++
+      for (const cid of para.children) {
+        const cn = this.pool.nodes.get(cid) as { type?: string; text?: string } | undefined
+        if (cn?.type === 'text' && cn.text) {
+          const t = cn.text
+          chars += [...t].length  // 字符数 (含CJK)
+          // 英文单词数: 按空白/标点分割
+          words += (t.match(/[\w一-鿿]+/g) || []).length
         }
       }
     }
-
-    const paragraphs = bodyParagraphCount(this.doc, this.pool)
 
     // 选区统计
     let selectedChars: number | undefined

@@ -19,8 +19,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   bodyBlockSpine, bodyParagraphSpine, flattenTextContainers,
-  bodyIndexOf, bodyParagraphCount, initialCursorParaPath,
-  nearestParagraphInBody, nearestParagraphInSpine, BodySpineError,
+  bodyParagraphCount, initialCursorParaPath,
+  nearestParagraphInSpine, BodySpineError,
 } from '../document/selection/SelectionCollector'
 import type { SpinePool } from '../document/selection/SelectionCollector'
 import type { DocumentTree, BaseNode } from '../document/core/DocumentModel'
@@ -217,17 +217,6 @@ describe('bodyParagraphSpine (W3) — 段落逻辑流 = W2 ∘ 表格展开', ()
 })
 
 describe('结构侧助手 — 真实下标 / 真实兄弟 (契约 §31.6)', () => {
-  it('bodyIndexOf 返回真实结构下标', () => {
-    const b = makeDoc()
-    const p1 = addParagraph(b, '甲')
-    const t = addTable(b, ['乙'])
-    const p2 = addParagraph(b, '丙')
-    expect(bodyIndexOf(b.doc, p1)).toBe(0)
-    expect(bodyIndexOf(b.doc, t)).toBe(1)
-    expect(bodyIndexOf(b.doc, p2)).toBe(2)
-    expect(bodyIndexOf(b.doc, 'nope')).toBe(-1)
-  })
-
   it('bodyParagraphCount 数的是段落, 不含表格/分隔线', () => {
     const b = makeDoc()
     addParagraph(b, '甲')
@@ -235,18 +224,6 @@ describe('结构侧助手 — 真实下标 / 真实兄弟 (契约 §31.6)', () =
     addParagraph(b, '丙')
     addSeparator(b)
     expect(bodyParagraphCount(b.doc, b.pool)).toBe(2)
-  })
-
-  it('nearestParagraphInBody 先向后、找不到再向前', () => {
-    const b = makeDoc()
-    const p1 = addParagraph(b, '甲')
-    addTable(b, ['乙'])
-    const p2 = addParagraph(b, '丙')
-    // 从表格的下标 (1) 向后 → p2; 向前 → p1
-    expect(nearestParagraphInBody(b.doc, b.pool, 1, 1)).toBe(p2)
-    expect(nearestParagraphInBody(b.doc, b.pool, 1, -1)).toBe(p1)
-    // 边界: 末尾向后 → null
-    expect(nearestParagraphInBody(b.doc, b.pool, 2, 1)).toBeNull()
   })
 
   it('nearestParagraphInSpine 在逻辑流上查找 (方向键跨块导航消费)', () => {

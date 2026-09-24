@@ -149,7 +149,7 @@ export type {
 // 一律不得用它们 —— 那五类走结构树 `pool.getChildren` (契约 §31.2 Q9)。
 export {
   bodyBlockSpine, bodyParagraphSpine,
-  bodyIndexOf, bodyParagraphCount, initialCursorParaPath,
+  bodyParagraphCount, initialCursorParaPath,
   flattenTextContainers,
 } from './document/selection/SelectionCollector'
 export type { SpinePool } from './document/selection/SelectionCollector'

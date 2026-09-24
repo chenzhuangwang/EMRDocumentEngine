@@ -15,7 +15,7 @@ import type { Paragraph, BaseNode } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
 import { ICommand, CommandContext, StatePatch, SerializedCommand, PositionalCommand, generateCommandId } from '../ICommand'
 import { normalizeParagraph } from './ParagraphUtils'
-import { resolveParagraphRegion } from '../../state/CaretScope'
+import { resolveParagraphRegion, isPoolRegion } from '../../state/CaretScope'
 
 // ---- 子树快照工具 (JSON 深拷贝, 与 takeSnapshot/restoreSnapshot 一致) ----
 
@@ -105,7 +105,7 @@ export class MergeParagraphCommand extends PositionalCommand {
     normalizeParagraph(prevPara, pool)
 
     // 5. 从区域兄弟数组中移除当前段 (叶子节点, 仅删除段落包装)
-    if (region.type === 'body' || region.type === 'cell') {
+    if (isPoolRegion(region)) {
       pool.detachChild(region.containerId, region.index)
     } else {
       region.siblings.splice(region.index, 1)
@@ -184,7 +184,7 @@ class RestoreMergeParagraphCommand implements ICommand {
     // 4. 将被删段落插回上一段之后
     const region = resolveParagraphRegion(this.prevParaId, doc, pool)
     if (!region) return null
-    if (region.type === 'body' || region.type === 'cell') {
+    if (isPoolRegion(region)) {
       pool.insertChild(region.containerId, this.currentParaId, region.index + 1)
     } else {
       region.siblings.splice(region.index + 1, 0, this.currentParaId)

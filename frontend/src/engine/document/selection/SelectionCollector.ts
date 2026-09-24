@@ -273,11 +273,6 @@ export function bodyParagraphSpine(doc: DocumentTree, pool: SpinePool): string[]
 
 // ---- 结构侧助手 (真实下标 / 真实兄弟, 不是逻辑流) ----
 
-/** body 直接子节点下标 (真实结构下标) — 容器身份 / 删除守卫用 (契约 §31.6) */
-export function bodyIndexOf(doc: DocumentTree, nodeId: string): number {
-  return doc.body.children.indexOf(nodeId)
-}
-
 /** body 中段落数 (守卫口径, 契约 §31.7) — 遍历走 W2, 保证 Section 展开后口径一致 */
 export function bodyParagraphCount(doc: DocumentTree, pool: SpinePool): number {
   let n = 0
@@ -298,26 +293,6 @@ export function initialCursorParaPath(doc: DocumentTree, pool: SpinePool): strin
   }
   const blocks = bodyBlockSpine(doc, pool)
   return blocks.length > 0 ? [doc.id, blocks[0]] : []
-}
-
-/**
- * 从 body 某下标起沿 dir 找最近的段落 id (删除块后光标回落用, 真实兄弟语义)。
- * 找不到返回 null —— 调用方决定是"继续反方向找"还是"放弃"。
- *
- * 下标是**真实结构下标** (容器身份 / 删除命令用), 故查的是 `doc.body.children`
- * 而非逻辑流 (契约 §31.6 Q9②③)。
- */
-export function nearestParagraphInBody(
-  doc: DocumentTree,
-  pool: SpinePool,
-  fromIndex: number,
-  dir: 1 | -1,
-): string | null {
-  const children = doc.body.children
-  for (let i = fromIndex + dir; i >= 0 && i < children.length; i += dir) {
-    if (pool.nodes.get(children[i])?.type === NodeType.PARAGRAPH) return children[i]
-  }
-  return null
 }
 
 /** 同上, 但在**块级逻辑流**上找 (契约 §31.3 W2) — 供方向键跨块导航 */

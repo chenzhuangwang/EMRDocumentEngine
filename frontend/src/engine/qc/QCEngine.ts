@@ -16,7 +16,7 @@ import { NodeType } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import { isControlValueComplete } from '../document/control/ControlValue'
 import { hfContainers } from '../document/core/HeaderFooterRegions'
-import { bodyBlockSpine } from '../document/selection/SelectionCollector'
+import { bodyBlockSpine, bodyParagraphSpine } from '../document/selection/SelectionCollector'
 import { locale, type LocaleMessages } from '../i18n/index'
 
 // ---- 类型 ----
@@ -299,29 +299,29 @@ export class QCEngine {
         return null
       }
       case 'min_chars': {
-        // 已知限制 (契约 §31.9): 本规则**只统计 body 直接子块内的文本** ——
-        // 表格 cell 内段落与 Section 内段落的文本不计入 (对表格早已失效, 非
-        // Section 回归)。P0 只把遍历改走 W2 保持口径不变, 口径本身留待 P2。
+        // 口径 = **段落逻辑流** (契约 §31.3 W3): 含 Section 内段落与表格 cell 内
+        // 段落。旧实现只读 body 直接子节点的 `.text`, 表格内容早已漏计 (X9)。
         const min = parseInt(args[0], 10) || 0
         let count = 0
-        for (const childId of bodyBlockSpine(doc, pool)) {
-          const para = pool.nodes.get(childId) as { children?: readonly string[] } | undefined
-          if (para?.children) {
-            for (const cid of para.children) {
-              const n = pool.nodes.get(cid) as { text?: string } | undefined
-              if (n?.text) count += [...n.text].length
-            }
+        for (const paraId of bodyParagraphSpine(doc, pool)) {
+          const para = pool.nodes.get(paraId) as { type?: string; children?: readonly string[] } | undefined
+          if (para?.type !== NodeType.PARAGRAPH || !para.children) continue
+          for (const cid of para.children) {
+            const n = pool.nodes.get(cid) as { text?: string } | undefined
+            if (n?.text) count += [...n.text].length
           }
         }
         return count >= min ? null : {}
       }
       case 'paragraph_count': {
-        // 已知限制 (契约 §31.9): 当前口径是「body 直接子块数」, 表格/分隔线/
-        // 分节符都各算 1。P0 改走 W2 保持该口径 (对无 Section 文档逐元素一致),
-        // 真正收敛到 W3 段落口径留待 P2。
+        // 口径 = **段落逻辑流**的段落数 (契约 §31.3 W3): 与 getWordCount 的
+        // `paragraphs` 同源, 不再把表格/分隔线/分节符各算 1 段 (旧口径 X9)。
         const min = parseInt(args[0], 10) || 1
         const max = parseInt(args[1], 10) || 500
-        const count = bodyBlockSpine(doc, pool).length
+        let count = 0
+        for (const id of bodyParagraphSpine(doc, pool)) {
+          if (pool.nodes.get(id)?.type === NodeType.PARAGRAPH) count++
+        }
         return count >= min && count <= max ? null : {}
       }
       default:

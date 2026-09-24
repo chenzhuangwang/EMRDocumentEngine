@@ -30,6 +30,7 @@ import {
   ensureHfArray, hfArrayOf, type HeaderFooterVariant,
 } from '../../document/core/HeaderFooterRegions'
 import { normalizeParagraph } from './ParagraphUtils'
+import { resolveParagraphRegion, resolveBlockParent } from '../../state/CaretScope'
 import type { CursorState } from '../../state/EditorRuntimeState'
 import {
   ICommand, CommandContext, StatePatch, SerializedCommand, generateCommandId,
@@ -86,6 +87,7 @@ type Container =
   | { kind: 'paragraph'; paraId: string }
   | { kind: 'cell'; cellId: string }
   | { kind: 'body' }
+  | { kind: 'section'; sectionId: string }
   | { kind: 'header'; variant?: HeaderFooterVariant }
   | { kind: 'footer'; variant?: HeaderFooterVariant }
   | { kind: 'footnotes' }
@@ -114,7 +116,8 @@ function docArrayOf(doc: DocumentTree, container: Container): string[] {
     case 'footnotes':
       if (!doc.footnotes) doc.footnotes = []
       return doc.footnotes
-    case 'body': case 'paragraph': case 'cell': throw new Error('pool-based container not handled here')
+    case 'body': case 'paragraph': case 'cell': case 'section':
+      throw new Error('pool-based container not handled here')
   }
 }
 
@@ -125,30 +128,63 @@ function containerLengthOf(pool: NodePool, doc: DocumentTree, container: Contain
       const parentId = container.kind === 'paragraph' ? container.paraId : container.cellId
       return pool.getChildren(parentId).length
     }
-    case 'body': return doc.body.children.length
+    case 'section': return pool.getChildren(container.sectionId).length
+    case 'body': return pool.getChildren(doc.id).length
     case 'header': return hfArrayOf(doc, 'header', container.variant ?? 'default').length
     case 'footer': return hfArrayOf(doc, 'footer', container.variant ?? 'default').length
     case 'footnotes': return doc.footnotes?.length ?? 0
   }
 }
 
+/** pool 内容器的父节点 id (body → 文档根; section/cell/paragraph → 自身 id) */
+function poolParentIdOf(doc: DocumentTree, container: Container): string | null {
+  switch (container.kind) {
+    case 'body': return doc.id
+    case 'section': return container.sectionId
+    case 'cell': return container.cellId
+    case 'paragraph': return container.paraId
+    default: return null
+  }
+}
+
+/** 容器内某节点的真实下标 (找不到返回 -1) */
+function containerIndexOf(
+  pool: NodePool, doc: DocumentTree, container: Container, nodeId: string,
+): number {
+  const poolParent = poolParentIdOf(doc, container)
+  if (poolParent !== null) return pool.getChildren(poolParent).indexOf(nodeId)
+  return docArrayOf(doc, container).indexOf(nodeId)
+}
+
+/**
+ * 块级节点 (表格等) 的**真实**容器与下标 (契约 §31.6)。
+ *
+ * 委托 CaretScope.resolveBlockParent —— 不在此重复第二份"找父容器"的实现
+ * (§11: 同一逻辑第二次出现即须抽取)。表格落在 Section 内时
+ * `doc.body.children.indexOf` 返回 -1, 表格结构操作会静默拒绝。
+ */
+function findParentContainerOf(
+  nodeId: string,
+  doc: DocumentTree,
+  pool: NodePool,
+): { container: Container; index: number } | null {
+  const parent = resolveBlockParent(nodeId, doc, pool)
+  if (!parent) return null
+  return parent.kind === 'section'
+    ? { container: { kind: 'section', sectionId: parent.containerId }, index: parent.index }
+    : { container: { kind: 'body' }, index: parent.index }
+}
+
 /** 将 rootId 插回容器指定下标 */
 function insertIntoContainer(
   pool: NodePool, doc: DocumentTree, container: Container, index: number, rootId: string,
 ): void {
-  switch (container.kind) {
-    case 'paragraph': case 'cell': {
-      const parentId = container.kind === 'paragraph' ? container.paraId : container.cellId
-      pool.insertChild(parentId, rootId, index)
-      break
-    }
-    case 'body':
-      pool.insertChild(doc.id, rootId, index)
-      break
-    case 'header': case 'footer': case 'footnotes':
-      docArrayOf(doc, container).splice(index, 0, rootId)
-      break
+  const poolParent = poolParentIdOf(doc, container)
+  if (poolParent !== null) {
+    pool.insertChild(poolParent, rootId, index)
+    return
   }
+  docArrayOf(doc, container).splice(index, 0, rootId)
 }
 
 export class RemoveNodesCommand implements ICommand {
@@ -184,26 +220,23 @@ export class RemoveNodesCommand implements ICommand {
         // 移除前捕获子树快照 (undo 恢复用)
         const subtree = cloneSubtree(pool, nodeId)
 
-        if (container.kind === 'paragraph' || container.kind === 'cell') {
-          const parentId = container.kind === 'paragraph' ? container.paraId : container.cellId
-          const idx = pool.getChildren(parentId).indexOf(nodeId)
+        // pool 内容器 (body / section / cell / paragraph): children 数组挂在池中
+        // 节点上, 经 NodePool 受控 API (契约 §6.1 PROBLEM B choke point / §31.6)
+        const poolParent = poolParentIdOf(doc, container)
+        if (poolParent !== null) {
+          const idx = pool.getChildren(poolParent).indexOf(nodeId)
           this.snapshots.push({ container, index: idx, rootId: nodeId, subtree })
-          if (idx >= 0) pool.removeChild(parentId, idx)
+          if (idx >= 0) { pool.detachChild(poolParent, idx); removeSubtree(pool, nodeId) }
           else removeSubtree(pool, nodeId)
-        } else if (container.kind === 'body') {
-          // doc.body.children 是 children 数组 (PROBLEM B choke point), 经 NodePool
-          const idx = doc.body.children.indexOf(nodeId)
-          this.snapshots.push({ container, index: idx, rootId: nodeId, subtree })
-          if (idx >= 0) { pool.detachChild(doc.id, idx); removeSubtree(pool, nodeId) }
-          else removeSubtree(pool, nodeId)
-        } else {
-          // header/footer/footnotes 是文档级 string[] (非 children 数组), 直接 splice
-          const arr = docArrayOf(doc, container)
-          const idx = arr.indexOf(nodeId)
-          this.snapshots.push({ container, index: idx, rootId: nodeId, subtree })
-          if (idx >= 0) { arr.splice(idx, 1); removeSubtree(pool, nodeId) }
-          else removeSubtree(pool, nodeId)
+          continue
         }
+
+        // header/footer/footnotes 是文档级 string[] (非 children 数组), 直接 splice
+        const arr = docArrayOf(doc, container)
+        const idx = arr.indexOf(nodeId)
+        this.snapshots.push({ container, index: idx, rootId: nodeId, subtree })
+        if (idx >= 0) { arr.splice(idx, 1); removeSubtree(pool, nodeId) }
+        else removeSubtree(pool, nodeId)
       }
     }
 
@@ -373,6 +406,8 @@ export class InsertBlockCommand implements ICommand {
   private withTrailingParagraph: boolean
   private moveCursorToTrailing: boolean
   private insertedRootIds: string[] = []
+  /** forward 时解析出的真实容器 (invert 必须按同一容器恢复, 契约 §31.6) */
+  private insertContainer: Container = { kind: 'body' }
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -390,17 +425,33 @@ export class InsertBlockCommand implements ICommand {
     if (ctx.mode !== 'local') return null
     const { pool, doc } = ctx
     const paraId = this.path[this.path.length - 1]
-    const idx = doc.body.children.indexOf(paraId)
-    if (idx < 0) return null
+
+    // 用 R2 定位段落的**真实**容器与下标 (契约 §31.8): 旧实现硬要求
+    // `doc.body.children.indexOf(paraId) >= 0`, 段落一旦落在 Section 内就
+    // 返回 null —— 节内插入表格/分隔线/分节符静默失败。
+    //
+    // 仅支持 pool 内容器 body / section。cell / header / footer 维持既有语义
+    // (表格 cell 只放段落, 不承载块级插入; 页眉页脚同理) —— 这是**有意的**拒绝,
+    // 不是遍历不到; 不在此扩权, 以免把块级结构写进不该有的容器。
+    const region = resolveParagraphRegion(paraId, doc, pool)
+    if (!region || (region.type !== 'body' && region.type !== 'section')) return null
+    const container: Container = region.type === 'section'
+      ? { kind: 'section', sectionId: region.containerId }
+      : { kind: 'body' }
+    this.insertContainer = container
+    const idx = region.index
 
     const block = this.makeBlock(pool)
-    pool.insertChild(doc.id, block.id, idx + 1)
+    insertIntoContainer(pool, doc, container, idx + 1, block.id)
     this.insertedRootIds = [block.id]
 
     let cursor: Partial<CursorState> | undefined
     if (this.withTrailingParagraph) {
       const trail = createTrailingParagraph(pool)
-      pool.insertChild(doc.id, trail.id, doc.body.children.indexOf(block.id) + 1)
+      const afterBlock = containerLengthOf(pool, doc, container) === 0
+        ? 0
+        : containerIndexOf(pool, doc, container, block.id) + 1
+      insertIntoContainer(pool, doc, container, afterBlock, trail.id)
       this.insertedRootIds.push(trail.id)
       if (this.moveCursorToTrailing) {
         cursor = { paragraphPath: [doc.id, trail.id], offset: 0, visible: true }
@@ -413,7 +464,7 @@ export class InsertBlockCommand implements ICommand {
   invert(_ctx: CommandContext): ICommand | null {
     return new RemoveNodesCommand(
       generateCommandId(), Date.now(), this.author,
-      [{ container: { kind: 'body' }, nodeIds: this.insertedRootIds }],
+      [{ container: this.insertContainer, nodeIds: this.insertedRootIds }],
       [], { paragraphPath: this.path, offset: 0, visible: true },
     )
   }
@@ -822,11 +873,13 @@ export class EnsureBodyParagraphCommand implements ICommand {
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
     const { pool, doc } = ctx
-    // 已有段落则视为无操作 (body 非空即无需补段落)
-    if (doc.body.children.length > 0) return null
+    // 已有内容则视为无操作 (body 非空即无需补段落)。
+    // 口径经 NodePool: body.children 是 children 数组 (契约 §6.1 PROBLEM B
+    // choke point), 读写都必须走受控 API, 不直接触碰数组。
+    if (pool.getChildren(doc.id).length > 0) return null
     const para = createParagraph()
     pool.addNode(para)
-    doc.body.children = [para.id]
+    pool.insertChild(doc.id, para.id, 0)
     this.createdParaId = para.id
     return {
       cursor: { paragraphPath: [doc.id, para.id], offset: 0, visible: true },
@@ -921,6 +974,8 @@ export class TableStructureCommand implements ICommand {
   private mutate: (pool: NodePool) => boolean
   private snapshot: Map<string, BaseNode> | null = null
   private parentIndex = -1
+  /** forward 时解析出的真实容器 (invert 必须按同一容器恢复, 契约 §31.6) */
+  private parentContainer: Container = { kind: 'body' }
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -933,9 +988,12 @@ export class TableStructureCommand implements ICommand {
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
     const { pool, doc } = ctx
-    const idx = doc.body.children.indexOf(this.tableId)
-    if (idx < 0) return null
-    this.parentIndex = idx
+    // 表格的真实容器与下标 (契约 §31.6): 表格可以落在 Section 内, 用
+    // `doc.body.children.indexOf` 会返回 -1 → 表格结构操作静默拒绝。
+    const parent = findParentContainerOf(this.tableId, doc, pool)
+    if (!parent) return null
+    this.parentContainer = parent.container
+    this.parentIndex = parent.index
     this.snapshot = cloneSubtree(pool, this.tableId)
     const changed = this.mutate(pool)
     if (!changed) {
@@ -949,7 +1007,7 @@ export class TableStructureCommand implements ICommand {
     if (!this.snapshot || this.parentIndex < 0) return null
     return new RestoreTableCommand(
       generateCommandId(), Date.now(), this.author,
-      this.tableId, this.snapshot, this.parentIndex,
+      this.tableId, this.snapshot, this.parentIndex, this.parentContainer,
     )
   }
 
@@ -969,29 +1027,37 @@ class RestoreTableCommand implements ICommand {
   private tableId: string
   private snapshot: Map<string, BaseNode>
   private parentIndex: number
+  private parentContainer: Container
 
   constructor(
     id: string, timestamp: number, author: string,
     tableId: string, snapshot: Map<string, BaseNode>, parentIndex: number,
+    parentContainer: Container = { kind: 'body' },
   ) {
     this.id = id; this.timestamp = timestamp; this.author = author
     this.tableId = tableId; this.snapshot = snapshot; this.parentIndex = parentIndex
+    this.parentContainer = parentContainer
   }
 
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
     const { pool, doc } = ctx
 
-    // 1. 摘除当前 table 子树
-    const idx = doc.body.children.indexOf(this.tableId)
-    if (idx >= 0) { pool.detachChild(doc.id, idx); removeSubtree(pool, this.tableId) }
+    // 1. 摘除当前 table 子树 (真容器, 契约 §31.6)
+    const cur = containerIndexOf(pool, doc, this.parentContainer, this.tableId)
+    if (cur >= 0) {
+      const poolParent = poolParentIdOf(doc, this.parentContainer)
+      if (poolParent !== null) pool.detachChild(poolParent, cur)
+      else docArrayOf(doc, this.parentContainer).splice(cur, 1)
+      removeSubtree(pool, this.tableId)
+    }
 
     // 2. 重新注册快照节点
     for (const [, node] of this.snapshot) pool.addNode(node)
 
     // 3. 回到原位置
-    const at = Math.min(this.parentIndex, doc.body.children.length)
-    pool.insertChild(doc.id, this.tableId, at)
+    const at = Math.min(this.parentIndex, containerLengthOf(pool, doc, this.parentContainer))
+    insertIntoContainer(pool, doc, this.parentContainer, at, this.tableId)
 
     return { invalidation: 'table' }
   }

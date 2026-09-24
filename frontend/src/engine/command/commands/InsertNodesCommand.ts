@@ -35,7 +35,7 @@ import {
 } from '../ICommand'
 import type { SerializedPara } from '../ClipboardManager'
 import { normalizeParagraph } from './ParagraphUtils'
-import { resolveParagraphRegion } from '../../state/CaretScope'
+import { resolveParagraphRegion, isPoolRegion } from '../../state/CaretScope'
 
 /** 文本样式字段 (过滤掉 id/type/children) */
 const TEXT_STYLE_KEYS = [
@@ -173,7 +173,7 @@ export class InsertNodesCommand extends PositionalCommand {
     if (region) {
       let insertAt = region.index + 1
       for (let i = 1; i < pastedParas.length; i++) {
-        if (region.type === 'body' || region.type === 'cell') {
+        if (isPoolRegion(region)) {
           pool.insertChild(region.containerId, pastedParas[i].id, insertAt)
         } else {
           region.siblings.splice(insertAt, 0, pastedParas[i].id)
@@ -345,7 +345,7 @@ class UndoPasteCommand implements ICommand {
       for (const id of this.paraIds) {
         const idx = region.siblings.indexOf(id)
         if (idx >= 0) {
-          if (region.type === 'body' || region.type === 'cell') {
+          if (isPoolRegion(region)) {
             pool.detachChild(region.containerId, idx)
           } else {
             region.siblings.splice(idx, 1)
