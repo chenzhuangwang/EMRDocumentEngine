@@ -104,7 +104,7 @@
 | 动态域代码 | 8 种（页码 / 总页数 / 日期 / 时间 / 标题 / 作者 / 保存日期 / 打印日期） | [README.md](file:///d:/czw/EMRDocumentEngine/README.md#L50) |
 | 内置质控规则 | **6 条**（标题非空 / 正文非空 / 无连续空段 / 必填 SmartText / 最低字数 / 段落数区间） | [QCEngine.ts](file:///d:/czw/EMRDocumentEngine/frontend/src/engine/qc/QCEngine.ts#L59-L86) |
 | 医学缩写自动更正 | **25 条**（i.v.g.t.t. → 静脉滴注 等） | [AutoCorrectEngine.ts](file:///d:/czw/EMRDocumentEngine/frontend/src/engine/AutoCorrectEngine.ts#L21-L51) |
-| 单元测试用例 | 约 **1170** 个用例，分布在 **115** 个测试文件中（Vitest） | `frontend/src/**/__tests__/` 实测统计 |
+| 单元测试用例 | **1538** 个用例（**1537 通过 / 1 跳过**），分布在 **151** 个测试文件中（Vitest）；单次全量约 **31 秒** | `npm run test -- --run`（即 `vitest run`）实测，**采集于 2026-09-22**；原记"约 1170 用例 / 115 文件"已过时 |
 | 可操作功能项 | 约 **184** 个（其中明确未实现 6 项，另有若干部分实现项） | 编辑器功能清单 §10.1（盘点日期 2026-09-01） |
 | 可撤销命令 | [README.md](file:///d:/czw/EMRDocumentEngine/README.md#L63) 记载"33 种"；代码中 `export class *Command` 共 **35** 个实现类（含 MacroCommand 组合命令，不含 CommandManager / UndoRedoStack 基础设施） | `frontend/src/engine/command/commands/` 实测 |
 | 编辑模式 | 6 种（edit / readonly / form / clean / design / print） | 编辑器功能清单 §2.3 |
@@ -151,7 +151,7 @@
 |---|---|---|---|
 | 质控规则数 | "内置 20+ 条质控规则"（[求Star文](file:///d:/czw/EMRDocumentEngine/knowledge/%E6%AF%8F%E6%97%A5%E6%8E%A8%E6%96%87/%E5%85%AC%E4%BC%97%E5%8F%B7/%E5%85%AC%E4%BC%97%E5%8F%B7%E6%96%87%E7%AB%A0-%E5%BC%80%E6%BA%90EMR%E6%96%87%E6%A1%A3%E7%BC%96%E8%BE%91%E5%99%A8%E6%B1%82Star.md#L86)） | **6 条**内置规则 + 支持自定义 | **必须统一为"6 条内置规则，支持自定义扩展"** |
 | 质控规则数 | "内置二十多条质控规则"（[引擎文](file:///d:/czw/EMRDocumentEngine/knowledge/%E6%AF%8F%E6%97%A5%E6%8E%A8%E6%96%87/%E5%85%AC%E4%BC%97%E5%8F%B7/%E5%85%AC%E4%BC%97%E5%8F%B7%E6%96%87%E7%AB%A0-EMR%E7%94%B5%E5%AD%90%E7%97%85%E5%8E%86%E6%96%87%E6%A1%A3%E5%BC%95%E6%93%8E.md#L47)） | 同上 | 同上 |
-| 单元测试数 | "213 个单元测试" | 实际约 **1170** 个用例 / 115 文件 | 统一为"1170+ 用例、115 个测试文件"（引用前需再跑一次 `npm run test` 复核） |
+| 单元测试数 | "213 个单元测试"（旧）；"约 1170 用例 / 115 文件"（本表原记） | **2026-09-22 实跑复核**：**1538** 个用例（1537 通过 / 1 跳过）/ **151** 个测试文件 | 统一为"**1500+ 用例、150+ 测试文件（实测 2026-09-22）**"；**每次引用前须再跑一次 `npm run test -- --run` 复核**，不得沿用本次数字 |
 | 可撤销命令数 | [README.md](file:///d:/czw/EMRDocumentEngine/README.md#L63) 称"33 种"；[编辑器功能清单.md](file:///d:/czw/EMRDocumentEngine/knowledge/%E7%BC%96%E8%BE%91%E5%99%A8%E5%8A%9F%E8%83%BD%E6%B8%85%E5%8D%95.md#L185-L204) §4.3 称"15 种" | 代码中 `export class *Command` 共 **35** 个实现类 | 对外统一为"**30+ 种可撤销命令**"；需精确值时报当次代码统计结果，不直接沿用旧数字 |
 | 页面设置 | 部分文章称 A4 为 794×1123 | 与代码 `DEFAULT_PAGE_SETUP` 一致 | 可继续使用 |
 
