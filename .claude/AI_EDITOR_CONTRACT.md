@@ -2277,8 +2277,11 @@ CURRENT_SLIF_VERSION is NOT bumped (§26.13/§26.14).
 
 Known limitations (recorded, NOT silently ignored):
 
-  - a nested TABLE inside a cell, and inline nodes other than
-    text/smarttext/field (e.g. images), are NOT cloned into the new row.
+  - a nested TABLE inside a cell is LEGAL (§31.13) but is NOT cloned into
+    the new row, and neither are inline nodes other than
+    text/smarttext/field (e.g. images). The wording matters: the nested
+    table is "legal, not cloned", not "unsupported" — it round-trips,
+    lays out and renders.
   - the appended row is always the LAST row. Inserting a plain empty row
     in the middle remains the toolbar's existing insertRow, which does
     not clone controls.
@@ -3320,11 +3323,18 @@ W3:
     - W3 = W2 ∘ table expansion. Section expansion happens in the W2
       stage only; a table is expanded in place into its cell
       paragraphs.
+    - The expansion is RECURSIVE (§31.13): a table nested inside a cell
+      is expanded in place too, so W3 yields that table's inner cell
+      paragraphs — never the nested table's own id. A cell child that
+      is neither a paragraph nor a table is a §31.13 violation and the
+      boundary that admitted it MUST have thrown already.
     - Section is NOT emitted. SectionBreak is NOT emitted.
     - For a document with NO Section, W3's output MUST be
       element-by-element IDENTICAL to the old
       `flattenTextContainers(pool, doc.body.children)`. This
-      equality is the P0 acceptance signal and is locked by test.
+      equality is the P0 acceptance signal and is locked by test. It
+      survives §31.13 because on a document with no nested table the
+      recursive expansion degenerates to the flat one.
 
 ------------------------------------------------------------
 31.4 `paragraphPath` — 2 elements, and container resolution
@@ -3537,3 +3547,141 @@ avoid collision — e.g. Draw's page-band resolver is `resolveBandOf`
   (the §31.5 principle applies to the import boundary too). The
   revision markers `insert` / `delete` remain an explicit skip
   whitelist — they are content-free wrappers, not unknown types.
+
+------------------------------------------------------------
+31.13 Container child-type contract — what may live where
+------------------------------------------------------------
+
+The rule "which container may hold which child type" was, until this
+section, NOWHERE DECLARED. Every consumer guessed for itself, and the
+guesses disagreed. That is not a theoretical concern — it produced a
+concrete defect:
+
+    A Section placed inside a table cell gave three walkers three
+    mutually contradictory answers for the SAME node:
+
+        W3 (bodyParagraphSpine)  ["sec-1", "p-2"]   the Section is
+                                                    emitted as if it
+                                                    were a paragraph
+        W4 (sectionsOf)          []                 the Section does
+                                                    not exist
+        R1 (sectionOf)           "sec-1"            the Section exists
+                                                    and owns p-1
+
+    The cell path of the template importer let the Section in
+    (`parseCell` → `parseBlock`, which has a `section` case), the
+    loader had no per-container child-type check at all, and
+    `flattenTextContainers` pushed every cell child unconditionally.
+
+The contract is therefore declared ONCE, in one table, and enforced at
+three boundaries (below). This table is the ONLY authority; no consumer
+may keep a private copy of it.
+
+    container                     legal child types
+    ---------------------------------------------------------------
+    body  (doc.body.children)     paragraph · table · image ·
+                                  separator · section_break · section
+
+    section.children              paragraph · table · image ·
+                                  separator · section
+
+    table.children                row
+
+    row.children                  cell
+
+    cell.children                 paragraph · table
+
+    header / footer arrays        paragraph
+    (all variants — default,
+     first, even)
+
+    paragraph.children            inline nodes (see the deferred note
+                                  at the end of this section)
+
+Consequences worth stating explicitly, because each closes a real gap:
+
+  - **Section may appear ONLY as a child of body or of another
+    Section.** It is a document-structure container (§31.10) — a
+    grouping of block content, not content itself. Putting one inside
+    a cell is ILLEGAL, not merely unsupported.
+
+  - **A nested table inside a cell is LEGAL.** This is not a
+    concession: real production templates contain them (a DCWriter
+    §12.2-era admission record carries a 3×1 table nested in a 14×2
+    table's cell). `documentExport` already implemented this correctly
+    and is the reference implementation; the other consumers were the
+    ones out of step.
+
+  - **header/footer content is paragraphs only.** The bands are
+    laid out as a paragraph line list (`collectHFParagraphLines`,
+    `hfParagraphsForPage`), and that is their whole contract.
+
+FAILURE SEMANTICS (§31.5 applies unchanged):
+
+    An illegal container/child pair MUST THROW at every boundary that
+    can produce or admit one. It MUST NOT be silently skipped,
+    silently dropped, or silently rendered as something else. A
+    document that renders, exports and counts as if content had been
+    deleted is a worse failure than an error.
+
+ENFORCEMENT — three boundaries, each with a distinct job:
+
+    1. NodePool's controlled API (`insertChildren` / `moveChildTo`)
+       = ENFORCEMENT (§6.2). The command layer therefore cannot
+       construct an illegal structure in the first place.
+
+    2. DocumentLoader.validateStructure
+       = the LOAD boundary. Illegal persisted documents are rejected
+       before any node is usable.
+
+    3. TemplateImporter
+       = the IMPORT boundary. An external template is rejected at parse
+       time, with a message naming the offending container and type —
+       not after it has been half-built into the node pool.
+
+The header/footer arrays are NOT reachable through NodePool (they are
+DocumentTree string[] fields, §6.2 domain split), so boundaries 2 and 3
+are what constrain them.
+
+MIGRATION AND FORMAT VERSION. This section does NOT bump the document
+format version. No field, no node type and no serialized shape is added
+or changed: the same documents denote the same models. What changed is
+that an already-invalid structure is now REJECTED instead of being
+half-processed, and that an already-legal structure (the nested table)
+is now processed correctly. The three boundaries were verified against
+every persisted document available at the time (16 sample documents plus
+the built-in demo): no cell child other than `paragraph`, no
+header/footer element other than `paragraph`, and no nested table. No
+existing valid document is rejected by this section.
+
+DEFERRED, RECORDED (not silently omitted):
+
+  - `footnote_content` is declared in the table (paragraph children only)
+    but is NOT yet enforced by any of the three boundaries: the loader's
+    validation roots do not include `doc.footnotes` (pre-existing
+    behaviour), and the footnote command sets `.children` directly rather
+    than through NodePool. It is listed because it is a real contract,
+    NOT because it is already guarded — do not read the table as "the set
+    of things already enforced" until this line is removed.
+
+  - `paragraph.children` inline types are NOT enforced in this round.
+    The legal inline set needs its own census first (the engine has, at
+    minimum, text · smarttext · image · field · bookmark ·
+    cross_reference · footnote_ref · comment_marker), and the
+    blast radius of getting it wrong is larger than the cell rule that
+    motivated this section. It is declared here as the next item, not
+    left unstated.
+
+  - The nested-table support landed with this section is DELIBERATELY
+    PARTIAL, and each partial point is recorded rather than implied:
+
+      - caret / Tab reading order does NOT descend into a nested
+        table's cells. A click into one lands the caret and editing
+        works; `listTableCells` / `getAdjacentCell` / `enterTable`
+        still walk the OUTER table's grid.
+      - pagination row boundaries (`TablePaginator`) are computed from
+        item y positions at one level, so an over-tall nested table can
+        be split through its middle rather than at one of its rows.
+      - `AppendTableRowCommand` still does not clone a nested table
+        (§12.9). The limitation is now worded "legal, but not cloned",
+        not "unsupported".

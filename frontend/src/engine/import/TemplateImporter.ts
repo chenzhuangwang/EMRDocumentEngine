@@ -39,6 +39,9 @@ import type {
   Section,
 } from '../document/core/DocumentModel'
 import { NodeType, generateId, normalizeDocumentMetadata } from '../document/core/DocumentModel'
+import {
+  CHILD_TYPES_OF, HEADER_FOOTER_CHILD_TYPES,
+} from '../document/core/ContainerChildTypes'
 import { isControlValueEmpty } from '../document/control/ControlValue'
 import { CURRENT_DOCUMENT_VERSION, versionToString } from '../document/version/DocumentFormatVersion'
 import { TemplateDefinitionStore } from '../template/TemplateDefinition'
@@ -96,6 +99,16 @@ interface ExtNode {
   rowspan?: number
   [key: string]: unknown
 }
+
+/** 外部块级类型 → 引擎节点类型。不在表内 = 未知类型 (契约 §31.5 要求抛错)。 */
+const ENGINE_TYPE_OF_EXT: Readonly<Record<string, string>> = {
+  paragraph: NodeType.PARAGRAPH,
+  table: NodeType.TABLE,
+  section: NodeType.SECTION,
+}
+
+/** 导入区块 — body 与页眉/页脚适用不同的子类型规则 (契约 §31.13) */
+type ImportRegion = 'body' | 'header' | 'footer'
 
 // ================================================================
 // 导入结果
@@ -171,9 +184,9 @@ export class TemplateImporter {
     const root = (raw ?? {}) as Record<string, unknown>
     const extDoc = (root.document ?? {}) as Record<string, unknown>
 
-    const headerIds = this.parseSection(extDoc.header)
-    const footerIds = this.parseSection(extDoc.footer)
-    const bodyIds = this.parseSection(extDoc.body)
+    const headerIds = this.parseSection(extDoc.header, 'header')
+    const footerIds = this.parseSection(extDoc.footer, 'footer')
+    const bodyIds = this.parseSection(extDoc.body, 'body')
 
     const docId = generateId()
     const doc: DocumentTree = {
@@ -195,40 +208,71 @@ export class TemplateImporter {
   }
 
   /** 解析一个 $root 区块 (header/body/footer) → 块级节点 id 数组 */
-  private parseSection(section: unknown): string[] {
+  private parseSection(section: unknown, region: ImportRegion): string[] {
     if (!section || typeof section !== 'object') return []
     const children = (section as { children?: unknown }).children
     if (!Array.isArray(children)) return []
+    // body 与页眉/页脚是**两个不同的规则集** (契约 §31.13): 后者只允许段落。
+    const allowed = region === 'body'
+      ? CHILD_TYPES_OF.get(NodeType.DOCUMENT)
+      : HEADER_FOOTER_CHILD_TYPES
+    return this.parseBlocks(children as ExtNode[], allowed, region)
+  }
+
+  /**
+   * 块级子节点序列 → 引擎块级节点 id 数组, 并按契约 §31.13 校验容器-子类型。
+   *
+   * 这是导入器侧**唯一**的块级入口 —— 四个容器 (body / section / cell / hf)
+   * 全部经此, 故规则只有一份、与契约表同源。在此之前 cell 走的是通用
+   * `parseBlock`, 于是 `section` 被放行进了单元格, 而三个遍历器对那个节的回答
+   * 互相矛盾 (契约 §31.13 开头的实测缺陷)。
+   */
+  private parseBlocks(
+    children: readonly ExtNode[],
+    allowed: ReadonlySet<string> | undefined,
+    parentLabel: string,
+  ): string[] {
     const ids: string[] = []
     for (const child of children) {
-      const id = this.parseBlock(child as ExtNode)
+      const id = this.parseBlock(child, allowed, parentLabel)
       if (id) ids.push(id)
     }
     return ids
   }
 
   /**
-   * 块级节点路由 (契约 §12.2 / §31.10)。
+   * 块级节点路由 (契约 §12.2 / §31.10 / §31.13)。
    *
    * **未知类型必须抛错**, 不得静默丢弃 —— `default: return null` 会让整棵子树
    * 无声消失, 导入方拿到一份"少了几节"的模板却看不出任何异常 (契约 §31.5 的
    * 同一原则: 静默丢内容比报错更坏)。
    *
+   * **非法嵌套同样必须抛错** (契约 §31.13): 类型本身认得出、但放在这个容器里
+   * 不合法 (如 cell 里的 section), 报的是嵌套错而不是未知类型错 —— 两者对
+   * 模板作者的修法完全不同。
+   *
    * 显式跳过 (白名单, 不抛错):
    *   - `insert` / `delete` —— 修订痕迹标记, 无 children, 兄弟内容照常导入
    *     (契约 §12.2 已声明推迟项)。它们在块级位置出现时同样是"无内容标记"。
    */
-  private parseBlock(node: ExtNode): string | null {
-    switch (node.type) {
-      case 'paragraph': return this.parseParagraph(node)
-      case 'table': return this.parseTable(node)
-      case 'section': return this.parseSectionNode(node)
-      case 'insert':
-      case 'delete':
-        // 修订痕迹标记: 块级位置的 insert/delete 只包裹内容, 无自有语义
-        return null
-      default:
-        throw new Error(locale.t('import.unknownBlockType', { type: String(node.type) }))
+  private parseBlock(
+    node: ExtNode,
+    allowed: ReadonlySet<string> | undefined,
+    parentLabel: string,
+  ): string | null {
+    const engineType = ENGINE_TYPE_OF_EXT[node.type ?? '']
+    if (engineType === undefined) {
+      if (node.type === 'insert' || node.type === 'delete') return null
+      throw new Error(locale.t('import.unknownBlockType', { type: String(node.type) }))
+    }
+    if (allowed && !allowed.has(engineType)) {
+      throw new Error(locale.t('import.illegalChildType', { parent: parentLabel, child: engineType }))
+    }
+    switch (engineType) {
+      case NodeType.PARAGRAPH: return this.parseParagraph(node)
+      case NodeType.TABLE: return this.parseTable(node)
+      case NodeType.SECTION: return this.parseSectionNode(node)
+      default: return null
     }
   }
 
@@ -242,11 +286,11 @@ export class TemplateImporter {
   private parseSectionNode(node: ExtNode): string | null {
     const id = node.id
     if (!id) return null
-    const childIds: string[] = []
-    for (const child of node.children ?? []) {
-      const cid = this.parseBlock(child)
-      if (cid) childIds.push(cid)
-    }
+    // 节内子节点受 Section 的规则约束 (契约 §31.13) —— 可含表格与嵌套节,
+    // 但不可含 SectionBreak (它是 body 级分页边界, 不是临床结构)。
+    const childIds = this.parseBlocks(
+      node.children ?? [], CHILD_TYPES_OF.get(NodeType.SECTION), 'section',
+    )
     const section: Section = { type: NodeType.SECTION, id, children: childIds }
     const code = typeof node.code === 'string' ? node.code.trim() : ''
     if (code !== '') section.sectionCode = code
@@ -429,11 +473,12 @@ export class TemplateImporter {
   private parseCell(node: ExtNode, isHeader: boolean): string | null {
     const id = node.id
     if (!id) return null
-    const blockIds: string[] = []
-    for (const child of node.children ?? []) {
-      const bid = this.parseBlock(child)
-      if (bid) blockIds.push(bid)
-    }
+    // cell 的合法子节点是 paragraph | table (契约 §31.13) —— 嵌套表合法,
+    // Section / image / separator 非法。此前这里走通用 parseBlock, 于是
+    // `Section` 被放行进了单元格 (§31.13 记录的实测缺陷)。
+    const blockIds = this.parseBlocks(
+      node.children ?? [], CHILD_TYPES_OF.get(NodeType.CELL), 'cell',
+    )
     const cell: TableCell = { type: NodeType.CELL, id, children: blockIds }
     if (typeof node.colspan === 'number' && node.colspan > 1) cell.colspan = node.colspan
     if (typeof node.rowspan === 'number' && node.rowspan > 1) cell.rowspan = node.rowspan

@@ -904,6 +904,7 @@ export interface LocaleMessages {
   'qc.rule.paragraphCount.name': string
   'qc.rule.paragraphCount.desc': string
   'import.unknownBlockType': string          // '外部模板含未知块类型: {type}'
+  'import.illegalChildType': string          // '外部模板非法嵌套 (契约 §31.13): {parent} 不能包含 {child}'
   'qc.rule.unnamedSection.name': string      // '节缺少节代码'
   'qc.rule.unnamedSection.desc': string
   'qc.rule.emptySection.name': string        // '节内容为空'
@@ -930,6 +931,7 @@ export interface LocaleMessages {
   'loader.unknownNodeType': string            // '未知节点类型: {id} (type={type})'
   'loader.structureTooDeep': string           // '文档结构嵌套超过上限 {max}'
   'loader.sectionVersionMismatch': string     // '文档版本 {ver} 低于 Section 所需 {min}: {id}'
+  'loader.illegalChildType': string           // '非法容器子类型 (契约 §31.13): {parent} 不能包含 {child}'
   'loader.versionTooNew': string              // '文档版本 {ver} 高于引擎支持版本 {current}'
   'loader.versionOutdated': string            // '需升级: {ver} → {current}'
   'loader.versionCurrent': string             // '版本一致'
@@ -1733,6 +1735,7 @@ const zhCN: LocaleMessages = {
   'qc.rule.paragraphCount.name': '段落数量合理',
   'qc.rule.paragraphCount.desc': '段落数应在 1-500 之间',
   'import.unknownBlockType': '外部模板含未知块类型: {type}',
+  'import.illegalChildType': '外部模板非法嵌套 (契约 §31.13): {parent} 不能包含 {child}',
   'qc.rule.unnamedSection.name': '节缺少节代码',
   'qc.rule.unnamedSection.desc': '该节有内容但未设置节代码, 结构化导出与节级定位无法引用它',
   'qc.rule.emptySection.name': '节内容为空',
@@ -1759,6 +1762,7 @@ const zhCN: LocaleMessages = {
   'loader.unknownNodeType': '未知节点类型: {id} (type={type})',
   'loader.structureTooDeep': '文档结构嵌套超过上限 {max} 层',
   'loader.sectionVersionMismatch': '文档版本 {ver} 低于 Section 所需的最低版本 {min}: {id}',
+  'loader.illegalChildType': '非法容器子类型 (契约 §31.13): {parent} 不能包含 {child}',
   'loader.versionTooNew': '文档版本 {ver} 高于引擎支持版本 {current}',
   'loader.versionOutdated': '需升级: {ver} → {current}',
   'loader.versionCurrent': '版本一致',
@@ -2555,6 +2559,7 @@ const enUS: LocaleMessages = {
   'qc.rule.paragraphCount.name': 'Paragraph count is reasonable',
   'qc.rule.paragraphCount.desc': 'The paragraph count should be between 1 and 500',
   'import.unknownBlockType': 'External template contains an unknown block type: {type}',
+  'import.illegalChildType': 'External template has an illegal nesting (contract §31.13): {parent} cannot contain {child}',
   'qc.rule.unnamedSection.name': 'Section has no section code',
   'qc.rule.unnamedSection.desc': 'This section has content but no section code; structured export and section-level targeting cannot reference it',
   'qc.rule.emptySection.name': 'Section is empty',
@@ -2581,6 +2586,7 @@ const enUS: LocaleMessages = {
   'loader.unknownNodeType': 'Unknown node type: {id} (type={type})',
   'loader.structureTooDeep': 'Document structure nests deeper than the limit of {max}',
   'loader.sectionVersionMismatch': 'Document version {ver} is below the minimum {min} required by Section: {id}',
+  'loader.illegalChildType': 'Illegal container child type (contract §31.13): {parent} cannot contain {child}',
   'loader.versionTooNew': 'Document version {ver} is newer than the engine supports ({current})',
   'loader.versionOutdated': 'Upgrade needed: {ver} → {current}',
   'loader.versionCurrent': 'Version is current',

@@ -41,7 +41,7 @@ import { MergeMatrix } from '../../document/table/MergeMatrix'
 import { FootnoteLayout } from '../footnote/FootnoteLayout'
 import { ListParticle } from '../../render/particles/ListParticle'
 import { BookmarkRenderer } from '../../render/BookmarkRenderer'
-import { getFlatPageItems } from './SLIF'
+import { getFlatPageItems, tableRowUnitHeight } from './SLIF'
 import { createTablePaginator } from '../table/TablePaginator'
 import type { TableFragment } from '../table/TablePaginator'
 
@@ -810,12 +810,23 @@ export class LayoutEngine {
   /**
    * 布局单元格内文本 — 换行 + 多段落堆叠 (Phase 3, v21.0)
    *
-   * @param paraIds    cell 内的段落 ID 列表
+   * @param blockIds   cell 内的子块 ID 列表 (段落 / 嵌套表, 契约 §31.13)
    * @param cellWidth  单元格内容区宽度 (px)
    * @returns 已布局的文本 items (y 为 cell 局部坐标, 顶部对齐从 0 开始) + 内容总高度
    */
+  /**
+   * 布局 cell 内的子块: 段落 + **嵌套表** (契约 §31.13)。
+   *
+   * cell 的合法子节点是 paragraph | table。此前这里只认 text/smarttext, 遇到
+   * 嵌套表时 `elements.length === 0` 落到"空段落"分支 —— 整个 cell 被当成一个
+   * 空行, 嵌套表的内容既不排版也不占高 (行高因此算错)。这与"跳过"不同, 是
+   * 静默产出一个幻影空行, 正是 §31.5 禁止的失败模式。
+   *
+   * 非法类型 (Section / image / separator) 在此**抛错**: 三层边界 (NodePool /
+   * Loader / Importer) 已保证它们进不来, 走到这里即数据损坏, 不该被当成空段落。
+   */
   private layoutCellItems(
-    paraIds: readonly string[],
+    blockIds: readonly string[],
     cellWidth: number,
     pool: NodePool,
     lineBreaker: LineBreaker,
@@ -826,8 +837,40 @@ export class LayoutEngine {
     const DEFAULT_SIZE = BASE_FONT_SIZE
     let lineY = 0
 
-    for (const paraId of paraIds) {
-      const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
+    for (const blockId of blockIds) {
+      const block = pool.nodes.get(blockId) as
+        { type?: string; children?: readonly string[] } | undefined
+      if (!block) continue
+
+      // 嵌套表: 递归布局, 作为一个块级 item 占位 (cell 局部坐标)
+      if (block.type === 'table') {
+        const nested = block as unknown as {
+          id: string; columns?: { width: number }[]; children: readonly string[]
+          pageBreak?: { repeatHeader?: boolean }
+        }
+        const { rows, columnWidths } = this.buildTableRows(nested, pool, maxTextWidth, lineBreaker)
+        const height = nestedTableHeight(rows)
+        items.push({
+          nodeId: blockId, nodeType: 'table', type: 'table',
+          x: 0, y: lineY,
+          width: maxTextWidth, height,
+          ascent: height, descent: 0,
+          font: 'SimSun', size: DEFAULT_SIZE,
+          rows,
+          columnWidths,
+        })
+        lineY += height
+        continue
+      }
+
+      if (block.type !== 'paragraph') {
+        throw new Error(
+          `LayoutEngine.layoutCellItems: illegal cell child type ${String(block.type)} ` +
+          `(node ${blockId}) — contract §31.13`,
+        )
+      }
+
+      const para = block
       const elements: LineElement[] = []
 
       if (para?.children) {
@@ -880,7 +923,7 @@ export class LayoutEngine {
         // 空段落: 占一行 (默认行高), 附带空占位 item 供光标定位
         const blankH = DEFAULT_SIZE
         items.push({
-          nodeId: paraId, nodeType: 'text', type: 'text',
+          nodeId: blockId, nodeType: 'text', type: 'text',
           x: 0, y: lineY, width: 0, height: blankH,
           ascent: blankH * 0.8, descent: blankH * 0.2,
           font: 'SimSun', size: DEFAULT_SIZE, text: '',
@@ -1413,3 +1456,14 @@ function hasCrossRefPlaceholder(pool: NodePool): boolean {
   }
   return false
 }
+
+/**
+ * 表格 (含嵌套表) 的布局高度 —— 行占高之和 + 重复表头占高 (契约 §31.13)。
+ *
+ * 单行占高的口径与分页/命中/渲染三方共用 `tableRowUnitHeight` (§26.x 的
+ * "同一口径只有一份"), 不在布局侧重算一次 `height + 1`。
+ */
+function nestedTableHeight(rows: readonly SLIFRow[]): number {
+  return rows.reduce((s, r) => s + tableRowUnitHeight(r), 0)
+}
+

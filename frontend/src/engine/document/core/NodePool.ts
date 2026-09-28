@@ -16,6 +16,7 @@
 // ================================================================
 
 import type { BaseNode } from './DocumentModel'
+import { assertLegalChild } from './ContainerChildTypes'
 
 export class NodePool {
   private _nodes = new Map<string, BaseNode>()
@@ -76,6 +77,19 @@ export class NodePool {
     throw new Error(`Parent ${parentId} has no children array`)
   }
 
+  /**
+   * 契约 §31.13 的容器-子类型校验 (enforcement 边界, §6.2: 命令层因此建不出
+   * 非法结构)。只校验**已注册**的子节点 —— 结构上"先 addNode 再 insertChild"
+   * 才是正序, 未注册的 id 在 resolveChildren 的悬空引用处报错, 不在此越权判定。
+   */
+  private assertChildTypes(parentId: string, parent: BaseNode, childIds: readonly string[]): void {
+    for (const childId of childIds) {
+      const child = this._nodes.get(childId)
+      if (!child) continue
+      assertLegalChild(parent.type, child.type, parentId, childId)
+    }
+  }
+
   insertChild(parentId: string, childId: string, index: number): void {
     this.insertChildren(parentId, [childId], index)
   }
@@ -83,6 +97,8 @@ export class NodePool {
   /** 批量插入多个子节点 (铁律 3)。替代裸 children.push / splice(idx,0,...)。 */
   insertChildren(parentId: string, childIds: readonly string[], index: number): void {
     const children = this.resolveChildren(parentId)
+    const parent = this.nodes.get(parentId)
+    if (parent) this.assertChildTypes(parentId, parent, childIds)
     for (const childId of childIds) {
       if (children.includes(childId)) {
         throw new Error(`Duplicate ID in parent ${parentId}: ${childId}`)
@@ -160,6 +176,11 @@ export class NodePool {
     if (childId === toParentId || this.collectDescendants(childId).includes(toParentId)) {
       throw new Error(`NodePool.moveChildTo: cannot move ${childId} into its own subtree (${toParentId})`)
     }
+    // 契约 §31.13: 移动会改变容器归属, 故新父-子类型对必须合法。放在自环防护
+    // **之后** —— 先报"移进自己的子树"这种更根本的错误, 再报类型不匹配。
+    const target = this.nodes.get(toParentId)
+    const moved = this._nodes.get(childId)
+    if (target && moved) assertLegalChild(target.type, moved.type, toParentId, childId)
     from.splice(fromIndex, 1)
     // 与 moveChild 逐字同一语义: 直接 splice 到 toIndex (该下标是**摘除后**数组中的
     // 位置)。同父内向后移动时调用方给的"第 N 位"因此会左移一位 —— 这是既有约定,

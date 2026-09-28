@@ -348,6 +348,21 @@ export class HitTestIndex {
     const localX = docX - targetCellX - CELL_PAD
     const localY = docY - targetCellY
 
+    // Level 2b-bis: 命中的是 cell 里的**嵌套表** (契约 §31.13) → 递归下潜。
+    // 不递归的话嵌套表项会走下面的线性扫描被当成"1 个原子字符"计入偏移,
+    // 点进嵌套格永远落不到它自己的段落上。
+    // 嵌套表项在 cell.items 里是 cell 局部坐标 (x 从内容左缘算, y 从内容顶算),
+    // 与 hitTestTable 期望的"绝对坐标"差一个 cell 原点 —— 故先折算再递归。
+    for (const ci of cellItems) {
+      if (ci.type !== 'table' || !ci.rows || ci.rows.length === 0) continue
+      const nestedX = targetCellX + CELL_PAD + (ci.x || 0)
+      const nestedY = targetCellY + (ci.y || 0)
+      if (localX < (ci.x || 0) || localX > (ci.x || 0) + (ci.width || 0)) continue
+      if (localY < (ci.y || 0) || localY > (ci.y || 0) + (ci.height || 0)) continue
+      const nestedHit = this.hitTestTable({ ...ci, x: nestedX, y: nestedY }, docX, docY, pool, docId)
+      if (nestedHit) return nestedHit
+    }
+
     // cellItems 中的文本 item 以 cell 局部坐标 (0,0) 存储
     let accumulated = 0
     let paraId: string | null = null
@@ -422,15 +437,27 @@ export class HitTestIndex {
   }
 
   /**
-   * 在 cell 内查找第一个段落 ID
+   * 在 cell 内查找第一个段落 ID。
+   *
+   * cell 内可以合法地放**嵌套表** (契约 §31.13) —— 那种情况下 cell 的直接 items
+   * 里没有段落, 要下潜到嵌套表自己的 cell 里找。不下潜会让"点进空外格"回落到
+   * 外层 cell 的其它位置, 而不是嵌套表里的第一个段落。
    */
   private static findFirstParagraphInCell(
     _tableItem: SLIFItem,
     cell: import('../layout/core/SLIF').SLIFCell,
     pool: NodePool,
   ): string | null {
-    // 尝试从 cell.items 中推断 paragraph
     for (const ci of cell.items) {
+      if (ci.type === 'table' && ci.rows) {
+        for (const row of ci.rows) {
+          for (const inner of row.cells) {
+            const innerPara = HitTestIndex.findFirstParagraphInCell(ci, inner, pool)
+            if (innerPara) return innerPara
+          }
+        }
+        continue
+      }
       const paraId = HitTestIndex.findParentParagraph(ci.nodeId, pool)
       if (paraId) return paraId
     }

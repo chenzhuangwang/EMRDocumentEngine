@@ -123,4 +123,27 @@ describe('TableParticle 表格 cell 内 smarttext (契约 §4)', () => {
     const r = renderTable([makeSmartTextCellItem()], undefined, { label: '姓名：' })
     expect(r.texts.some((t) => t.text === '姓名：')).toBe(true)
   })
+
+  // ---- 嵌套表 (契约 §31.13) ----
+  //
+  // cell 里可以合法地放一张表。这条分支此前不存在 —— 渲染循环只认
+  // smarttext/text, 嵌套表项的 .text 为空, 会被 `if (!ci2.text) continue`
+  // 静默跳过: 布局排了、渲染不画, 屏幕上什么也没有。
+
+  it('cell 内嵌套表 → 递归渲染其文本, 并画出内外两层 cell 边框', () => {
+    const nested = makeTableItem([makeTextCellItem()])
+    const r = renderTable([nested])
+    // 内层文本被真正绘制 (不是被 !ci2.text 跳过)
+    expect(r.texts.some((t) => t.text === '普通文本')).toBe(true)
+    // 外层 cell 边框 + 内层 cell 边框
+    expect(r.strokeRects.length).toBe(2)
+  })
+
+  it('cell 内嵌套表: 内层 smarttext 仍走 ControlParticle (不是 fillText 绕过)', () => {
+    const nested = makeTableItem([makeSmartTextCellItem()])
+    const r = renderTable([nested])
+    // 方括号框由 ControlParticle 绘制 —— 证明递归后仍经 registry 委托
+    expect(r.texts.some((t) => t.text === '[')).toBe(true)
+    expect(r.texts.some((t) => t.text === '患者姓名')).toBe(true)
+  })
 })

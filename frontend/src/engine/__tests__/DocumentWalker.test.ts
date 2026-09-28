@@ -208,7 +208,10 @@ describe('bodyParagraphSpine (W3) — 段落逻辑流 = W2 ∘ 表格展开', ()
       .toEqual(flattenTextContainers(b.pool, b.doc.body.children))
   })
 
-  it('demo 病历文档 (含 2 张嵌套表): W2/W3 逐元素等于旧口径', () => {
+  it('demo 病历文档: W2/W3 逐元素等于旧口径', () => {
+    // 注: 用例名此前写作「含 2 张嵌套表」, 但 demo 文档实测**零嵌套表**
+    // (cell.children 全是 paragraph) —— 名字是陈旧的。嵌套表的往返由
+    // ContainerChildTypes.test.ts 的端到端用例覆盖 (契约 §31.13)。
     const { doc, pool } = loadDemo()
     expect(bodyBlockSpine(doc, pool)).toEqual([...doc.body.children])
     expect(bodyParagraphSpine(doc, pool))

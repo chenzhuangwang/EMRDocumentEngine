@@ -122,40 +122,74 @@ export interface SLIF {
 export function getFlatPageItems(page: SLIFPage): SLIFItem[] {
   const result: SLIFItem[] = []
   for (const item of page.items) {
-    if (item.type === 'table' && item.rows && item.rows.length > 0) {
-      let rowY = item.y + tableHeaderRowsHeight(item)
-      for (let ri = 0; ri < item.rows.length; ri++) {
-        const row = item.rows[ri]
-        const rowHeight = Math.max(row.height || 24, 24)
-        for (let ci = 0; ci < row.cells.length; ci++) {
-          const cell = row.cells[ci]
-          // 使用 SLIFCell 已算好的合并宽度/起始 x (含 colspan, v21.0 Phase 1)
-          const cw = cell.width || 40
-          const ch = cell.height || rowHeight
-          const cellX = item.x + (cell.x || 0)
-          const CELL_PAD = 6
-          // 单元格绝对边界矩形 (文档坐标, 高度含 rowspan 合并)
-          const cellRect = { x: cellX, y: rowY, width: cw, height: ch }
-          for (const cellItem of cell.items) {
-            result.push({
-              ...cellItem,
-              x: cellX + CELL_PAD + (cellItem.x || 0),
-              y: rowY + (cellItem.y || 0),
-              width: cellItem.width || (cw - CELL_PAD * 2),
-              height: cellItem.height || 20,
-              // 嵌套元数据挂载
-              ownerTableId: item.nodeId,
-              cellIndex: { row: ri, col: ci },
-              cellRect,
-            })
-          }
-        }
-        rowY += rowHeight + 1
-      }
-      // 表格容器 item 不进入展平列表 — 展平后只需单元格内容
+    if (isTableItem(item)) {
+      expandTableItem(item, item.x, item.y, result)
     } else {
       result.push(item)
     }
   }
   return result
+}
+
+/** 单元格内容相对 cell 左内边距 (与 TableParticle / hitTestTable 同一口径) */
+const CELL_PAD = 6
+
+function isTableItem(item: SLIFItem): boolean {
+  return item.type === 'table' && !!item.rows && item.rows.length > 0
+}
+
+/**
+ * 把一个表格 item 展平成它全部 cell 内项 (文档绝对坐标), **嵌套表递归**
+ * (契约 §31.13)。
+ *
+ * 递归是必须的: cell 里可以合法地放一张表。此前这里只走一层, 嵌套表会被当成
+ * 一个普通 flat item 推出 (带上**外层**表的 ownerTableId/cellIndex) —— 嵌套格
+ * 内的控件因此既命中不到、也拿不到正确的 cell 归属。
+ *
+ * 每层用**自己的**表格身份填充 ownerTableId —— 嵌套项的归属是它所在的那张内层
+ * 表, 不是最外层那张。
+ */
+function expandTableItem(
+  table: SLIFItem,
+  originX: number,
+  originY: number,
+  out: SLIFItem[],
+): void {
+  let rowY = originY + tableHeaderRowsHeight(table)
+  const rows = table.rows ?? []
+  for (let ri = 0; ri < rows.length; ri++) {
+    const row = rows[ri]
+    const rowHeight = Math.max(row.height || 24, 24)
+    for (let ci = 0; ci < row.cells.length; ci++) {
+      const cell = row.cells[ci]
+      // 使用 SLIFCell 已算好的合并宽度/起始 x (含 colspan, v21.0 Phase 1)
+      const cw = cell.width || 40
+      const ch = cell.height || rowHeight
+      const cellX = originX + (cell.x || 0)
+      // 单元格绝对边界矩形 (文档坐标, 高度含 rowspan 合并)
+      const cellRect = { x: cellX, y: rowY, width: cw, height: ch }
+      for (const cellItem of cell.items) {
+        const itemX = cellX + CELL_PAD + (cellItem.x || 0)
+        const itemY = rowY + (cellItem.y || 0)
+        if (isTableItem(cellItem)) {
+          // 嵌套表: 自身不入列, 递归展平它内部的 cell 项 (坐标已在其 cell 内)
+          expandTableItem(cellItem, itemX, itemY, out)
+          continue
+        }
+        out.push({
+          ...cellItem,
+          x: itemX,
+          y: itemY,
+          width: cellItem.width || (cw - CELL_PAD * 2),
+          height: cellItem.height || 20,
+          // 嵌套元数据挂载
+          ownerTableId: table.nodeId,
+          cellIndex: { row: ri, col: ci },
+          cellRect,
+        })
+      }
+    }
+    rowY += rowHeight + 1
+  }
+  // 表格容器 item 本身不进入展平列表 — 展平后只需单元格内容
 }

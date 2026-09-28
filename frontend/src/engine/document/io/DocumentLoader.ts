@@ -20,6 +20,9 @@
 
 import type { BaseNode, DocumentTree } from '../core/DocumentModel'
 import { NodeType } from '../core/DocumentModel'
+import {
+  CHILD_TYPES_OF, HEADER_FOOTER_CHILD_TYPES, illegalChildTypeMessage,
+} from '../core/ContainerChildTypes'
 import { buildNodePool, type NodePool } from '../core/NodePool'
 import { TemplateDefinitionStore } from '../../template/TemplateDefinition'
 import type { TemplateDefinition } from '../../template/TemplateDefinition'
@@ -241,16 +244,26 @@ const KNOWN_NODE_TYPES: ReadonlySet<string> = new Set<string>(Object.values(Node
 const MAX_STRUCTURE_DEPTH = 100
 
 /**
- * 结构语义校验 (契约 §31.12 X12 / §31.10):
+ * 结构语义校验 (契约 §31.12 X12 / §31.10 / §31.13):
  *
  *   1. 节点类型白名单 —— 未知类型不得进入引擎
  *   2. 单父归属 —— 同一节点被两个父引用会让逻辑流重复产出
  *   3. 环检测 —— 自引用/环状引用
  *   4. 深度上限 —— 兜底
  *   5. **modelVersion ↔ 节点类型一致性** —— Section 要求 >= 4.7.0
+ *   6. **容器 ↔ 子节点类型** —— 契约 §31.13 的表, 逐层逐节点比对
  *
  * 前四项在 P0 即生效 (它们是"遍历器不会重复产出"的保证); 第五项是版本闸门
  * 之外的第二道防线。两者都要: 闸门挡"声称更新", 一致性校验挡"谎报旧版本"。
+ *
+ * 第六项是 §31.13 的**加载边界**: 非法持久化文档在任何节点可用之前就被拒,
+ * 而不是先建进池、再由下游各自静默处理 (那正是格内 Section 让三个遍历器给出
+ * 三种答案的成因)。父类型无契约的子节点 (如 paragraph 的内联类型, 本轮
+ * deferred) 不在此判定。
+ *
+ * 页眉/页脚数组**不经 NodePool** (是 DocumentTree 的 string[] 字段), 故它们的
+ * 子类型规则必须在这里单独施加 —— 此前它们与 body 拼在同一个数组里一起走,
+ * 那正是不一致猜法的来源之一 (契约 §31.13)。
  */
 function validateStructure(
   doc: DocumentTree,
@@ -260,7 +273,13 @@ function validateStructure(
 ): void {
   const parentOf = new Map<string, string>()
 
-  const walk = (ids: readonly string[], depth: number, owner: string): void => {
+  const walk = (
+    ids: readonly string[],
+    depth: number,
+    owner: string,
+    ownerType: string,
+    allowed: ReadonlySet<string> | undefined,
+  ): void => {
     if (depth > MAX_STRUCTURE_DEPTH) {
       throw new LoadError('validate', locale.t('loader.structureTooDeep', { max: String(MAX_STRUCTURE_DEPTH) }))
     }
@@ -276,17 +295,41 @@ function validateStructure(
       if (!KNOWN_NODE_TYPES.has(node.type)) {
         throw new LoadError('validate', locale.t('loader.unknownNodeType', { id, type: String(node.type) }))
       }
+      // 契约 §31.13: 容器 ↔ 子节点类型 (非法即拒, 不静默跳过)。
+      // 父类型无契约 (allowed 为 undefined) 时不越权判定。
+      if (allowed && !allowed.has(node.type)) {
+        throw new LoadError('validate', illegalChildTypeMessage(ownerType, node.type))
+      }
       if (node.type === NodeType.SECTION && compareVersions(docVer, SECTION_MIN_VERSION) < 0) {
         throw new LoadError('validate', locale.t('loader.sectionVersionMismatch', {
           id, ver: versionToString(docVer), min: versionToString(SECTION_MIN_VERSION),
         }))
       }
       const children = (node as { children?: readonly string[] }).children
-      if (Array.isArray(children)) walk(children, depth + 1, id)
+      if (Array.isArray(children)) {
+        walk(children, depth + 1, id, node.type, CHILD_TYPES_OF.get(node.type))
+      }
     }
   }
 
-  walk(validatedRootIds(doc), 1, doc.id)
+  // body 与各页眉/页脚变体是**两个不同的规则集**, 必须分头走 (契约 §31.13)。
+  // 共用同一个 parentOf, 故跨区重复归属仍被第 2 项拦住。
+  walk(doc.body.children, 1, doc.id, NodeType.DOCUMENT, CHILD_TYPES_OF.get(NodeType.DOCUMENT))
+  for (const [variant, ids] of hfArraysOf(doc)) {
+    walk(ids, 1, doc.id, variant, HEADER_FOOTER_CHILD_TYPES)
+  }
+}
+
+/** 页眉/页脚全部变体数组 + 其区域名 (供校验消息指出是哪个区) */
+function hfArraysOf(doc: DocumentTree): Array<[string, readonly string[]]> {
+  return [
+    ['header', doc.header ?? []],
+    ['footer', doc.footer ?? []],
+    ['firstPageHeader', doc.firstPageHeader ?? []],
+    ['firstPageFooter', doc.firstPageFooter ?? []],
+    ['evenPageHeader', doc.evenPageHeader ?? []],
+    ['evenPageFooter', doc.evenPageFooter ?? []],
+  ]
 }
 
 /** 引入 Section 节点类型的最低文档格式版本 (契约 §31.10 / §14) */

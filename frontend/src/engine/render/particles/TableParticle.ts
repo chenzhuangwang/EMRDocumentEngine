@@ -75,6 +75,20 @@ export function createTableParticle(): IParticle {
             ctx.clip()
 
             for (const ci2 of cell.items) {
+              // 嵌套表 (契约 §31.13): cell 内可含 table。递归委托自身 ——
+              // 此前这里只认 text/smarttext, 嵌套表项的 .text 为空, 会被下一行
+              // `if (!ci2.text) continue` 静默跳过 (布局排了、渲染不画)。
+              // 注意 'table' **没有**注册进 particleRegistry (Draw.ts 对顶层表格
+              // 是直接 createTableParticle() 调用的), 故此处必须走模块内递归。
+              if (ci2.type === 'table') {
+                createTableParticle().render(
+                  ctx, ci2,
+                  cellX + CELL_PADDING + (ci2.x || 0),
+                  cellY + (ci2.y || 0),
+                  options,
+                )
+                continue
+              }
               // 表格 cell 内 smarttext → 委托 ControlParticle (契约 §4)
               // 否则此处直接 fillText 会丢失控制盒 + 表现层/设计期样式 (§2.2/§12.1)
               if (ci2.nodeType === 'smarttext') {

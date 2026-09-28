@@ -23,6 +23,7 @@
 import type { TextNode, DocumentTree } from '../core/DocumentModel'
 import { NodeType } from '../core/DocumentModel'
 import type { NodePool } from '../core/NodePool'
+import { childTypesOf } from '../core/ContainerChildTypes'
 import {
   hfArrayOf, hfContainers, resolveHfParagraphLocation,
   type HeaderFooterBand, type HeaderFooterVariant,
@@ -150,6 +151,11 @@ export function findFirstTextNodeInRange(
  * 展平块级序列为「阅读顺序的文本容器序列」— 表格展开为 cell 内段落
  * (行主序、每行按 cell 顺序), 其余块 (paragraph/image/separator/...) 保留原 id。
  *
+ * 展开是**递归**的 (契约 §31.3 W3 / §31.13): cell 里的嵌套表按其内层 cell 段落
+ * 展开, 而不是把嵌套表的 id 本身当作段落推出去。此前是无条件 `push(paraId)`,
+ * 于是一个格内表/格内节会让表 id 泄漏进段落流 —— 依赖"每个 id 都是段落"的
+ * 消费方 (字数统计 / QC / 复制 / 选区展平) 随之静默算错。
+ *
  * 选区、复制、渲染的线性定位都基于此序列: cell 段落不在 body.children,
  * 若不展平, body↔table 跨域选区会 indexOf=-1 被整体丢弃
  * (「全选选不中表格」/ 从正文拖拽选区进表格选不中的根因)。
@@ -160,25 +166,40 @@ export function findFirstTextNodeInRange(
 export function flattenTextContainers(
   pool: SpinePool,
   bodyChildIds: readonly string[],
-): string[] {  const out: string[] = []
-  for (const id of bodyChildIds) {
+): string[] {
+  const out: string[] = []
+  pushFlattened(pool, bodyChildIds, out)
+  return out
+}
+
+function pushFlattened(
+  pool: SpinePool,
+  ids: readonly string[],
+  out: string[],
+): void {
+  for (const id of ids) {
     const node = pool.nodes.get(id)
     if (node?.type === NodeType.TABLE) {
-      const rows = (node as { children?: readonly string[] }).children ?? []
-      for (const rowId of rows) {
-        const row = pool.nodes.get(rowId) as { children?: readonly string[] } | undefined
-        for (const cellId of row?.children ?? []) {
-          const cell = pool.nodes.get(cellId) as { children?: readonly string[] } | undefined
-          for (const paraId of cell?.children ?? []) {
-            out.push(paraId)
-          }
-        }
-      }
+      expandTable(pool, node as { children?: readonly string[] }, out)
     } else {
       out.push(id)
     }
   }
-  return out
+}
+
+/** 表格 → 行主序、每行按 cell 顺序的内层段落序列 (cell 内嵌套表递归展开) */
+function expandTable(
+  pool: SpinePool,
+  table: { children?: readonly string[] },
+  out: string[],
+): void {
+  for (const rowId of table.children ?? []) {
+    const row = pool.nodes.get(rowId) as { children?: readonly string[] } | undefined
+    for (const cellId of row?.children ?? []) {
+      const cell = pool.nodes.get(cellId) as { children?: readonly string[] } | undefined
+      pushFlattened(pool, cell?.children ?? [], out)
+    }
+  }
 }
 
 // ================================================================
@@ -198,17 +219,16 @@ export function flattenTextContainers(
 // (DocumentWalkGate.test.ts) 保证模块外不得自行遍历。
 // ================================================================
 
-/** body 直接子节点允许出现的类型 — 未知类型是数据损坏, 遍历器必须显式失败 */
-const BODY_BLOCK_TYPES: ReadonlySet<string> = new Set<string>([
-  NodeType.PARAGRAPH, NodeType.TABLE, NodeType.IMAGE,
-  NodeType.SEPARATOR, NodeType.SECTION_BREAK,
-])
+/**
+ * body / Section 直接子节点允许出现的类型 —— **派生自契约 §31.13 的唯一事实源**,
+ * 不在此另留一份私有副本 (§11)。两张表都含 `section` 自身 (契约里 Section 可
+ * 嵌 Section), 但 pushBlockIds 的 SECTION 分支先短路并就地展开, 故它永不落到
+ * 这张表的判定上 —— 行为与派生前逐字相同。
+ */
+const BODY_BLOCK_TYPES: ReadonlySet<string> = childTypesOf(NodeType.DOCUMENT)
 
 /** Section 的直接子节点允许出现的类型 — 块级内容或嵌套 Section (契约 §31.10) */
-const SECTION_CHILD_TYPES: ReadonlySet<string> = new Set<string>([
-  NodeType.PARAGRAPH, NodeType.TABLE, NodeType.IMAGE,
-  NodeType.SEPARATOR,
-])
+const SECTION_CHILD_TYPES: ReadonlySet<string> = childTypesOf(NodeType.SECTION)
 
 /** 逻辑流遇到未知块类型时抛出 — 静默丢弃内容是比报错更坏的失败 (契约 §31.5) */
 export class BodySpineError extends Error {

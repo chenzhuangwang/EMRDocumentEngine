@@ -443,3 +443,56 @@ describe('hitTestColumnBorder (列宽拖拽命中)', () => {
     expect(hit!.rightWidth).toBe(100)
   })
 })
+
+// ============================================================
+// 嵌套表命中 (契约 §31.13)
+//
+// cell 里可以合法地放一张表。递归下潜之前, 嵌套表项在 cellItems 的线性扫描里
+// 被当成"1 个原子字符"计入偏移 —— 点进嵌套格永远落不到它自己的段落上。
+// ============================================================
+
+describe('HitTestTable — 嵌套表 (契约 §31.13)', () => {
+  it('点进嵌套格 → 命中内层段落', () => {
+    const doc = createDocument('test')
+    const allNodes = new Map<string, BaseNode>()
+    allNodes.set(doc.id, doc as unknown as BaseNode)
+
+    const mk = (text: string) => {
+      const tn = createTextNode(text)
+      const para = createParagraph([tn.id])
+      allNodes.set(tn.id, tn as unknown as BaseNode)
+      allNodes.set(para.id, para as unknown as BaseNode)
+      return { tnId: tn.id, paraId: para.id }
+    }
+    const outer = mk('外层')
+    const inner = mk('内层')
+    const pool = buildNodePool(allNodes, { body: doc.id })
+
+    // 内层表: 1×1, 列宽 88, 行高 24; 作为外层 cell 的一个 item (cell 局部坐标)
+    const innerTable: SLIFItem = {
+      nodeId: 'inner-table', nodeType: 'table', type: 'table',
+      x: 0, y: 0, width: 88, height: 24,
+      ascent: 24, descent: 0, font: 'SimSun', size: 12,
+      columnWidths: [88],
+      rows: [{ height: 24, cells: [cell('inner-cell', 88, [cellText(inner.tnId, '内层', 76)])] }],
+    }
+
+    // 外层表: 1×1; cell 里先一段文本, 再嵌套表 (y 从第二行起)
+    const outerText = cellText(outer.tnId, '外层', 88)
+    const innerTableItem = { ...innerTable, y: 24 }
+    const outerTable: SLIFItem = {
+      nodeId: 'outer-table', nodeType: 'table', type: 'table',
+      x: 0, y: 0, width: 100, height: 80,
+      ascent: 80, descent: 0, font: 'SimSun', size: 12,
+      columnWidths: [100],
+      rows: [{ height: 80, cells: [cell('outer-cell', 100, [outerText, innerTableItem])] }],
+    }
+
+    hitIndex.rebuild([{ pageIndex: 0, width: 600, height: 800, items: [outerTable] } as SLIFPage])
+
+    // 内层表的文本在文档坐标 x ∈ [6, 94], y ∈ [24, 48] (cell pad 6, cell 原点 0)
+    const hit = hitIndex.hitTestTable(outerTable, 40, 30, pool, doc.id)
+    expect(hit).not.toBeNull()
+    expect(hit!.paraPath[1]).toBe(inner.paraId)
+  })
+})
