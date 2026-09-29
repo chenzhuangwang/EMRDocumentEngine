@@ -15,7 +15,7 @@ import { Sidebar } from './Sidebar'
 import { StatusBar } from './StatusBar'
 
 import { useEditorStore, useUIStore } from '@/store'
-import type { OutlineItem } from '@/components/sidebar/OutlineNav'
+import type { OutlineItem, SectionOutlineAction } from '@/components/sidebar/OutlineNav'
 import type { CommentThread } from '@/engine/document/core/DocumentModel'
 import type { EditorMode, ScoreResult, LocaleMessages } from '@/engine'
 import type { ToolbarAction } from '@/engine/plugins/PluginManager'
@@ -42,6 +42,10 @@ interface EditorLayoutProps {
   scale?: number
   onScaleChange?: (scale: number) => void
   showInvisible?: boolean
+  /** 节结构显示开关 (契约 §31.14) */
+  showSectionStructure?: boolean
+  /** 节结构显示切换回调 */
+  onToggleSectionStructure?: () => void
   onToggleInvisible?: () => void
   /** 大纲条目 (TASK-456) */
   outlineItems?: OutlineItem[]
@@ -49,6 +53,8 @@ interface EditorLayoutProps {
   activeOutlineId?: string | null
   /** 点击大纲条目 */
   onOutlineClick?: (item: OutlineItem) => void
+  /** 大纲节行操作 (契约 §31.14) */
+  onSectionAction?: (action: SectionOutlineAction, item: OutlineItem) => void
   onTemplateSelect?: (id: string) => void
   templates?: { name: string; items: { id: string; name: string; description?: string }[] }[]
   /** 批注 (R32) */
@@ -92,10 +98,13 @@ export function EditorLayout({
   scale = 1,
   onScaleChange,
   showInvisible = false,
+  showSectionStructure = true,
   onToggleInvisible,
+  onToggleSectionStructure,
   outlineItems = [],
   activeOutlineId,
   onOutlineClick,
+  onSectionAction,
   onTemplateSelect,
   templates,
   commentThreads = [],
@@ -151,6 +160,7 @@ export function EditorLayout({
             outlineItems={outlineItems}
             activeOutlineId={activeOutlineId}
             onOutlineClick={onOutlineClick}
+            onSectionAction={onSectionAction}
             commentThreads={commentThreads}
             onSelectCommentThread={onSelectCommentThread}
             onResolveCommentThread={onResolveCommentThread}
@@ -175,7 +185,9 @@ export function EditorLayout({
             scale={scale}
             onScaleChange={onScaleChange}
             showInvisible={showInvisible}
+            showSectionStructure={showSectionStructure}
             onToggleInvisible={onToggleInvisible}
+            onToggleSectionStructure={onToggleSectionStructure}
             mode={mode}
             onModeChange={onModeChange}
             scaleScore={scaleScore}

@@ -348,6 +348,61 @@ export function sectionOf(nodeId: string, pool: SpinePool): string | null {
   }
 }
 
+/**
+ * 节的层级投影条目 (契约 §31.2 W4 + R1) —— 供大纲面板与画布叠加层消费。
+ */
+export interface SectionTreeEntry {
+  id: string
+  /** 1 = 顶层节, 2 = 节的子节 … */
+  depth: number
+  /** 最近祖先节 id, 无则 null */
+  parentId: string | null
+  sectionCode?: string
+}
+
+/**
+ * **W4 + R1 的组合投影** —— 前序顺序 + 深度 + 父节 + 节代码。
+ *
+ * 刻意不新写遍历: 顺序由 W4 (`sectionsOf`) 定, 归属由 R1 (`sectionOf`) 定,
+ * 本函数只把两者拼起来并记忆化深度。另起一套 Section DFS 正是契约 §31 要防的
+ * 漂移 (两个枚举器必然分歧)。
+ *
+ * 深度 = 沿 `sectionOf` 上溯到顶的链长 (R1 对 Section 入参返回其**父节**,
+ * 故链恰好是祖先链)。链结果记忆化 → 每个节只走一次。
+ */
+export function sectionTreeOf(doc: DocumentTree, pool: SpinePool): SectionTreeEntry[] {
+  const order = sectionsOf(doc, pool)
+  const parentCache = new Map<string, string | null>()
+  const depthCache = new Map<string, number>()
+
+  const parentOf = (sectionId: string): string | null => {
+    if (!parentCache.has(sectionId)) parentCache.set(sectionId, sectionOf(sectionId, pool))
+    return parentCache.get(sectionId) ?? null
+  }
+
+  const depthOf = (sectionId: string): number => {
+    const cached = depthCache.get(sectionId)
+    if (cached !== undefined) return cached
+    // 先占位再递归: 环状脏数据不会无限递归 (读到占位值即返回)
+    depthCache.set(sectionId, 1)
+    const parent = parentOf(sectionId)
+    const d = parent === null ? 1 : depthOf(parent) + 1
+    depthCache.set(sectionId, d)
+    return d
+  }
+
+  return order.map((id) => {
+    const node = pool.nodes.get(id) as { sectionCode?: string } | undefined
+    const entry: SectionTreeEntry = {
+      id,
+      depth: depthOf(id),
+      parentId: parentOf(id),
+    }
+    if (node?.sectionCode !== undefined) entry.sectionCode = node.sectionCode
+    return entry
+  })
+}
+
 // ---- 结构侧助手 (真实下标 / 真实兄弟, 不是逻辑流) ----
 
 /** body 中段落数 (守卫口径, 契约 §31.7) — 遍历走 W2, 保证 Section 展开后口径一致 */

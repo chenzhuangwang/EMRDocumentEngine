@@ -18,6 +18,7 @@ import { DesignControlProperties } from '@/components/views/DesignControlPropert
 import { EditorProvider, useEditorRef, useEditorReady, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { RuntimeControlOverlay } from '@/components/editor/RuntimeControlOverlay'
 import { TableGrowOverlay } from '@/components/editor/TableGrowOverlay'
+import { SectionStructureOverlay } from '@/components/editor/SectionStructureOverlay'
 import { stripWidgetDefaultLabels, stripWidgetDefaultLabelsFromObject } from '@/platform/data/controlLibrary'
 import { useEditorContextMenu } from '@/components/editor/useEditorContextMenu'
 import { ContextMenu } from '@/components/editor/ContextMenu'
@@ -31,6 +32,7 @@ import { PrintPreviewDialog } from '@/components/dialogs/PrintPreviewDialog'
 import { PerfPanel } from '@/components/panels/PerfPanel'
 import { PasteSpecialDialog, type PasteFormat } from '@/components/dialogs/PasteSpecialDialog'
 import { BookmarkDialog } from '@/components/dialogs/BookmarkDialog'
+import { SectionCodeDialog } from '@/components/dialogs/SectionCodeDialog'
 import { DocumentPropertiesDialog } from '@/components/dialogs/DocumentPropertiesDialog'
 import { ControlInputDialog } from '@/components/dialogs/ControlInputDialog'
 import { ControlChoiceDialog } from '@/components/dialogs/ControlChoiceDialog'
@@ -43,36 +45,17 @@ import { getMockDocumentDetail } from '@/mocks/documents'
 import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
 import { templateImporter, isExternalTemplate, hfParagraphsForPage, reportError, EditorErrorCode, locale } from '@/engine'
 import { TOCGenerator } from '@/engine/render/TOCGenerator'
-import { sectionsOf } from '@/engine/document/selection/SelectionCollector'
 import { buildExportHtml, buildExportText } from '@/lib/documentExport'
 import {
   provenanceMetaTags, stampExportHtml, stampExportObject, stampExportText,
 } from '@/lib/provenance'
-import type { OutlineItem } from '@/components/sidebar/OutlineNav'
+import type { OutlineItem, SectionOutlineAction } from '@/components/sidebar/OutlineNav'
+import { buildOutlineItems } from '@/components/sidebar/outlineModel'
 import type { EditorMode, ScoreResult, WatermarkConfig, PerfSummary } from '@/engine'
 import type { QCIssue, QCResult } from '@/engine/qc/QCEngine'
 
 /** 质控防抖窗口 —— 质控比字数统计贵得多, 不该跟着每次按键跑 */
 const QC_DEBOUNCE_MS = 600
-
-/**
- * 节内第一个段落 id (前序深搜; 无则 null) —— 供大纲的节占位条目定位。
- * 节是容器, 大纲跳转要落到节内的**可编辑位置**, 不是容器本身。
- */
-function firstDescendantParagraph(
-  sectionId: string,
-  pool: { nodes: ReadonlyMap<string, { type: string; children?: readonly string[] }> },
-): string | null {
-  const stack = [...(pool.nodes.get(sectionId)?.children ?? [])]
-  while (stack.length > 0) {
-    const id = stack.shift()!
-    const node = pool.nodes.get(id)
-    if (!node) continue
-    if (node.type === 'paragraph') return id
-    if (node.children) stack.push(...node.children)
-  }
-  return null
-}
 
 /**
  * 把已渲染的页面图交给浏览器打印 (开新窗口 + w.print())。
@@ -161,7 +144,14 @@ function EditorPageInner({
   const [controlEdit, setControlEdit] = useState<{ open: boolean; nodeId: string }>({ open: false, nodeId: '' })
   const openControlEdit = useCallback((controlId: string) => setControlEdit({ open: true, nodeId: controlId }), [])
   // 通用菜单只发 'properties' id; 弹框映射在设计态业务层这里完成 (契约 §12.7)。
-  const contextMenu = useEditorContextMenu({ onProperty: openControlEdit })
+  // 节代码对话框 (单字段): 记录目标节 id, 打开时从引擎读当前值
+  const [sectionCodeTarget, setSectionCodeTarget] = useState<{ open: boolean; sectionId: string }>(
+    { open: false, sectionId: '' },
+  )
+  const contextMenu = useEditorContextMenu({
+    onProperty: openControlEdit,
+    onEditSectionCode: (sectionId) => setSectionCodeTarget({ open: true, sectionId }),
+  })
 
   // 弹框关闭后 Radix 会把焦点回弹到触发器/做焦点陷阱, 故延后一帧再交回编辑器
   const refocusEditor = useCallback(() => {
@@ -236,6 +226,7 @@ function EditorPageInner({
   const findResultsRef = useRef<import('@/engine').MatchResult[]>([])
   const zoom = useEditorStoreSnapshot((s) => s.runtime.view.scale)
   const showInvisible = useEditorStoreSnapshot((s) => s.runtime.view.showInvisible)
+  const showSectionStructure = useEditorStoreSnapshot((s) => s.runtime.view.showSectionStructure)
   const editorMode = useEditorStoreSnapshot((s) => s.runtime.view.mode)
   const readingMode = editorMode === 'readonly'
   const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([])
@@ -331,6 +322,15 @@ function EditorPageInner({
     }
   }, [editorRef])
 
+  /**
+   * 节结构显示开关 (契约 §31.14) —— 只写 store (叠加层订阅它)。
+   * 刻意**不调 draw.render**: Canvas 永远不画节结构, 这正是"不影响分页"的保证。
+   */
+  const handleToggleSectionStructure = useCallback(() => {
+    const ed = editorRef.current
+    if (ed) ed.setShowSectionStructure(!ed.getShowSectionStructure())
+  }, [editorRef])
+
   const handleToggleInvisible = useCallback(() => {
     const ed = editorRef.current
     if (ed) {
@@ -396,44 +396,15 @@ function EditorPageInner({
         }
       }
 
-      const items: OutlineItem[] = []
-      const tocGen = new TOCGenerator({ maxLevel: 6 })
-      const entries = tocGen.extractEntries(doc, pool, paraPageMap)
-      const coveredSectionIds = new Set<string>()
-      for (const entry of entries) {
-        if (entry.sectionId) coveredSectionIds.add(entry.sectionId)
-        items.push({
-          id: entry.paragraphId,
-          paragraphPath: [doc.id, entry.paragraphId],
-          level: entry.level,
-          text: entry.text,
-          pageIndex: entry.pageNumber - 1,
-        })
-      }
-      // 节占位条目 (无标题段的节): 插在其节内首个段落的位置, 保持文档顺序
-      for (const sectionId of sectionsOf(doc, pool)) {
-        if (coveredSectionIds.has(sectionId)) continue
-        const sec = pool.nodes.get(sectionId) as unknown as
-          { sectionCode?: string; children?: readonly string[] } | undefined
-        if (!sec) continue
-        const anchor = firstDescendantParagraph(sectionId, pool)
-        const label = sec.sectionCode || locale.t('outline.sectionFallback')
-        const entry: OutlineItem = {
-          id: sectionId,
-          paragraphPath: anchor ? [doc.id, anchor] : [doc.id, sectionId],
-          level: 1,
-          text: label,
-          pageIndex: anchor ? (paraPageMap.get(anchor) ?? -1) : -1,
-          kind: 'section',
-          sectionCode: sec.sectionCode,
-        }
-        const at = anchor
-          ? items.findIndex((it) => it.id === anchor || it.paragraphPath[1] === anchor)
-          : -1
-        if (at >= 0) items.splice(at, 0, entry)
-        else items.push(entry)
-      }
-      setOutlineItems(items)
+      // 大纲投影 (纯函数, 见 components/sidebar/outlineModel.ts):
+      // 真结构树前序 → 节行在其内容之前, 嵌套节按 depth 缩进, 空节不再把
+      // Section id 写进段落槽。标题文本/级别/页码复用 TOCGenerator。
+      setOutlineItems(buildOutlineItems(
+        doc,
+        pool as unknown as Parameters<typeof buildOutlineItems>[1],
+        paraPageMap,
+        { anonymousSectionLabel: locale.t('outline.sectionFallback') },
+      ))
     }
     editor.on('contentChange', update)
     update() // 初始计算
@@ -503,8 +474,29 @@ function EditorPageInner({
     const container = containerRef.current
     if (!editor || !container) return
 
-    // 更新光标到目标段落开头
     const store = editor.getStore()
+
+    if (item.kind === 'section' && item.sectionId) {
+      // 节行: 选中该节 (Editor.selectSection 负责落光标 + 折叠选区 + 写 id)。
+      // 空节没有段落 → paragraphPath 为空, **绝不**把节 id 当段落写进去
+      // (那会造出 CursorState 解析不出的非法路径, 光标画不出来也不滚动)。
+      editor.selectSection(item.sectionId)
+      setActiveOutlineId(item.id)
+      const rects = editor.getSectionClientRects(item.sectionId)
+      const pageIndex = rects[0]?.pageIndex ?? -1
+      if (pageIndex >= 0) {
+        const pages = editor.getDraw().getPages()
+        if (pageIndex < pages.length) {
+          const gap = editor.getDraw().getPageVerticalGap()
+          let acc = 0
+          for (let i = 0; i < pageIndex; i++) acc += pages[i].height + gap
+          container.scrollTop = acc * editor.getDraw().getCoordinateSystem().transform.scale
+        }
+      }
+      return
+    }
+
+    // 标题行: 光标到目标段落开头
     store.setCursor({
       paragraphPath: item.paragraphPath,
       offset: 0, visible: true,
@@ -527,6 +519,25 @@ function EditorPageInner({
 
     editor.getDraw().render(editor.getPool(), editor.getStore().state.runtime)
   }, [editorRef, containerRef])
+
+  /**
+   * 大纲节行操作 → Editor 门面 (契约 §31.14)。全部经 Command, 不在此改文档。
+   * 'insertAfter' / 'insertChild' 是「插入节」的两个落位:
+   *   之后 = 与选中节同级, 紧随其后; 子节 = 落在选中节内部末尾。
+   */
+  const handleSectionOutlineAction = useCallback((action: SectionOutlineAction, item: OutlineItem) => {
+    const editor = editorRef.current
+    const sectionId = item.sectionId
+    if (!editor || !sectionId) return
+    switch (action) {
+      case 'up': editor.moveSectionUp(sectionId); break
+      case 'down': editor.moveSectionDown(sectionId); break
+      case 'insertAfter': editor.insertSection({ afterBlockId: sectionId }); break
+      case 'insertChild': editor.insertChildSection(sectionId); break
+      case 'editCode': setSectionCodeTarget({ open: true, sectionId }); break
+      case 'delete': editor.deleteNode(sectionId); break
+    }
+  }, [editorRef])
 
   /** 图片文件选择 → 读取为 dataUrl → 插入编辑器 */
   const handleImageFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -989,8 +1000,10 @@ function EditorPageInner({
         if (type === 'image') { fileInputRef.current?.click(); return }
         // 表格插入: 默认 3x3 网格
         if (type === 'table') { setTableInsertOpen(true); return }
-        // 分节符
+        // 分节符 (Word 的页面设置边界, 与结构容器 Section 是两回事)
         if (type === 'sectionBreak') { ed.insertSectionBreak(); return }
+        // 结构容器 Section (契约 §31.14)
+        if (type === 'section') { ed.insertSection(); return }
         // 表单控件 3 类向导 (契约 §12.7): 打开对应配置弹框, 确定后再插到光标
         if (type === 'textInput' || type === 'radio' || type === 'checkbox') {
           setControlWizard({ open: true, kind: type })
@@ -1029,10 +1042,13 @@ function EditorPageInner({
       scale={zoom}
       onScaleChange={handleScaleChange}
       showInvisible={showInvisible}
+      showSectionStructure={showSectionStructure}
+      onToggleSectionStructure={handleToggleSectionStructure}
       onToggleInvisible={handleToggleInvisible}
       outlineItems={outlineItems}
       activeOutlineId={activeOutlineId}
       onOutlineClick={handleOutlineClick}
+      onSectionAction={handleSectionOutlineAction}
       onTemplateSelect={handleTemplateSelect}
       templates={templates}
     >
@@ -1045,6 +1061,7 @@ function EditorPageInner({
       <DesignControlTooltip />
       <RuntimeControlOverlay canvasContainerRef={containerRef} />
       <TableGrowOverlay />
+      <SectionStructureOverlay />
       {/* 性能面板 (接线审计 P2: 此前 PerformanceMetrics 只写不读、PerfPanel 零挂载) */}
       <PerfPanel summary={perfSummary ?? undefined} />
       <ContextMenu
@@ -1208,6 +1225,15 @@ function EditorPageInner({
           onCancel={() => setTableInsertOpen(false)}
         />
       )}
+      <SectionCodeDialog
+        open={sectionCodeTarget.open}
+        onClose={() => setSectionCodeTarget((s) => ({ ...s, open: false }))}
+        current={editorRef.current?.getSectionCode(sectionCodeTarget.sectionId)}
+        onConfirm={(code) => {
+          editorRef.current?.setSectionCode(sectionCodeTarget.sectionId, code)
+          setSectionCodeTarget((s) => ({ ...s, open: false }))
+        }}
+      />
       <BookmarkDialog
         open={bookmarkOpen}
         onClose={() => setBookmarkOpen(false)}

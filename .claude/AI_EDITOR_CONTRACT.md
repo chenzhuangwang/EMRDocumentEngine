@@ -3685,3 +3685,252 @@ DEFERRED, RECORDED (not silently omitted):
       - `AppendTableRowCommand` still does not clone a nested table
         (§12.9). The limitation is now worded "legal, but not cloned",
         not "unsupported".
+
+============================================================
+31.14 SECTION AUTHORING — creating, locating, selecting,
+      operating on Section
+============================================================
+
+Section is a first-class EDITOR capability, not merely a node type
+the model can store. The engine's Section is DOMAIN-NEUTRAL: nothing
+in §31 knows what a "chapter" or a section code MEANS. Downstream
+products attach meaning through `sectionCode`; the engine MUST NOT
+grow medical (or any other domain's) vocabulary.
+
+------------------------------------------------------------
+31.14.1 The authoring surface
+------------------------------------------------------------
+
+    Editor.insertSection(opts)        → new section id | null
+        opts: afterBlockId | containerId+index,
+              withInitialParagraph?, sectionCode?
+
+    Editor.insertChildSection(sectionId, opts)   → id | null
+    Editor.selectSection(sectionId | null)
+    Editor.getSelectedSectionId()                → string | null
+    Editor.moveSectionUp(sectionId)   → boolean
+    Editor.moveSectionDown(sectionId) → boolean
+    Editor.moveSectionTo(sectionId, toParentId, toIndex) → boolean
+    Editor.setSectionCode(sectionId, code?)      → boolean
+    Editor.getSectionCode(sectionId)             → string | undefined
+    Editor.listSections()             → SectionTreeEntry[]
+    Editor.getSectionClientRects(sectionId)      → SectionPageRect[]
+    Editor.setShowSectionStructure(boolean)
+
+EVERY mutation above goes through the command system (§5). The facade
+resolves WHERE (the real container + real index, §31.6) and delegates
+the WHAT to a command; commands stay dumb.
+
+------------------------------------------------------------
+31.14.2 Placement resolution, and the §31.13 rejection
+------------------------------------------------------------
+
+`sectionsOf` / `sectionOf` answer "which sections exist / whose is
+this"; `resolveBlockParent` (§31.6) answers "where does this block
+live". Placement is derived from those — never from a re-walk.
+
+MUST: an insert whose target container is not `body` or a Section is
+REJECTED (returns null, mutates nothing, pushes no undo entry). A
+Section inside a cell / header / footer is an illegal structure
+(§31.13), not an unimplemented feature. The rejection happens BEFORE
+any mutation, and MUST NOT rely on NodePool throwing — an uncaught
+throw would escape CommandManager into a UI event handler.
+
+------------------------------------------------------------
+31.14.3 "Model allows empty" vs "editor creates a paragraph"
+------------------------------------------------------------
+
+These are DIFFERENT facts and MUST NOT be conflated:
+
+    Section.children = []    always LEGAL (§31.13). A section with no
+                             content is a valid state.
+
+    withInitialParagraph     an EDITOR UX default (true). It only
+                             answers "should creating a section also
+                             give the caret somewhere to land".
+                             `false` yields the legal empty section.
+
+Neither the model nor NodePool may grow a rule that a Section must
+have children. The UI default exists because an empty section has no
+content span, therefore no geometry, therefore nothing to draw — see
+§31.14.6.
+
+------------------------------------------------------------
+31.14.4 Delete — subtree removal, and the body-editability repair
+------------------------------------------------------------
+
+Deleting a Section deletes the container AND its whole subtree, the
+same as deleting a table. Undo restores it from a subtree snapshot.
+
+A Section, once deletable, makes an EMPTY BODY reachable (today the
+paragraph path refuses to delete the last paragraph). "The body stays
+editable" is an EDITOR-layer invariant, NOT a Section model rule, and
+it is satisfied by the SAME primitive the engine already used:
+`EnsureBodyParagraphCommand`'s repair, folded into the delete command
+via `RemoveNodesCommand`'s `ensureBodyParagraph` option.
+
+MUST: that repair live in the SAME command, not in a
+`MacroCommand{Remove, EnsureBodyParagraph}`. The macro form is NOT an
+exact inverse: on undo the inverses run in reverse, and
+`EnsureBodyParagraphCommand` always inserts at index 0 while
+`RestoreNodesCommand` restores at the snapshot index — the restored
+document gains one stray empty paragraph. The opt-in flag removes the
+paragraph it created before restoring, so undo is exact. This is
+asserted by test; do not "simplify" it back into a macro.
+
+The option defaults to false, so every pre-existing caller is
+byte-identical.
+
+------------------------------------------------------------
+31.14.5 Section selection is NOT text selection
+------------------------------------------------------------
+
+`selectedSectionId` lives in `EditorStore` (§7.2), shaped exactly like
+`designSelectedControlId` (§12.3): transient, keyed by node id, never
+serialized. It MUST NOT be put into `SelectionState` /
+`SelectionGranularity`: those are a pure TEXT range whose
+`paragraphPath` must end in a text container, and ~30 consumers read
+them. Writing a section id into the paragraph slot is precisely the
+outline defect §31.14.8 records.
+
+Structural selection and text selection are MUTUALLY EXCLUSIVE, the
+semantics the engine already uses for table-cell selection (clicking
+outside a table, or starting a text selection inside one, clears it).
+Two rules make divergence impossible:
+
+    selectSection(id)      sets the caret into the section (first
+                           descendant paragraph; `[]` for an empty
+                           section), collapses the text selection, and
+                           writes the id LAST.
+
+    EditorStore.setCursor  is the SINGLE clearing point: any caret
+                           move, from any source (mouse, keyboard,
+                           command), clears `selectedSectionId`.
+
+Because the write happens after the caret move, `selectSection`
+cannot clear itself; and because every other caret move clears it,
+"the UI highlights section A while the caret sits in section B" is
+not constructible.
+
+------------------------------------------------------------
+31.14.6 Geometry — a section has no item of its own
+------------------------------------------------------------
+
+W2 expands Sections in place, so a Section emits NO line, NO SLIF item
+and NO pixels. It has no geometry of its own; it has DESCENDANTS, and
+their items' union is its span. `Draw.getAllSectionClientRects`
+derives it. Three properties are load-bearing:
+
+  - The descendant id set MUST include INLINE node ids. A paragraph's
+    text item carries the inline node's id; only an EMPTY paragraph's
+    placeholder item carries the paragraph id.
+  - Both `page.items` (where a table CONTAINER item lives) and
+    `getFlatPageItems(page)` (which flattens cell-inner items and
+    deliberately EXCLUDES the container) MUST be scanned.
+  - Attribution MUST accumulate up the ANCESTOR CHAIN (R1 `sectionOf`
+    returns the parent section). Attributing to the nearest section
+    only would leave a hole in every outer section's span wherever
+    content sits in a nested section.
+
+RECTS ARE PER PAGE, NEVER A CROSS-PAGE UNION. A section can break
+across pages; one union rect would swallow the page gap and everything
+between. Each rect also carries `contentLeft` / `contentRight` from
+`pageSetup` margins — a paragraph item's `x` includes its indent and
+can be moved by alignment, so it must NOT be used as the column edge.
+
+AN EMPTY SECTION HAS NO RECTS. That is an honest result (no content,
+no span), not a defect. It is why §31.14.3's editor default exists,
+and why the outline row for an empty section carries no
+`paragraphPath` (§31.14.8).
+
+------------------------------------------------------------
+31.14.7 The overlay is a PURE UI LAYER
+------------------------------------------------------------
+
+`components/editor/SectionStructureOverlay` draws the per-section left
+rule (indented by nesting depth) with its `sectionCode` label, plus a
+highlight box for the selected section. The dependency is ONE-WAY: the
+overlay consumes the Editor facade; no engine module imports it, and
+the engine does not know it exists.
+
+MUST: turning the structure display off — or never mounting the
+overlay at all — leaves Section STRUCTURE, COMMANDS, SELECTION,
+SERIALIZATION and HISTORY completely unaffected. Visualization and
+capability are orthogonal, and a test asserts it.
+
+MUST NOT: add a Section model field, or any engine-side state, in
+order to draw. Geometry is derived (§31.14.6); the only new state is a
+boolean view flag plus the selected id, both in `EditorStore`.
+
+------------------------------------------------------------
+31.14.8 Outline projection
+------------------------------------------------------------
+
+The outline is built by a pure function (`components/sidebar/
+outlineModel`) walking the STRUCTURE TREE in pre-order, so a Section
+row lands BEFORE its content — the tree entry point is
+`pool.getChildren(doc.id)` (§31.1), not a logical-flow walk: the
+outline needs section boundaries, and W2/W3 exist precisely to erase
+them. Heading text / level / page number are reused from
+`TOCGenerator`; the section row's `level` is its nesting depth.
+
+MUST NOT: fabricate a `paragraphPath` for a section row. An EMPTY
+section has no paragraph, and putting the section id into the
+paragraph slot produces a `CursorState` the engine cannot resolve —
+no caret is drawn and no scroll happens. A section row carries
+`sectionId` and an EMPTY `paragraphPath` when it has no paragraph.
+
+------------------------------------------------------------
+31.14.9 Context menu — a FACT, not a new kind
+------------------------------------------------------------
+
+The menu gains section entries from `ContextFacts.sectionFact`, an
+ADDITIONAL FACT collected at the boundary, exactly like
+`tableGrowable` / `headerFooterSection` — NOT from a new
+`kind: 'section'`. A Section has no hittable item, so such a kind
+would be UNREACHABLE; worse, a new kind would REPLACE `kind: 'text'`
+and delete the cut/copy/format menu the user needs at that moment.
+
+The field is named `sectionFact`, not `section`: the latter is already
+taken by `HeaderFooterContext.section`, which means the header/footer
+BAND and is unrelated to the structural container (§31.11).
+
+Every section entry's enabled state is derived from the fact, so the
+menu never lies: "insert section" is greyed where §31.14.2 forbids it,
+and the move entries are greyed at the first/last slot — matching the
+facade's own pre-check, which likewise refuses without pushing an undo
+entry.
+
+------------------------------------------------------------
+31.14.10 Known limitations (recorded, NOT silently ignored)
+------------------------------------------------------------
+
+  - A Section does NOT round-trip through the in-memory clipboard. The
+    clipboard DTO is a FLAT paragraph form (`SerializedPara` with leaf
+    children), copy walks the paragraph spine (which expands Sections
+    away), and paste re-ids only the top node and known leaf types
+    without remapping nested `children` — a container admitted there
+    would dangle. Making this work needs three things, none of them
+    present today: a container-capable serialization form, a RECURSIVE
+    id-remapping clone, and a container-level paste command. The one
+    existing precedent for "clone a container subtree with fresh ids"
+    is `AppendTableRowCommand`'s type-dispatched factory rebuild.
+    Until then, copying a range that spans a Section copies its
+    paragraphs as flat text and the boundaries are lost.
+
+  - `sectionCode` uniqueness is NOT enforced. Structured export (CDA)
+    and section-level targeting locate a section BY code, so two
+    sections sharing one code are ambiguous. Adding a uniqueness rule
+    is a new user-visible semantic and belongs to a later phase; the
+    engine records the ambiguity rather than inventing an error now.
+
+  - A section whose only child is a BLOCK-LEVEL image has no geometry:
+    the body layout loop has branches for section_break / separator /
+    table / paragraph and no fallback, so a block image emits no item
+    at all. That is a PRE-EXISTING engine gap (a body-level image is
+    already invisible), not a Section regression; this section forbids
+    growing a Section model field to paper over it, and layout is not
+    in scope here.
+
+  - The outline is a FLAT list indented by level, not a collapsible
+    tree. Nesting renders correctly; folding does not exist yet.

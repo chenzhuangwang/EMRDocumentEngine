@@ -16,6 +16,22 @@ import type { DocumentTree, WatermarkConfig, SmartTextNode } from '../document/c
 import type { NodePool } from '../document/core/NodePool'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 import { getFlatPageItems, tableHeaderRowsHeight } from '../layout/core/SLIF'
+
+/**
+ * Section 在视口中的**分段**矩形 (契约 §31.14) —— 每个它触及的页一段。
+ * 坐标与 getTableClientRect / getControlClientRect 同源 (视口 client 坐标)。
+ */
+export interface SectionPageRect {
+  pageIndex: number
+  left: number
+  top: number
+  width: number
+  height: number
+  /** 该页正文栏左缘 — 供叠加层画左侧竖线 (取自 pageSetup 页边距, 不随段落缩进漂移) */
+  contentLeft: number
+  /** 该页正文栏右缘 */
+  contentRight: number
+}
 import type { EventBus } from '../interaction/EventBus'
 import { locale } from '../i18n/index'
 import type { EditorRuntimeState } from '../state/EditorRuntimeState'
@@ -42,7 +58,7 @@ import { createBarcodeParticle } from './particles/BarcodeParticle'
 import { particleRegistry } from './particles/ParticleRegistry'
 import { textParticle, separatorParticle, listParticle, fieldParticle } from './particles/ParticleAdapters'
 import { buildCellGrid } from '../document/table/TableOps'
-import { regionIdOf, selectionSpine, paragraphTextLength, bodyParagraphSpine } from '../document/selection/SelectionCollector'
+import { regionIdOf, selectionSpine, paragraphTextLength, bodyParagraphSpine, sectionsOf, sectionOf } from '../document/selection/SelectionCollector'
 import { COMMENT_HIGHLIGHT, commentHighlight } from './particles/CommentParticle'
 import { safeRenderParticle, safeRenderPage } from '../ErrorRecovery'
 import { resolveHfParagraphLocation } from '../document/core/HeaderFooterRegions'
@@ -1478,6 +1494,137 @@ export class Draw {
       width: box.width * scale,
       height: box.height * scale,
     }
+  }
+
+  /**
+   * Section 在视口中的**分段**矩形 —— 每个它触及的页一段 (契约 §31.14)。
+   *
+   * 为什么分段而不是一个框: Section 可以跨页断开, 取各页并集会把页间隙也框进去
+   * (视觉错误)。故按页分组返回, 叠加层每页画一段线/框。
+   *
+   * 为什么取"后代 item 的并集": Section 被 W2 就地展开, **不产出任何属于它自己的
+   * SLIF item** —— 它没有几何。但它有后代, 后代有 item, 并集就是它的跨度。
+   *
+   * 后代集必须**含内联节点 id**: 段落文本 item 的 `nodeId` 是内联节点
+   * (text/smarttext/field/…) 的 id, 只有**空段落**的占位 item 才用段落 id
+   * (LayoutEngine 的两条产出路径)。
+   *
+   * 扫描必须**两处都扫**: `page.items` (表格容器 item 在这里) +
+   * `getFlatPageItems(page)` (cell 内嵌项在这里, 且该函数明确剔除表格容器)。
+   *
+   * 归属必须**向祖先链累加**: 取"最近节"只能画出最内层, 外层节会留下空洞,
+   * 嵌套时明显错。故每个 item 归属到最近节后, 再沿 R1 链累加到每个祖先。
+   *
+   * 空 Section (无后代) 没有 item —— 返回 [] 是诚实结果 (没有内容就没有跨度)。
+   */
+  getAllSectionClientRects(): Map<string, SectionPageRect[]> {
+    const result = new Map<string, SectionPageRect[]>()
+    const pool = this.pool
+    const doc = this.document
+    if (!pool || !doc || this.pages.length === 0) return result
+
+    // 1. 目标节集合 (W4, 前序) + 每个节的祖先链 (R1 上溯, 记忆化)
+    const sectionOrder = sectionsOf(doc, pool)
+    if (sectionOrder.length === 0) return result
+    const chainOf = (sectionId: string): string[] => {
+      const cached = chainCache.get(sectionId)
+      if (cached) return cached
+      const chain: string[] = [sectionId]
+      let cur = sectionId
+      for (;;) {
+        const parent = sectionOf(cur, pool)
+        if (!parent || chain.includes(parent)) break
+        chain.push(parent)
+        cur = parent
+      }
+      chainCache.set(sectionId, chain)
+      return chain
+    }
+    const chainCache = new Map<string, string[]>()
+
+    // 2. 逐页扫 item; 每个 item 归属最近节, 再累加到祖先链上的每个节
+    const viewportW = this.host.viewport.size().width
+    const scale = this.coordSystem.transform.scale
+    const pageWidth = this.pages[0]?.width || 794
+    const offsetX = Math.max(0, (viewportW - pageWidth * scale) / 2)
+    const pageVerticalGap = this.renderer.getPageVerticalGap()
+    const scrollY = this.coordSystem.transform.scrollY
+    const surface = this.renderer.getInteractSurface()
+    const canvasRect = surface?.getBoundingClientRect() ?? { left: 0, top: 0 }
+    const marginLeft = doc.pageSetup?.marginLeft ?? 90
+    const marginRight = doc.pageSetup?.marginRight ?? 90
+
+    // 每 (nodeId) → 最近节 的记忆表 (同一内联节点在一页内被多个 item 共用)
+    const ownerOf = new Map<string, string | null>()
+
+    type Ink = { top: number; bottom: number; left: number; right: number }
+    const inkOf = new Map<string, Map<number, Ink>>() // sectionId → pageIndex → ink
+
+    const accumulate = (nodeId: string, pageIndex: number, ink: Ink): void => {
+      let owner = ownerOf.get(nodeId)
+      if (owner === undefined) {
+        owner = sectionOf(nodeId, pool)
+        ownerOf.set(nodeId, owner)
+      }
+      if (!owner) return
+      for (const sectionId of chainOf(owner)) {
+        let perPage = inkOf.get(sectionId)
+        if (!perPage) { perPage = new Map(); inkOf.set(sectionId, perPage) }
+        const prev = perPage.get(pageIndex)
+        if (!prev) { perPage.set(pageIndex, { ...ink }); continue }
+        if (ink.top < prev.top) prev.top = ink.top
+        if (ink.bottom > prev.bottom) prev.bottom = ink.bottom
+        if (ink.left < prev.left) prev.left = ink.left
+        if (ink.right > prev.right) prev.right = ink.right
+      }
+    }
+
+    for (let i = 0; i < this.pages.length; i++) {
+      const page = this.pages[i]
+      if (!page) continue
+      for (const item of page.items) {
+        accumulate(item.nodeId, i, {
+          top: item.y, bottom: item.y + (item.height || 0),
+          left: item.x, right: item.x + (item.width || 0),
+        })
+      }
+      // getFlatPageItems 展平 cell 内嵌项 (表格容器 item 不在其中, 故两处都要扫)
+      for (const item of getFlatPageItems(page)) {
+        accumulate(item.nodeId, i, {
+          top: item.y, bottom: item.y + (item.height || 0),
+          left: item.x, right: item.x + (item.width || 0),
+        })
+      }
+    }
+
+    // 3. 换算为视口 client 坐标 (与 getTableClientRect 同源变换)
+    for (const [sectionId, perPage] of inkOf) {
+      const rects: SectionPageRect[] = []
+      for (const [pageIndex, ink] of [...perPage.entries()].sort((a, b) => a[0] - b[0])) {
+        const spY = accumulatedHeightTo(pageIndex, this.pages, pageVerticalGap) - scrollY
+        rects.push({
+          pageIndex,
+          left: canvasRect.left + ink.left * scale + offsetX,
+          top: canvasRect.top + (spY + ink.top) * scale,
+          width: (ink.right - ink.left) * scale,
+          height: (ink.bottom - ink.top) * scale,
+          // 正文栏左右缘 — 供叠加层画左侧竖线 (取自 pageSetup 页边距, 不随段落
+          // 缩进/对齐漂移; 段落 item.x 含 indent, 不能用它当栏缘)
+          contentLeft: canvasRect.left + marginLeft * scale + offsetX,
+          contentRight: canvasRect.left + (pageWidth - marginRight) * scale + offsetX,
+        })
+      }
+      if (rects.length > 0) result.set(sectionId, rects)
+    }
+    return result
+  }
+
+  /**
+   * 单个 Section 的分段矩形 (取 getAllSectionClientRects 的子集)。
+   * 空节返回 [] —— 空节没有内容跨度, 这是诚实结果而非缺陷。
+   */
+  getSectionClientRects(sectionId: string): SectionPageRect[] {
+    return this.getAllSectionClientRects().get(sectionId) ?? []
   }
 
   /**

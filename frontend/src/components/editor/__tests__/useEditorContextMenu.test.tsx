@@ -59,7 +59,7 @@ function renderHarness(resolve: (e: MouseEvent) => EditorContextSnapshot, onProp
 }
 
 const smartText = (controlId: string): EditorContextSnapshot => ({
-  kind: 'smartText', controlId, pageIndex: 0, localX: 10, localY: 10,
+  kind: 'smartText', controlId, pageIndex: 0, localX: 10, localY: 10, sectionFact: null,
 })
 
 describe('useEditorContextMenu — 设计模式控件属性 (契约 §12.7)', () => {
@@ -92,6 +92,7 @@ describe('useEditorContextMenu — 设计模式控件属性 (契约 §12.7)', ()
     const { selectControl, collapseSelectionToPoint } = renderHarness(() => ({
       kind: 'text', paragraphId: 'p1', paragraphPath: ['doc', 'p1'], offset: 3,
       scope: { type: 'body' }, coversSelection: false, pageIndex: 0, localX: 5, localY: 5,
+      sectionFact: null,
     }), onProperty)
     fireEvent.contextMenu(screen.getByTestId('target'))
     expect(collapseSelectionToPoint).toHaveBeenCalledWith(['doc', 'p1'], 3)

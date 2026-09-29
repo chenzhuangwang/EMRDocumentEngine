@@ -24,7 +24,8 @@
 import type {
   BaseNode, DocumentTree, Paragraph, PageSetup, CommentThread, FootnoteContent, TextNode,
 } from '../../document/core/DocumentModel'
-import { createParagraph, createTextNode, extractStyle } from '../../document/factory/ElementFormatter'
+import { NodeType } from '../../document/core/DocumentModel'
+import { createParagraph, createTextNode, createSection, extractStyle } from '../../document/factory/ElementFormatter'
 import type { NodePool } from '../../document/core/NodePool'
 import {
   ensureHfArray, hfArrayOf, type HeaderFooterVariant,
@@ -198,16 +199,31 @@ export class RemoveNodesCommand implements ICommand {
   private restoreCursor?: Partial<CursorState>
   /** forward 时捕获的子树快照, 供 invert 恢复 (deleteNode 直接入栈需可撤销) */
   private snapshots: RemovalSnapshot[] = []
+  /**
+   * body 被删空时补的那个空段落 id (仅 ensureBodyParagraph 开启时非空)。
+   *
+   * **为什么不用 MacroCommand{RemoveNodes, EnsureBodyParagraph}**: 那个组合在
+   * undo 时不能精确还原 —— 逆序执行会先移除补的段落再插回被删块, 但
+   * `EnsureBodyParagraphCommand` 恒插在下标 0, 而 `RestoreNodesCommand` 按**快照
+   * 下标**插回, 于是原 `[section]` 会还原成 `[section, paragraph]`, 多出一个空段。
+   * 补在**同一个命令内**并让 invert 先摘掉它, 才是精确的逆。
+   * (这是 Editor 层"body 可编辑性"不变量的延续, 不是 Section 模型规则 ——
+   *  模型层 `Section.children = []` 恒合法, 契约 §31.13。)
+   */
+  private createdParaId: string | null = null
+  private ensureBodyParagraph: boolean
 
   constructor(
     id: string, timestamp: number, author: string,
     removals: NodeRemoval[], removeThreadIds: string[] = [],
     restoreCursor?: Partial<CursorState>,
+    opts: { ensureBodyParagraph?: boolean } = {},
   ) {
     this.id = id; this.timestamp = timestamp; this.author = author
     this.removals = removals
     this.removeThreadIds = removeThreadIds
     this.restoreCursor = restoreCursor
+    this.ensureBodyParagraph = opts.ensureBodyParagraph ?? false
   }
 
   forward(ctx: CommandContext): StatePatch | null {
@@ -245,13 +261,26 @@ export class RemoveNodesCommand implements ICommand {
       doc.comments = doc.comments.filter(t => !ids.has(t.id))
     }
 
-    return { cursor: this.restoreCursor, invalidation: 'flowbody' }
+    // body 被删空 → 补一个空段落, 保证编辑器仍有可落的 caret target。
+    // 光标随之指向它; 没有可落点时 (restoreCursor undefined) 这是唯一有效的落点。
+    let cursor = this.restoreCursor
+    if (this.ensureBodyParagraph && pool.getChildren(doc.id).length === 0) {
+      const para = createParagraph()
+      pool.addNode(para)
+      pool.insertChild(doc.id, para.id, 0)
+      this.createdParaId = para.id
+      cursor = { paragraphPath: [doc.id, para.id], offset: 0, visible: true }
+    }
+
+    return { cursor, invalidation: 'flowbody' }
   }
 
   invert(_ctx: CommandContext): ICommand | null {
     if (this.snapshots.length === 0) return null
     return new RestoreNodesCommand(
       generateCommandId(), Date.now(), this.author, this.snapshots,
+      // 先摘掉补的空段落, 再按快照还原 —— 否则 undo 会多留一个段落
+      this.createdParaId,
     )
   }
 
@@ -270,15 +299,27 @@ class RestoreNodesCommand implements ICommand {
   readonly timestamp: number
   readonly author: string
   private snapshots: RemovalSnapshot[]
+  /** forward 时补出来的空段落 —— 必须先摘掉它, 才能精确还原被删前的 body */
+  private createdParaId: string | null
 
-  constructor(id: string, timestamp: number, author: string, snapshots: RemovalSnapshot[]) {
+  constructor(
+    id: string, timestamp: number, author: string, snapshots: RemovalSnapshot[],
+    createdParaId: string | null = null,
+  ) {
     this.id = id; this.timestamp = timestamp; this.author = author
     this.snapshots = snapshots
+    this.createdParaId = createdParaId
   }
 
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
     const { pool, doc } = ctx
+
+    // 0. 摘掉 forward 补的空段落 (它不在任何快照里, 留着就不是精确逆)
+    if (this.createdParaId) {
+      const idx = pool.getChildren(doc.id).indexOf(this.createdParaId)
+      if (idx >= 0) { pool.detachChild(doc.id, idx); removeSubtree(pool, this.createdParaId) }
+    }
 
     // 逆序恢复 (后删先插), 使同容器多节点按原顺序还原
     for (let i = this.snapshots.length - 1; i >= 0; i--) {
@@ -1143,4 +1184,162 @@ function findParentIdOf(pool: NodePool, nodeId: string): string | null {
     if (pool.getChildren(id).includes(nodeId)) return id
   }
   return null
+}
+
+// ================================================================
+// InsertSectionCommand — 在真容器指定下标处插入一个 Section
+// (契约 §31.10 / §31.13: Section 只能住在 body 或另一个 Section 里)
+// ================================================================
+
+/** 插入节的选项 */
+export interface InsertSectionOpts {
+  /**
+   * 是否同时建一个初始空段落 (编辑器默认 true)。
+   *
+   * **与模型层"节可以为空"是两件事**: `Section.children = []` 恒合法
+   * (契约 §31.13, P1 已锁); 这里只回答"编辑器建节时要不要顺手给个可落 caret
+   * 的位置"。显式传 false 即得空节 (导入/程序化构造走这条)。
+   */
+  withInitialParagraph?: boolean
+  /** 节代码; 缺省 = 匿名节 (不写该字段, 不是写空串) */
+  sectionCode?: string
+}
+
+export class InsertSectionCommand implements ICommand {
+  readonly type = 'insert-section'
+  readonly id: string
+  readonly timestamp: number
+  readonly author: string
+  private containerId: string
+  private index: number
+  private opts: InsertSectionOpts
+  /** forward 产出的新节 id (供门面在新节插入后选中它) */
+  private newSectionId: string | null = null
+  /** forward 时确定的容器身份 (invert 按同一容器恢复, 契约 §31.6) */
+  private insertContainer: Container | null = null
+
+  constructor(
+    id: string, timestamp: number, author: string,
+    /** 真容器 id: 文档根 id 或某个 Section 的 id (契约 §31.6) */
+    containerId: string,
+    /** 真结构下标 */
+    index: number,
+    opts: InsertSectionOpts = {},
+  ) {
+    this.id = id; this.timestamp = timestamp; this.author = author
+    this.containerId = containerId; this.index = index; this.opts = opts
+  }
+
+  get sectionId(): string | null { return this.newSectionId }
+
+  forward(ctx: CommandContext): StatePatch | null {
+    if (ctx.mode !== 'local') return null
+    const { pool, doc } = ctx
+
+    // 目标容器必须存在, 且必须是 body 或 Section —— 这是 §31.13 的显式拒绝。
+    // 不在 cell / header / footer 里"想办法塞进去": 那是非法结构, 不是未支持。
+    // 先判再改, 保证拒绝时不留下任何半成品, 也不产生 undo 条目。
+    const container = this.containerId === doc.id ? undefined : pool.nodes.get(this.containerId)
+    const legal = this.containerId === doc.id || container?.type === NodeType.SECTION
+    if (!legal) return null
+
+    const section = createSection()
+    if (this.opts.sectionCode !== undefined && this.opts.sectionCode !== '') {
+      section.sectionCode = this.opts.sectionCode
+    }
+    pool.addNode(section)
+
+    const len = pool.getChildren(this.containerId).length
+    const at = Math.max(0, Math.min(this.index, len))
+    pool.insertChild(this.containerId, section.id, at)
+    this.newSectionId = section.id
+    this.insertContainer = this.containerId === doc.id
+      ? { kind: 'body' }
+      : { kind: 'section', sectionId: this.containerId }
+
+    let cursor: Partial<CursorState> | undefined
+    if (this.opts.withInitialParagraph !== false) {
+      const para = createTrailingParagraph(pool)
+      pool.insertChild(section.id, para.id, 0)
+      cursor = { paragraphPath: [doc.id, para.id], offset: 0, visible: true }
+    }
+
+    return { cursor, invalidation: 'flowbody' }
+  }
+
+  invert(_ctx: CommandContext): ICommand | null {
+    if (!this.newSectionId) return null
+    // 容器身份在 forward 时就已确定并记下 (body 还是某个节) —— 不在此刻反推,
+    // 反推要再拿一次 doc 且容易写错 (契约 §31.6: 容器身份必须真)。
+    if (!this.insertContainer) return null
+    return new RemoveNodesCommand(
+      generateCommandId(), Date.now(), this.author,
+      [{ container: this.insertContainer, nodeIds: [this.newSectionId] }],
+    )
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: 'insert-section', id: this.id, timestamp: this.timestamp, author: this.author,
+      changes: { containerId: this.containerId, index: this.index, ...this.opts },
+    }
+  }
+}
+
+// ================================================================
+// UpdateSectionCommand — 写/清 Section.sectionCode (唯一可变语义属性)
+// ================================================================
+
+export class UpdateSectionCommand implements ICommand {
+  readonly type = 'update-section'
+  readonly id: string
+  readonly timestamp: number
+  readonly author: string
+  private sectionId: string
+  /** undefined = 清除该字段 (真删键, 不是写 undefined) */
+  private next?: string
+  private old?: string
+  private hadOld = false
+
+  constructor(
+    id: string, timestamp: number, author: string,
+    sectionId: string, next?: string,
+  ) {
+    this.id = id; this.timestamp = timestamp; this.author = author
+    this.sectionId = sectionId; this.next = next
+  }
+
+  forward(ctx: CommandContext): StatePatch | null {
+    if (ctx.mode !== 'local') return null
+    const { pool } = ctx
+    const node = pool.nodes.get(this.sectionId) as { type?: string; sectionCode?: string } | undefined
+    if (!node || node.type !== NodeType.SECTION) return null
+
+    this.hadOld = 'sectionCode' in node
+    this.old = node.sectionCode
+
+    if (this.next === undefined) {
+      // 真删键 (§12.6.1 规范空态: 缺失 ≡ 匿名, 与值 undefined 不等价)
+      pool.deleteNodeField(this.sectionId, 'sectionCode')
+    } else {
+      pool.updateNode(this.sectionId, { sectionCode: this.next } as Partial<Paragraph>)
+    }
+    // sectionCode 不参与布局 (Section 不产出 item), 但 'none' 分支仍会重渲染 +
+    // 发 contentChange, 大纲面板 / QC / 叠加层据此刷新 (与 UpdateDocumentTitle 同)。
+    return { invalidation: 'none' }
+  }
+
+  invert(_ctx: CommandContext): ICommand | null {
+    return new UpdateSectionCommand(
+      generateCommandId(), Date.now(), this.author,
+      this.sectionId, this.hadOld ? this.old : undefined,
+    )
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: 'update-section', id: this.id, timestamp: this.timestamp, author: this.author,
+      changes: { sectionId: this.sectionId, sectionCode: this.next ?? null },
+    }
+  }
 }

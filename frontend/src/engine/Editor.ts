@@ -62,8 +62,9 @@ import {
   paragraphTextLength, paragraphTextInRange, findFirstTextNodeInRange,
   selectionSpine, regionSpine,
   bodyBlockSpine, bodyParagraphSpine, bodyParagraphCount,
-  initialCursorParaPath,
+  initialCursorParaPath, sectionTreeOf, sectionOf,
 } from './document/selection/SelectionCollector'
+import type { SectionTreeEntry } from './document/selection/SelectionCollector'
 import type { FormatRange } from './document/selection/SelectionCollector'
 import {
   ensureHfArray, hfParagraphsForPage, resolveHfParagraphLocation, resolveVariantForPage,
@@ -73,7 +74,9 @@ import {
   CreateCommentCommand, AddCommentReplyCommand, ResolveCommentCommand,
   SetPageSetupCommand, TableStructureCommand, EnsureHeaderFooterParagraphCommand,
   EnsureBodyParagraphCommand, RemoveNodesCommand, MoveBlockCommand,
+  InsertSectionCommand, UpdateSectionCommand,
 } from './command/commands/StructuralCommands'
+import type { InsertSectionOpts } from './command/commands/StructuralCommands'
 import { AppendTableRowCommand } from './command/commands/AppendTableRowCommand'
 import { SetTableGrowableCommand } from './command/commands/SetTableGrowableCommand'
 import { InsertImageCommand } from './command/commands/InsertImageCommand'
@@ -697,7 +700,7 @@ export class Editor {
   resolveContextAt(e: MouseEvent): EditorContextSnapshot {
     const raw = this.resolveRawHit(e)
     if (!raw) {
-      return { kind: 'blank', pageIndex: 0, localX: 0, localY: 0 }
+      return { kind: 'blank', pageIndex: 0, localX: 0, localY: 0, sectionFact: null }
     }
     const { nodeId, pageIndex, localX, localY, page } = raw
 
@@ -764,6 +767,17 @@ export class Editor {
     const tableHitId = cellPosition?.tableId ?? (entryType === 'table' ? nodeId : null)
     const tableGrowable = tableHitId !== null && this.isTableGrowable(tableHitId)
 
+    // 命中点所属节事实 (契约 §31.2 R1 / §31.14)。与 tableGrowable 同旨: 纯函数
+    // buildContextSnapshot 不能查池, 事实必须由边界采集后传入。
+    //
+    // 归属问的是"命中点**内容**被哪个节包着" —— 所以从命中块 (段落/表格) 上溯,
+    // 而不是从被命中的内联文本节点 (两者 R1 结果相同, 但 block 才是语义单位)。
+    // 页眉/页脚段落 ⇒ sectionOf 返回 null, 正确 (它们不在 body 的结构树里)。
+    const hitBlockId = textHit?.paragraphId
+      ?? (entryType === 'table' ? nodeId : null)
+      ?? nodeId
+    const sectionFact = this.buildSectionFact(hitBlockId)
+
     return buildContextSnapshot({
       nodeId,
       entryType,
@@ -777,7 +791,29 @@ export class Editor {
       tableGrowable,
       siblings: this.resolveHitSiblings(textHit),
       selection: this.store.state.runtime.selection,
+      sectionFact,
     })
+  }
+
+  /**
+   * 采集命中块所属的节事实 (契约 §31.2 R1)。
+   *
+   * `insertable` 判的是**命中块能否在结构上容纳一个兄弟节** —— 即它的真实父容器
+   * 落在 body / section。命中落在表格 cell 内时 `resolveBlockParent` 返回 null,
+   * 于是"插入节"在菜单里置灰: cell 里放 Section 是 §31.13 的非法结构, 不是未支持。
+   */
+  private buildSectionFact(hitBlockId: string | null): import('./context/EditorContext').ContextSectionFact | null {
+    if (!hitBlockId) return null
+    const sectionId = sectionOf(hitBlockId, this.pool)
+    if (!sectionId) return null
+    const placement = resolveBlockParent(sectionId, this.doc, this.pool)
+    if (!placement) return null
+    return {
+      id: sectionId,
+      index: placement.index,
+      siblingCount: this.pool.getChildren(placement.containerId).length,
+      insertable: resolveBlockParent(hitBlockId, this.doc, this.pool) !== null,
+    }
   }
 
   /**
@@ -1217,17 +1253,6 @@ export class Editor {
    * 返回是否实际删除 (拒绝/守卫失败返回 false)。
    *
    * 路由:
-   *   - body 级段落: RemoveNodesCommand, body 必须保留 ≥1 段落 (删最后一个拒绝)
-   *   - image: body 级块图直接从 body 摘除; 段落内联图从所属段落 children 摘除
-   *   - body 级 separator/section_break/table: RemoveNodesCommand
-   *   - smarttext: RemoveControlCommand (deletable 守卫 §12.1)
-   *   - cell / row / column / header·footer 内节点: 拒绝 (P2 再定)
-   */
-  /**
-   * 节点删除门面 (设计 v2 §6) — 按节点类型路由到既有 Command,
-   * 返回是否实际删除 (拒绝/守卫失败返回 false)。
-   *
-   * 路由:
    *   - 段落 (body 或 Section 内): RemoveNodesCommand, body 必须保留 ≥1 段落
    *   - image: 块级图从**真实父容器**摘除; 段落内联图从所属段落 children 摘除
    *   - separator/section_break/table: RemoveNodesCommand (真实父容器)
@@ -1242,8 +1267,16 @@ export class Editor {
     const node = this.pool.nodes.get(nodeId)
     if (!node) return false
 
-    /** 从真实父容器 (body / section) 摘除块级节点, 光标回落到最近段落 */
-    const removeBlock = (): boolean => {
+    /**
+     * 从真实父容器 (body / section) 摘除块级节点, 光标回落到最近段落。
+     *
+     * `ensureBodyParagraph`: 删掉 body 里最后一个块后补一个空段落 —— 这是
+     * **Editor 层"body 始终可编辑"的既有不变量**的延续 (今天由
+     * `case 'paragraph'` 的拒绝 + EnsureBodyParagraphCommand 的修复共同维持),
+     * 不是 Section 模型规则 (模型层 `children=[]` 恒合法)。补在**同一个命令内**
+     * 而非 MacroCommand, 才能让 undo 精确还原 (见 RemoveNodesCommand 的注释)。
+     */
+    const removeBlock = (ensureBodyParagraph = false): boolean => {
       const parent = resolveBlockParent(nodeId, this.doc, this.pool)
       if (!parent) return false
       const container: { kind: 'body' } | { kind: 'section'; sectionId: string } =
@@ -1254,6 +1287,7 @@ export class Editor {
         generateCommandId(), Date.now(), 'user',
         [{ container, nodeIds: [nodeId] }],
         [], this.cursorAfterBlockRemoval(parent.containerId, parent.index),
+        { ensureBodyParagraph },
       ))
       return true
     }
@@ -1286,8 +1320,11 @@ export class Editor {
       case 'separator':
       case 'section_break':
       case 'table':
-      case 'section':
         return removeBlock()
+      case 'section':
+        // 删掉 body 里最后一个块会让 body 变空 → 同一命令内补一个空段落
+        // (Editor 层"body 始终可编辑"不变量的延续, 见 removeBlock 注释)
+        return removeBlock(true)
       case 'smarttext': {
         const para = this.findParagraphContaining(nodeId)
         if (!para) return false
@@ -1333,6 +1370,8 @@ export class Editor {
    */
   moveBlock(nodeId: string, toParentId: string, toIndex: number): boolean {
     if (!this.pool.nodes.has(nodeId)) return false
+    // 目标父必须存在 —— pool.getChildren(未知父) 会抛, 不能让它炸进事件处理器
+    if (toParentId !== this.doc.id && !this.pool.nodes.has(toParentId)) return false
     const before = this.pool.getChildren(toParentId).indexOf(nodeId)
     this.execCommand(new MoveBlockCommand(
       generateCommandId(), Date.now(), 'user', nodeId, toParentId, toIndex,
@@ -1343,15 +1382,246 @@ export class Editor {
   }
 
   /**
-   * 移动整个 Section 到 body 的指定下标 (整章重排的引擎侧入口)。
-   * 节级命令: 目标是**真容器真下标** (契约 §31.6), 不是逻辑流下标。
+   * 把整个 Section 移到另一个容器的指定下标 (契约 §31.6) —— 目标是**真容器真下标**。
+   *
+   * 覆盖两类: `A → 成为 B 的子节` (toParentId = B 的 id) 与
+   * `子节 → 移回父层` (toParentId = 父节 id 或文档根 id)。
+   *
+   * 已废弃的 `moveSection(sectionId, toIndex)` 被本方法取代 —— 那个旧签名硬编码
+   * `doc.id` 作目标父, 对**嵌套**节会把它静默挪出到 body (语义陷阱, 且零调用者)。
+   *
+   * @returns 是否实际移动 (非法目标 / 节点不存在 → false 且不进 undo 栈)
    */
-  moveSection(sectionId: string, toIndex: number): boolean {
+  moveSectionTo(sectionId: string, toParentId: string, toIndex: number): boolean {
     const node = this.pool.nodes.get(sectionId)
     if (!node || node.type !== 'section') return false
-    return this.moveBlock(sectionId, this.doc.id, toIndex)
+    // 目标父必须存在: moveBlock 会读 pool.getChildren(toParentId), 未知父会抛
+    // (NodePool: "Parent ... not found") —— 那是编程错误不该静默, 但门面要先把
+    // 它变成"用户点了没反应"而不是崩在事件处理器里。
+    if (toParentId !== this.doc.id && !this.pool.nodes.has(toParentId)) return false
+    return this.moveBlock(sectionId, toParentId, toIndex)
   }
+
+  /**
+   * 节上移/下移一个槽位 (与**同父的相邻兄弟**交换位置)。
+   *
+   * 兄弟可能是段落/表格/图片/分隔线/另一个节 —— 一律平等对待。
+   * 边界检查**必须前置**: `NodePool.moveChildTo` 会做下标夹取, 于是"首位再上移"
+   * 会夹成 no-op 却仍把命令压进 undo 栈 (MoveBlockCommand.forward 成功即返 patch),
+   * 表现为"按了上移没动, 但 Ctrl+Z 多了一步"。
+   */
+  private moveBlockOneSlot(sectionId: string, dir: 1 | -1): boolean {
+    const node = this.pool.nodes.get(sectionId)
+    if (!node || node.type !== 'section') return false
+    const parent = resolveBlockParent(sectionId, this.doc, this.pool)
+    if (!parent) return false
+    const siblings = this.pool.getChildren(parent.containerId)
+    const target = parent.index + dir
+    if (target < 0 || target >= siblings.length) return false // 已在首/末 → 不进 undo 栈
+    return this.moveBlock(sectionId, parent.containerId, target)
+  }
+
+  /** 节上移一个槽位 (与同父前一兄弟交换)。已在首位 → false 且不进 undo 栈 */
+  moveSectionUp(sectionId: string): boolean {
+    return this.moveBlockOneSlot(sectionId, -1)
+  }
+
+  /** 节下移一个槽位 (与同父后一兄弟交换)。已在末位 → false 且不进 undo 栈 */
+  moveSectionDown(sectionId: string): boolean {
+    return this.moveBlockOneSlot(sectionId, 1)
+  }
+
   getPresentationStyles(): PresentationStyleStore | null { return this.presentationStyles }
+
+  // ================================================================
+  // Section authoring 门面 (契约 §31.14)
+  //
+  // 全部实现落在命令层 / walker 组合, 此处只做"边界解析 + 薄转发":
+  // 位置解析 (光标 / 锚点块 / 显式容器) 属边界, 命令保持哑 (同 RemoveNodesCommand)。
+  // ================================================================
+
+  /**
+   * 插入一个 Section (契约 §31.14)。位置优先级:
+   *
+   *   1. `containerId` + `index` —— 显式指定真容器真下标 (大纲面板路径)
+   *   2. `afterBlockId` —— 插在该块**之后**, 容器由 `resolveBlockParent` 反查
+   *   3. 缺省 —— 插在**光标所在块**之后 (右键菜单路径)
+   *
+   * 目标容器必须是 body 或另一个 Section (§31.13); 落在 cell / 页眉页脚里一律
+   * **显式拒绝** (返回 null), 不做静默近似。
+   *
+   * `withInitialParagraph` 默认 true (编辑器 UX: 建完立刻有可落 caret 的位置);
+   * 显式 false 即得**合法空节** —— 这与"模型允许 children=[]"是两件事。
+   *
+   * @returns 新节 id; 被拒时 null (不进 undo 栈)
+   */
+  insertSection(opts: {
+    afterBlockId?: string
+    containerId?: string
+    index?: number
+    withInitialParagraph?: boolean
+    sectionCode?: string
+  } = {}): string | null {
+    const target = this.resolveSectionInsertTarget(opts)
+    if (!target) return null
+    const cmd = new InsertSectionCommand(
+      generateCommandId(), Date.now(), 'user',
+      target.containerId, target.index, {
+        withInitialParagraph: opts.withInitialParagraph,
+        sectionCode: opts.sectionCode,
+      } satisfies InsertSectionOpts,
+    )
+    this.execCommand(cmd)
+    return cmd.sectionId
+  }
+
+  /** 解析插入节的 (真容器, 真下标); 无法在合法位置插入时返回 null */
+  private resolveSectionInsertTarget(opts: {
+    afterBlockId?: string
+    containerId?: string
+    index?: number
+  }): { containerId: string; index: number } | null {
+    // 1. 显式容器 + 下标
+    if (opts.containerId !== undefined && opts.index !== undefined) {
+      const ok = opts.containerId === this.doc.id
+        || this.pool.nodes.get(opts.containerId)?.type === 'section'
+      return ok ? { containerId: opts.containerId, index: Math.max(0, opts.index) } : null
+    }
+
+    // 2. 锚点块之后 (锚点可以是任意块级节点, 包括另一个节)
+    if (opts.afterBlockId !== undefined) {
+      const parent = resolveBlockParent(opts.afterBlockId, this.doc, this.pool)
+      return parent ? { containerId: parent.containerId, index: parent.index + 1 } : null
+    }
+
+    // 3. 光标所在段落之后 (R2 定位真容器)
+    const cursorParaId = this.store.state.runtime.cursor.paragraphPath[
+      this.store.state.runtime.cursor.paragraphPath.length - 1
+    ]
+    if (!cursorParaId) return null
+    const region = resolveParagraphRegion(cursorParaId, this.doc, this.pool)
+    if (!region || (region.type !== 'body' && region.type !== 'section')) return null
+    return { containerId: region.containerId, index: region.index + 1 }
+  }
+
+  /**
+   * 在指定节**内部末尾**插入一个子节 (大纲面板「插入子节」)。
+   * 目标节不存在或不是节 → false。
+   */
+  insertChildSection(sectionId: string, opts: InsertSectionOpts = {}): string | null {
+    const sec = this.pool.nodes.get(sectionId)
+    if (!sec || sec.type !== 'section') return null
+    return this.insertSection({
+      containerId: sectionId,
+      index: this.pool.getChildren(sectionId).length,
+      withInitialParagraph: opts.withInitialParagraph,
+      sectionCode: opts.sectionCode,
+    })
+  }
+
+  /**
+   * 选中一个 Section (契约 §31.14) —— 画布上的结构选中, 与文本选区**互斥**。
+   *
+   * 顺序固定, 不可颠倒:
+   *   ① 先把光标落到该节内首个段落 (空节 → 折叠为空路径) 并折叠文本选区
+   *   ② 再写 `selectedSectionId`
+   *
+   * 这样任何时刻"选中的节"与"光标所在处"必然一致; 而 `EditorStore.setCursor`
+   * 内的唯一清零点保证之后任何光标移动都会自动解除选中 —— 状态不会发散。
+   *
+   * 传 null 清除选中 (不动光标)。
+   */
+  selectSection(sectionId: string | null): void {
+    if (sectionId !== null && this.pool.nodes.get(sectionId)?.type !== 'section') {
+      this.store.setSelectedSectionId(null)
+      return
+    }
+    if (sectionId !== null) {
+      const anchor = this.firstParagraphInSection(sectionId)
+      const path = anchor ? [this.doc.id, anchor] : []
+      this.store.setCursor({ paragraphPath: path, offset: 0, visible: true })
+      this.store.setSelection({
+        anchor: { paragraphPath: [...path], offset: 0, visible: false },
+        focus: { paragraphPath: [...path], offset: 0, visible: false },
+        active: false, granularity: 'character',
+      })
+    }
+    this.store.setSelectedSectionId(sectionId)
+    this.draw.render(this.pool, this.store.state.runtime)
+  }
+
+  /** 当前选中的节 id, 无则 null */
+  getSelectedSectionId(): string | null { return this.store.state.selectedSectionId }
+
+  /** 节内首个段落 id (前序深搜); 空节 → null */
+  private firstParagraphInSection(sectionId: string): string | null {
+    const stack = [...this.pool.getChildren(sectionId)]
+    const seen = new Set<string>()
+    while (stack.length > 0) {
+      const id = stack.shift()!
+      if (seen.has(id)) continue
+      seen.add(id)
+      const node = this.pool.nodes.get(id)
+      if (!node) continue
+      if (node.type === 'paragraph') return id
+      const children = (node as { children?: readonly string[] }).children
+      if (children) stack.push(...children)
+    }
+    return null
+  }
+
+  /**
+   * 写节代码 (契约 §31.14)。空串/纯空白 = **清除**该字段 (真删键, 非写 undefined)。
+   *
+   * 边界归一化在此处完成, 命令本身不校验 (§7.8 与 setDocumentMetadata 同则)。
+   *
+   * @returns 是否真的发出了命令 (节点不存在/不是节 → false)
+   */
+  setSectionCode(sectionId: string, code?: string): boolean {
+    const node = this.pool.nodes.get(sectionId)
+    if (!node || node.type !== 'section') return false
+    const trimmed = code?.trim()
+    const next = trimmed === undefined || trimmed === '' ? undefined : trimmed
+    this.execCommand(new UpdateSectionCommand(
+      generateCommandId(), Date.now(), 'user', sectionId, next,
+    ))
+    return true
+  }
+
+  /** 读节代码 (供对话框预填); 非节或不存在 → undefined */
+  getSectionCode(sectionId: string): string | undefined {
+    const node = this.pool.nodes.get(sectionId) as { type?: string; sectionCode?: string } | undefined
+    return node?.type === 'section' ? node.sectionCode : undefined
+  }
+
+  /**
+   * 全部节 + 层级 + 代码 (W4 `sectionsOf` + R1 `sectionOf` 的组合投影)。
+   * 供大纲面板与画布叠加层读取 —— 不新写遍历 (契约 §31.14)。
+   */
+  listSections(): SectionTreeEntry[] {
+    return sectionTreeOf(this.doc, this.pool)
+  }
+
+  /** 某个节的分段矩形 (每页一段; 空节 → []) */
+  getSectionClientRects(sectionId: string): import('./render/Draw').SectionPageRect[] {
+    return this.draw.getSectionClientRects(sectionId)
+  }
+
+  /** 全部节的分段矩形 (叠加层每帧只调这一个, 一次扫描算完) */
+  getAllSectionClientRects(): Map<string, import('./render/Draw').SectionPageRect[]> {
+    return this.draw.getAllSectionClientRects()
+  }
+
+  /**
+   * Section 结构显示开关 (契约 §31.14) —— 纯 UI 叠加层开关。
+   *
+   * 刻意**不像 setShowInvisible 那样镜像到 Draw / 触发 draw.render**: 它只影响
+   * DOM 叠加层, Canvas 永远不画节结构 (这正是不影响分页的保证)。
+   * 关掉它, Section 的结构/命令/选区/序列化/历史全部照常。
+   */
+  setShowSectionStructure(show: boolean): void { this.store.setShowSectionStructure(show) }
+  getShowSectionStructure(): boolean { return this.store.state.runtime.view.showSectionStructure }
+
   /** 序列化文档为 JSON 字符串 (含全部节点 payload, 供保存/自动保存使用) */
   getSerializedDocument(): string {
     // 插件 beforeSave 钩子 (契约 §12): 序列化前给插件一次变换机会。
@@ -3059,6 +3329,23 @@ export interface IEditor {
   cut(): void
   deleteSelectedRange(): boolean
   deleteNode(nodeId: string): boolean
+  // ---- Section authoring (契约 §31.14) ----
+  insertSection(opts?: {
+    afterBlockId?: string; containerId?: string; index?: number
+    withInitialParagraph?: boolean; sectionCode?: string
+  }): string | null
+  insertChildSection(sectionId: string, opts?: import('./command/commands/StructuralCommands').InsertSectionOpts): string | null
+  selectSection(sectionId: string | null): void
+  getSelectedSectionId(): string | null
+  setSectionCode(sectionId: string, code?: string): boolean
+  getSectionCode(sectionId: string): string | undefined
+  moveSectionUp(sectionId: string): boolean
+  moveSectionDown(sectionId: string): boolean
+  moveSectionTo(sectionId: string, toParentId: string, toIndex: number): boolean
+  listSections(): import('./document/selection/SelectionCollector').SectionTreeEntry[]
+  getSectionClientRects(sectionId: string): import('./render/Draw').SectionPageRect[]
+  setShowSectionStructure(show: boolean): void
+  getShowSectionStructure(): boolean
   getActiveControlId(): string | null
   activateControl(nodeId: string | null): void
   deactivateControl(): void

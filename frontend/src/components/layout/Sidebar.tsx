@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store'
-import { OutlineNav, type OutlineItem } from '@/components/sidebar/OutlineNav'
+import { OutlineNav, type OutlineItem, type SectionOutlineAction } from '@/components/sidebar/OutlineNav'
 import { CommentPanel } from '@/components/panels/CommentPanel'
 import { QCResultPanel } from '@/components/panels/QCResultPanel'
 import type { CommentThread } from '@/engine/document/core/DocumentModel'
@@ -42,6 +42,8 @@ interface SidebarProps {
   activeOutlineId?: string | null
   /** 点击大纲条目 */
   onOutlineClick?: (item: OutlineItem) => void
+  /** 大纲节行操作 (契约 §31.14) */
+  onSectionAction?: (action: SectionOutlineAction, item: OutlineItem) => void
   /** 批注线程 (R32) */
   commentThreads?: CommentThread[]
   /** 批注回调 */
@@ -67,7 +69,7 @@ interface TemplateCategory {
 
 export function Sidebar({
   templates = [], onTemplateSelect, onNewTemplate, onElementClick,
-  outlineItems = [], activeOutlineId, onOutlineClick,
+  outlineItems = [], activeOutlineId, onOutlineClick, onSectionAction,
   commentThreads = [], onSelectCommentThread, onResolveCommentThread, onAddCommentReply,
   onNewComment, getCommentExcerpt,
   qcResult = null, onQcIssueClick, onQcRecheck,
@@ -141,6 +143,7 @@ export function Sidebar({
             items={outlineItems}
             activeId={activeOutlineId}
             onItemClick={onOutlineClick}
+            onSectionAction={onSectionAction}
           />
         )}
         {sidebarTab === 'comments' && (

@@ -19,7 +19,7 @@ import {
   Clock, User, Highlighter, Bookmark,
   Combine, Ungroup,
   Rows3, Rows, Columns3, Columns,
-  Droplets, Puzzle,
+  Droplets, Puzzle, Scissors, ListTree,
 } from 'lucide-react'
 import type { ToolbarAction } from '@/engine/plugins/PluginManager'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -203,6 +203,12 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
         </ToolbarButton>
         <ToolbarButton title={t('editor.insert.table')} onClick={() => onInsert?.('table')}>
           <Table size={16} />
+        </ToolbarButton>
+        <ToolbarButton title={t('editor.insert.sectionBreak')} onClick={() => onInsert?.('sectionBreak')}>
+          <Scissors size={16} />
+        </ToolbarButton>
+        <ToolbarButton title={t('editor.insert.section')} onClick={() => onInsert?.('section')}>
+          <ListTree size={16} />
         </ToolbarButton>
         <ToolbarButton title={t('editor.table.mergeCell')} onClick={() => onFormat?.('mergeCells')}>
           <Combine size={16} />

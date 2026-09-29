@@ -38,6 +38,7 @@ export { LayoutCache } from './layout/incremental/LayoutCache'
 // Render
 export { LayeredRenderer } from './render/LayeredRenderer'
 export { HitTestIndex } from './render/HitTestIndex'
+export type { SectionPageRect } from './render/Draw'
 
 // EditorRuntimeState
 export {
@@ -78,7 +79,10 @@ export {
   EnsureCellParagraphCommand,
   TableStructureCommand,
   MoveBlockCommand,
+  InsertSectionCommand,
+  UpdateSectionCommand,
 } from './command/commands/StructuralCommands'
+export type { InsertSectionOpts } from './command/commands/StructuralCommands'
 export { normalizeParagraph } from './command/commands/ParagraphUtils'
 export { CommandUndoRedoStack } from './command/CommandUndoRedoStack'
 export { CommandManager } from './command/CommandManager'
@@ -150,11 +154,13 @@ export type {
 // 一律不得用它们 —— 那五类走结构树 `pool.getChildren` (契约 §31.2 Q9)。
 export {
   bodyBlockSpine, bodyParagraphSpine,
-  sectionsOf, sectionOf,
+  sectionsOf, sectionOf, sectionTreeOf,
   bodyParagraphCount, initialCursorParaPath,
   flattenTextContainers,
 } from './document/selection/SelectionCollector'
-export type { SpinePool } from './document/selection/SelectionCollector'
+export type {
+  SpinePool, SectionTreeEntry,
+} from './document/selection/SelectionCollector'
 
 // ---- 域代码显示文本 (渲染/导出共用) ----
 export { resolveFieldText } from './document/factory/FieldFormatter'

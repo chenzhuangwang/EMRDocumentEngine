@@ -10,7 +10,7 @@
 // 按 outlineLevel 提取树形大纲, 支持点击跳转 + 当前位置高亮
 // ============================================================
 
-import { ListTree, Heading1, Heading2, Heading3, Heading4, FileText } from 'lucide-react'
+import { ListTree, Heading1, Heading2, Heading3, Heading4, FileText, ChevronUp, ChevronDown, Plus, Tag, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/useTranslation'
 
@@ -40,7 +40,18 @@ export interface OutlineItem {
   kind?: 'heading' | 'section'
   /** 节代码 (kind === 'section' 时的显示名, 缺失即匿名节) */
   sectionCode?: string
+  /**
+   * 该行代表的 Section id (仅 kind === 'section')。
+   *
+   * 节行**必须**用它来定位, 而不是 `paragraphPath`: 空节没有段落, 把节 id 塞进
+   * 段落槽会造出 CursorState 解析不出的非法路径 (契约 §31.14 记录的既有缺陷)。
+   */
+  sectionId?: string
 }
+
+/** 大纲上的节操作 (由上层映射到 Editor 门面, 契约 §31.14) */
+export type SectionOutlineAction =
+  | 'up' | 'down' | 'insertAfter' | 'insertChild' | 'editCode' | 'delete'
 
 interface OutlineNavProps {
   items: OutlineItem[]
@@ -50,6 +61,8 @@ interface OutlineNavProps {
   onItemClick?: (item: OutlineItem) => void
   /** 标题为空时的提示 */
   emptyMessage?: string
+  /** 节行操作回调 (仅 kind === 'section' 的行会调用) */
+  onSectionAction?: (action: SectionOutlineAction, item: OutlineItem) => void
 }
 
 // ---- 图标映射 ----
@@ -65,11 +78,48 @@ const LEVEL_ICONS: Record<number, React.ReactNode> = {
 
 // ---- 组件 ----
 
+/** 节行 hover 操作条 (与画布右键同批 action id, 复用同一套 i18n) */
+function SectionActions({
+  onAction,
+}: {
+  onAction: (a: SectionOutlineAction) => void
+}) {
+  const { t } = useTranslation()
+  const btn = (a: SectionOutlineAction, labelKey: 'sectionAction.up' | 'sectionAction.down'
+    | 'sectionAction.insertChild' | 'sectionAction.editCode' | 'sectionAction.delete') => (
+    <span
+      key={a}
+      role="button"
+      tabIndex={-1}
+      title={t(labelKey)}
+      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation() }}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAction(a) }}
+      className="rounded p-0.5 text-chrome-ink-muted hover:bg-chrome-muted hover:text-chrome-ink-secondary"
+    >
+      {a === 'up' ? <ChevronUp size={12} />
+        : a === 'down' ? <ChevronDown size={12} />
+        : a === 'insertChild' ? <Plus size={12} />
+        : a === 'editCode' ? <Tag size={12} />
+        : <Trash2 size={12} />}
+    </span>
+  )
+  return (
+    <span className="ml-auto flex flex-shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+      {btn('up', 'sectionAction.up')}
+      {btn('down', 'sectionAction.down')}
+      {btn('insertChild', 'sectionAction.insertChild')}
+      {btn('editCode', 'sectionAction.editCode')}
+      {btn('delete', 'sectionAction.delete')}
+    </span>
+  )
+}
+
 export function OutlineNav({
   items,
   activeId,
   onItemClick,
   emptyMessage,
+  onSectionAction,
 }: OutlineNavProps) {
   const { t } = useTranslation()
   const empty = emptyMessage ?? t('outline.empty')
@@ -85,8 +135,8 @@ export function OutlineNav({
   return (
     <nav className="py-1" aria-label={t('outline.title')}>
       {items.map((item) => (
+        <div key={item.id} className="group relative flex items-center">
         <button
-          key={item.id}
           className={cn(
             'w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors',
             'hover:bg-chrome-subtle rounded-sm',
@@ -108,12 +158,16 @@ export function OutlineNav({
           <span className={cn('truncate flex-1 min-w-0', item.kind === 'section' && 'italic')}>
             {item.text}
           </span>
+          {item.kind === 'section' && onSectionAction && (
+            <SectionActions onAction={(a) => onSectionAction(a, item)} />
+          )}
           {item.pageIndex >= 0 && (
             <span className="text-xs text-chrome-ink-muted flex-shrink-0 tabular-nums">
               p{item.pageIndex + 1}
             </span>
           )}
         </button>
+        </div>
       ))}
     </nav>
   )

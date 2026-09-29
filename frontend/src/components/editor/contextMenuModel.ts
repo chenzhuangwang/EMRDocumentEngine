@@ -58,6 +58,12 @@ const LABEL_KEYS: Record<ContextMenuActionId, keyof LocaleMessages> = {
   increaseIndent: 'editor.contextMenu.increaseIndent',
   decreaseIndent: 'editor.contextMenu.decreaseIndent',
   properties: 'editor.contextMenu.properties',
+  insertSection: 'editor.contextMenu.insertSection',
+  selectSection: 'editor.contextMenu.selectSection',
+  deleteSection: 'editor.contextMenu.deleteSection',
+  moveSectionUp: 'editor.contextMenu.moveSectionUp',
+  moveSectionDown: 'editor.contextMenu.moveSectionDown',
+  editSectionCode: 'editor.contextMenu.editSectionCode',
 }
 
 /** zh-CN 兜底 (t 未注入时) —— 与 editor.contextMenu.* 的 zh-CN 值保持一致 */
@@ -68,6 +74,9 @@ const FALLBACK: Record<ContextMenuActionId, string> = {
   alignLeft: '左对齐', alignCenter: '居中', alignRight: '右对齐', alignJustify: '两端对齐',
   increaseIndent: '增加缩进', decreaseIndent: '减少缩进',
   properties: '属性…',
+  insertSection: '插入节', selectSection: '选中本节', deleteSection: '删除本节',
+  moveSectionUp: '本节上移', moveSectionDown: '本节下移',
+  editSectionCode: '设置节代码…',
 }
 
 /** id → 显示文案 (t 注入时走 i18n, 否则回退 zh-CN 字面量) */
@@ -84,6 +93,8 @@ export type ContextMenuActionId =
   | 'alignLeft' | 'alignCenter' | 'alignRight' | 'alignJustify'
   | 'increaseIndent' | 'decreaseIndent'
   | 'properties'
+  | 'insertSection' | 'selectSection' | 'deleteSection'
+  | 'moveSectionUp' | 'moveSectionDown' | 'editSectionCode'
 
 /** 可点击的菜单项 */
 export interface ContextMenuEntryItem {
@@ -161,6 +172,39 @@ function listLevelEntries(t?: T): ContextMenuEntry[] {
 const NO_STYLE: ContextMenuStyleInfo = { textStyle: null, paragraphStyle: null }
 
 /**
+ * Section 操作组 (契约 §31.14) —— 追加在正文菜单末尾, **不改 kind**。
+ *
+ * 条目来源是快照上的 `sectionFact` (边界采集的附加事实), 而不是某个新 kind:
+ * Section 没有可命中的 item, 新增 `kind: 'section'` 永远不可达, 还会顶掉
+ * 用户此刻真正需要的文本菜单 (见 ContextBase.sectionFact 的注释)。
+ *
+ * enable 全部由事实推导, 不撒谎:
+ *   - 「插入节」需要命中块的真实父容器是 body / section (§31.13; cell 内非法)
+ *   - 上移/下移在首/末位置灰 —— 与 Editor.moveSectionUp/Down 的前置边界检查一致
+ *     (那里返回 false 且不进 undo 栈, 二者同源)
+ *   - 其余仅要求"命中点在某节里"
+ */
+function sectionEntries(fact: EditorContextSnapshot['sectionFact'], t?: T): ContextMenuEntry[] {
+  const inSection = fact !== null
+  const entries: ContextMenuEntry[] = []
+  if (fact?.insertable) {
+    entries.push({ kind: 'item', id: 'insertSection', label: labelOf('insertSection', t), enabled: true })
+  }
+  entries.push(
+    { kind: 'item', id: 'selectSection', label: labelOf('selectSection', t), enabled: inSection },
+    { kind: 'item', id: 'editSectionCode', label: labelOf('editSectionCode', t), enabled: inSection },
+    { kind: 'item', id: 'moveSectionUp', label: labelOf('moveSectionUp', t), enabled: inSection && fact!.index > 0 },
+    {
+      kind: 'item', id: 'moveSectionDown', label: labelOf('moveSectionDown', t),
+      enabled: inSection && fact!.index < fact!.siblingCount - 1,
+    },
+    { kind: 'item', id: 'deleteSection', label: labelOf('deleteSection', t), enabled: inSection },
+  )
+  // 整组都不可用 (既不在节里、也不可插入) → 不显示, 避免空占位
+  return entries.some((e) => e.kind === 'item' && e.enabled) ? [SEP, ...entries] : []
+}
+
+/**
  * 由上下文快照 + 样式投影派生菜单条目 (纯函数)。
  *
  * - text (body 段): 剪切、复制、粘贴、删除 + 文本格式 (含勾选) + 段落样式 (含勾选)
@@ -187,7 +231,7 @@ export function buildContextMenuModel(
 ): ContextMenuModel {
   switch (snapshot.kind) {
     case 'text':
-      return { entries: textBodyEntries(snapshot.coversSelection, style, t) }
+      return { entries: [...textBodyEntries(snapshot.coversSelection, style, t), ...sectionEntries(snapshot.sectionFact, t)] }
     case 'cell':
       return {
         entries: [
@@ -211,6 +255,7 @@ export function buildContextMenuModel(
           ...paragraphStyleEntries(style, t),
           SEP,
           ...listLevelEntries(t),
+          ...sectionEntries(snapshot.sectionFact, t),
         ],
       }
     case 'image':

@@ -43,6 +43,7 @@ const DEFAULT_STORE_STATE: EditorStoreState = {
   headerFooterConfig: { differentFirstPage: false, differentOddEven: false },
   designSelectedControlId: null,
   designHoveredControlId: null,
+  selectedSectionId: null,
   activeControlId: null,
 }
 

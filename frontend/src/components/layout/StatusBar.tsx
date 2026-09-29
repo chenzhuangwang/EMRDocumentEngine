@@ -8,7 +8,7 @@
 // 状态栏
 // ============================================================
 
-import { FileText, Type, Wifi, WifiOff, Minus, Plus, Pilcrow, Activity, AlertTriangle } from 'lucide-react'
+import { FileText, Type, Wifi, WifiOff, Minus, Plus, Pilcrow, Activity, AlertTriangle, ListTree } from 'lucide-react'
 import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { useEditorStore } from '@/store'
 import { cn, formatWordCount } from '@/lib/utils'
@@ -29,6 +29,10 @@ interface StatusBarProps {
   showInvisible?: boolean
   /** 不可见字符切换回调 */
   onToggleInvisible?: () => void
+  /** 节结构显示 (契约 §31.14) */
+  showSectionStructure?: boolean
+  /** 节结构显示切换回调 */
+  onToggleSectionStructure?: () => void
   /** 当前编辑模式 */
   mode?: EditorMode
   /** 模式切换回调 */
@@ -49,6 +53,8 @@ export function StatusBar({
   onScaleChange,
   showInvisible = false,
   onToggleInvisible,
+  showSectionStructure = true,
+  onToggleSectionStructure,
   mode,
   onModeChange,
   scaleScore,
@@ -72,6 +78,20 @@ export function StatusBar({
           title={showInvisible ? t('statusBar.hideInvisible') : t('statusBar.showInvisible')}
         >
           <Pilcrow size={14} />
+        </button>
+
+        {/* 节结构显示切换 (契约 §31.14) — 纯 UI 叠加层开关, 不影响分页 */}
+        <button
+          className={cn(
+            'p-0.5 rounded transition-colors',
+            showSectionStructure
+              ? 'text-blue-600 bg-blue-50 hover:bg-blue-100'
+              : 'text-chrome-ink-muted hover:text-chrome-ink-secondary hover:bg-chrome-muted',
+          )}
+          onClick={onToggleSectionStructure}
+          title={showSectionStructure ? t('statusBar.hideStructure') : t('statusBar.showStructure')}
+        >
+          <ListTree size={14} />
         </button>
 
         <div className="flex items-center gap-1.5">

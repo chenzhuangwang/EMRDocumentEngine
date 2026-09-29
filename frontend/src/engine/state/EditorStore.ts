@@ -56,6 +56,18 @@ export interface EditorStoreState {
   designHoveredControlId: string | null
   /** 运行时激活的控件节点 id (canonical owner = Editor, 契约 §12.6 运行时交互) — 瞬态, 不序列化, 无激活为 null */
   activeControlId: string | null
+  /**
+   * 画布上被选中的 Section 节点 id (canonical owner = Editor, 契约 §31.2) —
+   * 瞬态, 不序列化, 无选中为 null。
+   *
+   * 与 `designSelectedControlId` 同构 (契约 §12.3 的"按 node id 的瞬态选中")。
+   * **不进文本 Selection 模型**: `SelectionState` 是纯文本区间 (anchor/focus 的
+   * paragraphPath 末元素必须是文本容器), 把节 id 塞进去正是大纲面板现有的缺陷。
+   *
+   * 与文本选区**互斥**: `setCursor` 是唯一清零点 (见该方法的注释) —— 因此
+   * "UI 显示节 A 被选中、但光标已跑到节 B" 这种状态构造不出来。
+   */
+  selectedSectionId: string | null
 }
 
 type Listener = (state: EditorStoreState) => void
@@ -83,6 +95,7 @@ export class EditorStore {
       designSelectedControlId: null,
       designHoveredControlId: null,
       activeControlId: null,
+      selectedSectionId: null,
     }
   }
 
@@ -107,6 +120,12 @@ export class EditorStore {
    */
   setCursor(cursor: CursorState): void {
     this._state.runtime.cursor = cursor
+    // **唯一清零点**: 光标一动, 节选中即失效 —— 结构选中 (节) 与文本光标
+    // 互斥, 复用表格结构选中的既有语义 (MouseHandler 点击表格外 /
+    // 开始文本选区 都会 clearTableSelection)。放在这里而不是散到各个
+    // 鼠标/键盘分支, 才保证任何来源 (鼠标 / 键盘 / 命令) 都不可能发散。
+    // 注意顺序: Editor.selectSection 先落光标再写 id, 故不会被自己清掉。
+    this._state.selectedSectionId = null
     this.notify()
     this.notifyCursorSelectionChanged()
   }
@@ -207,6 +226,19 @@ export class EditorStore {
   }
 
   /** 设计模式选中控件 (契约 §12.3) — 唯一受控写入入口, 同值不重复通知 */
+  /**
+   * 选中/清除画布上的 Section (契约 §31.2) — 唯一受控写入入口, 同值不重复通知。
+   *
+   * 调用方 (Editor.selectSection) 负责先把光标落到该节内并折叠文本选区,
+   * 再调本方法 —— 顺序不可颠倒, 见 selectedSectionId 的字段注释。
+   */
+  setSelectedSectionId(id: string | null): void {
+    if (this._state.selectedSectionId === id) return
+    this._state.selectedSectionId = id
+    this.notify()
+  }
+
+  /** 设计模式选中控件 (契约 §12.3) — 唯一受控写入入口, 同值不重复通知 */
   setDesignSelectedControlId(id: string | null): void {
     if (this._state.designSelectedControlId === id) return
     this._state.designSelectedControlId = id
@@ -236,6 +268,12 @@ export class EditorStore {
   /** 不可见字符显示开关 — 唯一受控写入入口 */
   setShowInvisible(showInvisible: boolean): void {
     this._state.runtime.view.showInvisible = showInvisible
+    this.notify()
+  }
+
+  /** Section 结构显示开关 — 唯一受控写入入口 (纯 UI 叠加层, 见 ViewState 注释) */
+  setShowSectionStructure(show: boolean): void {
+    this._state.runtime.view.showSectionStructure = show
     this.notify()
   }
 

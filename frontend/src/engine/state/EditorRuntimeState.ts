@@ -66,6 +66,14 @@ export interface ViewState {
   mode: EditorMode
   scale: number
   showInvisible: boolean
+  /**
+   * 画布上是否显示 Section 结构 (左侧细线 + sectionCode 标签)。
+   *
+   * 纯 UI 层开关: 只影响 DOM 叠加层 (SectionStructureOverlay), **不参与排版、
+   * 不进 Draw/Canvas、不影响分页**。关掉它 Section 的结构/命令/选区/序列化/历史
+   * 全部照常 (契约 §31.14)。
+   */
+  showSectionStructure: boolean
 }
 
 // ---- IMEState ----
@@ -97,7 +105,7 @@ export function createDefaultRuntimeState(): EditorRuntimeState {
       granularity: 'character',
     },
     view: {
-      mode: 'edit', scale: 1, showInvisible: false,
+      mode: 'edit', scale: 1, showInvisible: false, showSectionStructure: true,
     },
     ime: { composing: false, compositionText: '' },
     history: {

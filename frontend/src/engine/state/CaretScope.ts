@@ -305,7 +305,7 @@ export function findParentSection(
  *
  * 结构侧助手 —— 结构命令与删除守卫要的是**真容器真下标**, 不是逻辑流下标
  * (Section 存在时二者不同)。cell / row / header / footer 内的块不在此列
- * (由各自的表格结构 API / 归属解析负责)。
+ * (由各自的表格结构 API / 归属解析负责) —— 此时返回 null, 调用方据此**显式拒绝**。
  */
 export type BlockParent =
   | { kind: 'body'; containerId: string; index: number }
@@ -316,13 +316,15 @@ export function resolveBlockParent(
   doc: DocumentTree,
   pool: NodePool,
 ): BlockParent | null {
-  const bi = doc.body.children.indexOf(nodeId)
-  if (bi >= 0) return { kind: 'body', containerId: doc.id, index: bi }
   const sec = findParentSection(nodeId, pool)
   if (sec) {
     const si = sec.children.indexOf(nodeId)
     if (si >= 0) return { kind: 'section', containerId: sec.id, index: si }
   }
+  // 无父节 → 再看 body。经 NodePool 受控读入口 (契约 §6.1), 不直接触碰
+  // `doc.body.children`: 本模块是 R2 的结构侧助手, 但统一走受控 API 更稳。
+  const bi = pool.getChildren(doc.id).indexOf(nodeId)
+  if (bi >= 0) return { kind: 'body', containerId: doc.id, index: bi }
   return null
 }
 

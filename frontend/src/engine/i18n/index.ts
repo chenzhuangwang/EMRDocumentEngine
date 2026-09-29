@@ -139,6 +139,8 @@ export interface LocaleMessages {
   // 编辑器 — 插入元素
   // ============================================================
   'editor.insert.separator': string
+  'editor.insert.sectionBreak': string
+  'editor.insert.section': string
   'editor.insert.table': string
   'editor.insert.image': string
   'editor.insert.bookmark': string
@@ -194,6 +196,12 @@ export interface LocaleMessages {
   'editor.contextMenu.increaseIndent': string
   'editor.contextMenu.decreaseIndent': string
   'editor.contextMenu.properties': string
+  'editor.contextMenu.insertSection': string
+  'editor.contextMenu.selectSection': string
+  'editor.contextMenu.deleteSection': string
+  'editor.contextMenu.moveSectionUp': string
+  'editor.contextMenu.moveSectionDown': string
+  'editor.contextMenu.editSectionCode': string
   // ============================================================
   // 文档状态徽章
   // ============================================================
@@ -215,6 +223,10 @@ export interface LocaleMessages {
   // ============================================================
   'dialog.title.controlConfig': string
   'dialog.title.bookmark': string
+  'dialog.title.sectionCode': string
+  'sectionCode.label': string
+  'sectionCode.placeholder': string
+  'sectionCode.hint': string
   'dialog.title.print': string
   'dialog.title.printPreview': string
   'dialog.title.export': string
@@ -364,6 +376,10 @@ export interface LocaleMessages {
   'statusBar.zoom': string                    // 滑块 title '缩放: {pct}%'
   'statusBar.zoomReset': string
   'statusBar.showInvisible': string
+  'statusBar.showStructure': string
+  'statusBar.hideStructure': string
+  'sectionOverlay.anonymous': string
+  'sectionOverlay.ruleTitle': string
   'statusBar.hideInvisible': string
   'statusBar.online': string                  // '{n} 人在线'
   'statusBar.offline': string
@@ -463,6 +479,11 @@ export interface LocaleMessages {
   'outline.headingTitle': string             // 'Heading {level}: {text}'
   'outline.sectionTitle': string             // 'Section: {text}'
   'outline.sectionFallback': string          // 匿名节/无名节的显示名
+  'sectionAction.up': string
+  'sectionAction.down': string
+  'sectionAction.insertChild': string
+  'sectionAction.editCode': string
+  'sectionAction.delete': string
   // ============================================================
   // CommentPanel
   // ============================================================
@@ -1063,6 +1084,8 @@ const zhCN: LocaleMessages = {
   'editor.field.printDate': '打印日期',
   // ===== 插入 =====
   'editor.insert.separator': '插入分隔线',
+  'editor.insert.sectionBreak': '插入分节符 (页面设置边界)',
+  'editor.insert.section': '插入节 (结构容器)',
   'editor.insert.table': '插入表格',
   'editor.insert.image': '插入图片',
   'editor.insert.bookmark': '插入书签',
@@ -1112,6 +1135,12 @@ const zhCN: LocaleMessages = {
   'editor.contextMenu.increaseIndent': '增加缩进',
   'editor.contextMenu.decreaseIndent': '减少缩进',
   'editor.contextMenu.properties': '属性…',
+  'editor.contextMenu.insertSection': '插入节',
+  'editor.contextMenu.selectSection': '选中本节',
+  'editor.contextMenu.deleteSection': '删除本节',
+  'editor.contextMenu.moveSectionUp': '本节上移',
+  'editor.contextMenu.moveSectionDown': '本节下移',
+  'editor.contextMenu.editSectionCode': '设置节代码…',
   // ===== 文档状态 =====
   'status.saved': '已保存',
   'status.saving': '保存中...',
@@ -1127,6 +1156,10 @@ const zhCN: LocaleMessages = {
   // ===== 弹窗标题 =====
   'dialog.title.controlConfig': '控件配置',
   'dialog.title.bookmark': '书签与引用',
+  'dialog.title.sectionCode': '节代码',
+  'sectionCode.label': '节代码 (sectionCode)',
+  'sectionCode.placeholder': '例如 chapter-001',
+  'sectionCode.hint': '节代码是这一节的外部标识, 供结构化导出与节级定位引用。留空即清除 (该节成为匿名节)。',
   'dialog.title.print': '打印',
   'dialog.title.printPreview': '打印预览',
   'dialog.title.export': '导出文档',
@@ -1258,6 +1291,10 @@ const zhCN: LocaleMessages = {
   'statusBar.zoom': '缩放: {pct}%',
   'statusBar.zoomReset': '重置缩放',
   'statusBar.showInvisible': '显示格式标记 (Ctrl+Shift+8)',
+  'statusBar.showStructure': '显示节结构',
+  'statusBar.hideStructure': '隐藏节结构',
+  'sectionOverlay.anonymous': '匿名节',
+  'sectionOverlay.ruleTitle': '节: {code} (点击选中)',
   'statusBar.hideInvisible': '隐藏格式标记',
   'statusBar.online': '{n} 人在线',
   'statusBar.offline': '离线',
@@ -1342,6 +1379,11 @@ const zhCN: LocaleMessages = {
   'outline.headingTitle': 'Heading {level}: {text}',
   'outline.sectionTitle': '节: {text}',
   'outline.sectionFallback': '未命名节',
+  'sectionAction.up': '本节上移',
+  'sectionAction.down': '本节下移',
+  'sectionAction.insertChild': '插入子节',
+  'sectionAction.editCode': '设置节代码…',
+  'sectionAction.delete': '删除本节',
   // ===== CommentPanel =====
   'comment.title': '批注',
   'comment.filter.all': '全部 ({n})',
@@ -1888,6 +1930,8 @@ const enUS: LocaleMessages = {
   'editor.field.printDate': 'Print Date',
   // ===== 插入 =====
   'editor.insert.separator': 'Insert Separator',
+  'editor.insert.sectionBreak': 'Insert Section Break (page-setup boundary)',
+  'editor.insert.section': 'Insert Section (structural container)',
   'editor.insert.table': 'Insert Table',
   'editor.insert.image': 'Insert Image',
   'editor.insert.bookmark': 'Insert Bookmark',
@@ -1937,6 +1981,12 @@ const enUS: LocaleMessages = {
   'editor.contextMenu.increaseIndent': 'Increase Indent',
   'editor.contextMenu.decreaseIndent': 'Decrease Indent',
   'editor.contextMenu.properties': 'Properties...',
+  'editor.contextMenu.insertSection': 'Insert section',
+  'editor.contextMenu.selectSection': 'Select this section',
+  'editor.contextMenu.deleteSection': 'Delete this section',
+  'editor.contextMenu.moveSectionUp': 'Move section up',
+  'editor.contextMenu.moveSectionDown': 'Move section down',
+  'editor.contextMenu.editSectionCode': 'Set section code…',
   // ===== 文档状态 =====
   'status.saved': 'Saved',
   'status.saving': 'Saving...',
@@ -1952,6 +2002,10 @@ const enUS: LocaleMessages = {
   // ===== 弹窗标题 =====
   'dialog.title.controlConfig': 'Control Properties',
   'dialog.title.bookmark': 'Bookmarks & References',
+  'dialog.title.sectionCode': 'Section code',
+  'sectionCode.label': 'Section code (sectionCode)',
+  'sectionCode.placeholder': 'e.g. chapter-001',
+  'sectionCode.hint': 'The section code is this section’s external identifier, used by structured export and section-level targeting. Leave empty to clear it (the section becomes anonymous).',
   'dialog.title.print': 'Print',
   'dialog.title.printPreview': 'Print Preview',
   'dialog.title.export': 'Export Document',
@@ -2083,6 +2137,10 @@ const enUS: LocaleMessages = {
   'statusBar.zoom': 'Zoom: {pct}%',
   'statusBar.zoomReset': 'Reset Zoom',
   'statusBar.showInvisible': 'Show Whitespace (Ctrl+Shift+8)',
+  'statusBar.showStructure': 'Show section structure',
+  'statusBar.hideStructure': 'Hide section structure',
+  'sectionOverlay.anonymous': 'Untitled section',
+  'sectionOverlay.ruleTitle': 'Section: {code} (click to select)',
   'statusBar.hideInvisible': 'Hide Whitespace',
   'statusBar.online': '{n} online',
   'statusBar.offline': 'Offline',
@@ -2167,6 +2225,11 @@ const enUS: LocaleMessages = {
   'outline.headingTitle': 'Heading {level}: {text}',
   'outline.sectionTitle': 'Section: {text}',
   'outline.sectionFallback': 'Untitled section',
+  'sectionAction.up': 'Move up',
+  'sectionAction.down': 'Move down',
+  'sectionAction.insertChild': 'Insert child section',
+  'sectionAction.editCode': 'Set section code…',
+  'sectionAction.delete': 'Delete section',
   // ===== CommentPanel =====
   'comment.title': 'Comments',
   'comment.filter.all': 'All ({n})',

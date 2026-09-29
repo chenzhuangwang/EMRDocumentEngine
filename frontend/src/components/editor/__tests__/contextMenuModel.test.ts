@@ -41,7 +41,7 @@ function entryChecked(
     .find((e) => e.id === id)?.checked
 }
 
-const base = { pageIndex: 0, localX: 10, localY: 10 }
+const base = { pageIndex: 0, localX: 10, localY: 10, sectionFact: null }
 
 function textSnapshot(coversSelection: boolean): EditorContextSnapshot {
   return {
@@ -207,5 +207,80 @@ describe('buildContextMenuModel 勾选状态', () => {
         expect(e.checked).toBeUndefined()
       }
     }
+  })
+})
+
+// ============================================================
+// Section 操作组 (契约 §31.14) — 由快照上的 sectionFact 派生, 不新增 kind
+// ============================================================
+
+/** 带节事实的 text 快照 */
+function sectionSnapshot(over: Partial<{
+  index: number; siblingCount: number; insertable: boolean; id: string
+}> = {}): EditorContextSnapshot {
+  return {
+    ...base, kind: 'text', paragraphId: 'p1', paragraphPath: ['doc', 'p1'],
+    offset: 3, scope: { type: 'body' }, coversSelection: false,
+    sectionFact: {
+      id: over.id ?? 'sec-1',
+      index: over.index ?? 1,
+      siblingCount: over.siblingCount ?? 3,
+      insertable: over.insertable ?? true,
+    },
+  }
+}
+
+/** 条目 id → enabled (缺失视为 false), 供节操作的开关断言 */
+function itemsMap(snapshot: EditorContextSnapshot): Partial<Record<ContextMenuActionId, boolean>> {
+  const map: Partial<Record<ContextMenuActionId, boolean>> = {}
+  for (const e of items(snapshot)) map[e.id] = e.enabled
+  return map
+}
+
+describe('buildContextMenuModel — Section 操作组', () => {
+  it('sectionFact 为 null (不在任何节里) → 不出现节操作条目', () => {
+    const ids = items(textSnapshot(false)).map((i) => i.id)
+    expect(ids).not.toContain('deleteSection')
+    expect(ids).not.toContain('moveSectionUp')
+  })
+
+  it('在节内 → 出现删除/上移/下移/改码/选中, 且都可用', () => {
+    const map = itemsMap(sectionSnapshot({ index: 1, siblingCount: 3 }))
+    for (const id of ['selectSection', 'deleteSection', 'moveSectionUp', 'moveSectionDown', 'editSectionCode'] as const) {
+      expect(map[id], id).toBe(true)
+    }
+  })
+
+  it('首位 → 上移置灰; 末位 → 下移置灰', () => {
+    expect(itemsMap(sectionSnapshot({ index: 0, siblingCount: 3 })).moveSectionUp).toBe(false)
+    expect(itemsMap(sectionSnapshot({ index: 0, siblingCount: 3 })).moveSectionDown).toBe(true)
+    expect(itemsMap(sectionSnapshot({ index: 2, siblingCount: 3 })).moveSectionUp).toBe(true)
+    expect(itemsMap(sectionSnapshot({ index: 2, siblingCount: 3 })).moveSectionDown).toBe(false)
+  })
+
+  it('§31.13: 命中在 cell 内 (insertable=false) → 不出现「插入节」', () => {
+    const snap: EditorContextSnapshot = {
+      ...base, kind: 'cell', tableId: 't1', row: 0, col: 1,
+      paragraphId: 'p1', paragraphPath: ['doc', 'p1'], offset: 0,
+      coversSelection: false, tableGrowable: false,
+      sectionFact: { id: 'sec-1', index: 0, siblingCount: 1, insertable: false },
+    }
+    const ids = items(snap).map((i) => i.id)
+    expect(ids).not.toContain('insertSection')
+    // 但该节本身的操作仍可用 (节存在于 cell 之外)
+    expect(ids).toContain('deleteSection')
+  })
+
+  it('insertable=true → 出现「插入节」', () => {
+    const ids = items(sectionSnapshot({ insertable: true })).map((i) => i.id)
+    expect(ids).toContain('insertSection')
+  })
+
+  it('节操作条目都带 label (中英两语言均有值)', () => {
+    const entries = buildContextMenuModel(sectionSnapshot()).entries
+      .filter((e): e is ContextMenuEntryItem => e.kind === 'item')
+      .filter((e) => ['insertSection', 'selectSection', 'deleteSection', 'moveSectionUp', 'moveSectionDown', 'editSectionCode'].includes(e.id))
+    expect(entries.length).toBeGreaterThan(0)
+    for (const e of entries) expect(e.label.length).toBeGreaterThan(0)
   })
 })

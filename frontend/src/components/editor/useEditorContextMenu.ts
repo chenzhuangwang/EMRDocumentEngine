@@ -33,10 +33,12 @@ const CLOSED_STATE: ContextMenuState = { open: false, x: 0, y: 0, snapshot: null
 export interface UseEditorContextMenuOptions {
   /** 设计模式控件「属性」业务回调 (菜单只发 id, 由业务层映射到 Control Config Dialog) */
   onProperty?: (controlId: string) => void
+  /** 节「设置节代码…」业务回调 (菜单只发 id, 由业务层弹出单字段对话框) */
+  onEditSectionCode?: (sectionId: string) => void
 }
 
 export function useEditorContextMenu(options?: UseEditorContextMenuOptions) {
-  const { onProperty } = options ?? {}
+  const { onProperty, onEditSectionCode } = options ?? {}
   const { t } = useTranslation()
   const editorRef = useEditorRef()
   // 光标处样式投影 (供勾选状态) — 与工具栏共用同一 canonical 投影
@@ -141,12 +143,48 @@ export function useEditorContextMenu(options?: UseEditorContextMenuOptions) {
         if (snap?.kind === 'smartText') onProperty?.(snap.controlId)
         break
       }
+      // ---- Section 操作 (契约 §31.14) ----
+      // 命中块由快照给出: text/cell 用段落 id, image/table/separator 用节点 id。
+      // 全部经 Editor 门面 → Command, 不在此直接改文档 (RULE 4)。
+      case 'insertSection': {
+        const snap = state.snapshot
+        const anchorId = snap?.kind === 'text' || snap?.kind === 'cell'
+          ? snap.paragraphId
+          : (snap && 'nodeId' in snap ? snap.nodeId : undefined)
+        if (anchorId) editor.insertSection({ afterBlockId: anchorId })
+        break
+      }
+      case 'selectSection': {
+        const sec = state.snapshot?.sectionFact
+        if (sec) editor.selectSection(sec.id)
+        break
+      }
+      case 'deleteSection': {
+        const sec = state.snapshot?.sectionFact
+        if (sec) editor.deleteNode(sec.id)
+        break
+      }
+      case 'moveSectionUp': {
+        const sec = state.snapshot?.sectionFact
+        if (sec) editor.moveSectionUp(sec.id)
+        break
+      }
+      case 'moveSectionDown': {
+        const sec = state.snapshot?.sectionFact
+        if (sec) editor.moveSectionDown(sec.id)
+        break
+      }
+      case 'editSectionCode': {
+        const sec = state.snapshot?.sectionFact
+        if (sec) onEditSectionCode?.(sec.id)
+        break
+      }
     }
     close()
     // 恢复焦点到编辑器隐藏 textarea: Radix DropdownMenu 关闭时 onCloseAutoFocus
     // 被 preventDefault, 焦点会丢失到 body, 导致引擎容器级快捷键 (Ctrl+Z 等) 失效。
     editor.focus()
-  }, [editorRef, close, state, onProperty])
+  }, [editorRef, close, state, onProperty, onEditSectionCode])
 
   return {
     open: state.open,

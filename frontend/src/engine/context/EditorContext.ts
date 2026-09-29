@@ -28,6 +28,42 @@ export interface ContextBase {
   pageIndex: number
   localX: number
   localY: number
+  /**
+   * 命中点所属的 Section 事实 (契约 §31.2 R1)。
+   *
+   * **是一个"附加事实", 不是一个 `kind`** —— 与 `tableGrowable` /
+   * `headerFooterSection` 同类: 边界采集事实, 纯函数消费。
+   *
+   * 为什么不新增 `kind: 'section'`: Section 没有任何可命中的 item
+   * (HitTestIndex 只索引 page.items, 而 Section 不产出 item, 契约 §31.14),
+   * 所以那个 kind **永远不可达**。用户永远是"在节**内容**里右键", 想让节的
+   * 操作作用在**所包裹的节**上 —— 这正是附加事实的形状。而且新增 kind 会
+   * **顶掉** `kind: 'text'`, 把用户此刻需要的剪切/复制/格式菜单整个删掉。
+   *
+   * 字段名刻意用 `sectionFact` **而不是** `section`: 后者已被
+   * `HeaderFooterContext.section` 占用, 含义是"页眉带/页脚带" —— 与文档结构容器
+   * Section 无关 (契约 §31.11 要求同名歧义必须改名)。
+   */
+  sectionFact: ContextSectionFact | null
+}
+
+/**
+ * 命中点所属节的定位事实 —— 全部由边界 (Editor.resolveContextAt) 采集。
+ *
+ * 供右键菜单判断"节操作可不可用", 不承载任何文档状态。
+ */
+export interface ContextSectionFact {
+  /** 最近祖先节 id (R1) */
+  id: string
+  /** 该节在同父兄弟中的**真实下标** (契约 §31.6) */
+  index: number
+  /** 同父兄弟总数 (供上移/下移的 enable 判断) */
+  siblingCount: number
+  /**
+   * 能否在命中块之后插入新节 —— 即命中块的真实父容器落在 body / section (§31.13)。
+   * 命中落在表格 cell 内时为 false (cell 里放 Section 是非法结构, 不是未支持)。
+   */
+  insertable: boolean
 }
 
 /** 正文文本命中 */
@@ -147,6 +183,8 @@ export interface ContextFacts {
   siblings?: readonly string[]
   /** 当前运行时选区 (用于计算 coversSelection) */
   selection: SelectionState
+  /** 命中点所属节事实 (契约 §31.2 R1); 无则 null。与 tableGrowable 同类, 由边界采集 */
+  sectionFact: ContextSectionFact | null
 }
 
 // ---- 纯函数 ----
@@ -228,6 +266,7 @@ export function buildContextSnapshot(facts: ContextFacts): EditorContextSnapshot
     pageIndex: facts.pageIndex,
     localX: facts.localX,
     localY: facts.localY,
+    sectionFact: facts.sectionFact,
   }
 
   // 控件命中优先于页眉/页脚区域: 页眉/页脚带内的 smarttext 控件右键应得
