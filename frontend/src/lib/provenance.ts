@@ -197,3 +197,43 @@ export function stampExportObject(serialized: Record<string, unknown>): Record<s
   }
   return serialized
 }
+
+/**
+ * 机器可读的溯源记录 —— 供非 JSON 载体 (XML 注释 / OFD 数据区) 复用同一组字段。
+ *
+ * 与 stampExportObject 写进 `_provenance` 的值同源同形, 使三种载体的取证字段
+ * 不会各自漂移。
+ */
+export function provenanceRecord(): {
+  generator: string
+  license: string
+  copyright: string
+  token: string
+} {
+  return {
+    generator: `${GENERATOR_NAME} ${GENERATOR_VERSION}`,
+    license: LICENSE_ID,
+    copyright: HOLDER_PREIMAGE,
+    token: currentProvenance(),
+  }
+}
+
+/**
+ * XML 导出: 在 XML 声明之后插入一条可读注释。
+ *
+ * 刻意**只**用注释, 不用零宽字符载体: 本函数看不到文档结构, 无法保证插入点
+ * 不在叙述正文里 —— 一旦落进 `<text>` 就会改变临床医生复制走的内容。需要元素
+ * 形式的溯源时, 由**自己拥有命名空间**的构建器 (cdaExport) 另行输出。
+ *
+ * 注释体不得含 `--` (XML 注释的硬约束), 故先把载荷里可能的 `--` 拆开。
+ */
+export function stampExportXml(xml: string): string {
+  const record = provenanceRecord()
+  const body = JSON.stringify(record).replace(/--/g, '- -')
+  const comment = `<!-- ${GENERATOR_NAME} provenance: ${body} -->`
+
+  const declEnd = xml.startsWith('<?xml')
+    ? xml.indexOf('?>') + 2
+    : 0
+  return xml.slice(0, declEnd) + '\n' + comment + xml.slice(declEnd)
+}

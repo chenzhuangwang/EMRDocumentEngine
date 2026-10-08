@@ -30,7 +30,10 @@ export type { EventPayloadMap, EngineEvent } from './interaction/EventBus'
 export { LayoutEngine } from './layout/core/LayoutEngine'
 export type { LayoutConfig } from './layout/core/LayoutContext'
 export type { LayoutResult } from './layout/core/LayoutResult'
-export type { SLIFItem, SLIFPage, SLIF } from './layout/core/SLIF'
+export type { SLIFItem, SLIFPage, SLIF, SLIFRow, SLIFCell } from './layout/core/SLIF'
+export {
+  getFlatPageItems, CELL_PAD, TABLE_ROW_GAP, tableRowUnitHeight, tableHeaderRowsHeight,
+} from './layout/core/SLIF'
 export { resolveLineHeight, DEFAULT_FONT_METRICS } from './layout/text/FontMetrics'
 export type { FontMetrics } from './layout/text/FontMetrics'
 export { LayoutCache } from './layout/incremental/LayoutCache'
@@ -128,6 +131,7 @@ export {
   createSimpleTable, createSeparatorNode, createSectionBreak, createSection,
   insertAt, removeAt, findById, findByDE, findByInternal,
   takeSnapshot, restoreSnapshot, extractStyle, sameStyle, smartTextDisplayValue,
+  controlValueDisplay,
 } from './document/factory/ElementFormatter'
 
 // ---- Runtime Control Value (契约 §12.6) ----

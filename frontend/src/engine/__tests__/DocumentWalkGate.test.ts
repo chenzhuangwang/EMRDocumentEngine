@@ -49,6 +49,13 @@ const MUST_SCAN = [
   '/src/engine/DocumentDiffer.ts',
   '/src/engine/document/selection/SelectionCollector.ts',
   '/src/lib/documentExport.ts',
+  // 导出特性层的新模块 —— 它们读取文档, 必须走 W2/W3/R1 而不是自己遍历 body
+  '/src/lib/export/fields.ts',
+  '/src/lib/export/elementsExport.ts',
+  '/src/lib/export/cdaExport.ts',
+  '/src/lib/export/ofd/ofdModel.ts',
+  '/src/lib/export/ofd/ofdXml.ts',
+  '/src/lib/export/ofd/buildOfd.ts',
 ]
 
 /**

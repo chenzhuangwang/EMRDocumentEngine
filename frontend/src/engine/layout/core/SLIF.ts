@@ -132,7 +132,7 @@ export function getFlatPageItems(page: SLIFPage): SLIFItem[] {
 }
 
 /** 单元格内容相对 cell 左内边距 (与 TableParticle / hitTestTable 同一口径) */
-const CELL_PAD = 6
+export const CELL_PAD = 6
 
 function isTableItem(item: SLIFItem): boolean {
   return item.type === 'table' && !!item.rows && item.rows.length > 0

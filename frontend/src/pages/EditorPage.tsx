@@ -43,16 +43,51 @@ import { printHistory } from '@/services/PrintHistoryService'
 import { resolvePrintRange, selectPrintPages, buildPrintRecord, printDocKey } from '@/lib/printJob'
 import { getMockDocumentDetail } from '@/mocks/documents'
 import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
-import { templateImporter, isExternalTemplate, hfParagraphsForPage, reportError, EditorErrorCode, locale } from '@/engine'
+import { templateImporter, isExternalTemplate, hfParagraphsForPage, reportError, EditorErrorCode, locale, sectionTreeOf, resolveFieldText } from '@/engine'
 import { TOCGenerator } from '@/engine/render/TOCGenerator'
 import { buildExportHtml, buildExportText } from '@/lib/documentExport'
+import { collectFields } from '@/lib/export/fields'
+import { buildElementsDocument } from '@/lib/export/elementsExport'
+import { buildCdaXml } from '@/lib/export/cdaExport'
+import { buildOfd } from '@/lib/export/ofd/buildOfd'
+import { cumulativeCharWidths } from '@/engine/layout/text/CharWidthHelper'
 import {
-  provenanceMetaTags, stampExportHtml, stampExportObject, stampExportText,
+  provenanceMetaTags, provenanceRecord, stampExportHtml, stampExportObject, stampExportText, stampExportXml,
 } from '@/lib/provenance'
 import type { OutlineItem, SectionOutlineAction } from '@/components/sidebar/OutlineNav'
 import { buildOutlineItems } from '@/components/sidebar/outlineModel'
 import type { EditorMode, ScoreResult, WatermarkConfig, PerfSummary } from '@/engine'
 import type { QCIssue, QCResult } from '@/engine/qc/QCEngine'
+
+/**
+ * 触发一次下载 (Blob → object URL → 隐藏 <a> 点击 → 释放)。
+ *
+ * 只给**新增**的导出分支用: 既有的 json/txt/html 三条分支保持各自原样的内联
+ * 写法不动 —— 那条路径已在浏览器里跑通, 不该为了整齐而在本轮被改写。
+ */
+function downloadBlob(payload: string | Uint8Array, mime: string, ext: string): void {
+  const blob = new Blob([payload as BlobPart], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = window.document.createElement('a')
+  a.href = url; a.download = `document-${Date.now()}.${ext}`; a.click()
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * 收集文档里图片节点的运行期资源 (ImageNode.src, data URL)。
+ *
+ * 走**结构树** (池里的 children) 而不是阅读顺序: 我们只是在做一次全池扫描,
+ * 与遍历口径无关 (契约 §31.1 的判据是「按不按阅读顺序读」, 这里不读顺序)。
+ * SLIFItem.imageUrl 是声明了但布局从不填充的死字段, 不能用。
+ */
+function collectImageSources(pool: { nodes: ReadonlyMap<string, unknown> }): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const [id, node] of pool.nodes) {
+    const n = node as { type?: string; src?: string }
+    if (n.type === 'image' && typeof n.src === 'string' && n.src) out.set(id, n.src)
+  }
+  return out
+}
 
 /** 质控防抖窗口 —— 质控比字数统计贵得多, 不该跟着每次按键跑 */
 const QC_DEBOUNCE_MS = 600
@@ -945,8 +980,123 @@ function EditorPageInner({
       const a = window.document.createElement('a')
       a.href = url; a.download = `document-${Date.now()}.html`; a.click()
       URL.revokeObjectURL(url)
+    } else if (format === 'elements') {
+      // 结构化元素: 全部输入项数据 (机器码 + 显示名 + 候选表), 见 lib/export/fields。
+      // 与 XML / OFD 数据区共用同一份语义投影 —— 三处不会各自漂移。
+      const projection = collectFields({
+        doc, pool,
+        templateDefinitions: ed.getTemplateDefinitions() ?? undefined,
+        // 字典型枚举的候选源 (契约 §12.6): 与屏幕 overlay 同一条取值路径
+        optionsOf: (nodeId) => ed.getControlSnapshot(nodeId)?.options ?? undefined,
+        sectionTree: sectionTreeOf(doc, pool),
+      })
+      const payload = buildElementsDocument({
+        projection,
+        document: {
+          id: doc.id,
+          title: doc.title,
+          modelVersion: (doc as unknown as { modelVersion?: string }).modelVersion,
+          pageSetup: doc.pageSetup,
+          layout: {
+            pageWidth: ed.getDraw().getPages()[0]?.width ?? 0,
+            pageHeight: ed.getDraw().getPages()[0]?.height ?? 0,
+            pageCount: ed.getDraw().getPages().length,
+          },
+          metadata: doc.metadata,
+          stats: (() => {
+            const wc = ed.getWordCount()
+            return { paragraphs: wc.paragraphs, words: wc.words, chars: wc.chars }
+          })(),
+        },
+        now: new Date(),
+      })
+      stampExportObject(payload)
+      downloadBlob(JSON.stringify(payload, null, 2), 'application/json', 'elements.json')
+    } else if (format === 'cda') {
+      // HL7 CDA 骨架: 节按 sectionCode 分组, 字段码与显示名同时在, 见 lib/export/cdaExport。
+      // 与「导出文档」那份 JSON 不同 —— 那份是完整节点树 (回环用), 这份是交换/归档用。
+      const built = buildCdaXml({
+        projection: collectFields({
+          doc, pool,
+          templateDefinitions: ed.getTemplateDefinitions() ?? undefined,
+          optionsOf: (nodeId) => ed.getControlSnapshot(nodeId)?.options ?? undefined,
+          sectionTree: sectionTreeOf(doc, pool),
+        }),
+        document: {
+          id: doc.id,
+          title: doc.title,
+          authorName: doc.metadata?.author ?? doc.metadata?.creator,
+          custodianName: doc.metadata?.department,
+          effectiveTime: doc.metadata?.updatedAt ? new Date(doc.metadata.updatedAt) : undefined,
+        },
+        now: new Date(),
+        language: locale.getLocale(),
+      })
+      const xml = stampExportXml(built.xml)
+      downloadBlob(xml, 'application/xml', 'cda.xml')
+      if (built.droppedChars > 0) {
+        // 不静默: 剔除过 XML 不允许的字符就该明说 —— 产物与原文并非逐字一致
+        reportError({
+          code: EditorErrorCode.E_DOCUMENT_CORRUPTED,
+          message: locale.t('export.droppedChars', { n: built.droppedChars }),
+        })
+      }
+    } else if (format === 'ofd') {
+      // OFD 版式文档: 版式与分页取自 SLIF (与屏幕/打印同一份布局), 结构化数据
+      // 取自同一份字段投影 (与「结构化元素」「XML」同源)。见 lib/export/ofd/。
+      // 先重排一次: 页面几何必须是最新的 (与 handleCommand 里同一处幂等调用)
+      const draw = ed.getDraw()
+      const pages = draw.recomputeLayout(pool)
+      const measurer = ed.getTextMeasurer()
+
+      const built = buildOfd({
+        pages,
+        images: collectImageSources(pool),
+        // 逐字形推进量: 与布局同一把尺子 —— OFD 的 DeltaX 由它派生,
+        // 使每行右边界钉在布局记录的位置 (字体被替换也不会重排)
+        charAdvance: (text, cfg) => cumulativeCharWidths(text, cfg, measurer),
+        // 域代码逐页解析: 与渲染层同一个解析器, 否则页码会导出成 '[页码]'
+        resolveFieldText: (item, pageIndex) => resolveFieldText(item.fieldType, item.text, {
+          pageNumber: pageIndex + 1,
+          totalPages: pages.length,
+          documentTitle: doc.title,
+          now: new Date(),
+          locale: locale.getLocale(),
+        }),
+        projection: collectFields({
+          doc, pool,
+          templateDefinitions: ed.getTemplateDefinitions() ?? undefined,
+          optionsOf: (nodeId) => ed.getControlSnapshot(nodeId)?.options ?? undefined,
+          sectionTree: sectionTreeOf(doc, pool),
+        }),
+        document: {
+          id: doc.id,
+          title: doc.title,
+          modelVersion: (doc as unknown as { modelVersion?: string }).modelVersion,
+          metadata: doc.metadata,
+        },
+        labels: {
+          patientInfo: t('ofd.meta.patientInfo'), admissionNo: t('ofd.meta.admissionNo'),
+          visitTime: t('ofd.meta.visitTime'), documentType: t('ofd.meta.documentType'),
+          author: t('ofd.meta.author'), submittedAt: t('ofd.meta.submittedAt'),
+          diagnosis: t('ofd.meta.diagnosis'), procedure: t('ofd.meta.procedure'),
+        },
+        provenance: provenanceRecord(),
+        now: new Date(),
+        // 固定 mtime: 同一文档两次导出应逐字节相同 (可复现, 也是将来签章的前提)
+        zipTime: new Date(0),
+      })
+
+      downloadBlob(built.bytes, 'application/ofd', 'ofd')
+      const warnCount = built.warnings.length + (built.droppedChars > 0 ? 1 : 0)
+      if (warnCount > 0) {
+        reportError({
+          code: EditorErrorCode.E_DOCUMENT_CORRUPTED,
+          message: locale.t('export.ofdWarnings', { n: warnCount }),
+        })
+      }
     }
-  }, [editorRef])
+  }, [editorRef, t])
 
   const handleTemplateSelect = useCallback(async (templateId: string) => {
     const ed = editorRef.current

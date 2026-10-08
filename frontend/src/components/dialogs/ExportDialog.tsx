@@ -17,7 +17,9 @@ import { useTranslation } from '@/i18n/useTranslation'
 interface ExportFormat {
   id: string
   labelKey: 'export.pdf' | 'export.word' | 'export.html' | 'export.txt' | 'export.json'
+    | 'export.ofd' | 'export.cda' | 'export.elements'
   descKey: 'export.pdfDesc' | 'export.wordDesc' | 'export.htmlDesc' | 'export.txtDesc' | 'export.jsonDesc'
+    | 'export.ofdDesc' | 'export.cdaDesc' | 'export.elementsDesc'
   icon: React.ReactNode
   available: boolean
 }
@@ -25,6 +27,9 @@ interface ExportFormat {
 const FORMATS: ExportFormat[] = [
   { id: 'pdf',  labelKey: 'export.pdf',   descKey: 'export.pdfDesc',   icon: <FileText size={22} />, available: false },
   { id: 'word', labelKey: 'export.word',  descKey: 'export.wordDesc',  icon: <FileText size={22} />, available: false },
+  { id: 'ofd',  labelKey: 'export.ofd',   descKey: 'export.ofdDesc',   icon: <FileText size={22} />, available: true },
+  { id: 'cda',  labelKey: 'export.cda',   descKey: 'export.cdaDesc',   icon: <FileCode size={22} />, available: true },
+  { id: 'elements', labelKey: 'export.elements', descKey: 'export.elementsDesc', icon: <FileJson size={22} />, available: true },
   { id: 'html', labelKey: 'export.html',  descKey: 'export.htmlDesc',  icon: <FileCode size={22} />, available: true },
   { id: 'txt',  labelKey: 'export.txt',   descKey: 'export.txtDesc',   icon: <AlignLeft size={22} />, available: true },
   { id: 'json', labelKey: 'export.json',  descKey: 'export.jsonDesc',  icon: <FileJson size={22} />, available: true },
@@ -58,8 +63,8 @@ export function ExportDialog({ open, onOpenChange, onExport }: Props) {
             </Dialog.Close>
           </div>
 
-          {/* Format list */}
-          <div className="px-2 py-2">
+          {/* Format list — 格式变多后需要限高滚动, 否则小屏上按钮会被挤出视口 */}
+          <div className="px-2 py-2 max-h-[60vh] overflow-y-auto">
             {FORMATS.map(fmt => (
               <button
                 key={fmt.id}

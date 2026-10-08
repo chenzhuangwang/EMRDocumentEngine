@@ -762,12 +762,33 @@ export interface LocaleMessages {
   'export.html': string
   'export.txt': string
   'export.json': string
+  'export.ofd': string
+  'export.cda': string
+  'export.elements': string
   'export.pdfDesc': string
   'export.wordDesc': string
   'export.htmlDesc': string
   'export.txtDesc': string
   'export.jsonDesc': string
+  'export.ofdDesc': string
+  'export.cdaDesc': string
+  'export.elementsDesc': string
   'export.comingSoon': string
+  /** 导出剔除 XML 非法字符时的提示 (参数 n); 中文/英文均须在, 见 tsc 类型约束 */
+  'export.droppedChars': string
+  /** OFD 导出带警告 (缺失图片/缺字号等) 时的提示 (参数 n) */
+  'export.ofdWarnings': string
+  // ============================================================
+  // OFD 结构化数据区的人读标签 (机器键是 ASCII, 见 lib/export/ofd/ofdHMapping)
+  // ============================================================
+  'ofd.meta.patientInfo': string
+  'ofd.meta.admissionNo': string
+  'ofd.meta.visitTime': string
+  'ofd.meta.documentType': string
+  'ofd.meta.author': string
+  'ofd.meta.submittedAt': string
+  'ofd.meta.diagnosis': string
+  'ofd.meta.procedure': string
   // ============================================================
   // ControlConfig 对话框专属
   // ============================================================
@@ -1630,12 +1651,28 @@ const zhCN: LocaleMessages = {
   'export.html': 'HTML 页面',
   'export.txt': '纯文本',
   'export.json': 'JSON 数据',
+  'export.ofd': 'OFD 版式文档',
+  'export.cda': 'XML（HL7 CDA）',
+  'export.elements': '结构化元素',
   'export.pdfDesc': '适合打印和分享，保留完整排版格式',
   'export.wordDesc': '.docx 格式，可在 Microsoft Word 中编辑',
   'export.htmlDesc': '纯静态网页，可在浏览器中直接查看',
   'export.txtDesc': '仅导出文字内容，不含样式和格式',
   'export.jsonDesc': '结构化数据格式，适合程序处理和数据迁移',
+  'export.ofdDesc': '国标版式文档，保留版式与分页，并内置可机读的结构化数据',
+  'export.cdaDesc': 'HL7 CDA 骨架，按节代码分组，供跨系统交换与归档',
+  'export.elementsDesc': '仅导出全部输入项数据，含机器码与显示名',
   'export.comingSoon': '即将推出',
+  'export.droppedChars': '导出时剔除了 {n} 个 XML 不允许的字符（原文档中的控制字符），产物内容与原文不完全一致。',
+  'export.ofdWarnings': '导出 OFD 时有 {n} 项内容无法完全还原（图片缺失或字号缺失），已在产物中留下可追溯的标记。',
+  'ofd.meta.patientInfo': '患者信息',
+  'ofd.meta.admissionNo': '住院号',
+  'ofd.meta.visitTime': '就诊时间',
+  'ofd.meta.documentType': '文书类型',
+  'ofd.meta.author': '书写医生',
+  'ofd.meta.submittedAt': '提交时间',
+  'ofd.meta.diagnosis': '诊断',
+  'ofd.meta.procedure': '手术信息',
   // ===== ControlConfig =====
   'controlConfig.element': '语义层',
   'controlConfig.definition': '设计期',
@@ -2476,12 +2513,28 @@ const enUS: LocaleMessages = {
   'export.html': 'HTML Page',
   'export.txt': 'Plain Text',
   'export.json': 'JSON Data',
+  'export.ofd': 'OFD Document',
+  'export.cda': 'XML (HL7 CDA)',
+  'export.elements': 'Structured Elements',
   'export.pdfDesc': 'For printing and sharing; preserves full layout',
   'export.wordDesc': '.docx format; editable in Microsoft Word',
   'export.htmlDesc': 'Static web page; viewable directly in a browser',
   'export.txtDesc': 'Text only, no styles or formatting',
   'export.jsonDesc': 'Structured data; for programmatic processing',
+  'export.ofdDesc': 'Fixed-layout document; keeps layout and pagination, with machine-readable data inside',
+  'export.cdaDesc': 'HL7 CDA skeleton grouped by section code; for exchange and archiving',
+  'export.elementsDesc': 'Input-field data only, with both machine codes and display names',
   'export.comingSoon': 'Coming Soon',
+  'export.droppedChars': 'Export dropped {n} character(s) not allowed in XML (control characters in the source). The output is not byte-identical to the original.',
+  'export.ofdWarnings': 'OFD export could not fully reproduce {n} item(s) (missing image or font size); traceable markers were left in the output.',
+  'ofd.meta.patientInfo': 'Patient information',
+  'ofd.meta.admissionNo': 'Admission number',
+  'ofd.meta.visitTime': 'Visit time',
+  'ofd.meta.documentType': 'Document type',
+  'ofd.meta.author': 'Author',
+  'ofd.meta.submittedAt': 'Submitted at',
+  'ofd.meta.diagnosis': 'Diagnosis',
+  'ofd.meta.procedure': 'Procedure',
   // ===== ControlConfig =====
   'controlConfig.element': 'Semantic',
   'controlConfig.definition': 'Design-Time',
