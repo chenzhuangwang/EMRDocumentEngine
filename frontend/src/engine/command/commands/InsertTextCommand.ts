@@ -20,11 +20,14 @@ import {
 } from '../ICommand'
 import { DeleteRangeCommand } from './DeleteRangeCommand'
 import { normalizeParagraph } from './ParagraphUtils'
+import { MintedOnce } from './MintedNodes'
 
 export class InsertTextCommand extends PositionalCommand {
   readonly type = 'insert-text'
   readonly text: string
   readonly style?: TextStyle
+  /** 铸造一次台账 (契约 §8.3): redo 复用首次的文本节点 id */
+  private mint = new MintedOnce()
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -59,21 +62,26 @@ export class InsertTextCommand extends PositionalCommand {
 
     if (!isTextNode) {
       // 非 text 目标 (内联非文本节点 / 悬空引用 / 空段落或越界):
-      // 在正确位置新建 text 节点, 而非误用头部插入或把非文本节点当文本拆分
-      const newNode = createTextNode(this.text, style)
-      pool.addNode(newNode)
+      // 在正确位置新建 text 节点, 而非误用头部插入或把非文本节点当文本拆分。
+      // 铸造一次 (契约 §8.3): redo 必须复用同一 id, 否则该节点在段落 children
+      // 里的身份每次重放都变, 与「带 id 的序列化」判据不符。
+      const [newNodeId] = this.mint.run(pool, () => {
+        const n = createTextNode(this.text, style)
+        pool.addNode(n)
+        return [n.id]
+      })
       if (textNodeId && targetNode) {
         // 内联非文本节点: localOffset 0=前, 1=后
         const idx = para.children.indexOf(textNodeId)
-        pool.insertChild(para.id, newNode.id, idx + (localOffset >= 1 ? 1 : 0))
+        pool.insertChild(para.id, newNodeId, idx + (localOffset >= 1 ? 1 : 0))
       } else if (textNodeId) {
         // 悬空引用: 清理孤儿 id 后头部插入, 避免静默吞掉输入
         const danglingIdx = para.children.indexOf(textNodeId)
         if (danglingIdx >= 0) pool.detachChild(para.id, danglingIdx)
-        pool.insertChild(para.id, newNode.id, 0)
+        pool.insertChild(para.id, newNodeId, 0)
       } else {
         // offset=0 或空段落 → 在 para.children 头部插入
-        pool.insertChild(para.id, newNode.id, 0)
+        pool.insertChild(para.id, newNodeId, 0)
       }
       normalizeParagraph(para, pool)
       return {
@@ -98,14 +106,24 @@ export class InsertTextCommand extends PositionalCommand {
     const before = textNode.text.slice(0, localOffset)
     const after = textNode.text.slice(localOffset)
     pool.updateNode(textNode.id, { text: before || '' } as Partial<TextNode>)
-    const newNode = createTextNode(this.text, style)
-    pool.addNode(newNode)
+    // 铸造一次 (契约 §8.3): 新文本节点与拆出的后半段在 redo 时复用同一批 id
+    const roots = this.mint.run(pool, () => {
+      const n = createTextNode(this.text, style)
+      pool.addNode(n)
+      const ids = [n.id]
+      if (after) {
+        const a = createTextNode(after, extractStyle(textNode))
+        pool.addNode(a)
+        ids.push(a.id)
+      }
+      return ids
+    })
+    const newNodeId = roots[0]
+    const afterNodeId: string | undefined = roots.length > 1 ? roots[1] : undefined
     const idx = para.children.indexOf(textNode.id)
-    pool.insertChild(para.id, newNode.id, idx + 1)
-    if (after) {
-      const afterNode = createTextNode(after, extractStyle(textNode))
-      pool.addNode(afterNode)
-      pool.insertChild(para.id, afterNode.id, idx + 2)
+    pool.insertChild(para.id, newNodeId, idx + 1)
+    if (afterNodeId) {
+      pool.insertChild(para.id, afterNodeId, idx + 2)
     }
     normalizeParagraph(para, pool)
     return {

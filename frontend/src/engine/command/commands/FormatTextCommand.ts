@@ -16,6 +16,7 @@ import type { NodePool } from '../../document/core/NodePool'
 import type { FormatRange } from '../../document/selection/SelectionCollector'
 import { collectTextNodeIds } from '../../document/selection/SelectionCollector'
 import { ICommand, CommandContext, StatePatch, SerializedCommand, generateCommandId } from '../ICommand'
+import { captureMintedSubtree, reregisterMintedSubtree, type SubtreeSnapshot } from './MintedNodes'
 
 export class FormatTextCommand implements ICommand {
   readonly type = 'format-text'
@@ -225,6 +226,20 @@ export class FormatTextRangeCommand implements ICommand {
 
   private oldStyles = new Map<string, Partial<TextStyle>>()
   private splits: { paraId: string; nodeId: string; afterId: string }[] = []
+  /**
+   * 拆出的后半段 TextNode 的「铸造一次」台账 (契约 §8.3)。
+   *
+   * `splitAt` 在 forward 里造新节点, 而 forward 会被 redo 再跑一遍 —— 不记账就会
+   * 每次换 id, redo 后选区结构漂移。
+   *
+   * **快照必须逐节点在「铸造那一刻」抓**, 不能在 forward 结束时整体抓: 同一
+   * forward 里先铸的节点会被后一次 `splitAt` 再次截断 (alpha→a|lpha→a|lp|ha),
+   * 末态快照重放回去会拿到已截断的文本, 重放结果与首跑不同。
+   */
+  private splitSnapshot: SubtreeSnapshot = new Map()
+  private splitIds: string[] = []
+  /** 首次 forward 是否已跑完 —— 不能用 size>0 判定: 首次 forward 内部就会写快照 */
+  private splitMinted = false
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -237,6 +252,15 @@ export class FormatTextRangeCommand implements ICommand {
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
     const { pool } = ctx
+    // redo 会再次 forward → 重置累积状态, 否则 splits/oldStyles 会跨重放叠加
+    this.oldStyles = new Map()
+    this.splits = []
+    if (this.splitMinted) {
+      reregisterMintedSubtree(pool, this.splitSnapshot)
+    } else {
+      this.splitIds = []
+    }
+
     for (const range of this.ranges) {
       const paraId = range.path[range.path.length - 1]
       const para = pool.nodes.get(paraId) as Paragraph | undefined
@@ -261,6 +285,7 @@ export class FormatTextRangeCommand implements ICommand {
         pool.bumpNodeVersion(nodeId)
       }
     }
+    this.splitMinted = true
     return { invalidation: 'paragraph' }
   }
 
@@ -275,15 +300,27 @@ export class FormatTextRangeCommand implements ICommand {
     if (res.localOffset <= 0 || res.localOffset >= len) return
 
     const before = node.text.slice(0, res.localOffset)
-    const after = node.text.slice(res.localOffset)
-    const style = extractStyle(node)
+
+    // 铸造一次 (契约 §8.3): 首次铸节点并**立刻**按铸造态快照, 重放按同一序复用。
+    // 快照用的是铸造那一刻的文本 (未截断), 后续 splitAt 的截断在重放里重演。
+    const ordinal = this.splits.length
+    let afterId: string
+    if (this.splitMinted) {
+      afterId = this.splitIds[ordinal]
+    } else {
+      const afterNode = createTextNode(node.text.slice(res.localOffset), extractStyle(node))
+      pool.addNode(afterNode)
+      afterId = afterNode.id
+      this.splitIds.push(afterId)
+      // 铸造那一刻的态 (未截断) 进快照 —— 截断在重放里重演
+      for (const [k, v] of captureMintedSubtree(pool, [afterId])) this.splitSnapshot.set(k, v)
+    }
+
     pool.updateNode(node.id, { text: before } as Partial<TextNode>)
-    const afterNode = createTextNode(after, style)
-    pool.addNode(afterNode)
     const para = pool.nodes.get(paraId) as Paragraph | undefined
     const idx = para ? para.children.indexOf(node.id) : -1
-    pool.insertChild(paraId, afterNode.id, idx + 1)
-    this.splits.push({ paraId, nodeId: node.id, afterId: afterNode.id })
+    pool.insertChild(paraId, afterId, idx + 1)
+    this.splits.push({ paraId, nodeId: node.id, afterId })
   }
 
   invert(): ICommand | null {

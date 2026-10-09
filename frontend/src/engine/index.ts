@@ -141,7 +141,7 @@ export { DictionaryStore } from './document/control/Dictionary'
 
 // ---- 页眉页脚变体解析 (契约 §7.9) ----
 export {
-  hfArrayOf, ensureHfArray, isVariantEnabled, resolveVariantForPage,
+  hfArrayOf, ensureHfArray, trimHfArrayIfEmpty, isVariantEnabled, resolveVariantForPage,
   hfParagraphsForPage, hfParagraphsForExport, resolveHfParagraphLocation,
   isHeaderFooterParagraph, hfContainers,
 } from './document/core/HeaderFooterRegions'

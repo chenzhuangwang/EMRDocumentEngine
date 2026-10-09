@@ -99,6 +99,30 @@ export function ensureHfArray(
   return existing
 }
 
+/**
+ * 清空后收尾: 把**可选**变体 (首页/偶数页) 的空数组删回「缺失」态。
+ *
+ * 契约 §7.9 定义这几个字段为「加法可选字段: 缺失 ≡ 该变体无内容 (空带),
+ * 不预创建、不补默认值」。于是「删掉该变体最后一个段落」必须把键也删掉 ——
+ * 否则撤销一次插入会在文档里留下一个它从未有过的 `firstPageHeader: []`,
+ * 而键的存在性本身就会被序列化出去 (是文档形状的一部分)。
+ *
+ * **default 变体 (header/footer) 不在此列**: 它们是 createDocument 预置的
+ * 非可选字段, 空 = `[]` 才是它们的规范形态。
+ *
+ * 仅在 command 层的**移除**路径调用 (§11: 字段映射只在本模块出现)。
+ */
+export function trimHfArrayIfEmpty(
+  doc: DocumentTree,
+  band: HeaderFooterBand,
+  variant: HeaderFooterVariant,
+): void {
+  if (variant === 'default') return
+  const field = HF_FIELD[variant][band]
+  const arr = doc[field]
+  if (arr && arr.length === 0) delete doc[field]
+}
+
 /** 某页生效的页眉/页脚段落 (阅读顺序) — 布局/渲染/编辑/UI 的唯一入口 */
 export function hfParagraphsForPage(
   doc: DocumentTree,

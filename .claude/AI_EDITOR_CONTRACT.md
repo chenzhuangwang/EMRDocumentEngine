@@ -955,6 +955,160 @@ remote / system) is a separate concern and MAY be distinguished via
 change origin when collaboration or auditing needs it. Do NOT solve
 that distinction by introducing a second event transport.
 
+------------------------------------------------------------
+8.3 Command replay identity — forward is called more than once
+------------------------------------------------------------
+
+A command's forward() MAY run MORE THAN ONCE: once on execute, and
+again on EVERY redo. CommandUndoRedoStack.redo() re-runs the
+ORIGINAL command object's forward(); it does not replay a recorded
+mutation.
+
+Therefore:
+
+    A node MINTED inside forward() MUST keep the SAME identity
+    (the same id) on every forward() of that command. Redo MUST
+    NOT mint a node with a fresh id.
+
+WHY this is load-bearing, not stylistic:
+
+    Commands capture their target as an ID at CONSTRUCTION time —
+    a container id ("insert a child Section into THIS Section"), a
+    paragraph path ("type into the paragraph the previous command
+    created"), or a node id. That id was minted by an EARLIER
+    command's forward(). If the earlier command's redo mints a
+    different id, the later command's target no longer resolves:
+    its forward() returns null and CommandUndoRedoStack SILENTLY
+    DROPS it. Undo×3 then redo×3 restores one node instead of
+    three. That is silent data loss, not a cosmetic defect — and
+    it is exactly the failure §31.5 forbids.
+
+ACCEPTANCE CRITERION:
+
+    execute → undo×N → redo×N MUST leave the document
+    byte-identical to its state right after execute — the
+    SERIALIZED FORM INCLUDING NODE IDS. Equal shape is not
+    enough: shape equality cannot see a dangling reference.
+
+HOW to satisfy it (the engine already does this for inverses):
+
+    forward MUST mint ONCE and re-register thereafter. Snapshot
+    the minted subtree on the first forward; on every later
+    forward re-register that snapshot (pool.addNode per node,
+    then insert the root back into its container) and skip the
+    mint entirely. This is the same idiom RestoreNodesCommand /
+    RestoreTableCommand / RestoreControlCommand already use in
+    the inverse direction, and the shared primitive for it is
+    MintedOnce (command/commands/MintedNodes.ts) — do not
+    hand-roll a second copy (§11).
+
+    A command that calls a factory (createParagraph, createSection,
+    createTextNode, createSmartTextNode, ... — each mints a fresh
+    id) unconditionally inside forward() is WRONG by this rule,
+    however correct it looks on a single execute.
+
+COROLLARY — the minting/building split:
+
+    Whatever a command does BETWEEN minting and returning must be
+    classified: "mint + internal build" (e.g. inserting a new
+    Section's initial paragraph into it) belongs INSIDE the
+    once-only region; "place the root into its container" belongs
+    OUTSIDE it, because the root must be re-placed on every
+    forward. Getting this backwards either duplicates children or
+    leaves the root unplaced.
+
+COROLLARY — placement of a node held in a non-children container:
+
+    When the minted node lives in a container that is NOT a pool
+    children array — doc.footnotes, doc.comments, a header/footer
+    region's id array — that container is restored by the inverse
+    command, so the push/append MUST also stay OUTSIDE the
+    once-only region and be re-done on every forward. Putting it
+    inside makes redo silently drop the reference (the node is
+    back in the pool but unreferenced).
+
+COROLLARY — the snapshot must be taken at the MINT MOMENT, not at
+the end of forward:
+
+    If forward mints several nodes in ONE pass and then further
+    MUTATES an earlier one (FormatTextRangeCommand: "alpha" → split
+    at 1 → "a"|"lpha", then split at 3 → "a"|"lp"|"ha" — the second
+    split truncates the node the first one minted), an end-of-forward
+    snapshot records the END state. Replaying it that way re-runs
+    the later mutation on an already-mutated node. Snapshot EACH
+    minted node at the instant it is created; the later mutations
+    are then replayed as mutations, exactly as on the first pass.
+
+COROLLARY — a re-registered snapshot must not be aliased:
+
+    Re-registration MUST hand the pool a COPY of each snapshot
+    node, never the snapshot object itself. forward continues to
+    mutate what it re-registered; if pool and snapshot share one
+    object, the first redo rewrites the snapshot into its end state
+    and the SECOND undo→redo cycle no longer starts from the minted
+    state. (reregisterMintedSubtree deep-copies per node for this
+    reason.)
+
+NO EXCEPTION for in-paragraph text nodes (this supersedes an earlier
+draft of this section):
+
+    It was tempting to exempt text nodes inside an existing
+    paragraph on the grounds that they are addressed by character
+    OFFSET, not by id, so no later command dangles. That reasoning
+    is about DANGLING REFERENCES, and it is true as far as it goes —
+    but it is NOT the acceptance criterion. The criterion is
+    byte-equality of the SERIALIZED form, and that form carries
+    every node id. A re-minted text node therefore still fails it,
+    whatever addresses it later. Commands that mint such nodes
+    (DeleteRangeCommand's empty-paragraph placeholder,
+    FormatTextRangeCommand's boundary splits) must hold identity
+    like any other.
+
+    What the offset-addressing fact IS good for is a REDUCED
+    obligation, not an exemption: such a node needs its id held
+    stable only to satisfy the serialized-form criterion. Nothing
+    may DEPEND on the id, and nothing needs an extra re-placement
+    step for it beyond the snapshot re-registration.
+
+RELATED — optional document-level arrays must survive undo EXACTLY
+(both halves fixed; recorded because the second is easy to miss):
+
+    Optional document-level arrays (footnotes, endnotes, comments,
+    firstPageHeader/Footer, evenPageHeader/Footer — §7.9) mean
+    "absent ≡ no content". Two ways a command can violate that:
+
+    1. WRITE ON A READ. Resolving such an array for a pure query
+       ("is this id in the header band?") must NOT create it. A
+       removal that matches nothing would otherwise leave a key the
+       document never had. Read and write accessors are therefore
+       SEPARATE (docArrayOfReadonly / docArrayOfWritable over
+       hfArrayOf / ensureHfArray); only a splice that will actually
+       happen may touch the write side.
+
+    2. EMPTIED, NOT DELETED. Undoing the insert that created the
+       array leaves `[]` where the document had no key at all —
+       semantically equal, byte-inequal, so undo is not an exact
+       inverse. A removal that empties an OPTIONAL array must delete
+       the field (trimDocArrayIfEmpty / trimHfArrayIfEmpty).
+
+    header / footer are NOT in this class: createDocument seeds them,
+    so `[]` IS their canonical empty form and must be left alone.
+
+    Note 1 is defence-in-depth for the same outcome note 2 produces:
+    keep both. Note 1 stops the key being created at the source;
+    note 2 covers the array an insert legitimately created and an
+    undo emptied.
+
+ACCEPTANCE GATE:
+
+    engine/__tests__/CommandReplayIdentity.test.ts. Table-driven,
+    one row per command family; each row asserts execute → undo×N →
+    redo×N byte-identical on the serialized form WITH ids, and then
+    runs a SECOND undo→redo cycle (which is what catches the
+    aliasing corollary). Each row also asserts the command actually
+    changed the document — a row that passes because the command
+    no-opped is worthless.
+
 ============================================================
 9. COLLABORATION / YJS
 ============================================================

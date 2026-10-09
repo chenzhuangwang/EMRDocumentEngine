@@ -32,6 +32,7 @@ import { NodeType } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
 import { createSmartTextNode, createTextNode, extractStyle } from '../../document/factory/ElementFormatter'
 import { elementIdentity } from './InsertNodesCommand'
+import { MintedOnce } from './MintedNodes'
 import type { TemplateDefinition } from '../../template/TemplateDefinition'
 import type { CommandContext, ICommand, SerializedCommand, StatePatch } from '../ICommand'
 import { generateCommandId } from '../ICommand'
@@ -46,6 +47,8 @@ export class InsertControlCommand implements ICommand {
   private element: ElementMeta
   private definition?: TemplateDefinition
   private insertedNodeId: string | null = null
+  /** 铸造一次台账 (契约 §8.3) */
+  private mint = new MintedOnce()
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -75,41 +78,52 @@ export class InsertControlCommand implements ICommand {
       return null
     }
 
-    const node = createSmartTextNode(`[${this.element.name}]`, this.element)
-    pool.addNode(node)
-    this.insertedNodeId = node.id
-
+    // 落点解析每次 forward 都做 (undo 已还原段落, 结果与首次一致);
+    // 铸造只在首次做 (契约 §8.3)。
     const resolved = pool.resolveCharOffset(paraId, this.offset)
-    if (resolved) {
-      const target = pool.nodes.get(resolved.textNodeId)
-      const idx = para.children.indexOf(resolved.textNodeId)
-      if (idx >= 0 && target && (target as { type?: string }).type === 'text') {
-        // 目标为文本节点: 按段内偏移在「文本中间」插入需先拆分文本节点,
-        // 否则控件会落到整个文本 run 之后 (行尾)。
-        const text = (target as unknown as { text: string }).text
-        const lo = resolved.localOffset
-        if (lo > 0 && lo < text.length) {
-          const afterNode = createTextNode(text.slice(lo), extractStyle(target as unknown as TextNode))
-          pool.addNode(afterNode)
-          pool.updateNode(target.id, { text: text.slice(0, lo) } as Partial<TextNode>)
-          pool.insertChildren(paraId, [node.id, afterNode.id], idx + 1)
-        } else {
-          // 文本首/尾 → 控件插到文本前/后
-          pool.insertChild(paraId, node.id, idx + (lo === 0 ? 0 : 1))
-        }
-      } else if (idx >= 0) {
-        // 内联非文本节点 (image/field/smarttext 等) → localOffset 0=前, 1=后
-        pool.insertChild(paraId, node.id, idx + (resolved.localOffset >= 1 ? 1 : 0))
-      } else {
-        pool.insertChild(paraId, node.id, para.children.length)
+    const target = resolved ? pool.nodes.get(resolved.textNodeId) : undefined
+    const idx = resolved ? para.children.indexOf(resolved.textNodeId) : -1
+    const textTarget = idx >= 0 && target && (target as unknown as { type?: string }).type === 'text'
+      ? (target as unknown as TextNode)
+      : undefined
+    const lo = resolved ? resolved.localOffset : 0
+    // 段内偏移落在文本中间 → 需先拆分文本节点, 否则控件会落到整个文本 run 之后 (行尾)
+    const splitsMiddle = !!textTarget && lo > 0 && lo < textTarget.text.length
+
+    // 铸造一次 (契约 §8.3): 控件节点与拆出的后半段文本在 redo 时复用同一批 id。
+    const roots = this.mint.run(pool, () => {
+      const n = createSmartTextNode(`[${this.element.name}]`, this.element)
+      pool.addNode(n)
+      const ids = [n.id]
+      if (splitsMiddle && textTarget) {
+        const afterNode = createTextNode(textTarget.text.slice(lo), extractStyle(textTarget))
+        pool.addNode(afterNode)
+        ids.push(afterNode.id)
       }
+      return ids
+    })
+    const nodeId = roots[0]
+    const afterNodeId: string | undefined = roots.length > 1 ? roots[1] : undefined
+    this.insertedNodeId = nodeId
+
+    // 落位 —— 每次 forward 都做
+    if (textTarget && splitsMiddle && afterNodeId) {
+      pool.updateNode(textTarget.id, { text: textTarget.text.slice(0, lo) } as Partial<TextNode>)
+      pool.insertChildren(paraId, [nodeId, afterNodeId], idx + 1)
+    } else if (textTarget) {
+      // 文本首/尾 → 控件插到文本前/后
+      pool.insertChild(paraId, nodeId, idx + (lo === 0 ? 0 : 1))
+    } else if (idx >= 0) {
+      // 内联非文本节点 (image/field/smarttext 等) → localOffset 0=前, 1=后
+      pool.insertChild(paraId, nodeId, idx + (lo >= 1 ? 1 : 0))
     } else {
-      pool.insertChild(paraId, node.id, para.children.length)
+      pool.insertChild(paraId, nodeId, para.children.length)
     }
 
     // 写入设计期属性 (契约 §12.4): 仅当提供了 definition 且 store 已注入。
+    // 每次 forward 都写 —— undo 会删掉该条目, 重放必须补回 (幂等)。
     if (this.definition && ctx.templateDefinitions) {
-      ctx.templateDefinitions.set(node.id, this.definition)
+      ctx.templateDefinitions.set(nodeId, this.definition)
     }
 
     // 光标放到控件「之后」(offset+1, 控件=1 原子字符): 插入后可直接在控件

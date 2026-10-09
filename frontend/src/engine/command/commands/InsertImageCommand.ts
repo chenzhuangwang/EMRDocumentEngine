@@ -13,11 +13,12 @@
 // undo: 摘除图片 + 拆分出的右半文本节点, 并恢复被截断的文本节点。
 // ================================================================
 
-import type { TextNode } from '../../document/core/DocumentModel'
+import type { BaseNode, TextNode } from '../../document/core/DocumentModel'
 import { createTextNode, extractStyle } from '../../document/factory/ElementFormatter'
 import {
   ICommand, CommandContext, StatePatch, SerializedCommand, generateCommandId,
 } from '../ICommand'
+import { MintedOnce } from './MintedNodes'
 
 export class InsertImageCommand implements ICommand {
   readonly type = 'insert-image'
@@ -34,6 +35,8 @@ export class InsertImageCommand implements ICommand {
   private splitAfterNodeId: string | null = null
   private truncatedTextNodeId: string | null = null
   private originalText = ''
+  /** 铸造一次台账 (契约 §8.3): 图片与拆分出的后半段文本在 redo 时复用同一批 id */
+  private mint = new MintedOnce()
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -56,52 +59,77 @@ export class InsertImageCommand implements ICommand {
       ? (displayW / this.naturalW) * this.naturalH
       : 200
 
-    const imgNode = {
-      type: 'image' as const,
-      id: generateCommandId(),
-      src: this.dataUrl,
-      width: displayW,
-      height: displayH,
-      naturalWidth: this.naturalW,
-      naturalHeight: this.naturalH,
-      wrapMode: 'top-bottom' as const,
-    }
-    pool.addNode(imgNode)
-    this.insertedImageId = imgNode.id
-
     const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
+
+    // 落点解析 (**每次** forward 都做, undo 已还原段落, 结果与首次一致 ——
+    // 与 InsertInlineNodeCommand 同语义)。铸造决策随之定下, 但铸造本身只做一次。
+    let targetIdx = -1
+    let localOffset = 1
+    let splitText: TextNode | null = null
+    let splitAt = 0
     if (para?.children) {
       const resolved = pool.resolveCharOffset(paraId, this.offset)
       if (resolved) {
+        targetIdx = para.children.indexOf(resolved.textNodeId)
+        localOffset = resolved.localOffset
         const target = pool.nodes.get(resolved.textNodeId)
-        const idx = para.children.indexOf(resolved.textNodeId)
         if (target && (target as { type?: string }).type === 'text') {
-          const text = (target as unknown as { text: string }).text
-          const lo = resolved.localOffset
-          if (lo > 0 && lo < text.length) {
-            // 光标在文本中间 → 拆分文本, 图片插入拆分点
-            const afterNode = createTextNode(text.slice(lo), extractStyle(target as unknown as TextNode))
-            pool.addNode(afterNode)
-            pool.updateNode(target.id, { text: text.slice(0, lo) } as Partial<TextNode>)
-            pool.insertChildren(paraId, [imgNode.id, afterNode.id], idx + 1)
-            this.splitAfterNodeId = afterNode.id
-            this.truncatedTextNodeId = target.id
-            this.originalText = text
-          } else {
-            // 光标在文本首/尾 → 图片插到文本前/后
-            pool.insertChild(paraId, imgNode.id, idx + (lo === 0 ? 0 : 1))
+          const t = target as unknown as TextNode
+          // 光标在文本中间 → 拆成左右两半, 图片落于其间
+          if (localOffset > 0 && localOffset < t.text.length) {
+            splitText = t
+            splitAt = localOffset
           }
-        } else {
-          // 内联非文本节点 (image/field/footnote_ref) → localOffset 0=前, 1=后
-          pool.insertChild(paraId, imgNode.id, idx + (resolved.localOffset >= 1 ? 1 : 0))
         }
+      }
+    }
+
+    // 铸造一次 (契约 §8.3): 图片节点 (以及文本中间分支拆出的后半段) 在 redo 时
+    // 必须复用同一批 id, 否则后续以图片 id 为目标的命令在重放时解析不到。
+    const roots = this.mint.run(pool, () => {
+      const imgNode = {
+        type: 'image' as const,
+        id: generateCommandId(),
+        src: this.dataUrl,
+        width: displayW,
+        height: displayH,
+        naturalWidth: this.naturalW,
+        naturalHeight: this.naturalH,
+        wrapMode: 'top-bottom' as const,
+      }
+      pool.addNode(imgNode as unknown as BaseNode)
+      const ids = [imgNode.id]
+      if (splitText) {
+        const afterNode = createTextNode(splitText.text.slice(splitAt), extractStyle(splitText))
+        pool.addNode(afterNode)
+        ids.push(afterNode.id)
+      }
+      return ids
+    })
+    const imageId = roots[0]
+    const afterNodeId: string | null = roots.length > 1 ? roots[1] : null
+    this.insertedImageId = imageId
+    this.splitAfterNodeId = afterNodeId
+    this.truncatedTextNodeId = splitText ? splitText.id : null
+    this.originalText = splitText ? splitText.text : ''
+
+    // 落位 —— 每次 forward 都做 (重放时节点只是被重新注册, 尚未在父容器里)
+    if (para?.children) {
+      if (splitText && afterNodeId) {
+        pool.updateNode(splitText.id, { text: splitText.text.slice(0, splitAt) } as Partial<TextNode>)
+        pool.insertChildren(paraId, [imageId, afterNodeId], targetIdx + 1)
+      } else if (targetIdx >= 0) {
+        // 目标是文本首/尾, 或内联非文本节点 (image/field/footnote_ref):
+        // localOffset 0=前, 1=后
+        pool.insertChild(paraId, imageId, targetIdx + (localOffset >= 1 ? 1 : 0))
       } else {
-        pool.insertChild(paraId, imgNode.id, para.children.length)
+        // 空段落 / 越界 / 悬空引用 → 追加到末尾
+        pool.insertChild(paraId, imageId, para.children.length)
       }
     }
 
     // 光标移到图片之后 (图片占 1 字符), 使后续输入落在图片之后而非之前
-    const afterOffset = pool.getCharOffset(paraId, imgNode.id, 1)
+    const afterOffset = pool.getCharOffset(paraId, imageId, 1)
     return {
       cursor: { paragraphPath: [...this.path], offset: afterOffset, visible: true },
       invalidation: 'paragraph',

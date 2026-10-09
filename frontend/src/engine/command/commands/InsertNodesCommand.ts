@@ -35,6 +35,7 @@ import {
 } from '../ICommand'
 import type { SerializedPara } from '../ClipboardManager'
 import { normalizeParagraph } from './ParagraphUtils'
+import { MintedOnce } from './MintedNodes'
 import { resolveParagraphRegion, isPoolRegion } from '../../state/CaretScope'
 
 /** 文本样式字段 (过滤掉 id/type/children) */
@@ -100,6 +101,8 @@ export class InsertNodesCommand extends PositionalCommand {
     truncatedTextNodeId: string | null
     originalText: string
   } | null = null
+  /** 铸造一次台账 (契约 §8.3): 粘贴段落树 + 右半文本节点在 redo 时复用同一批 id */
+  private mint = new MintedOnce()
 
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
@@ -119,11 +122,10 @@ export class InsertNodesCommand extends PositionalCommand {
       truncatedTextNodeId: null,
       originalText: '',
     }
-    this.insertedParaIds = []
-    this.createdLeafIds = []
 
     // ================================================================
     // Step 1: 光标处拆分当前段落 → 左半 (currentPara) + 右半 (rightText/rightChildren)
+    // 改写的是**既有**节点, 非铸造 → 每次 forward 都要做 (undo 已还原它们)。
     // ================================================================
     let rightText = ''
     let rightStyle: TextStyle | undefined
@@ -152,33 +154,49 @@ export class InsertNodesCommand extends PositionalCommand {
     }
 
     // ================================================================
-    // Step 2: 反序列化粘贴段落
+    // Step 2: 反序列化粘贴段落 + 右半文本节点 —— **铸造一次** (契约 §8.3)。
+    // redo 走快照重新注册 (同一批 id), 不再调用工厂 —— 否则粘贴出的段落 id
+    // 漂移, 后续以它们为目标的命令 (光标落在粘贴末尾继续打字) 重放时解析不到。
+    // roots = [...粘贴段落 id, 右半文本节点 id?]
     // ================================================================
-    const pastedParas = this.nodes.map(sn => this.deserializePara(sn, pool, ctx.templateDefinitions))
-    const first = pastedParas[0]
-    const last = pastedParas[pastedParas.length - 1]
+    const roots = this.mint.run(pool, () => {
+      const pastedParas = this.nodes.map(sn => this.deserializePara(sn, pool, ctx.templateDefinitions))
+      const ids: string[] = pastedParas.map(p => p.id)
+      if (rightText.length > 0) {
+        const tn = createTextNode(rightText, rightStyle)
+        pool.addNode(tn)
+        this.createdLeafIds.push(tn.id)
+        ids.push(tn.id)
+      }
+      return ids
+    })
+    const pastedParaIds = roots.slice(0, this.nodes.length)
+    const rightTextNodeId: string | null =
+      roots.length > this.nodes.length ? roots[roots.length - 1] : null
 
     // ================================================================
     // Step 3: 首段并入左半 (currentPara) — 单段落粘贴 = 就地追加, 不产生新段
     // ================================================================
-    pool.insertChildren(currentPara.id, first.children, currentPara.children.length)
-    pool.removeNode(first.id)  // 首段包装节点已并入 currentPara, 丢弃
+    const firstPara = pool.nodes.get(pastedParaIds[0]) as Paragraph
+    pool.insertChildren(currentPara.id, firstPara.children, currentPara.children.length)
+    pool.removeNode(firstPara.id)  // 首段包装节点已并入 currentPara, 丢弃
     normalizeParagraph(currentPara, pool)
 
     // ================================================================
     // Step 4: 其余段落作为新段落插入 (currentPara 之后)
     // 使用 resolveParagraphRegion 确定区域, 页眉/页脚粘贴不泄漏到 body。
     // ================================================================
+    this.insertedParaIds = []
     const region = resolveParagraphRegion(currentPara.id, doc, pool)
     if (region) {
       let insertAt = region.index + 1
-      for (let i = 1; i < pastedParas.length; i++) {
+      for (let i = 1; i < pastedParaIds.length; i++) {
         if (isPoolRegion(region)) {
-          pool.insertChild(region.containerId, pastedParas[i].id, insertAt)
+          pool.insertChild(region.containerId, pastedParaIds[i], insertAt)
         } else {
-          region.siblings.splice(insertAt, 0, pastedParas[i].id)
+          region.siblings.splice(insertAt, 0, pastedParaIds[i])
         }
-        this.insertedParaIds.push(pastedParas[i].id)
+        this.insertedParaIds.push(pastedParaIds[i])
         insertAt++
       }
     } else {
@@ -186,9 +204,9 @@ export class InsertNodesCommand extends PositionalCommand {
       const siblings = [...pool.getChildren(parentId)]
       const baseIdx = siblings.indexOf(currentPara.id)
       let insertAt = baseIdx + 1
-      for (let i = 1; i < pastedParas.length; i++) {
-        pool.insertChild(parentId, pastedParas[i].id, insertAt)
-        this.insertedParaIds.push(pastedParas[i].id)
+      for (let i = 1; i < pastedParaIds.length; i++) {
+        pool.insertChild(parentId, pastedParaIds[i], insertAt)
+        this.insertedParaIds.push(pastedParaIds[i])
         insertAt++
       }
     }
@@ -196,7 +214,9 @@ export class InsertNodesCommand extends PositionalCommand {
     // ================================================================
     // Step 5: 光标定位到粘贴内容末尾 (右半追加之前)
     // ================================================================
-    const cursorPara = pastedParas.length >= 2 ? last : currentPara
+    const cursorPara = pastedParaIds.length >= 2
+      ? pool.nodes.get(pastedParaIds[pastedParaIds.length - 1]) as Paragraph
+      : currentPara
     let cursorOffset = 0
     for (const cid of cursorPara.children) {
       const n = pool.nodes.get(cid) as { type?: string; text?: string } | undefined
@@ -206,11 +226,8 @@ export class InsertNodesCommand extends PositionalCommand {
     // ================================================================
     // Step 6: 右半追加到末段 (cursorPara)
     // ================================================================
-    if (rightText.length > 0) {
-      const tn = createTextNode(rightText, rightStyle)
-      pool.addNode(tn)
-      this.createdLeafIds.push(tn.id)
-      pool.insertChild(cursorPara.id, tn.id, cursorPara.children.length)
+    if (rightTextNodeId) {
+      pool.insertChild(cursorPara.id, rightTextNodeId, cursorPara.children.length)
     }
     pool.insertChildren(cursorPara.id, rightChildren, cursorPara.children.length)
     normalizeParagraph(cursorPara, pool)

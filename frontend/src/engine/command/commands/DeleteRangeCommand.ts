@@ -26,6 +26,7 @@ import type { ICommand } from '../ICommand'
 import { CommandContext, StatePatch, SerializedCommand, PositionalCommand } from '../ICommand'
 import { InsertTextCommand } from './InsertTextCommand'
 import { normalizeParagraph } from './ParagraphUtils'
+import { MintedOnce } from './MintedNodes'
 import { createTextNode } from '../../document/factory/ElementFormatter'
 
 /** 段落删除前的完整子节点快照 (供 invert 精确还原) */
@@ -38,6 +39,19 @@ function cloneNode(node: BaseNode): BaseNode {
   return JSON.parse(JSON.stringify(node)) as BaseNode
 }
 
+/** 段落显示长度 (文本按字符数, 非文本原子节点按 1) */
+function paragraphCharLength(pool: NodePool, para: Paragraph): number {
+  let len = 0
+  for (const id of para.children) {
+    const node = pool.nodes.get(id)
+    if (!node) continue
+    len += (node as unknown as { type?: string }).type === 'text'
+      ? ((node as unknown as TextNode).text ?? '').length
+      : 1
+  }
+  return len
+}
+
 export class DeleteRangeCommand extends PositionalCommand {
   readonly type = 'delete-range'
   readonly startOffset: number
@@ -45,6 +59,8 @@ export class DeleteRangeCommand extends PositionalCommand {
   private _deletedText = ''
   /** 删除范围涉及非文本节点时捕获的整段快照; 否则保持 null (走文本反转) */
   private _paragraphSnapshot: ParagraphSnapshot | null = null
+  /** 铸造一次台账 (契约 §8.3): 空段落补的空文本节点在 redo 时复用同一 id */
+  private mint = new MintedOnce()
 
   get deletedText(): string { return this._deletedText }
 
@@ -69,8 +85,14 @@ export class DeleteRangeCommand extends PositionalCommand {
     if (!start || !end) return null
     if (this.startOffset >= this.endOffset) return null
 
-    // Step 1.5: 范围触及非文本节点时, 先快照整段 (供 invert 精确还原)
-    if (this.rangeTouchesNonText(pool, para, this.startOffset, this.endOffset)) {
+    // Step 1.5: 先快照整段 (供 invert 精确还原), 两种情形:
+    //   a) 范围触及非文本节点 —— 文本反转重建不出非文本节点 (既有);
+    //   b) 整段被删空 —— Step 4 会补一个空文本节点, 纯文本反转 (InsertTextCommand)
+    //      无法把它撤掉, 会留下一个多余的空文本节点。
+    // 两种都走 RestoreDeleteRangeCommand 精确还原, 否则 undo 不是精确逆 (契约 §8.3)。
+    const emptiesParagraph =
+      this.startOffset === 0 && this.endOffset >= paragraphCharLength(pool, para)
+    if (this.rangeTouchesNonText(pool, para, this.startOffset, this.endOffset) || emptiesParagraph) {
       this._paragraphSnapshot = {
         childIds: [...para.children],
         nodes: para.children.map(id => cloneNode(pool.nodes.get(id)!)),
@@ -137,9 +159,14 @@ export class DeleteRangeCommand extends PositionalCommand {
 
     // Step 4: 防止空段落僵尸 — 删除全部内容后至少保留一个空文本节点
     if (para.children.length === 0) {
-      const emptyText = createTextNode('')
-      para.children = [emptyText.id]
-      pool.addNode(emptyText as unknown as import('../../document/core/DocumentModel').BaseNode)
+      // 铸造一次 (契约 §8.3): redo 时补的空文本节点必须复用同一 id。逆操作走
+      // Step 1.5 的整段快照 (不经过这里), 故这里只需保证**重放**产出同一 id。
+      const [emptyTextId] = this.mint.run(pool, () => {
+        const emptyText = createTextNode('')
+        pool.addNode(emptyText as unknown as BaseNode)
+        return [emptyText.id]
+      })
+      para.children = [emptyTextId]
     }
 
     return {

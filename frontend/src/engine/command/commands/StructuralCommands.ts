@@ -28,9 +28,10 @@ import { NodeType } from '../../document/core/DocumentModel'
 import { createParagraph, createTextNode, createSection, extractStyle } from '../../document/factory/ElementFormatter'
 import type { NodePool } from '../../document/core/NodePool'
 import {
-  ensureHfArray, hfArrayOf, type HeaderFooterVariant,
+  ensureHfArray, hfArrayOf, trimHfArrayIfEmpty, type HeaderFooterVariant,
 } from '../../document/core/HeaderFooterRegions'
 import { normalizeParagraph } from './ParagraphUtils'
+import { MintedOnce, captureMintedSubtree } from './MintedNodes'
 import { resolveParagraphRegion, resolveBlockParent } from '../../state/CaretScope'
 import type { CursorState } from '../../state/EditorRuntimeState'
 import {
@@ -56,28 +57,20 @@ export function removeSubtree(pool: NodePool, rootId: string): void {
 
 /** 深拷贝 rootId 子树 → { id → node } 快照 (供表格 undo 恢复) */
 function cloneSubtree(pool: NodePool, rootId: string): Map<string, BaseNode> {
-  const ids: string[] = []
-  const stack = [rootId]
-  while (stack.length) {
-    const id = stack.pop()!
-    ids.push(id)
-    const node = pool.nodes.get(id)
-    const children = (node as unknown as { children?: readonly string[] } | undefined)?.children
-    if (children) for (const c of children) stack.push(c)
-  }
-  const cloned = JSON.parse(JSON.stringify(ids.map(id => pool.nodes.get(id)))) as BaseNode[]
-  const map = new Map<string, BaseNode>()
-  for (const n of cloned) if (n) map.set(n.id, n)
-  return map
+  // 单一实现: 与铸造侧台账共用 (契约 §8.3 / §11)
+  return captureMintedSubtree(pool, [rootId])
 }
 
-/** 新建空白段落 (含空 text 节点), 注册进 pool, 返回段落节点 */
-function createTrailingParagraph(pool: NodePool): Paragraph {
+/**
+ * 造一个空白尾段落 (空 text + para), **不注册进池**。
+ *
+ * 「铸造一次、重放复用」的命令 (即 forward 会跑多次的) 一律用本函数 + MintedOnce:
+ * 由 MintedOnce 负责把节点登记进池, 并在重放时按同一批 id 重新注册 (契约 §8.3)。
+ */
+function buildTrailingParagraph(): { text: TextNode; para: Paragraph } {
   const text = createTextNode('')
   const para = createParagraph([text.id])
-  pool.addNode(text)
-  pool.addNode(para)
-  return para
+  return { text, para }
 }
 
 // ================================================================
@@ -107,8 +100,32 @@ interface RemovalSnapshot {
   subtree: Map<string, BaseNode>
 }
 
-/** 解析 header/footer/footnotes 文档级数组 (非 children 数组) */
-function docArrayOf(doc: DocumentTree, container: Container): string[] {
+/** 只读空数组回退 (缺失容器 ≡ 空; 共享冻结实例, 防止误写) */
+const NO_IDS: readonly string[] = Object.freeze([])
+
+/** 只读解析 header/footer/footnotes 文档级数组 —— **不物化**缺失字段 */
+function docArrayOfReadonly(doc: DocumentTree, container: Container): readonly string[] {
+  switch (container.kind) {
+    case 'header':
+      return hfArrayOf(doc, 'header', container.variant ?? 'default')
+    case 'footer':
+      return hfArrayOf(doc, 'footer', container.variant ?? 'default')
+    case 'footnotes':
+      return doc.footnotes ?? NO_IDS
+    case 'body': case 'paragraph': case 'cell': case 'section':
+      throw new Error('pool-based container not handled here')
+  }
+}
+
+/**
+ * 受控**写**入口 —— 按需惰性创建文档级数组。
+ *
+ * 读路径一律走 `docArrayOfReadonly`。用写入口做只读查询会在文档里凭空造出
+ * 它从未有过的键 (`firstPageHeader: []`), 而契约 §7.9 明说这些可选字段
+ * 「缺失 ≡ 无内容, 不预创建、不补默认值」—— 键的存在性本身是被序列化出去的
+ * 文档形状, 所以「查一下」不该改文档 (§6.2)。
+ */
+function docArrayOfWritable(doc: DocumentTree, container: Container): string[] {
   switch (container.kind) {
     case 'header':
       return ensureHfArray(doc, 'header', container.variant ?? 'default')
@@ -119,6 +136,28 @@ function docArrayOf(doc: DocumentTree, container: Container): string[] {
       return doc.footnotes
     case 'body': case 'paragraph': case 'cell': case 'section':
       throw new Error('pool-based container not handled here')
+  }
+}
+
+/**
+ * 移除后收尾: 可选文档级数组被删空 → 删回「缺失」态 (契约 §7.9 / §8.3)。
+ *
+ * 不这么做的话, 「插入脚注 → 撤销」会留下 `footnotes: []` —— 语义等价于缺失,
+ * 但字节不等, 撤销就不是精确逆。default 页眉/页脚是预置的非可选字段, 留 `[]`。
+ */
+function trimDocArrayIfEmpty(doc: DocumentTree, container: Container): void {
+  switch (container.kind) {
+    case 'header':
+      trimHfArrayIfEmpty(doc, 'header', container.variant ?? 'default')
+      return
+    case 'footer':
+      trimHfArrayIfEmpty(doc, 'footer', container.variant ?? 'default')
+      return
+    case 'footnotes':
+      if (doc.footnotes && doc.footnotes.length === 0) delete doc.footnotes
+      return
+    default:
+      return
   }
 }
 
@@ -154,7 +193,7 @@ function containerIndexOf(
 ): number {
   const poolParent = poolParentIdOf(doc, container)
   if (poolParent !== null) return pool.getChildren(poolParent).indexOf(nodeId)
-  return docArrayOf(doc, container).indexOf(nodeId)
+  return docArrayOfReadonly(doc, container).indexOf(nodeId)
 }
 
 /**
@@ -185,7 +224,34 @@ function insertIntoContainer(
     pool.insertChild(poolParent, rootId, index)
     return
   }
-  docArrayOf(doc, container).splice(index, 0, rootId)
+  docArrayOfWritable(doc, container).splice(index, 0, rootId)
+}
+
+/**
+ * 按快照把表格子树**原地**恢复回其容器 (契约 §8.3 / §31.6)。
+ *
+ * 三个消费点共用同一实现 (§11): `RestoreTableCommand`(表格结构 undo)、
+ * `TableStructureCommand`(redo 重放)、以及任何"表子树 after 快照"恢复。
+ * 流程: 摘除当前 table 子树 → 按 id 重新注册快照节点 → 插回原下标。
+ * 全程 id 不变, 这正是 §8.3 要求的「重放不换身份」。
+ */
+function restoreTableFromSnapshot(
+  pool: NodePool, doc: DocumentTree, container: Container, index: number,
+  tableId: string, snapshot: Map<string, BaseNode>,
+): void {
+  // 1. 摘除当前 table 子树 (真容器, 契约 §31.6)
+  const cur = containerIndexOf(pool, doc, container, tableId)
+  if (cur >= 0) {
+    const poolParent = poolParentIdOf(doc, container)
+    if (poolParent !== null) pool.detachChild(poolParent, cur)
+    else docArrayOfWritable(doc, container).splice(cur, 1)
+    removeSubtree(pool, tableId)
+  }
+  // 2. 重新注册快照节点 (id 保留)
+  for (const [, node] of snapshot) pool.addNode(node)
+  // 3. 回到原位置 (下标夹取到当前长度)
+  const at = Math.min(index, containerLengthOf(pool, doc, container))
+  insertIntoContainer(pool, doc, container, at, tableId)
 }
 
 export class RemoveNodesCommand implements ICommand {
@@ -212,6 +278,8 @@ export class RemoveNodesCommand implements ICommand {
    */
   private createdParaId: string | null = null
   private ensureBodyParagraph: boolean
+  /** 铸造一次台账 (契约 §8.3): redo 补的空段落必须复用同一 id */
+  private mint = new MintedOnce()
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -247,29 +315,44 @@ export class RemoveNodesCommand implements ICommand {
           continue
         }
 
-        // header/footer/footnotes 是文档级 string[] (非 children 数组), 直接 splice
-        const arr = docArrayOf(doc, container)
-        const idx = arr.indexOf(nodeId)
+        // header/footer/footnotes 是文档级 string[] (非 children 数组), 直接 splice。
+        // 先**只读**定位: 未命中就别碰写入口, 否则「删一个不存在的节点」会把
+        // 可选数组凭空物化出来 (契约 §7.9 不预创建)。
+        const idx = docArrayOfReadonly(doc, container).indexOf(nodeId)
         this.snapshots.push({ container, index: idx, rootId: nodeId, subtree })
-        if (idx >= 0) { arr.splice(idx, 1); removeSubtree(pool, nodeId) }
-        else removeSubtree(pool, nodeId)
+        if (idx >= 0) {
+          docArrayOfWritable(doc, container).splice(idx, 1)
+          removeSubtree(pool, nodeId)
+        } else {
+          removeSubtree(pool, nodeId)
+        }
       }
     }
+
+    // 可选文档级数组被删空 → 删回「缺失」态, 使 undo 是精确逆 (契约 §7.9 / §8.3)
+    for (const { container } of this.removals) trimDocArrayIfEmpty(doc, container)
 
     if (doc.comments && this.removeThreadIds.length > 0) {
       const ids = new Set(this.removeThreadIds)
       doc.comments = doc.comments.filter(t => !ids.has(t.id))
+      // 删空 → 删键 (同 §7.9 可选数组的理由: 键的存在性是文档形状的一部分)
+      if (doc.comments.length === 0) delete doc.comments
     }
 
     // body 被删空 → 补一个空段落, 保证编辑器仍有可落的 caret target。
     // 光标随之指向它; 没有可落点时 (restoreCursor undefined) 这是唯一有效的落点。
     let cursor = this.restoreCursor
     if (this.ensureBodyParagraph && pool.getChildren(doc.id).length === 0) {
-      const para = createParagraph()
-      pool.addNode(para)
-      pool.insertChild(doc.id, para.id, 0)
-      this.createdParaId = para.id
-      cursor = { paragraphPath: [doc.id, para.id], offset: 0, visible: true }
+      // 铸造一次 (契约 §8.3): invert 的 RestoreNodesCommand 按 createdParaId 摘除
+      // 这个补段落; redo 时 id 漂移会让「精确逆」失效 (摘不掉的僵尸空段)。
+      const [paraId] = this.mint.run(pool, () => {
+        const para = createParagraph()
+        pool.addNode(para)
+        return [para.id]
+      })
+      pool.insertChild(doc.id, paraId, 0)
+      this.createdParaId = paraId
+      cursor = { paragraphPath: [doc.id, paraId], offset: 0, visible: true }
     }
 
     return { cursor, invalidation: 'flowbody' }
@@ -353,6 +436,8 @@ export class InsertInlineNodeCommand implements ICommand {
   private offset: number
   private makeNode: () => BaseNode
   private insertedNodeId: string | null = null
+  /** 铸造一次台账 (契约 §8.3) */
+  private mint = new MintedOnce()
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -369,42 +454,55 @@ export class InsertInlineNodeCommand implements ICommand {
     const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
     if (!para?.children) return null
 
-    const node = this.makeNode()
-    pool.addNode(node)
-    this.insertedNodeId = node.id
-
     // 字符偏移 → (textNodeId, localOffset)。localOffset 必须被使用: 只按
     // textNodeId 插入会把内联节点永远丢到该文本节点**末尾**, 光标落在长文本
     // 中间时"插入不到光标位置" (与 InsertTextCommand 同语义: 文本中间需拆分)。
+    //
+    // 落点解析每次 forward 都做 (undo 已还原段落, 结果与首次一致); 铸造只在
+    // 首次做 (契约 §8.3)。
     const resolved = pool.resolveCharOffset(paraId, this.offset)
     const target = resolved ? pool.nodes.get(resolved.textNodeId) : undefined
     const targetIdx = resolved ? para.children.indexOf(resolved.textNodeId) : -1
+    const textTarget = resolved && targetIdx >= 0 && target &&
+      (target as unknown as { type?: string }).type === 'text'
+      ? (target as unknown as TextNode)
+      : undefined
 
-    if (resolved && targetIdx >= 0 && target && (target as unknown as { type?: string }).type === 'text') {
-      const textNode = target as unknown as TextNode
-      const localOffset = resolved.localOffset
-      if (localOffset <= 0) {
-        // 光标在该文本节点起始处 → 插到它之前 (不产生空文本节点)
-        pool.insertChild(paraId, node.id, targetIdx)
-      } else if (localOffset >= textNode.text.length) {
-        // 光标在该文本节点末尾 → 插到它之后
-        pool.insertChild(paraId, node.id, targetIdx + 1)
-      } else {
-        // 光标在文本中间 → 按偏移拆成左右两半, 内联节点落于其间
-        // (与 InsertControlCommand 控件落位同语义)
-        const before = textNode.text.slice(0, localOffset)
-        const after = textNode.text.slice(localOffset)
-        const afterNode = createTextNode(after, extractStyle(textNode))
+    // 光标在文本中间 → 需要拆成左右两半, 内联节点落于其间
+    // (与 InsertControlCommand 控件落位同语义)
+    const localOffset = resolved ? resolved.localOffset : 0
+    const splitsMiddle = !!textTarget && localOffset > 0 && localOffset < textTarget.text.length
+
+    // 铸造一次 (契约 §8.3): 内联节点 (以及文本中间分支拆出的后半段) 在 redo 时
+    // 必须复用同一批 id。
+    const roots = this.mint.run(pool, () => {
+      const n = this.makeNode()
+      pool.addNode(n)
+      const ids = [n.id]
+      if (splitsMiddle && textTarget) {
+        const afterNode = createTextNode(textTarget.text.slice(localOffset), extractStyle(textTarget))
         pool.addNode(afterNode)
-        pool.updateNode(textNode.id, { text: before } as Partial<TextNode>)
-        pool.insertChildren(paraId, [node.id, afterNode.id], targetIdx + 1)
+        ids.push(afterNode.id)
       }
+      return ids
+    })
+    const nodeId = roots[0]
+    const afterNodeId: string | undefined = roots.length > 1 ? roots[1] : undefined
+    this.insertedNodeId = nodeId
+
+    // 落位 —— 每次 forward 都做
+    if (textTarget && splitsMiddle && afterNodeId) {
+      pool.updateNode(textTarget.id, { text: textTarget.text.slice(0, localOffset) } as Partial<TextNode>)
+      pool.insertChildren(paraId, [nodeId, afterNodeId], targetIdx + 1)
+    } else if (textTarget) {
+      // 起始处 → 之前; 末尾 → 之后
+      pool.insertChild(paraId, nodeId, targetIdx + (localOffset <= 0 ? 0 : 1))
     } else if (resolved && targetIdx >= 0) {
       // 目标是内联非文本节点 (控件/图片/域): localOffset 0=前, 1=后
-      pool.insertChild(paraId, node.id, targetIdx + (resolved.localOffset >= 1 ? 1 : 0))
+      pool.insertChild(paraId, nodeId, targetIdx + (resolved.localOffset >= 1 ? 1 : 0))
     } else {
       // 空段落 / 越界 / 悬空引用 → 追加到末尾
-      pool.insertChild(paraId, node.id, para.children.length)
+      pool.insertChild(paraId, nodeId, para.children.length)
     }
     normalizeParagraph(para as unknown as Paragraph, pool)
     // 光标移到内联节点「之后」(内联节点 = 1 原子字符, 与 InsertControlCommand 同
@@ -449,6 +547,8 @@ export class InsertBlockCommand implements ICommand {
   private insertedRootIds: string[] = []
   /** forward 时解析出的真实容器 (invert 必须按同一容器恢复, 契约 §31.6) */
   private insertContainer: Container = { kind: 'body' }
+  /** 铸造一次台账 (契约 §8.3): 块与尾段落重放时复用同一批 id */
+  private mint = new MintedOnce()
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -474,6 +574,9 @@ export class InsertBlockCommand implements ICommand {
     // 仅支持 pool 内容器 body / section。cell / header / footer 维持既有语义
     // (表格 cell 只放段落, 不承载块级插入; 页眉页脚同理) —— 这是**有意的**拒绝,
     // 不是遍历不到; 不在此扩权, 以免把块级结构写进不该有的容器。
+    //
+    // 注意: 定位在**每次** forward 都做 (重放时锚点段落已由 undo 还原, 位置可能
+    // 与首次相同但必须重算)。铸造只在首次做 (契约 §8.3)。
     const region = resolveParagraphRegion(paraId, doc, pool)
     if (!region || (region.type !== 'body' && region.type !== 'section')) return null
     const container: Container = region.type === 'section'
@@ -482,26 +585,40 @@ export class InsertBlockCommand implements ICommand {
     this.insertContainer = container
     const idx = region.index
 
-    const block = this.makeBlock(pool)
-    insertIntoContainer(pool, doc, container, idx + 1, block.id)
-    this.insertedRootIds = [block.id]
+    // 铸造一次: 块 (makeBlock 回调) + 尾段落。both 都只在**首次** forward 执行,
+    // 之后按快照重新注册 —— 否则 redo 铸出的新 id 会让后续命令 (锚定在新建块/
+    // 尾段落上的那些) 构造时捕获的引用悬空, 链无声断掉 (契约 §8.3)。
+    const roots = this.mint.run(pool, () => {
+      const block = this.makeBlock(pool)
+      const ids = [block.id]
+      if (this.withTrailingParagraph) {
+        const { text, para } = buildTrailingParagraph()
+        pool.addNode(text)
+        pool.addNode(para)
+        ids.push(para.id)
+      }
+      return ids
+    })
+    const blockId = roots[0]
+    const trailId: string | undefined = roots.length > 1 ? roots[1] : undefined
+    this.insertedRootIds = trailId ? [blockId, trailId] : [blockId]
+
+    // 放回容器 —— 每次 forward 都做 (重放时节点只是被重新注册, 还不在容器里)
+    insertIntoContainer(pool, doc, container, idx + 1, blockId)
 
     let cursor: Partial<CursorState> | undefined
-    if (this.withTrailingParagraph) {
-      const trail = createTrailingParagraph(pool)
+    if (trailId) {
       const afterBlock = containerLengthOf(pool, doc, container) === 0
         ? 0
-        : containerIndexOf(pool, doc, container, block.id) + 1
-      insertIntoContainer(pool, doc, container, afterBlock, trail.id)
-      this.insertedRootIds.push(trail.id)
+        : containerIndexOf(pool, doc, container, blockId) + 1
+      insertIntoContainer(pool, doc, container, afterBlock, trailId)
       if (this.moveCursorToTrailing) {
-        cursor = { paragraphPath: [doc.id, trail.id], offset: 0, visible: true }
+        cursor = { paragraphPath: [doc.id, trailId], offset: 0, visible: true }
       }
     }
 
     return { cursor, invalidation: 'flowbody' }
   }
-
   invert(_ctx: CommandContext): ICommand | null {
     return new RemoveNodesCommand(
       generateCommandId(), Date.now(), this.author,
@@ -533,6 +650,8 @@ export class InsertFootnoteCommand implements ICommand {
   private makeContent: (pool: NodePool) => FootnoteContent
   private insertedContentId: string | null = null
   private insertedRefId: string | null = null
+  /** 铸造一次台账 (契约 §8.3): 脚注内容 + 引用在 redo 时复用同一批 id */
+  private mint = new MintedOnce()
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -553,25 +672,32 @@ export class InsertFootnoteCommand implements ICommand {
     const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
     if (!para?.children) return null
 
-    // 脚注内容 (含空段落) + 注册到 doc.footnotes
-    const fnContent = this.makeContent(pool)
-    this.insertedContentId = fnContent.id
-    if (!doc.footnotes) doc.footnotes = []
-    doc.footnotes.push(fnContent.id)
+    // 铸造一次 (契约 §8.3): 脚注内容 (含内部空段落) 与引用在 redo 时必须复用
+    // 同一批 id —— 后续命令可能以引用 id 为目标 ("光标落到脚注后继续打字")。
+    const roots = this.mint.run(pool, () => {
+      const fnContent = this.makeContent(pool)   // 内部注册 content + 段落 + 文本
+      const fnRef = this.makeRef(fnContent.id)
+      pool.addNode(fnRef)
+      fnContent.refId = fnRef.id
+      return [fnContent.id, fnRef.id]
+    })
+    const contentId = roots[0]
+    const refId = roots[1]
+    this.insertedContentId = contentId
+    this.insertedRefId = refId
 
-    // 脚注引用, 插入正文
-    const fnRef = this.makeRef(fnContent.id)
-    pool.addNode(fnRef)
-    fnContent.refId = fnRef.id
-    this.insertedRefId = fnRef.id
+    // 落位 —— 每次 forward 都做。footnotes 是 doc 级 string[] (非池 children),
+    // undo 时已被 RemoveNodesCommand 摘掉, 故不能放进 once 区, 否则重放后内容丢失。
+    if (!doc.footnotes) doc.footnotes = []
+    if (!doc.footnotes.includes(contentId)) doc.footnotes.push(contentId)
 
     const resolved = pool.resolveCharOffset(paraId, this.offset)
     if (resolved) {
       const idx = para.children.indexOf(resolved.textNodeId)
-      if (idx >= 0) pool.insertChild(paraId, fnRef.id, idx + 1)
-      else pool.insertChild(paraId, fnRef.id, para.children.length)
+      if (idx >= 0) pool.insertChild(paraId, refId, idx + 1)
+      else pool.insertChild(paraId, refId, para.children.length)
     } else {
-      pool.insertChild(paraId, fnRef.id, para.children.length)
+      pool.insertChild(paraId, refId, para.children.length)
     }
 
     return { invalidation: 'paragraph' }
@@ -858,6 +984,8 @@ export class EnsureHeaderFooterParagraphCommand implements ICommand {
   /** 变体 (契约 §7.9) — 决定写入哪一个数组 (header / firstPageHeader / evenPageHeader …) */
   private variant: HeaderFooterVariant
   private createdParaId: string | null = null
+  /** 铸造一次台账 (契约 §8.3) */
+  private mint = new MintedOnce()
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -872,10 +1000,19 @@ export class EnsureHeaderFooterParagraphCommand implements ICommand {
     if (ctx.mode !== 'local') return null
     const { pool, doc } = ctx
     const arr = ensureHfArray(doc, this.section, this.variant)
-    if (arr.length > 0) return null
-    const para = createTrailingParagraph(pool)
-    arr.push(para.id)
-    this.createdParaId = para.id
+    // 守卫只在**首次** forward 生效: 重放时该数组非空正是本命令自己的产物,
+    // 若仍按"已有内容就 no-op"提前返回, redo 会被静默丢弃、历史被无声缩短
+    // (栈把命令从 redoStack 弹出后不再放回 undoStack)。
+    if (arr.length > 0 && !this.mint.replaying) return null
+
+    const [paraId] = this.mint.run(pool, () => {
+      const { text, para } = buildTrailingParagraph()
+      pool.addNode(text)
+      pool.addNode(para)
+      return [para.id]
+    })
+    arr.push(paraId)
+    this.createdParaId = paraId
     return { invalidation: 'full' }
   }
 
@@ -906,6 +1043,8 @@ export class EnsureBodyParagraphCommand implements ICommand {
   readonly timestamp: number
   readonly author: string
   private createdParaId: string | null = null
+  /** 铸造一次台账 (契约 §8.3) */
+  private mint = new MintedOnce()
 
   constructor(id: string, timestamp: number, author: string) {
     this.id = id; this.timestamp = timestamp; this.author = author
@@ -917,13 +1056,21 @@ export class EnsureBodyParagraphCommand implements ICommand {
     // 已有内容则视为无操作 (body 非空即无需补段落)。
     // 口径经 NodePool: body.children 是 children 数组 (契约 §6.1 PROBLEM B
     // choke point), 读写都必须走受控 API, 不直接触碰数组。
-    if (pool.getChildren(doc.id).length > 0) return null
-    const para = createParagraph()
-    pool.addNode(para)
-    pool.insertChild(doc.id, para.id, 0)
-    this.createdParaId = para.id
+    //
+    // 守卫只在**首次** forward 生效: 重放时 body 里那个段落正是本命令自己的
+    // 产物, 若仍按"非空就 no-op"提前返回, redo 会被静默丢弃 (契约 §8.3)。
+    if (pool.getChildren(doc.id).length > 0 && !this.mint.replaying) return null
+
+    const [paraId] = this.mint.run(pool, () => {
+      const para = createParagraph()
+      pool.addNode(para)
+      return [para.id]
+    })
+    this.createdParaId = paraId
+    // 放回容器 —— 每次 forward 都做 (重放时节点只是被重新注册, 还不在 body 里)
+    pool.insertChild(doc.id, paraId, 0)
     return {
-      cursor: { paragraphPath: [doc.id, para.id], offset: 0, visible: true },
+      cursor: { paragraphPath: [doc.id, paraId], offset: 0, visible: true },
       invalidation: 'flowbody',
     }
   }
@@ -955,6 +1102,8 @@ export class EnsureCellParagraphCommand implements ICommand {
   /** undo 时恢复的光标 (通常为导航前的源段落) */
   private restoreCursor?: Partial<CursorState>
   private createdParaId: string | null = null
+  /** 铸造一次台账 (契约 §8.3) */
+  private mint = new MintedOnce()
 
   constructor(
     id: string, timestamp: number, author: string, cellId: string,
@@ -973,14 +1122,20 @@ export class EnsureCellParagraphCommand implements ICommand {
     const { pool } = ctx
     const cell = pool.nodes.get(this.cellId) as { children?: readonly string[] } | undefined
     if (!cell) return null
-    const children = cell.children ?? []
-    for (const id of children) {
-      if (pool.nodes.get(id)?.type === 'paragraph') return null  // 已有段落
+    // 守卫只在**首次** forward 生效 (契约 §8.3): 重放时那个段落正是本命令的产物
+    if (!this.mint.replaying) {
+      const children = cell.children ?? []
+      for (const id of children) {
+        if (pool.nodes.get(id)?.type === 'paragraph') return null  // 已有段落
+      }
     }
-    const para = createParagraph()
-    pool.addNode(para)
-    cell.children = [...children, para.id]
-    this.createdParaId = para.id
+    const [paraId] = this.mint.run(pool, () => {
+      const para = createParagraph()
+      pool.addNode(para)
+      return [para.id]
+    })
+    this.createdParaId = paraId
+    cell.children = [...(cell.children ?? []), paraId]
     return { invalidation: 'table' }
   }
 
@@ -1014,6 +1169,14 @@ export class TableStructureCommand implements ICommand {
   /** 返回 true 表示实际变更; false 表示无操作 (不入 undo 栈) */
   private mutate: (pool: NodePool) => boolean
   private snapshot: Map<string, BaseNode> | null = null
+  /**
+   * 首次 forward 后的「表子树」快照 (契约 §8.3)。
+   *
+   * `mutate` 是黑盒回调 (经 TableOps), 会铸造新行/格并就地改写 span —— 重放时
+   * **重跑它**既换 id 又叠加第二次变更。故首跑后抓一份 after 快照, 重放直接按它
+   * 原地恢复, 与 `RestoreTableCommand` 同款机制 (共用 `restoreTableFromSnapshot`)。
+   */
+  private afterSnapshot: Map<string, BaseNode> | null = null
   private parentIndex = -1
   /** forward 时解析出的真实容器 (invert 必须按同一容器恢复, 契约 §31.6) */
   private parentContainer: Container = { kind: 'body' }
@@ -1035,12 +1198,22 @@ export class TableStructureCommand implements ICommand {
     if (!parent) return null
     this.parentContainer = parent.container
     this.parentIndex = parent.index
+
+    // 重放 (契约 §8.3): 不重跑 mutate, 按首跑的 after 快照原地恢复 → id 全程不变。
+    if (this.afterSnapshot) {
+      restoreTableFromSnapshot(
+        pool, doc, this.parentContainer, this.parentIndex, this.tableId, this.afterSnapshot,
+      )
+      return { invalidation: 'table' }
+    }
+
     this.snapshot = cloneSubtree(pool, this.tableId)
     const changed = this.mutate(pool)
     if (!changed) {
       this.snapshot = null
       return null
     }
+    this.afterSnapshot = cloneSubtree(pool, this.tableId)
     return { invalidation: 'table' }
   }
 
@@ -1083,23 +1256,9 @@ class RestoreTableCommand implements ICommand {
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
     const { pool, doc } = ctx
-
-    // 1. 摘除当前 table 子树 (真容器, 契约 §31.6)
-    const cur = containerIndexOf(pool, doc, this.parentContainer, this.tableId)
-    if (cur >= 0) {
-      const poolParent = poolParentIdOf(doc, this.parentContainer)
-      if (poolParent !== null) pool.detachChild(poolParent, cur)
-      else docArrayOf(doc, this.parentContainer).splice(cur, 1)
-      removeSubtree(pool, this.tableId)
-    }
-
-    // 2. 重新注册快照节点
-    for (const [, node] of this.snapshot) pool.addNode(node)
-
-    // 3. 回到原位置
-    const at = Math.min(this.parentIndex, containerLengthOf(pool, doc, this.parentContainer))
-    insertIntoContainer(pool, doc, this.parentContainer, at, this.tableId)
-
+    restoreTableFromSnapshot(
+      pool, doc, this.parentContainer, this.parentIndex, this.tableId, this.snapshot,
+    )
     return { invalidation: 'table' }
   }
 
@@ -1217,6 +1376,8 @@ export class InsertSectionCommand implements ICommand {
   private newSectionId: string | null = null
   /** forward 时确定的容器身份 (invert 按同一容器恢复, 契约 §31.6) */
   private insertContainer: Container | null = null
+  /** 铸造一次台账 (契约 §8.3): redo 复用首次的节点 id, 不重新铸造 */
+  private mint = new MintedOnce()
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -1243,26 +1404,38 @@ export class InsertSectionCommand implements ICommand {
     const legal = this.containerId === doc.id || container?.type === NodeType.SECTION
     if (!legal) return null
 
-    const section = createSection()
-    if (this.opts.sectionCode !== undefined && this.opts.sectionCode !== '') {
-      section.sectionCode = this.opts.sectionCode
-    }
-    pool.addNode(section)
+    // 铸造一次 (契约 §8.3)。once 区里包含「铸造 + 把初始段落插进节内」——
+    // 这些在重放时都不能重做, 否则子节点会被插两次。
+    const [sectionId, paraId] = this.mint.run(pool, () => {
+      const section = createSection()
+      if (this.opts.sectionCode !== undefined && this.opts.sectionCode !== '') {
+        section.sectionCode = this.opts.sectionCode
+      }
+      pool.addNode(section)
+      const roots: string[] = [section.id]
+      if (this.opts.withInitialParagraph !== false) {
+        const { text, para } = buildTrailingParagraph()
+        pool.addNode(text)
+        pool.addNode(para)
+        pool.insertChild(section.id, para.id, 0)
+        roots.push(para.id)
+      }
+      return roots
+    })
 
-    const len = pool.getChildren(this.containerId).length
-    const at = Math.max(0, Math.min(this.index, len))
-    pool.insertChild(this.containerId, section.id, at)
-    this.newSectionId = section.id
+    this.newSectionId = sectionId
     this.insertContainer = this.containerId === doc.id
       ? { kind: 'body' }
       : { kind: 'section', sectionId: this.containerId }
 
-    let cursor: Partial<CursorState> | undefined
-    if (this.opts.withInitialParagraph !== false) {
-      const para = createTrailingParagraph(pool)
-      pool.insertChild(section.id, para.id, 0)
-      cursor = { paragraphPath: [doc.id, para.id], offset: 0, visible: true }
-    }
+    // 把根放回容器 —— 每次 forward 都做 (重放时节点只是被重新注册, 还不在容器里)
+    const len = pool.getChildren(this.containerId).length
+    const at = Math.max(0, Math.min(this.index, len))
+    pool.insertChild(this.containerId, sectionId, at)
+
+    const cursor: Partial<CursorState> | undefined = paraId
+      ? { paragraphPath: [doc.id, paraId], offset: 0, visible: true }
+      : undefined
 
     return { cursor, invalidation: 'flowbody' }
   }

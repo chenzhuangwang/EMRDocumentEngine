@@ -40,9 +40,10 @@ import {
   createFieldNode, createParagraph, createSmartTextNode, createTableCell,
   createTableRow, createTextNode, extractStyle,
 } from '../../document/factory/ElementFormatter'
-import type { TemplateDefinitionStore } from '../../template/TemplateDefinition'
+import type { TemplateDefinitionStore, TemplateDefinition } from '../../template/TemplateDefinition'
 import type { CommandContext, ICommand, SerializedCommand, StatePatch } from '../ICommand'
 import { generateCommandId } from '../ICommand'
+import { MintedOnce } from './MintedNodes'
 
 /** 深拷贝纯数据 (与 MergeParagraphCommand / UpdateControlElementCommand 同法)。
  *  undefined 原样返回 —— JSON.parse(JSON.stringify(undefined)) 会抛。
@@ -81,6 +82,10 @@ export class AppendTableRowCommand implements ICommand {
   private createdRowId: string | null = null
   /** 本次克隆写进 store 的 nodeId, undo 时逐条删除, 避免孤儿定义 */
   private createdStoreIds: string[] = []
+  /** 铸造一次台账 (契约 §8.3): 新行及其子树在 redo 时复用同一批 id */
+  private mint = new MintedOnce()
+  /** 首次铸造时写入 store 的定义 (nodeId → 定义), 重放时按同一批 id 重写 */
+  private mintedDefs: Array<{ nodeId: string; def: TemplateDefinition }> = []
 
   constructor(id: string, timestamp: number, author: string, tableId: string) {
     this.id = id
@@ -103,19 +108,30 @@ export class AppendTableRowCommand implements ICommand {
     const sourceRow = pool.nodes.get(rowIds[rowIds.length - 1]) as TableRow | undefined
     if (!sourceRow || sourceRow.type !== NodeType.ROW) return null
 
-    // redo 会再次 forward → 重置跟踪状态, 否则 createdStoreIds 会累积
-    this.createdRowId = null
+    // 铸造一次 (契约 §8.3): 新行 + 克隆出的 cell/段落/内联节点在 redo 时复用
+    // 同一批 id。cloneInline 内写 store 的定义另存在 mintedDefs, 供重放重写。
+    const roots = this.mint.run(pool, () => {
+      this.mintedDefs.length = 0
+      const newCells = sourceRow.children
+        .map((cellId) => this.cloneCell(cellId, pool, templateDefinitions))
+        .filter((c): c is TableCell => c !== null)
+      const newRow = createTableRow(newCells, sourceRow.height)
+      pool.addNode(newRow)
+      return [newRow.id]
+    })
+    const rowId = roots[0]
+    this.createdRowId = rowId
+
+    // 落位 —— 每次 forward 都做 (重放时新行只是被重新注册, 尚未在表里)
+    pool.insertChild(this.tableId, rowId, rowIds.length)
+
+    // store 在 undo 时被删空 (UndoAppendTableRowCommand) → 重放按同一批 id 重写,
+    // 否则新行的控件丢掉设计期定义 (契约 §12.4 孤儿)。
     this.createdStoreIds = []
-
-    const newCells = sourceRow.children
-      .map((cellId) => this.cloneCell(cellId, pool, templateDefinitions))
-      .filter((c): c is TableCell => c !== null)
-
-    const newRow = createTableRow(newCells, sourceRow.height)
-    pool.addNode(newRow)
-    pool.insertChild(this.tableId, newRow.id, rowIds.length)
-
-    this.createdRowId = newRow.id
+    for (const { nodeId, def } of this.mintedDefs) {
+      templateDefinitions?.set(nodeId, deepClone(def))
+      this.createdStoreIds.push(nodeId)
+    }
     return { invalidation: 'table' }
   }
 
@@ -211,7 +227,8 @@ export class AppendTableRowCommand implements ICommand {
 
         if (def && defs) {
           defs.set(node.id, deepClone(def))
-          this.createdStoreIds.push(node.id)
+          // 记下「nodeId → 定义」, 重放时按同一 id 重写 (契约 §8.3)
+          this.mintedDefs.push({ nodeId: node.id, def: deepClone(def) })
         }
         return node.id
       }

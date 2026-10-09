@@ -14,12 +14,15 @@ import type { Paragraph, TextNode, DocumentTree } from '../../document/core/Docu
 import { createParagraph, createTextNode, extractStyle } from '../../document/factory/ElementFormatter'
 import { ICommand, CommandContext, StatePatch, SerializedCommand, PositionalCommand } from '../ICommand'
 import { MergeParagraphCommand } from './MergeParagraphCommand'
+import { MintedOnce } from './MintedNodes'
 import { resolveParagraphRegion, isPoolRegion } from '../../state/CaretScope'
 
 export class SplitParagraphCommand extends PositionalCommand {
   readonly type = 'split-paragraph'
   readonly offset: number
   private newParaId?: string
+  /** 铸造一次台账 (契约 §8.3): redo 复用首次的段落/文本节点 id */
+  private mint = new MintedOnce()
 
   constructor(id: string, timestamp: number, author: string, path: string[], offset: number) {
     super(id, timestamp, author, path)
@@ -32,82 +35,79 @@ export class SplitParagraphCommand extends PositionalCommand {
     const para = pool.nodes.get(this.path[this.path.length - 1]) as Paragraph | undefined
     if (!para) return null
 
-    // 1. 按字符偏移定位 TextNode + localOffset
+    // 1. 定位分裂点并对**原段落**截断 —— 每次 forward 都要做:
+    //    undo 已把原段落还原, 重放必须重新切这一刀。
+    //    (空段落 resolveCharOffset 返回 null → 直接落成"新空段落")
     const resolved = pool.resolveCharOffset(para.id, this.offset)
-
-    if (!resolved) {
-      // 空段落 (children=[]) → 创建新空段落, 光标移到新段落
-      return this.splitEmptyParagraph(para, pool, doc)
-    }
-
-    const { textNodeId, localOffset } = resolved
-    const targetNode = pool.nodes.get(textNodeId) as TextNode | undefined
-    if (!targetNode) return null
-    const isText = (targetNode as unknown as { type?: string }).type === 'text'
-
-    // 段落内 children 相对 index; 分裂点 = splitIdx(+1 若是 text 或 localOffset>=1)
-    const splitIdx = para.children.indexOf(textNodeId)
-    let rightChildren: string[]
+    let rightChildren: string[] = []
     let afterText: string | null = null
+    let styleSource: TextNode | undefined
 
-    if (isText) {
-      const textNode = targetNode as TextNode
-      const beforeText = textNode.text.slice(0, localOffset)
-      afterText = textNode.text.slice(localOffset)
-      // 总是截断原始 TextNode (beforeText 可能为空字符串, 必须更新)
-      pool.updateNode(textNode.id, { text: beforeText } as Partial<TextNode>)
-      // 截断原始段落 children: 只保留到 splitIdx (含被截断的 TextNode)
-      rightChildren = para.children.slice(splitIdx + 1)
-      if (rightChildren.length > 0) pool.truncateChildren(para.id, splitIdx + 1)
-    } else {
-      // 非文本内联原子 (控件/图片等, resolveCharOffset localOffset: 0=前, 1=后):
-      // 只按边界切, 绝不切它的占位文本 (修复: 控件后按 Enter 把 `[复选框]`
-      // 的残片拆成新段落文字)。localOffset 1 = 光标在控件后 → 控件留在左段。
-      const keepCount = splitIdx + (localOffset >= 1 ? 1 : 0)
-      rightChildren = para.children.slice(keepCount)
-      if (rightChildren.length > 0) pool.truncateChildren(para.id, keepCount)
+    if (resolved) {
+      const { textNodeId, localOffset } = resolved
+      const targetNode = pool.nodes.get(textNodeId) as TextNode | undefined
+      if (!targetNode) return null
+      const isText = (targetNode as unknown as { type?: string }).type === 'text'
+      // 段落内 children 相对 index; 分裂点 = splitIdx(+1 若是 text 或 localOffset>=1)
+      const splitIdx = para.children.indexOf(textNodeId)
+
+      if (isText) {
+        const textNode = targetNode as TextNode
+        const beforeText = textNode.text.slice(0, localOffset)
+        afterText = textNode.text.slice(localOffset)
+        // 总是截断原始 TextNode (beforeText 可能为空字符串, 必须更新)
+        pool.updateNode(textNode.id, { text: beforeText } as Partial<TextNode>)
+        // 截断原始段落 children: 只保留到 splitIdx (含被截断的 TextNode)
+        rightChildren = para.children.slice(splitIdx + 1)
+        if (rightChildren.length > 0) pool.truncateChildren(para.id, splitIdx + 1)
+        styleSource = textNode
+      } else {
+        // 非文本内联原子 (控件/图片等, localOffset: 0=前, 1=后): 只按边界切,
+        // 绝不切它的占位文本 (修复: 控件后按 Enter 把 `[复选框]` 的残片拆成新段落文字)。
+        // localOffset 1 = 光标在控件后 → 控件留在左段。
+        const keepCount = splitIdx + (localOffset >= 1 ? 1 : 0)
+        rightChildren = para.children.slice(keepCount)
+        if (rightChildren.length > 0) pool.truncateChildren(para.id, keepCount)
+      }
     }
 
-    // 3. 构造新段落 (继承样式)
-    const newPara = createParagraph()
-    if (afterText) {
-      const afterNode = createTextNode(afterText, extractStyle(targetNode))
-      pool.addNode(afterNode)
-      newPara.children = [afterNode.id]
-    }
+    // 2. 铸造一次 (契约 §8.3): 新段落与拆出的文本节点在重放时必须复用同一批 id ——
+    //    否则"在新段里打字"那条命令构造时捕获的段落 id 会悬空, redo 静默丢失。
+    //    once 区只放**铸造**; children 的搬运在下面每次 forward 都做。
+    const roots = this.mint.run(pool, () => {
+      const p = createParagraph()
+      pool.addNode(p)
+      const ids: string[] = [p.id]
+      if (afterText) {
+        const afterNode = createTextNode(
+          afterText, styleSource ? extractStyle(styleSource) : undefined,
+        )
+        pool.addNode(afterNode)
+        p.children = [afterNode.id]
+        ids.push(afterNode.id)
+      }
+      return ids
+    })
+    const newParaId = roots[0]
+    const afterNodeId: string | undefined = roots.length > 1 ? roots[1] : undefined
+
+    const newPara = pool.nodes.get(newParaId) as Paragraph
+    this.newParaId = newParaId
+    // 继承样式 (每次 forward 都设; 值来自已还原的原段落, 幂等)
     Object.assign(newPara, {
       alignment: para.alignment, indent: para.indent,
       firstLineIndent: para.firstLineIndent,
       lineHeight: para.lineHeight, list: para.list,
       outlineLevel: para.outlineLevel,
     })
-    pool.addNode(newPara)
-    this.newParaId = newPara.id
 
-    // 4. 插入右半 children
+    // 3. 每次 forward 重建新段落的 children: 拆出的文本节点 + 右侧原有子节点
+    newPara.children = afterNodeId ? [afterNodeId] : []
     for (const childId of rightChildren) {
       pool.insertChild(newPara.id, childId, newPara.children.length)
     }
 
-    // 5. 在 FlowBody 中插入新段落
-    return this.insertAndReturn(para, newPara, pool, doc)
-  }
-
-  /** 空段落拆分: 创建新空段落, 光标移至新段落 */
-  private splitEmptyParagraph(
-    para: Paragraph,
-    pool: import('../../document/core/NodePool').NodePool,
-    doc: DocumentTree,
-  ): StatePatch | null {
-    const newPara = createParagraph()
-    Object.assign(newPara, {
-      alignment: para.alignment, indent: para.indent,
-      firstLineIndent: para.firstLineIndent,
-      lineHeight: para.lineHeight, list: para.list,
-      outlineLevel: para.outlineLevel,
-    })
-    pool.addNode(newPara)
-    this.newParaId = newPara.id
+    // 4. 在所属区域 (body / cell / header / footer) 中插入新段落
     return this.insertAndReturn(para, newPara, pool, doc)
   }
 
