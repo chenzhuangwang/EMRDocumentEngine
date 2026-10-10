@@ -1,0 +1,55 @@
+# Copyright (c) 2026 陈庄旺.
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+# SPDX-License-Identifier: MPL-2.0
+
+# ============================================================
+# .dockerignore — 仓库根构建上下文 (frontend/Dockerfile 用的就是这个上下文)
+#
+# 上下文为什么是仓库根: 引擎物理剥离到 packages/emr-document-engine 后
+# (契约 §32), 应用的 vite / tsconfig 别名指向包源码 —— 只看得到 frontend/
+# 的上下文里, 那份源码根本不在, 构建必定失败。见 frontend/Dockerfile 头注释。
+#
+# 上下文一放宽到根目录, 「顺带进来的」就得显式排除: 依赖树、构建产物、
+# 版本库、与前端构建无关的文档/知识库/后端。frontend/.dockerignore 只在
+# 上下文是 frontend/ 时生效, 这里必须另写一份。
+# ============================================================
+
+# ---- 依赖树 (容器里由 npm ci 重建; 而且是宿主机平台的二进制) ----
+node_modules
+
+# ---- 构建产物 ----
+dist
+frontend/dist
+packages/emr-document-engine/dist
+dist-packages
+.vite
+*.local
+*.tsbuildinfo
+
+# ---- 版本库与流水线状态 ----
+.git
+.aoci
+.super-dev
+.trae
+.claude
+
+# ---- 与前端构建无关的仓库内容 ----
+backend
+knowledge
+output
+docker-compose.yml
+nginx.conf
+pre-push
+
+# ---- 测试与 IDE ----
+coverage
+.idea
+.vscode
+*.log
+
+# ---- 环境变量 ----
+.env
+.env.local
+.env.*.local
