@@ -8,13 +8,13 @@
 // chromeToken 表 — 纯数据, 零运行时依赖
 //
 // 为什么单独一个文件: tailwind.config.ts (构建期, 由 jiti 加载) 与
-// platform/dom/chromeTheme.ts (运行期) 都要读这张表。放在此处后两边共用同一
+// platform/chrome/chromeTheme.ts (运行期) 都要读这张表。放在此处后两边共用同一
 // 份数值, 不存在"配置里抄一遍 token"的漂移可能。
 // 因此本文件 **不得** 引入任何运行时 import —— 连类型 import 也走 engine
 // 的纯类型模块, 保证 jiti 求值时不触发任何模块解析。
 // ============================================================
 
-import type { ThemePreset } from '../../engine/state/EditorTheme'
+import type { ThemePreset } from '@emrde/document-engine'
 
 /**
  * 每个 chrome token 存 **"R G B" 三元组**而非完整颜色。

@@ -18,8 +18,8 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { EditorContext, type EditorContextValue } from '../EditorProvider'
 import { useEditorContextMenu } from '../useEditorContextMenu'
-import { EditorStore } from '@/engine/state/EditorStore'
-import type { Editor, EditorContextSnapshot } from '@/engine'
+import { EditorStore } from '@emrde/document-engine'
+import type { Editor, EditorContextSnapshot } from '@emrde/document-engine'
 
 function makeEditor(resolve: (e: MouseEvent) => EditorContextSnapshot) {
   const selectControl = vi.fn()

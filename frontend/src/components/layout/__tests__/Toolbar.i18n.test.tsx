@@ -22,10 +22,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { EditorContext, type EditorContextValue } from '../../editor/EditorProvider'
 import { Toolbar } from '../Toolbar'
-import { EditorStore } from '@/engine/state/EditorStore'
+import { EditorStore } from '@emrde/document-engine'
 import { bootstrapLocale } from '@/i18n/bootstrap'
-import { locale } from '@/engine'
-import type { Editor } from '@/engine'
+import { locale } from '@emrde/document-engine'
+import type { Editor } from '@emrde/document-engine'
 
 beforeEach(() => {
   localStorage.clear()

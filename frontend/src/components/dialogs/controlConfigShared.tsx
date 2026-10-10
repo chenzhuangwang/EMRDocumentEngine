@@ -23,7 +23,7 @@ import { DICTIONARY_CATALOG } from '@/platform/data/dictionaryCatalog'
 import { useTranslation } from '@/i18n/useTranslation'
 import type {
   ElementMeta, ElementEnumOption, TemplateDefinition,
-} from '@/engine'
+} from '@emrde/document-engine'
 
 // ---- 家族 / 向导类型 ----
 

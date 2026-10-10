@@ -20,10 +20,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { EditorContext, type EditorContextValue } from '../../editor/EditorProvider'
 import { HeaderBar } from '../HeaderBar'
-import { EditorStore } from '@/engine/state/EditorStore'
+import { EditorStore } from '@emrde/document-engine'
 import { bootstrapLocale } from '@/i18n/bootstrap'
-import { locale } from '@/engine'
-import type { Editor } from '@/engine'
+import { locale } from '@emrde/document-engine'
+import type { Editor } from '@emrde/document-engine'
 
 beforeEach(() => {
   // 锁定 zh-CN 上下文: HeaderBar 的 aria-label 等都从 t() 拉

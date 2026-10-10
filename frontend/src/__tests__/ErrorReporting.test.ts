@@ -15,9 +15,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cwd } from 'node:process'
-import { reportError, EditorErrorCode, setErrorReporter, safeRenderPage } from '@/engine'
+import { reportError, EditorErrorCode, setErrorReporter, safeRenderPage } from '@emrde/document-engine'
 import { installErrorReporter } from '../errorReporting'
-import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
+import { documentLoaderRegistry } from '@emrde/document-engine'
 import { useEditorStore } from '../store'
 
 const store = () => useEditorStore.getState()

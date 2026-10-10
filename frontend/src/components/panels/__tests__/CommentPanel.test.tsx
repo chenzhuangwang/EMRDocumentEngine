@@ -15,7 +15,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { CommentPanel } from '../CommentPanel'
-import type { CommentThread } from '@/engine/document/core/DocumentModel'
+import type { CommentThread } from '@emrde/document-engine'
 
 const THREAD: CommentThread = {
   id: 't1',

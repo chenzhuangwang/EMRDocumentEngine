@@ -26,8 +26,8 @@
 import { useState, useEffect } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { X, FileText, User, BadgeCheck, Building2, Tag, Calendar, Heading, Link, Hash } from 'lucide-react'
-import type { DocumentMetadata } from '@/engine/document/core/DocumentModel'
-import { normalizeDocumentMetadata } from '@/engine/document/core/DocumentModel'
+import type { DocumentMetadata } from '@emrde/document-engine'
+import { normalizeDocumentMetadata } from '@emrde/document-engine'
 import { useTranslation } from '@/i18n/useTranslation'
 
 export interface DocumentPropertiesResult {

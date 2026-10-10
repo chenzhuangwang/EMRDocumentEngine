@@ -14,7 +14,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { WatermarkDialog } from '../WatermarkDialog'
-import type { WatermarkConfig } from '@/engine'
+import type { WatermarkConfig } from '@emrde/document-engine'
 
 const EXISTING: WatermarkConfig = {
   type: 'tile', text: '内部资料', fontSize: 48, color: '#000000',

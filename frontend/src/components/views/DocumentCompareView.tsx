@@ -14,11 +14,11 @@
 import { useMemo } from 'react'
 import { Equal, Plus, Minus, Edit3, X, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { DocumentTree } from '@/engine/document/core/DocumentModel'
-import { DocumentDiffer, type DiffResult } from '@/engine/DocumentDiffer'
-import { NodePool } from '@/engine/document/core/NodePool'
+import type { DocumentTree } from '@emrde/document-engine'
+import { DocumentDiffer, type DiffResult } from '@emrde/document-engine'
+import { NodePool } from '@emrde/document-engine'
 import { useTranslation } from '@/i18n/useTranslation'
-import type { LocaleMessages } from '@/engine'
+import type { LocaleMessages } from '@emrde/document-engine'
 
 // ---- 类型 ----
 
@@ -260,7 +260,7 @@ function getDiffText(
   diff: DiffResult,
   oldPool: NodePool,
   newPool: NodePool,
-  t: (key: keyof LocaleMessages, params?: import('@/engine').LocaleParams) => string,
+  t: (key: keyof LocaleMessages, params?: import('@emrde/document-engine').LocaleParams) => string,
 ): string {
   const pool = diff.op === 'delete' ? oldPool : newPool
   const targetId = diff.op === 'delete' ? diff.oldParaId : diff.newParaId || diff.paraId

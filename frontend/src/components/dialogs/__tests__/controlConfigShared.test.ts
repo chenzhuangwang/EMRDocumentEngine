@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { controlFamilyOf, initialConfigForCreate, cleanDefinition } from '../controlConfigShared'
-import type { ElementFormat, ElementMeta, TemplateDefinition } from '@/engine'
+import type { ElementFormat, ElementMeta, TemplateDefinition } from '@emrde/document-engine'
 
 function baseEl(dataType: ElementFormat['dataType']): ElementMeta {
   return {

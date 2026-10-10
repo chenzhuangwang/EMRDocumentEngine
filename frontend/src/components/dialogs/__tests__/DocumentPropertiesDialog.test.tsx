@@ -20,9 +20,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { DocumentPropertiesDialog, type DocumentPropertiesResult } from '../DocumentPropertiesDialog'
-import type { DocumentMetadata } from '@/engine/document/core/DocumentModel'
+import type { DocumentMetadata } from '@emrde/document-engine'
 import { bootstrapLocale } from '@/i18n/bootstrap'
-import { locale } from '@/engine'
+import { locale } from '@emrde/document-engine'
 
 beforeEach(() => {
   // 锁定 zh-CN 上下文: DocumentPropertiesDialog 的标题/字段/确认框都从 t() 拉

@@ -17,12 +17,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { EditorContext, type EditorContextValue } from '../../editor/EditorProvider'
 import { DesignControlProperties } from '../DesignControlProperties'
-import { EditorStore } from '@/engine/state/EditorStore'
-import type { Editor } from '@/engine'
+import { EditorStore } from '@emrde/document-engine'
+import type { Editor } from '@emrde/document-engine'
 import { bootstrapLocale } from '@/i18n/bootstrap'
-import { locale } from '@/engine'
-import type { TemplateDefinition } from '@/engine/template/TemplateDefinition'
-import type { ElementMeta } from '@/engine/document/core/DocumentModel'
+import { locale } from '@emrde/document-engine'
+import type { TemplateDefinition } from '@emrde/document-engine'
+import type { ElementMeta } from '@emrde/document-engine'
 
 beforeEach(() => { bootstrapLocale() })
 afterEach(() => { locale.setLocale('zh-CN') })

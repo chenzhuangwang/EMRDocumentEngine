@@ -15,10 +15,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { EditorContext, type EditorContextValue } from '../../editor/EditorProvider'
 import { StatusBar } from '../StatusBar'
-import { EditorStore } from '@/engine/state/EditorStore'
+import { EditorStore } from '@emrde/document-engine'
 import {
   reportError, EditorErrorCode, setErrorReporter, locale, type ScoreResult,
-} from '@/engine'
+} from '@emrde/document-engine'
 import { bootstrapLocale } from '@/i18n/bootstrap'
 import { installErrorReporter } from '@/errorReporting'
 import { useEditorStore } from '@/store'

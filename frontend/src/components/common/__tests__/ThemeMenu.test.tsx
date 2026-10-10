@@ -8,14 +8,14 @@
 // ThemeMenu — 主题菜单文案随语言切换
 //
 // 历史问题: ThemeMenu 的 title 与四项 label/hint 曾是一份组件内的
-// zh/en 双语字面量 (另一份在 platform/dom/chromeTheme 的 CHROME_PRESETS 里),
+// zh/en 双语字面量 (另一份在 platform/chrome/chromeTheme 的 CHROME_PRESETS 里),
 // 与 engine/i18n 语言包重复。那份副本不会跟着语言包更新, 也没有任何用例
 // 覆盖 ThemeMenu —— 改成走 t() 后由本文件兜住。
 // ============================================================
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
-import { locale } from '@/engine'
+import { locale } from '@emrde/document-engine'
 import { bootstrapLocale } from '@/i18n/bootstrap'
 import { ThemeMenu } from '../ThemeMenu'
 
@@ -63,7 +63,7 @@ describe('ThemeMenu 文案随语言切换', () => {
   })
 
   it('CHROME_PRESETS 不再携带显示名 (文案单源在 i18n)', async () => {
-    const { CHROME_PRESETS } = await import('@/platform/dom/chromeTheme')
+    const { CHROME_PRESETS } = await import('@/platform/chrome/chromeTheme')
     for (const p of CHROME_PRESETS) {
       expect(Object.keys(p)).toEqual(['preset'])
     }

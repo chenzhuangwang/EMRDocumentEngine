@@ -11,7 +11,7 @@
 // 每次刷新都先闪一下中文。(与 chrome 主题的 bootstrap 同一个理由, 同一个位置。)
 // ============================================================
 
-import { locale, type Locale } from '@/engine'
+import { locale, type Locale } from '@emrde/document-engine'
 
 /** localStorage 键 —— 与 `emr.theme` 同族前缀 */
 export const LOCALE_STORAGE_KEY = 'emr.locale'

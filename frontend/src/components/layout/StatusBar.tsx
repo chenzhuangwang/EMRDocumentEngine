@@ -13,7 +13,7 @@ import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { useEditorStore } from '@/store'
 import { cn, formatWordCount } from '@/lib/utils'
 import { ModeSwitcher } from '@/components/views/ModeSwitcher'
-import type { EditorMode, ScoreResult } from '@/engine'
+import type { EditorMode, ScoreResult } from '@emrde/document-engine'
 import { useTranslation } from '@/i18n/useTranslation'
 
 interface StatusBarProps {

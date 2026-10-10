@@ -21,12 +21,12 @@ import {
   Rows3, Rows, Columns3, Columns,
   Droplets, Puzzle, Scissors, ListTree,
 } from 'lucide-react'
-import type { ToolbarAction } from '@/engine/plugins/PluginManager'
+import type { ToolbarAction } from '@emrde/document-engine'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { cn } from '@/lib/utils'
 import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { HeaderFooterToolbar } from '@/components/toolbar/HeaderFooterToolbar'
-import { resolveVariantForPage, type HeaderFooterVariant, type LocaleMessages } from '@/engine'
+import { resolveVariantForPage, type HeaderFooterVariant, type LocaleMessages } from '@emrde/document-engine'
 import { useTranslation } from '@/i18n/useTranslation'
 
 interface ToolbarProps {

@@ -10,7 +10,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './index.css'
 import { useUIStore } from './store'
-import { applyChromeTheme, storeChromePreset } from './platform/dom/chromeTheme'
+import { applyChromeTheme, storeChromePreset } from './platform/chrome/chromeTheme'
 import { bootstrapLocale } from './i18n/bootstrap'
 import { installErrorReporter } from './errorReporting'
 

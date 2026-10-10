@@ -24,7 +24,7 @@
 import { useEffect, useState } from 'react'
 import { useEditorReady, useEditorRef, useEditorStoreSnapshot } from './EditorProvider'
 import { useTranslation } from '@/i18n/useTranslation'
-import type { SectionPageRect, SectionTreeEntry } from '@/engine'
+import type { SectionPageRect, SectionTreeEntry } from '@emrde/document-engine'
 
 /** jsdom 无 rAF → setTimeout 兜底 (与 TableGrowOverlay 同法) */
 function raf(cb: FrameRequestCallback): number {

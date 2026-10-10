@@ -12,7 +12,7 @@
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { PerfSummary } from '@/engine'
+import type { PerfSummary } from '@emrde/document-engine'
 import { Activity, Zap, Database, Gauge } from 'lucide-react'
 import { useTranslation } from '@/i18n/useTranslation'
 

@@ -19,9 +19,9 @@
 // v6.1: 两个函数都接受 t() (纯函数不能挂 hook, 由调用方注入)。
 // ================================================================
 
-import type { ControlType } from '@/engine/template/TemplateDefinition'
-import type { ElementMeta } from '@/engine/document/core/DocumentModel'
-import type { LocaleMessages, LocaleParams } from '@/engine'
+import type { ControlType } from '@emrde/document-engine'
+import type { ElementMeta } from '@emrde/document-engine'
+import type { LocaleMessages, LocaleParams } from '@emrde/document-engine'
 import { controlWidgetById } from '@/platform/data/controlLibrary'
 
 /** 翻译函数形态 (由调用方注入 useTranslation().t) */

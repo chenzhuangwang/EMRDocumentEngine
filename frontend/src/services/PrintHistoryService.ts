@@ -14,25 +14,12 @@
 const STORAGE_KEY = 'emr-print-history'
 const MAX_ENTRIES = 20
 
-// ---- 类型 ----
+import type { PrintRecord } from '@emrde/document-engine/export'
 
-export interface PrintRecord {
-  id: string
-  documentId: string
-  documentTitle: string
-  /** 打印时间戳 */
-  printedAt: number
-  /** 页码范围 */
-  pageRange: { start: number; end: number }
-  /** 打印份数 */
-  copies: number
-  /** 是否双面打印 */
-  duplex: boolean
-  /** 是否完成 */
-  completed: boolean
-  /** 续打断点: 未完成时记录最后成功打印的页码 */
-  lastCompletedPage?: number
-}
+// PrintRecord 的权威定义在 lib/printJob —— 记录形状属打印特性域, 且该文件
+// 随 ./export 入口分发 (契约 §32.1), 不能反向依赖本 service。此处 re-export
+// 只为保持既有 `from '@/services/PrintHistoryService'` 引用点不破。
+export type { PrintRecord }
 
 // ---- 服务 ----
 

@@ -10,7 +10,7 @@
 
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Edit3, Eye, FormInput, Type, PenTool, Printer, ChevronDown } from 'lucide-react'
-import type { EditorMode } from '@/engine'
+import type { EditorMode } from '@emrde/document-engine'
 import { useTranslation } from '@/i18n/useTranslation'
 
 interface ModeSwitcherProps {

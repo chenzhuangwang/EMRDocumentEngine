@@ -18,8 +18,8 @@
 // 任何原生加载器都必须经它, 不得绕开。
 // ============================================================
 
-import { loadDocumentFromObject } from '@/engine'
-import type { DocumentTree, NodePool } from '@/engine'
+import { loadDocumentFromObject } from '@emrde/document-engine'
+import type { DocumentTree, NodePool } from '@emrde/document-engine'
 
 export interface LoadedDocument {
   doc: DocumentTree

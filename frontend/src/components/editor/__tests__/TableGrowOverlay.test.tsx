@@ -15,8 +15,8 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { EditorContext, type EditorContextValue } from '../EditorProvider'
 import { TableGrowOverlay } from '../TableGrowOverlay'
-import { EditorStore } from '@/engine/state/EditorStore'
-import type { Editor, EditorMode } from '@/engine'
+import { EditorStore } from '@emrde/document-engine'
+import type { Editor, EditorMode } from '@emrde/document-engine'
 
 interface Hooks {
   editor: Editor

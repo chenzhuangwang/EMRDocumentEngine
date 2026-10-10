@@ -24,7 +24,7 @@
 // 固定填充 —— 本目录的 id 是**合成值**, 生产环境应替换为真实码表主键。
 // ================================================================
 
-import type { ElementEnumOption } from '@/engine/document/core/DocumentModel'
+import type { ElementEnumOption } from '@emrde/document-engine'
 
 /** 码表目录条目 — 描述一个可绑定到 ElementFormat.dictionary 的候选源 */
 export interface DictionaryCatalogEntry {

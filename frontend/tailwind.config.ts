@@ -7,7 +7,7 @@
 import {
   STANDARD_CHROME_TOKENS,
   type ChromeTokenName,
-} from './src/platform/dom/chromeTokens'
+} from './src/platform/chrome/chromeTokens'
 
 /**
  * chrome 中性色 token → Tailwind 配色。

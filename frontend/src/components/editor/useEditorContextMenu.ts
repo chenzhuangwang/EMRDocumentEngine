@@ -16,7 +16,7 @@
 // ============================================================
 
 import { useCallback, useMemo, useState } from 'react'
-import type { EditorContextSnapshot } from '@/engine'
+import type { EditorContextSnapshot } from '@emrde/document-engine'
 import { useEditorRef, useEditorStoreSnapshot } from './EditorProvider'
 import { buildContextMenuModel, type ContextMenuActionId, type ContextMenuEntry } from './contextMenuModel'
 import { useTranslation } from '@/i18n/useTranslation'

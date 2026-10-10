@@ -14,7 +14,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { QCResultPanel } from '../QCResultPanel'
-import type { QCResult } from '@/engine/qc/QCEngine'
+import type { QCResult } from '@emrde/document-engine'
 
 function result(issues: QCResult['issues']): QCResult {
   return {

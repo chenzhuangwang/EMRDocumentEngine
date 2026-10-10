@@ -16,10 +16,10 @@ import { StatusBar } from './StatusBar'
 
 import { useEditorStore, useUIStore } from '@/store'
 import type { OutlineItem, SectionOutlineAction } from '@/components/sidebar/OutlineNav'
-import type { CommentThread } from '@/engine/document/core/DocumentModel'
-import type { EditorMode, ScoreResult, LocaleMessages } from '@/engine'
-import type { ToolbarAction } from '@/engine/plugins/PluginManager'
-import type { QCIssue, QCResult } from '@/engine/qc/QCEngine'
+import type { CommentThread } from '@emrde/document-engine'
+import type { EditorMode, ScoreResult, LocaleMessages } from '@emrde/document-engine'
+import type { ToolbarAction } from '@emrde/document-engine'
+import type { QCIssue, QCResult } from '@emrde/document-engine'
 import { useTranslation } from '@/i18n/useTranslation'
 
 interface EditorLayoutProps {

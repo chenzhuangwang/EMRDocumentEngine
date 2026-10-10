@@ -23,8 +23,27 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
+    // 引擎已物理剥离到 packages/emr-document-engine (契约 §32)。应用按包名引用,
+    // 这里把包名映射到**包源码**, 与 vite.config.ts 的 alias 一一对应 ——
+    // 开发期零构建, 改引擎代码 tsc / vite 都立刻看到。
+    //
+    // 注意 `@/*` 与 `@emrde/*` 不冲突: 前者要求 `@` 后紧跟 `/`, 包名是 `@e`。
+    // 子路径必须写在裸包名之前的位置无关紧要 —— TS 取最长匹配前缀。
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@emrde/document-engine": ["../packages/emr-document-engine/src/engine/index.ts"],
+      "@emrde/document-engine/dom": ["../packages/emr-document-engine/src/platform/dom/index.ts"],
+      "@emrde/document-engine/react": ["../packages/emr-document-engine/src/platform/react/index.ts"],
+      "@emrde/document-engine/export": ["../packages/emr-document-engine/src/lib/export/index.ts"],
+      // 包源码在 frontend/ 之外, 它的运行期依赖 (react / fflate) 不会从
+      // packages/ 向上找到 —— 本仓库刻意不发 npm workspaces, 只有一份依赖树
+      // (frontend/node_modules)。所以显式把它们指过去, 与 vite 的行为对齐。
+      // react / react-dom 的声明在 @types 下 (包自身不含 types 字段)。
+      "react": ["./node_modules/@types/react"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"],
+      "react-dom": ["./node_modules/@types/react-dom"],
+      "react-dom/client": ["./node_modules/@types/react-dom/client"],
+      "fflate": ["./node_modules/fflate"]
     }
   },
   "include": ["src"]

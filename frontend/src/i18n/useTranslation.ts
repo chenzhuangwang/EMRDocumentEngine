@@ -18,7 +18,7 @@
 // ============================================================
 
 import { useMemo, useSyncExternalStore } from 'react'
-import { locale, type Locale, type LocaleMessages, type LocaleParams } from '@/engine'
+import { locale, type Locale, type LocaleMessages, type LocaleParams } from '@emrde/document-engine'
 
 /** 订阅语言变更并返回当前语言 */
 export function useLocale(): Locale {

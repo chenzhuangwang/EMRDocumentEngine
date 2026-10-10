@@ -5,47 +5,35 @@
 // SPDX-License-Identifier: MPL-2.0
 
 // ============================================================
-// 编辑器提供者 (ModelD) - 桥接 React 和 Canvas 引擎
+// 编辑器提供者 (ModelD) — 应用侧接线
+//
+// 通用 React 适配器已抽到 platform/react (契约 §10 / §32, 随 ./react 分包
+// 分发); 本文件只做**应用特有的绑定**:
+//
+//   themePreset  ← useUIStore.themePreset   (应用级 UI 状态, §7.1)
+//   dictionaries ← createDictionaryStore()  (platform/data 的医疗码表目录)
+//
+// 分包不知道 useUIStore, 也不知道医疗字典 —— 这两个绑定只属于本应用。
+// 不再是「第二套 Provider 实现」: 创建 Editor 的全部逻辑都在 platform/react,
+// 这里只喂参数并原样 re-export hook, 既有引用点不改。
 // ============================================================
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { Editor, createDefaultRuntimeState, locale, type DocumentTree, type EditorStore, type EditorStoreState, type ThemePreset } from '@/engine'
-import { createDomEditorHost } from '@/platform/dom'
+import { useRef, type ReactNode } from 'react'
+import { EditorProvider as ReactEditorProvider } from '@emrde/document-engine/react'
 import { createDictionaryStore } from '@/platform/data/dictionaryStore'
 import { useUIStore } from '@/store'
+import type { DocumentTree } from '@emrde/document-engine'
 
-// 创建浏览器宿主 — 平台能力注入点 (契约 §27 / §29)。
-// 构造无 DOM 副作用, 模块加载时安全创建; surface 在 Editor 创建前 mount 到容器。
-const domHost = createDomEditorHost()
-
-export interface EditorContextValue {
-  editorRef: React.MutableRefObject<Editor | null>
-  /** Editor 是否已创建 (editorRef.current 非 null)。子组件 mount effect 依赖它,
-   *  避免父级 useEffect 晚于子级 effect 执行导致的 editorRef.current 恒为 null。 */
-  ready: boolean
-  /** 编辑器运行时状态 (canonical owner, §7.2)。ready 前为 null。 */
-  store: EditorStore | null
-}
-
-export const EditorContext = createContext<EditorContextValue | null>(null)
-
-/** store 尚未就绪时的默认快照 (供 useEditorStoreSnapshot 首帧返回稳定值) */
-const DEFAULT_STORE_STATE: EditorStoreState = {
-  document: null,
-  documentTitle: '',
-  runtime: createDefaultRuntimeState(),
-  isDirty: false,
-  saveStatus: 'saved',
-  formatPainterActive: false,
-  headerFooterEdit: { active: false, section: 'header', pageIndex: 0 },
-  paragraphStyle: null,
-  textStyle: null,
-  headerFooterConfig: { differentFirstPage: false, differentOddEven: false },
-  designSelectedControlId: null,
-  designHoveredControlId: null,
-  selectedSectionId: null,
-  activeControlId: null,
-}
+// hooks 与 context 原样转出 —— 既有 `from '@/components/editor/EditorProvider'`
+// 的 10 处引用 (含 8 个测试) 全部保持不变。
+export {
+  EditorContext,
+  useEditor,
+  useEditorRef,
+  useEditorReady,
+  useEditorStoreSnapshot,
+} from '@emrde/document-engine/react'
+export type { EditorContextValue } from '@emrde/document-engine/react'
 
 interface EditorProviderProps {
   children: ReactNode
@@ -54,115 +42,23 @@ interface EditorProviderProps {
 }
 
 export function EditorProvider({ children, containerRef, document }: EditorProviderProps) {
-  const editorRef = useRef<Editor | null>(null)
-  const [ready, setReady] = useState(false)
-  const [store, setStore] = useState<EditorStore | null>(null)
+  // 画布主题的 canonical owner 是应用 UI store (§7.1); 受控传给适配器。
+  // 只有本组件重渲染, children 元素引用不变, 子树不会跟着重绘。
+  const themePreset = useUIStore((s) => s.themePreset)
 
-  // 创建 Editor (仅一次)
-  useEffect(() => {
-    if (!containerRef.current) return
-    // 绑定渲染表面 + 交互宿主到容器 (Editor 构造前)
-    domHost.surface.mount(containerRef.current)
-    domHost.input.mount(containerRef.current)
-    const editor = new Editor(domHost, document)
-    // 注入外部码表候选源 (契约 §12.6.4 注入缝)。候选是 runtime-only 且
-    // owner 在文档之外 —— 必须在构造后、setDocument 前注入; setDocument
-    // 换文档不会重置它 (Editor.setDocument 里已改为「仅显式传入才替换」)。
-    editor.setDictionaries(createDictionaryStore())
-    editorRef.current = editor
-    setStore(editor.getStore())
-    setReady(true)
-    editor.focus()
-    // 如果 document 在 Editor 创建前就已就绪, 立即加载
-    if (document) editor.setDocument(document)
-    return () => { editor.destroy(); editorRef.current = null; setStore(null); setReady(false) }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // document 变更时重新加载
-  useEffect(() => {
-    if (editorRef.current && document) {
-      editorRef.current.setDocument(document)
-    }
-  }, [document])
-
-  // ---- 画布主题同步 (v6.1) ----
-  // 订阅 useUIStore.themePreset 变化 → Editor.setTheme → document:changed('none') → Draw 重绘
-  // 与 main.tsx 的 chrome 主题订阅并存: 两套触发但独立 (canvas 路径与 chrome 路径互不阻塞)
-  useEffect(() => {
-    const apply = (preset: ThemePreset) => {
-      if (editorRef.current) editorRef.current.setTheme(preset)
-    }
-    // mount 时同步应用当前 store 值
-    apply(useUIStore.getState().themePreset)
-    const unsub = useUIStore.subscribe((state, prev) => {
-      if (state.themePreset !== prev.themePreset) apply(state.themePreset)
-    })
-    return unsub
-  }, [])
-
-  // ---- 画布语言同步 (v6.2) ----
-  // 订阅 locale 变化 → Editor.refreshForLocale → 重排 + 重绘 + contentChange。
-  //
-  // 为什么必须重排: 域代码的日期/时间文本随语言变格式, 文字宽度随之变
-  // (只重绘会让域后文字重叠或拖出空白)。为什么不走 document:changed:
-  // 'none' 不重排; 'full' 会 markDirty (语言不是文档内容, 不该把文档标脏)。
-  //
-  // 注意 locale.subscribe 是**无参回调**签名 (不是 zustand 的 (state, prev)),
-  // 与上面 themePreset 那段不同, 不能照搬参数。
-  useEffect(() => {
-    const unsub = locale.subscribe(() => {
-      editorRef.current?.refreshForLocale()
-    })
-    return unsub
-  }, [])
+  // 码表候选源在 Provider 生命周期内保持同一实例: 适配器只在创建 Editor 时
+  // 读它, 每次渲染重建纯属浪费 (目录是静态数据, 但要遍历装配)。
+  const dictionariesRef = useRef<ReturnType<typeof createDictionaryStore> | null>(null)
+  if (dictionariesRef.current === null) dictionariesRef.current = createDictionaryStore()
 
   return (
-    <EditorContext.Provider value={{ editorRef, ready, store }}>
+    <ReactEditorProvider
+      containerRef={containerRef}
+      document={document}
+      themePreset={themePreset}
+      dictionaries={dictionariesRef.current}
+    >
       {children}
-    </EditorContext.Provider>
+    </ReactEditorProvider>
   )
-}
-
-export function useEditor(): Editor | null {
-  const context = useContext(EditorContext)
-  return context?.editorRef.current ?? null
-}
-
-export function useEditorRef(): React.MutableRefObject<Editor | null> {
-  const context = useContext(EditorContext)
-  if (!context) throw new Error('useEditorRef must be used within EditorProvider')
-  return context.editorRef
-}
-
-export function useEditorReady(): boolean {
-  const context = useContext(EditorContext)
-  if (!context) throw new Error('useEditorReady must be used within EditorProvider')
-  return context.ready
-}
-
-/**
- * 订阅 EditorStore 运行时状态 (canonical owner, 架构 §7.2)。
- *
- * 用 useSyncExternalStore 订阅 EditorStore 的版本号变化, 替代在 React 侧
- * 维护一份 Zustand 副本。selector 从 EditorStore.state 中投影所需字段。
- *
- * 注意: EditorStore 采用 in-place mutation, state 引用不变, 故以单调递增的
- * version 作为快照检测值, 而非 state 对象本身。
- */
-export function useEditorStoreSnapshot<T>(selector: (s: EditorStoreState) => T): T {
-  const context = useContext(EditorContext)
-  if (!context) throw new Error('useEditorStoreSnapshot must be used within EditorProvider')
-  const { store } = context
-
-  const subscribe = useCallback(
-    (onChange: () => void) => (store ? store.subscribe(onChange) : () => {}),
-    [store],
-  )
-  useSyncExternalStore(
-    subscribe,
-    () => store?.getVersion() ?? 0,
-    () => 0,
-  )
-
-  return selector(store ? store.state : DEFAULT_STORE_STATE)
 }

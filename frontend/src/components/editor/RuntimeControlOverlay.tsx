@@ -24,10 +24,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useEditorRef, useEditorStoreSnapshot } from './EditorProvider'
 import { controlRejectMessage } from './controlMessages'
 import { useTranslation } from '@/i18n/useTranslation'
-import { locale } from '@/engine'
+import { locale } from '@emrde/document-engine'
 // 折行口径单一来源: 编辑面的换行位置与布局/静态渲染必须一致 (契约 §12.8)
-import { wrapControlText } from '@/engine/layout/text/TextWrap'
-import type { ControlEditTarget, ControlSnapshot, ControlType, ControlValue, Editor } from '@/engine'
+import { wrapControlText } from '@emrde/document-engine'
+import type { ControlEditTarget, ControlSnapshot, ControlType, ControlValue, Editor } from '@emrde/document-engine'
 
 // 占位符画在**文档页面上**(与块内文字同坐标系), 不是在 chrome 上 ——
 // 它的深浅要跟着纸面/正文走, 而不是跟着界面外壳主题走, 故不 token 化。

@@ -18,7 +18,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { buildContextMenuModel, type ContextMenuActionId, type ContextMenuEntryItem, type ContextMenuStyleInfo } from '../contextMenuModel'
-import type { EditorContextSnapshot } from '@/engine'
+import type { EditorContextSnapshot } from '@emrde/document-engine'
 
 /** 提取可点击条目 (过滤分隔符) */
 function items(snapshot: EditorContextSnapshot): { id: ContextMenuActionId; enabled: boolean }[] {

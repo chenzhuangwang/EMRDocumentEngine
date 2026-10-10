@@ -97,12 +97,19 @@ EMR 文档编辑器引擎是一个面向医疗场景的电子病历文档编辑�
 │  ┌─────────────────────────────────────────────────────────┐ │
 │  │  UI 层：components / pages / store（Zustand）             │ │
 │  ├─────────────────────────────────────────────────────────┤ │
-│  │  平台实现层 platform/dom：Canvas / 剪贴板 / IndexedDB 等   │ │
-│  ├─────────────────────────────────────────────────────────┤ │
-│  │  编辑器引擎 engine/（框架 / 平台无关）                      │ │
-│  │  document · layout · render · interaction · command       │ │
-│  │  state · plugins · qc · security · loaders · i18n         │ │
-│  │  template · format · evaluation · context · host          │ │
+│  │  应用外壳层 platform/chrome / platform/data：主题 token /  │ │
+│  │  医疗码表（属应用数据，不入引擎分发物）                       │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│                             │ 按包名引用（开发期直接读包源码）    │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │  引擎包 @emrde/document-engine（独立可分发的 npm 包）        │ │
+│  │   ├ engine/  框架 / 平台无关的编辑器内核                    │ │
+│  │   │  document · layout · render · interaction · command   │ │
+│  │   │  state · plugins · qc · security · loaders · i18n     │ │
+│  │   │  template · format · evaluation · context · host      │ │
+│  │   ├ platform/dom   浏览器宿主实现（Canvas / 剪贴板 / …）    │ │
+│  │   ├ platform/react React 适配器（peer dependency）         │ │
+│  │   └ lib/           导出 / 打印 / 溯源特性层                 │ │
 │  └─────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
                              │  HTTP / WebSocket
@@ -112,6 +119,8 @@ EMR 文档编辑器引擎是一个面向医疗场景的电子病历文档编辑�
 │  Security(JWT) · WebSocket · Springdoc(Swagger)              │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+引擎与应用在**目录上**分开：引擎源码住在仓库根的 `packages/emr-document-engine/`，应用按包名 `@emrde/document-engine` 引用它。应用配置把包名指向包源码，所以开发期改一行引擎代码立刻生效（零构建）；对外分发走包 manifest 的 `exports` → `dist`（`npm run engine:pack`）。
 
 编辑器引擎通过 `EditorHost` 六元组（`text` / `font` / `surface` / `viewport` / `input` / `platform`）注入宿主能力，浏览器能力经 `platform/dom` 注入引擎，使引擎保持框架与平台无关。
 
@@ -213,10 +222,9 @@ EMRDocumentEngine/
 │       ├── repository/         # 数据访问层（Mapper）
 │       ├── dto/                # 数据传输对象
 │       └── util/               # 工具类（JWT 等）
-├── frontend/                   # 前端应用
-│   └── src/
-│       ├── components/         # React 组件（layout/toolbar/dialogs/panels/views/...）
-│       ├── engine/             # 编辑器引擎核心（框架 / 平台无关）
+├── packages/
+│   └── emr-document-engine/    # 引擎包 @emrde/document-engine（独立可分发，契约 §32）
+│       ├── src/engine/         # 编辑器引擎核心（框架 / 平台无关）
 │       │   ├── document/       # 文档模型（ModelD 树 + NodePool，core/factory/io/table/version）
 │       │   ├── layout/         # 布局引擎（行断 / 分页 / 增量 / 虚拟视口 / 文本 / 表格）
 │       │   ├── render/         # 渲染（三层 Canvas + 粒子系统）
@@ -235,8 +243,18 @@ EMRDocumentEngine/
 │       │   ├── context/        # 右键上下文快照
 │       │   ├── i18n/           # 国际化
 │       │   └── __tests__/      # 引擎单元测试
-│       ├── platform/           # 宿主平台实现（DOM 能力注入 engine）
-│       ├── lib/                # 工具函数与导出器（export/）
+│       ├── src/platform/dom/   # 浏览器宿主实现（Canvas / 剪贴板 / IndexedDB）
+│       ├── src/platform/react/ # React 适配器（EditorProvider）
+│       ├── src/lib/            # 导出 / 打印 / 溯源特性层
+│       ├── package.json        # 分发 manifest（四个子路径入口）
+│       ├── vite.config.ts      # lib 构建（不压缩，IP-POLICY §5）
+│       └── tsconfig.json       # 声明构建
+├── frontend/                   # 前端应用
+│   └── src/
+│       ├── components/         # React 组件（layout/toolbar/dialogs/panels/views/...）
+│       ├── platform/chrome/    # 应用外壳主题 token（非引擎，不入分发物）
+│       ├── platform/data/      # 医疗码表与控件库（应用数据）
+│       ├── lib/                # 应用侧工具（utils / compareDocuments）
 │       ├── pages/              # 页面组件
 │       ├── services/           # API 服务
 │       ├── store/              # 全局状态（Zustand）
@@ -329,8 +347,8 @@ EMRDocumentEngine/
 
 本项目使用 AI 辅助开发。为约束 AI 的代码行为、确保架构边界不被破坏，仓库维护了一套「AI 编辑契约」：
 
-- `.claude/CLAUDE.md`：AI 入口提示，指示 AI 在修改 `frontend/src/engine` 前必须先阅读契约。
-- `.claude/AI_EDITOR_CONTRACT.md`：架构不变量契约（31 个编号章节），定义引擎的强制边界（引擎不得依赖 React 与浏览器全局、所有文档变更必须经过 Command 系统、每个可变事实必须有唯一 owner、文档模型不得依赖布局 / 渲染等）。
+- `.claude/CLAUDE.md`：AI 入口提示，指示 AI 在修改 `packages/emr-document-engine`（引擎源码）前必须先阅读契约。
+- `.claude/AI_EDITOR_CONTRACT.md`：架构不变量契约（32 个编号章节），定义引擎的强制边界（引擎不得依赖 React 与浏览器全局、所有文档变更必须经过 Command 系统、每个可变事实必须有唯一 owner、文档模型不得依赖布局 / 渲染等）。
 
 AI 在实现、重构、审查代码时，须将契约视为硬约束；如需打破某条不变量，必须先说明原因、评估影响并取得明确授权。
 

@@ -40,24 +40,24 @@ import { initialConfigForCreate, controlFamilyOf } from '@/components/dialogs/co
 import type { ControlConfigData } from '@/components/dialogs/controlConfigShared'
 import { documentApi, templateApi } from '@/services/api'
 import { printHistory } from '@/services/PrintHistoryService'
-import { resolvePrintRange, selectPrintPages, buildPrintRecord, printDocKey } from '@/lib/printJob'
+import { resolvePrintRange, selectPrintPages, buildPrintRecord, printDocKey } from '@emrde/document-engine/export'
 import { getMockDocumentDetail } from '@/mocks/documents'
-import { documentLoaderRegistry } from '@/engine/loaders/DocumentLoaderRegistry'
-import { templateImporter, isExternalTemplate, hfParagraphsForPage, reportError, EditorErrorCode, locale, sectionTreeOf, resolveFieldText } from '@/engine'
-import { TOCGenerator } from '@/engine/render/TOCGenerator'
-import { buildExportHtml, buildExportText } from '@/lib/documentExport'
-import { collectFields } from '@/lib/export/fields'
-import { buildElementsDocument } from '@/lib/export/elementsExport'
-import { buildCdaXml } from '@/lib/export/cdaExport'
-import { buildOfd } from '@/lib/export/ofd/buildOfd'
-import { cumulativeCharWidths } from '@/engine/layout/text/CharWidthHelper'
+import { documentLoaderRegistry } from '@emrde/document-engine'
+import { templateImporter, isExternalTemplate, hfParagraphsForPage, reportError, EditorErrorCode, locale, sectionTreeOf, resolveFieldText } from '@emrde/document-engine'
+import { TOCGenerator } from '@emrde/document-engine'
+import { buildExportHtml, buildExportText } from '@emrde/document-engine/export'
+import { collectFields } from '@emrde/document-engine/export'
+import { buildElementsDocument } from '@emrde/document-engine/export'
+import { buildCdaXml } from '@emrde/document-engine/export'
+import { buildOfd } from '@emrde/document-engine/export'
+import { cumulativeCharWidths } from '@emrde/document-engine'
 import {
   provenanceMetaTags, provenanceRecord, stampExportHtml, stampExportObject, stampExportText, stampExportXml,
-} from '@/lib/provenance'
+} from '@emrde/document-engine/export'
 import type { OutlineItem, SectionOutlineAction } from '@/components/sidebar/OutlineNav'
 import { buildOutlineItems } from '@/components/sidebar/outlineModel'
-import type { EditorMode, ScoreResult, WatermarkConfig, PerfSummary } from '@/engine'
-import type { QCIssue, QCResult } from '@/engine/qc/QCEngine'
+import type { EditorMode, ScoreResult, WatermarkConfig, PerfSummary } from '@emrde/document-engine'
+import type { QCIssue, QCResult } from '@emrde/document-engine'
 
 /**
  * 触发一次下载 (Blob → object URL → 隐藏 <a> 点击 → 释放)。
@@ -137,7 +137,7 @@ export default function EditorPage() {
         try {
           const parsed = JSON.parse(detail.content)
           // 打开旧文档同样清理库默认标签 (与导入/导出一致)
-          stripWidgetDefaultLabelsFromObject((parsed as { templateDefinitions?: Record<string, import('@/engine').TemplateDefinition> }).templateDefinitions)
+          stripWidgetDefaultLabelsFromObject((parsed as { templateDefinitions?: Record<string, import('@emrde/document-engine').TemplateDefinition> }).templateDefinitions)
           setLoadedDoc(parsed)
           // 记入最近文档 (首页 RecentDocuments 的数据源; localStorage 持久化)
           addRecentDocument({ id: id!, title: detail.title, lastOpenedAt: Date.now() })
@@ -151,7 +151,7 @@ export default function EditorPage() {
   }
 
   return (
-    <EditorProvider containerRef={containerRef} document={loadedDoc as import('@/engine').DocumentTree | undefined}>
+    <EditorProvider containerRef={containerRef} document={loadedDoc as import('@emrde/document-engine').DocumentTree | undefined}>
       <EditorPageInner
         containerRef={containerRef}
         isNew={isNew}
@@ -258,7 +258,7 @@ function EditorPageInner({
   const [currentPageIndex, setCurrentPageIndex] = useState(0)
   const [findMatchCount, setFindMatchCount] = useState(0)
   const [findMatchIndex, setFindMatchIndex] = useState(-1)
-  const findResultsRef = useRef<import('@/engine').MatchResult[]>([])
+  const findResultsRef = useRef<import('@emrde/document-engine').MatchResult[]>([])
   const zoom = useEditorStoreSnapshot((s) => s.runtime.view.scale)
   const showInvisible = useEditorStoreSnapshot((s) => s.runtime.view.showInvisible)
   const showSectionStructure = useEditorStoreSnapshot((s) => s.runtime.view.showSectionStructure)
@@ -807,7 +807,7 @@ function EditorPageInner({
       case 'font': ed.toggleFormat({ font: String(_value ?? 'SimSun') }); break
       case 'fontSize': ed.toggleFormat({ size: Number(_value ?? 16) }); break
       case 'color': ed.toggleFormat({ color: String(_value ?? '#000000') }); break
-      case 'highlight': ed.toggleFormat({ highlight: _value === 'transparent' ? undefined : String(_value ?? '#FFFF00') } as Partial<import('@/engine').TextStyle>); break
+      case 'highlight': ed.toggleFormat({ highlight: _value === 'transparent' ? undefined : String(_value ?? '#FFFF00') } as Partial<import('@emrde/document-engine').TextStyle>); break
       // 段落格式
       case 'alignLeft': ed.setParagraphStyle({ alignment: 'left' }); break
       case 'alignCenter': ed.setParagraphStyle({ alignment: 'center' }); break
@@ -819,34 +819,34 @@ function EditorPageInner({
         if (ps?.listType === 'bullet') {
           ed.setParagraphStyle({ list: undefined, indent: undefined })
         } else {
-          ed.setParagraphStyle({ list: { type: 'bullet', level: 1 } as unknown as import('@/engine').ListStyle, indent: 0 })
+          ed.setParagraphStyle({ list: { type: 'bullet', level: 1 } as unknown as import('@emrde/document-engine').ListStyle, indent: 0 })
         }
         break
       }
       case 'unorderedList': {
         const ps = ed.getParagraphStyle()
         const turningOn = ps?.listType !== 'bullet'
-        ed.setParagraphStyle({ list: turningOn ? { type: 'bullet', level: 1 } as unknown as import('@/engine').ListStyle : undefined, indent: turningOn ? 0 : undefined })
+        ed.setParagraphStyle({ list: turningOn ? { type: 'bullet', level: 1 } as unknown as import('@emrde/document-engine').ListStyle : undefined, indent: turningOn ? 0 : undefined })
         break
       }
       case 'orderedList': {
         const ps = ed.getParagraphStyle()
         const turningOn = ps?.listType !== 'ordered'
-        ed.setParagraphStyle({ list: turningOn ? { type: 'ordered', level: 1, numberStyle: 'decimal' } as unknown as import('@/engine').ListStyle : undefined, indent: turningOn ? 0 : undefined })
+        ed.setParagraphStyle({ list: turningOn ? { type: 'ordered', level: 1, numberStyle: 'decimal' } as unknown as import('@emrde/document-engine').ListStyle : undefined, indent: turningOn ? 0 : undefined })
         break
       }
       case 'orderedListNumberStyle': {
         // 仅切换编号样式，保留列表类型和层级
         const ns = String(_value ?? 'decimal')
         const ps = ed.getParagraphStyle()
-        ed.setParagraphStyle({ list: { type: 'ordered', level: ps?.listLevel ?? 1, numberStyle: ns } as unknown as import('@/engine').ListStyle })
+        ed.setParagraphStyle({ list: { type: 'ordered', level: ps?.listLevel ?? 1, numberStyle: ns } as unknown as import('@emrde/document-engine').ListStyle })
         break
       }
       case 'continueNumbering': {
         const ps = ed.getParagraphStyle()
         if (ps?.listType === 'ordered') {
           const turningOn = !ps?.continueNumbering
-          ed.setParagraphStyle({ list: { type: 'ordered', level: ps?.listLevel ?? 1, numberStyle: ps?.numberStyle ?? 'decimal', continueNumbering: turningOn } as unknown as import('@/engine').ListStyle })
+          ed.setParagraphStyle({ list: { type: 'ordered', level: ps?.listLevel ?? 1, numberStyle: ps?.numberStyle ?? 'decimal', continueNumbering: turningOn } as unknown as import('@emrde/document-engine').ListStyle })
         }
         break
       }
@@ -937,7 +937,7 @@ function EditorPageInner({
       case 'headerFooterClose': ed.setHeaderFooterEditActive(false); break
       // 页眉页脚选项变更 (canonical = DocumentTree, 经 Command 系统)
       case 'headerFooterConfig':
-        ed.setHeaderFooterConfig(_value as Partial<import('@/engine').HeaderFooterConfig>)
+        ed.setHeaderFooterConfig(_value as Partial<import('@emrde/document-engine').HeaderFooterConfig>)
         break
     }
   }, [editorRef])
@@ -955,7 +955,7 @@ function EditorPageInner({
       const serialized = JSON.parse(ed.getSerializedDocument()) as Record<string, unknown>
       // 导出清理: 未填标签(等于控件库默认值, 如 '文本输入：')不写入 JSON,
       // 与导入侧 stripWidgetDefaultLabels 对齐 (导入导出一致)。
-      stripWidgetDefaultLabelsFromObject(serialized.templateDefinitions as Record<string, import('@/engine').TemplateDefinition> | undefined)
+      stripWidgetDefaultLabelsFromObject(serialized.templateDefinitions as Record<string, import('@emrde/document-engine').TemplateDefinition> | undefined)
       serialized._toc = toc
       // 取证溯源标识: 附加 _provenance 顶层字段 (与 _toc 同类, 加载侧容忍未知顶层字段)
       stampExportObject(serialized)
@@ -1106,7 +1106,7 @@ function EditorPageInner({
       const detail = res.data.data
       if (detail) {
         const doc = JSON.parse(detail.content)
-        stripWidgetDefaultLabelsFromObject((doc as { templateDefinitions?: Record<string, import('@/engine').TemplateDefinition> }).templateDefinitions)
+        stripWidgetDefaultLabelsFromObject((doc as { templateDefinitions?: Record<string, import('@emrde/document-engine').TemplateDefinition> }).templateDefinitions)
         ed.setDocument(doc)
       }
     } catch (err) {

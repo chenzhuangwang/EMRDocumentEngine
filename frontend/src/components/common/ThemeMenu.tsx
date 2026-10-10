@@ -18,9 +18,9 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Check, ChevronDown, Leaf, Moon, Palette, Printer, Sun } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useUIStore } from '@/store'
-import { CHROME_PRESETS } from '@/platform/dom/chromeTheme'
+import { CHROME_PRESETS } from '@/platform/chrome/chromeTheme'
 import { useTranslation } from '@/i18n/useTranslation'
-import type { LocaleMessages, ThemePreset } from '@/engine'
+import type { LocaleMessages, ThemePreset } from '@emrde/document-engine'
 
 const PRESET_ICONS: Record<ThemePreset, LucideIcon> = {
   standard: Sun,

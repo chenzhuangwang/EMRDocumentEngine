@@ -16,9 +16,9 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { controlTypeDisplayName, semanticIdentityOf } from '../controlDisplay'
-import type { ElementMeta } from '@/engine/document/core/DocumentModel'
+import type { ElementMeta } from '@emrde/document-engine'
 import { bootstrapLocale } from '@/i18n/bootstrap'
-import { locale } from '@/engine'
+import { locale } from '@emrde/document-engine'
 
 beforeEach(() => { bootstrapLocale() })
 afterEach(() => { locale.setLocale('zh-CN') })

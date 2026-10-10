@@ -19,11 +19,11 @@ import * as Dialog from '@radix-ui/react-dialog'
 import * as Tabs from '@radix-ui/react-tabs'
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { ElementMeta, ElementEnumOption, TemplateDefinition } from '@/engine'
+import type { ElementMeta, ElementEnumOption, TemplateDefinition } from '@emrde/document-engine'
 import { CodeBadge, TextField, ToggleField, cleanDefinition, cloneData, inputCls } from './controlConfigShared'
 import type { ControlConfigData } from './controlConfigShared'
 import { useTranslation } from '@/i18n/useTranslation'
-import type { LocaleMessages } from '@/engine'
+import type { LocaleMessages } from '@emrde/document-engine'
 
 interface ControlChoiceDialogProps {
   open: boolean

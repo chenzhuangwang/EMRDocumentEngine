@@ -13,9 +13,9 @@
 
 import { AlertTriangle, AlertCircle, Info, Shield, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { QCResult, QCIssue, QCGrade } from '@/engine/qc/QCEngine'
+import type { QCResult, QCIssue, QCGrade } from '@emrde/document-engine'
 import { useTranslation } from '@/i18n/useTranslation'
-import { locale as localeManager } from '@/engine'
+import { locale as localeManager } from '@emrde/document-engine'
 
 // ---- 组件 ----
 

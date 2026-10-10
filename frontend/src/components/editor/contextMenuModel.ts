@@ -31,8 +31,8 @@
 // (useEditorContextMenu) 注入; 未注入时回退 zh-CN 字面量。
 // ============================================================
 
-import type { EditorContextSnapshot } from '@/engine'
-import type { LocaleMessages, LocaleParams } from '@/engine'
+import type { EditorContextSnapshot } from '@emrde/document-engine'
+import type { LocaleMessages, LocaleParams } from '@emrde/document-engine'
 
 /** 翻译函数形态 (由调用方注入 useTranslation().t) */
 type T = (key: keyof LocaleMessages, params?: LocaleParams) => string

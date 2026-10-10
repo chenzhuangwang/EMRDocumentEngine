@@ -20,7 +20,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
-import { locale } from '@/engine'
+import { locale } from '@emrde/document-engine'
 import { bootstrapLocale, LOCALE_STORAGE_KEY } from '@/i18n/bootstrap'
 import { LanguageMenu } from '../LanguageMenu'
 

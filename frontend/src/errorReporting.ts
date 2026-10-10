@@ -16,7 +16,7 @@
 // 但它们的落点各自有测试覆盖到)。这条链路有 `ErrorReporting.test.ts` 盯着。
 // ============================================================
 
-import { setErrorReporter } from '@/engine'
+import { setErrorReporter } from '@emrde/document-engine'
 import { useEditorStore } from './store'
 
 /**

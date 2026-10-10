@@ -14,11 +14,11 @@
 //   `--emr-line*` / `--emr-desk`), 由 Tailwind 的 `chrome-*` / `line-*` 配色消费。
 //
 // 变量名刻意与引擎的 8 个**不重名**, 将来画布主题化时两套互不覆盖。
-// 本文件直接触碰 document 是合法的: `platform/dom/` 就是浏览器专属能力的
-// 集中地 (契约 §27, 与 DomPlatformHost 同级)。
+// 本文件直接触碰 document 是合法的: 它就住在应用外壳层 platform/chrome/,
+// 与 platform/data 同级 —— 这里本来就是浏览器专属能力/数据的地盘 (契约 §27)。
 // ============================================================
 
-import type { ThemePreset } from '../../engine/state/EditorTheme'
+import type { ThemePreset } from '@emrde/document-engine'
 import { CHROME_TOKENS, CHROME_TOKEN_NAMES, chromeCssVar } from './chromeTokens'
 
 /** localStorage 键 —— 与 `emr.locale` 同前缀 (i18n 批次会加同族键) */

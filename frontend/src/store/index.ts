@@ -10,8 +10,8 @@
 
 import { create } from 'zustand'
 import type { UserInfo } from '@/services/api'
-import { readStoredChromePreset } from '@/platform/dom/chromeTheme'
-import type { ThemePreset, LocaleMessages, LocaleParams } from '@/engine'
+import { readStoredChromePreset } from '@/platform/chrome/chromeTheme'
+import type { ThemePreset, LocaleMessages, LocaleParams } from '@emrde/document-engine'
 
 // ---- 编辑器状态 (app 级状态, 架构 §7.1) ----
 

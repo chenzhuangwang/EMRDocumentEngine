@@ -23,8 +23,8 @@
 // 不是逻辑流 —— 大纲需要节边界, 而 W2/W3 恰恰把节展开掉了 (契约 §31.1)。
 // ============================================================
 
-import { TOCGenerator } from '@/engine/render/TOCGenerator'
-import type { DocumentTree } from '@/engine'
+import { TOCGenerator } from '@emrde/document-engine'
+import type { DocumentTree } from '@emrde/document-engine'
 import type { OutlineItem } from './OutlineNav'
 
 /** 大纲投影所需的最小只读池视图 (结构树 + 节点类型) */

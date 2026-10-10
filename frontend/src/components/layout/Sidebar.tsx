@@ -27,8 +27,8 @@ import { useUIStore } from '@/store'
 import { OutlineNav, type OutlineItem, type SectionOutlineAction } from '@/components/sidebar/OutlineNav'
 import { CommentPanel } from '@/components/panels/CommentPanel'
 import { QCResultPanel } from '@/components/panels/QCResultPanel'
-import type { CommentThread } from '@/engine/document/core/DocumentModel'
-import type { QCIssue, QCResult } from '@/engine/qc/QCEngine'
+import type { CommentThread } from '@emrde/document-engine'
+import type { QCIssue, QCResult } from '@emrde/document-engine'
 import { useTranslation } from '@/i18n/useTranslation'
 
 interface SidebarProps {

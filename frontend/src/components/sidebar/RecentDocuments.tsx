@@ -13,7 +13,7 @@
 import { FileText, Clock, ExternalLink } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/useTranslation'
-import { locale as localeManager, type LocaleParams, type LocaleMessages } from '@/engine'
+import { locale as localeManager, type LocaleParams, type LocaleMessages } from '@emrde/document-engine'
 
 // ---- 类型 ----
 

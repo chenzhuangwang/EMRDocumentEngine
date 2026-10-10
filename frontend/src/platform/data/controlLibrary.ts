@@ -17,8 +17,8 @@
 // 平台注入真实目录, 替换 CONTROL_LIBRARY 即可。
 // ================================================================
 
-import type { ElementMeta } from '@/engine/document/core/DocumentModel'
-import type { TemplateDefinition } from '@/engine/template/TemplateDefinition'
+import type { ElementMeta } from '@emrde/document-engine'
+import type { TemplateDefinition } from '@emrde/document-engine'
 
 /** 控件库目录条目 — 描述一个可插入的医疗数据元 */
 export interface ControlLibraryEntry {

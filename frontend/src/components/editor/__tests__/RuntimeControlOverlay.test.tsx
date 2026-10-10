@@ -12,8 +12,8 @@ import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { EditorContext, type EditorContextValue } from '../EditorProvider'
 import { RuntimeControlOverlay } from '../RuntimeControlOverlay'
-import { EditorStore } from '@/engine/state/EditorStore'
-import type { ControlEditTarget, ControlSnapshot, Editor } from '@/engine'
+import { EditorStore } from '@emrde/document-engine'
+import type { ControlEditTarget, ControlSnapshot, Editor } from '@emrde/document-engine'
 
 function makeTarget(over?: Partial<ControlEditTarget>): ControlEditTarget {
   return {

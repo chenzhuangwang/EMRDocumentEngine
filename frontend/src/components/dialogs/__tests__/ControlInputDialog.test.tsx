@@ -21,9 +21,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ControlInputDialog } from '../ControlInputDialog'
-import type { ElementMeta, TemplateDefinition } from '@/engine'
+import type { ElementMeta, TemplateDefinition } from '@emrde/document-engine'
 import { bootstrapLocale } from '@/i18n/bootstrap'
-import { locale } from '@/engine'
+import { locale } from '@emrde/document-engine'
 
 const INPUT_EL: ElementMeta = {
   code: { internal: 'CTL_INPUT', dataElement: 'DE99.99.001' }, name: '旧名',

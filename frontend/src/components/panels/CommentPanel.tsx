@@ -14,9 +14,9 @@
 import { useState } from 'react'
 import { MessageSquare, Check, Reply, ChevronDown, X, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { CommentThread } from '@/engine/document/core/DocumentModel'
+import type { CommentThread } from '@emrde/document-engine'
 import { useTranslation } from '@/i18n/useTranslation'
-import { locale as localeManager, type LocaleParams, type LocaleMessages } from '@/engine'
+import { locale as localeManager, type LocaleParams, type LocaleMessages } from '@emrde/document-engine'
 
 // ---- 组件 Props ----
 

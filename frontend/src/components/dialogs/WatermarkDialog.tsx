@@ -17,7 +17,7 @@
 import { useState, useEffect } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { X, Type, Palette, RotateCw, Trash2 } from 'lucide-react'
-import type { WatermarkConfig } from '@/engine'
+import type { WatermarkConfig } from '@emrde/document-engine'
 import { useTranslation } from '@/i18n/useTranslation'
 
 interface WatermarkDialogProps {

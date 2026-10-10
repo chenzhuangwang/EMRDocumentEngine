@@ -24,10 +24,10 @@
 import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { useEditorRef, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
-import type { TemplateDefinition } from '@/engine/template/TemplateDefinition'
+import type { TemplateDefinition } from '@emrde/document-engine'
 import { controlTypeDisplayName, semanticIdentityOf } from './controlDisplay'
 import { useTranslation } from '@/i18n/useTranslation'
-import type { LocaleMessages } from '@/engine'
+import type { LocaleMessages } from '@emrde/document-engine'
 
 type StringField = 'label' | 'tips' | 'prefix' | 'suffix'
 type BoolField = 'deletable' | 'editable' | 'single'

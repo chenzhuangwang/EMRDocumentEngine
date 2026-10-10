@@ -12,7 +12,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ControlChoiceDialog } from '../ControlChoiceDialog'
-import type { ElementMeta, ElementEnumOption, TemplateDefinition } from '@/engine'
+import type { ElementMeta, ElementEnumOption, TemplateDefinition } from '@emrde/document-engine'
 
 const RADIO_EL: ElementMeta = {
   code: { internal: 'CTL_RADIO', dataElement: 'DE99.99.007' }, name: '症状',

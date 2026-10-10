@@ -15,11 +15,11 @@
 
 import { describe, it, expect } from 'vitest'
 import { buildOutlineItems } from '../outlineModel'
-import { buildNodePool } from '@/engine/document/core/NodePool'
+import { buildNodePool } from '@emrde/document-engine'
 import {
   createDocument, createParagraph, createTextNode, createSection,
-} from '@/engine/document/factory/ElementFormatter'
-import type { BaseNode, DocumentTree } from '@/engine/document/core/DocumentModel'
+} from '@emrde/document-engine'
+import type { BaseNode, DocumentTree } from '@emrde/document-engine'
 
 interface Built {
   doc: DocumentTree

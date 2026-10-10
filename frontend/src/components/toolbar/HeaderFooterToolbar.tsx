@@ -21,10 +21,10 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 // canonical 类型唯一来源 = 文档域 (契约 §7.3); 本组件不得再定义一份
-import type { HeaderFooterConfig } from '@/engine'
-import type { HeaderFooterVariant } from '@/engine'
+import type { HeaderFooterConfig } from '@emrde/document-engine'
+import type { HeaderFooterVariant } from '@emrde/document-engine'
 import { useTranslation } from '@/i18n/useTranslation'
-import type { LocaleMessages } from '@/engine'
+import type { LocaleMessages } from '@emrde/document-engine'
 
 interface HeaderFooterToolbarProps {
   /** 当前编辑的是 header 还是 footer */

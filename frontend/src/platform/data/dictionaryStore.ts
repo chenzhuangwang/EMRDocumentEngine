@@ -17,7 +17,7 @@
 // 退回自由文本)。
 // ================================================================
 
-import { DictionaryStore } from '@/engine'
+import { DictionaryStore } from '@emrde/document-engine'
 import { DICTIONARY_CATALOG } from './dictionaryCatalog'
 
 /**

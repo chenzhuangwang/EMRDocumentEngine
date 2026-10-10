@@ -15,7 +15,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ExportDialog } from '../ExportDialog'
-import { locale } from '@/engine/i18n'
+import { locale } from '@emrde/document-engine'
 
 /** 当前语言下的文案 —— 不写死中文/英文, 免得断言随默认语言变化而失真 */
 const L = (key: Parameters<typeof locale.t>[0]): string => locale.t(key)

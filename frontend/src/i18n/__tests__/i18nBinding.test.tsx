@@ -14,7 +14,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
-import { locale } from '@/engine'
+import { locale } from '@emrde/document-engine'
 import {
   bootstrapLocale,
   readStoredLocale,

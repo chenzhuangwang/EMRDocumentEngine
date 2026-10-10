@@ -97,12 +97,21 @@ No local setup required — just open it and try:
 │  ┌────────────────────────────────────────────────────┐ │
 │  │ UI layer: components / pages / store (Zustand)     │ │
 │  ├────────────────────────────────────────────────────┤ │
-│  │ Platform impl: Canvas / clipboard / IndexedDB      │ │
-│  ├────────────────────────────────────────────────────┤ │
-│  │ Editor engine engine/ — framework-agnostic         │ │
-│  │ document · layout · render · interaction · command │ │
-│  │ state · plugins · qc · security · loaders · i18n   │ │
-│  │ template · format · evaluation · context · host    │ │
+│  │ App chrome layer: platform/chrome / platform/data  │ │
+│  │ (theme tokens / medical code tables — app data,    │ │
+│  │  never part of the engine distribution)            │ │
+│  └────────────────────────────────────────────────────┘ │
+│                     │ imported by package name          │
+│                     │ (dev reads the package source)    │
+│  ┌────────────────────────────────────────────────────┐ │
+│  │ @emrde/document-engine — standalone npm package    │ │
+│  │  ├ engine/  framework-agnostic editor core         │ │
+│  │  │ document · layout · render · interaction · command│ │
+│  │  │ state · plugins · qc · security · loaders · i18n │ │
+│  │  │ template · format · evaluation · context · host  │ │
+│  │  ├ platform/dom   browser host (Canvas / clipboard)│ │
+│  │  ├ platform/react React adapter (peer dependency)  │ │
+│  │  └ lib/           export / print / provenance      │ │
 │  └────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────┘
                     │  HTTP / WebSocket
@@ -112,6 +121,8 @@ No local setup required — just open it and try:
 │  Security(JWT) · WebSocket · Springdoc(Swagger)         │
 └─────────────────────────────────────────────────────────┘
 ```
+
+The engine and the application are separated **in the directory tree**: the engine source lives in `packages/emr-document-engine/` at the repository root, and the application imports it by package name (`@emrde/document-engine`). The application config points that name at the package *source*, so editing an engine file takes effect immediately during development (zero build); distribution goes through the package manifest's `exports` → `dist` (`npm run engine:pack`).
 
 The editor engine injects host capabilities through the `EditorHost` six-tuple (`text` / `font` / `surface` / `viewport` / `input` / `platform`); browser capabilities are injected into the engine via `platform/dom`, which keeps the engine framework- and platform-agnostic.
 
@@ -213,10 +224,9 @@ EMRDocumentEngine/
 │       ├── repository/         # Data access layer (Mapper)
 │       ├── dto/                # Data transfer objects
 │       └── util/               # Utility classes (JWT, etc.)
-├── frontend/                   # Front-end application
-│   └── src/
-│       ├── components/         # React components (layout/toolbar/dialogs/panels/views/...)
-│       ├── engine/             # Editor engine core (framework/platform agnostic)
+├── packages/
+│   └── emr-document-engine/    # Engine package @emrde/document-engine (standalone, contract §32)
+│       ├── src/engine/         # Editor engine core (framework/platform agnostic)
 │       │   ├── document/       # Document model (ModelD tree + NodePool, core/factory/io/table/version)
 │       │   ├── layout/         # Layout engine (line breaking / pagination / incremental / viewport / text / table)
 │       │   ├── render/         # Rendering (three-layer Canvas + particle system)
@@ -235,8 +245,18 @@ EMRDocumentEngine/
 │       │   ├── context/        # Right-click context snapshot
 │       │   ├── i18n/           # Internationalization
 │       │   └── __tests__/      # Engine unit tests
-│       ├── platform/           # Host platform implementation (injects DOM capabilities into engine)
-│       ├── lib/                # Utility functions and exporters (export/)
+│       ├── src/platform/dom/   # Browser host implementation (Canvas / clipboard / IndexedDB)
+│       ├── src/platform/react/ # React adapter (EditorProvider)
+│       ├── src/lib/            # Export / print / provenance feature layer
+│       ├── package.json        # Distribution manifest (four subpath entries)
+│       ├── vite.config.ts      # Library build (no minification, IP-POLICY §5)
+│       └── tsconfig.json       # Declaration build
+├── frontend/                   # Front-end application
+│   └── src/
+│       ├── components/         # React components (layout/toolbar/dialogs/panels/views/...)
+│       ├── platform/chrome/    # App chrome theme tokens (not engine, not distributed)
+│       ├── platform/data/      # Medical code tables and control library (app data)
+│       ├── lib/                # App-side utilities (utils / compareDocuments)
 │       ├── pages/              # Page components
 │       ├── services/           # API services
 │       ├── store/              # Global state (Zustand)
@@ -329,8 +349,8 @@ EMRDocumentEngine/
 
 This project uses AI-assisted development. To constrain the AI's code behavior and keep the architectural boundaries intact, the repository maintains an "AI editing contract":
 
-- `.claude/CLAUDE.md`: the AI entry prompt, instructing the AI to read the contract before modifying `frontend/src/engine`.
-- `.claude/AI_EDITOR_CONTRACT.md`: the architectural invariant contract (31 numbered sections), defining the engine's mandatory boundaries — for example: the engine must not depend on React or browser globals, all document mutations must go through the command system, every mutable fact must have a single owner, and the document model must not depend on layout / rendering.
+- `.claude/CLAUDE.md`: the AI entry prompt, instructing the AI to read the contract before modifying `packages/emr-document-engine` (the engine source).
+- `.claude/AI_EDITOR_CONTRACT.md`: the architectural invariant contract (32 numbered sections), defining the engine's mandatory boundaries — for example: the engine must not depend on React or browser globals, all document mutations must go through the command system, every mutable fact must have a single owner, and the document model must not depend on layout / rendering.
 
 When implementing, refactoring or reviewing code, the AI must treat the contract as a hard constraint; if an invariant has to be broken, the AI must first explain why, assess the impact and obtain explicit authorization.
 
