@@ -1,6 +1,17 @@
+<div align="center">
+
 # EMR Document Editor Engine
 
-> 🚀 Live Demo: <http://139.196.151.15/>
+**A professional, high-performance, embeddable electronic medical record (EMR) document editing engine**
+
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Try%20it%20now-2563eb?style=flat-square&logo=vercel)](http://139.196.151.15/)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-22c55e?style=flat-square)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-84cc16?style=flat-square)](#contributing)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178c6?style=flat-square&logo=typescript)](frontend/package.json)
+[![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react)](frontend/package.json)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3-6db33f?style=flat-square&logo=springboot)](backend/pom.xml)
+
+</div>
 
 <div align="center">
 
@@ -10,7 +21,7 @@
 
 </div>
 
-## 📋 Project Introduction
+## Project Introduction
 
 The EMR Document Editor Engine is an electronic medical record (EMR) document editing system built for clinical scenarios, covering the full loop from document creation, structured editing and template management through to quality control. The project uses a separated front-end / back-end architecture:
 
@@ -18,56 +29,67 @@ The EMR Document Editor Engine is an electronic medical record (EMR) document ed
 - **Back end**: Spring Boot + MyBatis-Plus, providing RESTful APIs, JWT authentication and WebSocket real-time communication infrastructure.
 - **Framework- and platform-agnostic runtime**: the editor engine decouples the host environment through the `EditorHost` capability interface (a six-tuple of text / font / surface / viewport / input / platform), so it can be embedded in any host — React, Vue, Electron, Web Workers — with zero browser globals in the engine source.
 
-## 🎮 Online Demo
+## Online Demo
 
 No local setup required — just open it and try:
 
 > **Demo: <http://139.196.151.15/>**
 
-## ✨ Core Features
+## Core Features
 
-### 📝 Professional Document Editing
+### Professional Document Editing
 
-- **Rich text formatting**: bold / italic / underline (single, double, wavy) / strikethrough / superscript / subscript / font family / font size / text color / highlight
-- **Paragraph layout**: left / center / right / justify, ordered and unordered lists (multi-level indent), heading levels, paragraph indent
-- **Tables**: insert tables, merge / split cells, add and remove rows and columns, repeat header rows across pages
-- **Professional elements**: images, dividers (4 styles), section breaks, headers and footers, footnotes, bookmarks and cross-references
+- **Rich text formatting**: bold / italic / underline (single, double, wavy) / strikethrough / superscript / subscript / font family (8) / font size (12 steps) / text color / highlight
+- **Paragraph layout**: left / center / right / justify, ordered and unordered lists (multi-level indent, 6 numbering styles), heading levels (1–6), paragraph indent
+- **Tables**: insert tables, merge / split cells, add and remove rows and columns, repeat header rows across pages, append rows
+- **Professional elements**: images, dividers (4 styles), section breaks and **sections** (Section), headers and footers (including first-page / odd-even per-page variants), footnotes, bookmarks and cross-references, field codes
+- **Find & replace**: regex, whole-word and case-sensitive matching; replacements are undoable
+- **Format painter**: copy / apply text styles in one click
 
-### 🏥 Structured Medical Record Capabilities
+### Structured Medical Record Capabilities
 
 - **Form controls**: 8 structured control types — single-line text, multi-line text, number, select, date, datetime, checkbox, radio
+- **Control configuration**: right-click "Properties" in design mode to configure label / tips / prefix / suffix / required per control family; changes are committed atomically as a macro
 - **Field codes**: 8 dynamic fields — page number, total pages, date, time, title, author, save date, print date
-- **Data validation**: value validation and required-field checks for form elements
-- **Quality control (QC)**: 6 built-in QC rules (title not empty / body not empty / no consecutive empty paragraphs / required SmartText / minimum character count / paragraph-count range), with scoring and graded results
+- **Validation & scoring**: value validation and required-field checks for form elements; selected control values aggregate into a scale score via `numericValue`
+- **Quality control (QC)**: 8 built-in QC rules (title not empty / body not empty / no consecutive empty paragraphs / required control not empty / minimum character count / paragraph-count range / unnamed section / empty section), with scoring and A–D grading
 
-### 📄 Pagination & Rendering
+### Pagination & Rendering
 
-- **True typesetting**: reproduces A4 paper size, margins, orientation and pagination rules, with print preview
+- **True typesetting**: reproduces A4 paper size, margins, orientation and pagination rules; the page-setup dialog adjusts paper / margins / layout, with print preview
 - **Virtual scrolling**: only visible pages are rendered, so long documents scroll smoothly
 - **Incremental layout**: dirty-region tracking and layout caching — only the affected region is re-laid out after an edit
+- **Three-layer Canvas + particle system**: static / content / interact layers, with particles for text, tables, images, formulas, footnotes, charts, barcodes and more
 - **Formula rendering**: LaTeX support via KaTeX
+- **Watermark**: text / image / tile three types
 
-### ⌨️ Editing Experience
+### Editing Experience
 
-- **Undo / redo**: driven by the command pattern, 33 undoable command types, 500 ms typing coalescing
+- **Undo / redo**: driven by the command pattern, 40 undoable command types, 500 ms typing coalescing, stack depth 100
 - **Clipboard**: copy / cut / paste, with three paste modes — keep source formatting / match destination formatting / plain text
-- **Find & replace**: regex, whole-word and case-sensitive matching; replacements are undoable
 - **Auto save**: IndexedDB local storage, 3-second debounce, keeps the last 3 versions, supports crash recovery
 - **Auto correct**: 25 built-in medical abbreviation rules plus Chinese punctuation pairing
 - **Chinese IME**: full IME composition input support
+- **Six editing modes**: edit / readonly / form / clean / design / print, switchable in one click
+- **Auxiliary views**: outline navigation, reading mode, comments panel, performance panel
 
-### 📚 Document Lifecycle
+### Internationalization & Theming
+
+- **Bilingual UI**: built-in zh-CN / en-US message tables (~800 keys), one-click switch in the top bar with persistence
+- **UI themes**: standard / eye-care / print / dark four chrome presets; canvas theming with 4 presets × 28 tokens
+
+### Document Lifecycle
 
 - **Template system**: public / private template categories, one-click apply
-- **Document comparison**: visualize the differences between two versions
-- **Version management**: historical version records and rollback
-- **Audit trail**: complete operation logs (create / edit / delete / print / export / view)
-- **Permission control**: role-based access control, with annotations and modification trails
-- **Import & export**: export to JSON / TXT / HTML; import from JSON / HTML / Markdown / XML
+- **Document comparison**: visualize the differences between two versions (insert / delete / modify stats)
+- **Version records**: each save automatically archives a history version (persisted on the backend; rollback UI on the [Roadmap](#roadmap))
+- **Comments**: inline comment markers, discussion threads, replies and a "resolved" state
+- **Import**: JSON / `.emr` (full pipeline), HTML / Markdown (simplified parsing)
+- **Export**: JSON / TXT / HTML / structured-elements JSON / HL7 CDA XML / OFD (GB/T 33190-2016)
 
-> See the [Roadmap](#-roadmap) at the end for PDF / DOCX export, HarfBuzz shaping, collaborative editing and more.
+> See the [Roadmap](#roadmap) at the end for PDF / DOCX export, HarfBuzz shaping, collaborative editing, audit logging and more.
 
-## 🏗 Architecture Overview
+## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -80,6 +102,7 @@ No local setup required — just open it and try:
 │  │ Editor engine engine/ — framework-agnostic         │ │
 │  │ document · layout · render · interaction · command │ │
 │  │ state · plugins · qc · security · loaders · i18n   │ │
+│  │ template · format · evaluation · context · host    │ │
 │  └────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────┘
                     │  HTTP / WebSocket
@@ -92,7 +115,7 @@ No local setup required — just open it and try:
 
 The editor engine injects host capabilities through the `EditorHost` six-tuple (`text` / `font` / `surface` / `viewport` / `input` / `platform`); browser capabilities are injected into the engine via `platform/dom`, which keeps the engine framework- and platform-agnostic.
 
-## 🛠 Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |------|------|
@@ -105,23 +128,24 @@ The editor engine injects host capabilities through the `EditorHost` six-tuple (
 | HTTP client | Axios |
 | Real-time collaboration | Yjs + y-websocket (capability reserved) |
 | Formula rendering | KaTeX |
+| Compression / archiving | fflate (OFD packaging) |
 | Back-end framework | Spring Boot 3.3 (Java 17) |
 | Data access | MyBatis-Plus |
 | Security | Spring Security + JWT |
 | Real-time communication | WebSocket |
 | Cache | Redis |
 | API docs | Springdoc OpenAPI (Swagger) |
-| Database | MySQL 8.0+ (H2 for tests) |
-| Testing | Vitest + Testing Library + Playwright |
+| Database | MySQL 8.0+ (built-in H2 mode for development) |
+| Testing | Vitest + Testing Library (~170 test files; Playwright E2E planned) |
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Requirements
 
 - Node.js 18+
 - Java 17+
 - Maven 3.6+
-- MySQL 8.0+ (optional — a built-in H2 test environment is also available)
+- MySQL 8.0+ (optional — a built-in H2 development mode is also available)
 - Redis (optional)
 
 ### 1. Prepare the Database
@@ -168,77 +192,89 @@ cd frontend
 npm run build
 ```
 
-### 🐳 Docker Deployment
+### Docker Deployment
 
 ```bash
 docker-compose up -d
 ```
 
-## 📁 Project Structure
+`docker-compose.yml` orchestrates four services: `mysql` (3306), `redis` (6379), `backend` (8080) and `nginx` (80, serving the front-end static assets and reverse-proxying the API).
+
+## Project Structure
 
 ```
 EMRDocumentEngine/
 ├── backend/                    # Backend service (Spring Boot)
 │   └── src/main/java/com/emr/
-│       ├── config/             # Configuration (security, WebSocket, MyBatis-Plus)
-│       ├── controller/         # Controller layer
+│       ├── config/             # Configuration (security / WebSocket / MyBatis-Plus)
+│       ├── controller/         # Controller layer (Auth / Document / Template)
 │       ├── service/            # Business logic layer
-│       ├── entity/             # Entity classes
-│       ├── repository/         # Data access layer
+│       ├── entity/             # Entity classes (MyBatis-Plus)
+│       ├── repository/         # Data access layer (Mapper)
 │       ├── dto/                # Data transfer objects
-│       ├── util/               # Utility classes
-│       └── websocket/          # WebSocket real-time collaboration
+│       └── util/               # Utility classes (JWT, etc.)
 ├── frontend/                   # Front-end application
 │   └── src/
-│       ├── components/         # React components (editor/layout/panels/toolbar/...)
+│       ├── components/         # React components (layout/toolbar/dialogs/panels/views/...)
 │       ├── engine/             # Editor engine core (framework/platform agnostic)
-│       │   ├── document/       # Document model (ModelD tree + NodePool)
-│       │   ├── layout/         # Layout engine (line breaking/pagination/incremental/virtual viewport)
+│       │   ├── document/       # Document model (ModelD tree + NodePool, core/factory/io/table/version)
+│       │   ├── layout/         # Layout engine (line breaking / pagination / incremental / viewport / text / table)
 │       │   ├── render/         # Rendering (three-layer Canvas + particle system)
-│       │   ├── interaction/    # Interaction (keyboard/mouse/IME/event bus)
-│       │   ├── command/        # Command system (undo/redo)
+│       │   ├── interaction/    # Interaction (keyboard / mouse / IME / event bus)
+│       │   ├── command/        # Command system (undo / redo / macro)
 │       │   ├── host/           # EditorHost capability interface
 │       │   ├── state/          # State management
 │       │   ├── plugins/        # Plugin system
 │       │   ├── qc/             # Quality control
-│       │   ├── security/       # Security (XSS protection)
+│       │   ├── security/       # Security (XSS protection / permission dimensions)
 │       │   ├── loaders/        # Document loaders
+│       │   ├── import/         # External template import
+│       │   ├── template/       # Design-time control template definitions
+│       │   ├── format/         # Feature modules such as the format painter
+│       │   ├── evaluation/     # Control scoring
+│       │   ├── context/        # Right-click context snapshot
 │       │   ├── i18n/           # Internationalization
 │       │   └── __tests__/      # Engine unit tests
 │       ├── platform/           # Host platform implementation (injects DOM capabilities into engine)
+│       ├── lib/                # Utility functions and exporters (export/)
 │       ├── pages/              # Page components
 │       ├── services/           # API services
 │       ├── store/              # Global state (Zustand)
-│       └── lib/                # Utility functions
-├── output/                     # Project documents (research/PRD/architecture/UIUX/spec)
+│       └── mocks/              # Demo data
+├── output/                     # Project documents (research / PRD / architecture / UIUX / spec)
 ├── knowledge/                  # Knowledge base
+├── scripts/                    # Engineering scripts (file headers / provenance / archive)
 ├── docker-compose.yml          # Docker Compose configuration
+├── nginx.conf                  # Nginx site and reverse-proxy configuration
 ├── LICENSE                     # MPL-2.0 License
 ├── NOTICE                      # Copyright and third-party notices
 └── IP-POLICY.md                # Intellectual property protection policy
 ```
 
-## 🧩 Core Modules
+## Core Modules
 
 ### Front-end Editor Engine
 
-- **DocumentModel**: document data model, manages the document element tree and the NodePool
-- **Draw**: Canvas renderer, responsible for element visualization
-- **TextMeasurer**: text measurer, calculates text width and height
-- **HistoryManager / CommandUndoRedoStack**: history management, supporting undo / redo
+- **DocumentModel / NodePool**: document data model with 17 node types (including sections), flat node pool with ID references
+- **ContainerChildTypes**: container child-type contract, declaring and validating the children each container allows (single source of truth)
+- **LayoutEngine**: layout engine (line breaking / pagination / incremental / virtual viewport / kinsoku / orphan-widow control)
+- **LayeredRenderer / Draw**: three-layer Canvas renderer and particle system
+- **TextMeasurer / FontManager**: text measurement and font metrics (Canvas measurement first)
+- **CommandManager / CommandUndoRedoStack**: command execution, undo / redo and macros
 - **EventBus**: event bus handling inter-component communication
 - **KeyboardHandler / MouseHandler / IMEHandler**: input event handling
-- **LayoutEngine**: layout engine (line breaking / pagination / incremental / virtual viewport)
+- **QCEngine**: quality-control engine (8 built-in rules + custom rules)
+- **DocumentLoader / DocumentSerializer**: document serialization and load/upgrade pipeline
 - **EditorHost**: platform capability boundary (six-tuple), making the engine framework- and platform-agnostic
 
 ### Back-end Service Layer
 
-- **DocumentService**: document business logic
+- **DocumentService**: document business logic (paginated listing, creation, archiving a history version on update)
 - **TemplateService**: template business logic
-- **AuthService**: authentication and authorization service
-- **AuditLogRepository**: audit log data access
+- **AuthService**: authentication and authorization service (JWT login / refresh)
+- **AuditLogRepository**: audit log data access (schema ready; write and query not yet wired)
 
-## 📡 API Interfaces
+## API Interfaces
 
 ### Authentication
 
@@ -252,7 +288,7 @@ EMRDocumentEngine/
 
 | Method | Path | Description |
 |------|------|------|
-| GET | `/api/v1/documents` | List documents (paginated) |
+| GET | `/api/v1/documents` | List documents (paginated / keyword / status) |
 | POST | `/api/v1/documents` | Create a document |
 | GET | `/api/v1/documents/{id}` | Get document details |
 | PUT | `/api/v1/documents/{id}` | Update a document |
@@ -262,24 +298,24 @@ EMRDocumentEngine/
 
 | Method | Path | Description |
 |------|------|------|
-| GET | `/api/v1/templates` | List templates |
+| GET | `/api/v1/templates` | List templates (category / keyword) |
 | GET | `/api/v1/templates/{id}` | Get template details |
 | POST | `/api/v1/templates` | Create a template |
 | PUT | `/api/v1/templates/{id}` | Update a template |
 | DELETE | `/api/v1/templates/{id}` | Delete a template |
 
-## 📊 Database Schema
+## Database Schema
 
 | Table | Description |
 |------|------|
 | `t_user` | Users |
 | `t_document` | Documents |
 | `t_template` | Templates |
+| `t_document_version` | Document history versions |
 | `t_annotation` | Annotations |
 | `t_audit_log` | Audit log |
-| `t_document_version` | Document versions |
 
-## 📚 Project Documentation
+## Project Documentation
 
 - [Research report](output/1-research.md) — technology choices and competitive analysis
 - [Product requirements](output/2-prd.md) — functional requirements and user stories
@@ -287,14 +323,14 @@ EMRDocumentEngine/
 - [UI/UX design](output/4-uiux.md) — interface design and interaction specification
 - [Technical specification](output/5-spec.md) — detailed specification and task breakdown
 
-## 📝 Development Guide
+## Development Guide
 
 ### AI-Assisted Development Contract
 
 This project uses AI-assisted development. To constrain the AI's code behavior and keep the architectural boundaries intact, the repository maintains an "AI editing contract":
 
 - `.claude/CLAUDE.md`: the AI entry prompt, instructing the AI to read the contract before modifying `frontend/src/engine`.
-- `.claude/AI_EDITOR_CONTRACT.md`: the architectural invariant contract, defining the engine's mandatory boundaries — for example: the engine must not depend on React or browser globals, all document mutations must go through the command system, every mutable fact must have a single owner, and the document model must not depend on layout / rendering.
+- `.claude/AI_EDITOR_CONTRACT.md`: the architectural invariant contract (31 numbered sections), defining the engine's mandatory boundaries — for example: the engine must not depend on React or browser globals, all document mutations must go through the command system, every mutable fact must have a single owner, and the document model must not depend on layout / rendering.
 
 When implementing, refactoring or reviewing code, the AI must treat the contract as a hard constraint; if an invariant has to be broken, the AI must first explain why, assess the impact and obtain explicit authorization.
 
@@ -303,16 +339,20 @@ When implementing, refactoring or reviewing code, the AI must treat the contract
 - The front end uses TypeScript strict mode. Run `npm run test` (Vitest) and `npm run build` (which includes `tsc --noEmit` type checking) before committing.
 - The backend follows the Alibaba Java Development Manual.
 
-## 🗺 Roadmap
+## Roadmap
 
 | Capability | Description | Status |
 |------|------|------|
-| PDF / DOCX export | Complete the export matrix | Planned |
+| PDF / DOCX export | Complete the export matrix (listed in the export dialog, currently marked "coming soon") | Planned |
+| XML / HL7 import parsing | Current loader is a stub; only JSON / HTML / Markdown are effective | Planned |
 | HarfBuzz text shaping | High-precision text measurement via WASM | Planned |
 | Collaborative editing | Yjs / WebSocket infrastructure is in place; editing stream not yet wired | Capability reserved |
+| Version rollback UI | History versions are persisted; the rollback UI is not yet wired | Planned |
+| Audit logging | `t_audit_log` schema is ready; write and query not yet wired | Planned |
+| Backend tests | JUnit / Spring Boot Test dependencies are ready; test cases not yet added | Planned |
 | E2E test suite | Playwright end-to-end regression tests | Planned |
 
-## 🤝 Contributing
+## Contributing
 
 First of all, thank you from the bottom of our hearts for stopping by and contributing to this project ❤️. Whether you are an experienced developer or an open-source newcomer, every suggestion, line of code, and documentation edit is invaluable to the EMR Document Editor Engine.
 
@@ -411,7 +451,7 @@ We want this to be a friendly, inclusive, and mutually supportive community. Whe
 
 Thank you for reading this far. Everyone who stops to contribute to an open-source project deserves to be taken seriously. We look forward to your PR! 🎉
 
-## 📄 License
+## License
 
 This project is licensed under the [MPL-2.0 (Mozilla Public License 2.0)](LICENSE).
 
@@ -424,7 +464,7 @@ In plain terms:
 
 Full terms: [LICENSE](LICENSE). Copyright and third-party notices: [NOTICE](NOTICE). Our IP protection policy: [IP-POLICY.md](IP-POLICY.md).
 
-## 📞 Contact Information
+## Contact Information
 
 If you have questions or suggestions, feel free to reach out through the [Issues](https://gitee.com/wangwang_1_1665527118/emrdocument-engine/issues) page — we'd be happy to chat.
 
