@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "pack:engine": "node ../scripts/pack-engine.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",

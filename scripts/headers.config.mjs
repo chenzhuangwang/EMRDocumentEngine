@@ -126,6 +126,8 @@ export const EXCLUDE_PATH_PREFIXES = Object.freeze([
   'node_modules/',
   'frontend/node_modules/',
   'frontend/dist/',
+  'packages/emr-document-engine/dist/',  // 引擎分包构建产物 (契约 §32, 已 gitignore; 此处兜底)
+  'dist-packages/',             // npm pack 出的 tarball
   'backend/target/',
 ])
 

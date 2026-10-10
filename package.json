@@ -10,6 +10,8 @@
     "headers:apply": "node scripts/apply-headers.mjs",
     "headers:check": "node scripts/check-headers.mjs",
     "verify:provenance": "node scripts/verify-provenance.mjs",
-    "archive:snapshot": "node scripts/archive-snapshot.mjs"
+    "archive:snapshot": "node scripts/archive-snapshot.mjs",
+    "engine:pack": "node scripts/pack-engine.mjs",
+    "engine:verify": "node scripts/verify-engine-package.mjs"
   }
 }

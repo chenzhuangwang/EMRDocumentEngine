@@ -19,7 +19,7 @@
 // frontend/index.html 开始, scripts/ 不可达, 因此本工具既不会被
 // 打进产物, 也不会增加发布体积。
 //
-// 与 frontend/src/lib/provenance.ts 的关系: 两边都实现了同一套编解码。
+// 与 packages/emr-document-engine/src/lib/provenance.ts 的关系: 两边都实现了同一套编解码。
 // 为了不让两份实现漂移, 双方都被钉在同一个「可见的」FIXTURE_BITS 上
 // (frontend 侧断言编码结果 == FIXTURE_BITS, 本工具在 --selftest 中断言
 // 同样的等式)。刻意不引入跨目录 import: frontend 打包边界之外的文件
@@ -36,7 +36,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(HERE, '..')
 
 // ------------------------------------------------------------
-// 编解码 (与 frontend/src/lib/provenance.ts 同构)
+// 编解码 (与 packages/emr-document-engine/src/lib/provenance.ts 同构)
 //
 // 用 String.fromCharCode 而非字面量或转义序列: 这是本文件唯一需要
 // 不可见字符的地方, 由码点构造可保证源码里不存在任何字面不可见字符。
@@ -137,7 +137,7 @@ function selftest() {
   if (!okDecode) console.log(`    实际: ${JSON.stringify(decoded)}`)
 
   if (okEncode && okDecode) {
-    console.log('\n✓ 编解码自检通过 (与 frontend/src/lib/provenance.ts 共用同一夹具)')
+    console.log('\n✓ 编解码自检通过 (与 packages/emr-document-engine/src/lib/provenance.ts 共用同一夹具)')
     process.exit(0)
   }
   console.error('\n✖ 编解码自检失败 —— 两侧实现已漂移')

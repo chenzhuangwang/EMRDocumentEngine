@@ -131,11 +131,11 @@ const remoteLines = git(['remote', '-v'])
   .join('\n')
 
 const editorVersion = readConstVersion(
-  'frontend/src/engine/document/version/EditorVersion.ts',
+  'packages/emr-document-engine/src/engine/document/version/EditorVersion.ts',
   'EDITOR_VERSION',
 )
 const docFormatVersion = readConstVersion(
-  'frontend/src/engine/document/version/DocumentFormatVersion.ts',
+  'packages/emr-document-engine/src/engine/document/version/DocumentFormatVersion.ts',
   'CURRENT_DOCUMENT_VERSION',
 )
 
@@ -147,8 +147,8 @@ Commit      : ${commit}
 分支        : ${branch}
 工作树      : ${dirty ? `DIRTY (${dirty.split('\n').length} 项改动)` : 'clean'}
 跟踪文件数  : ${tracked}
-引擎版本    : ${editorVersion}   (frontend/src/engine/document/version/EditorVersion.ts)
-文档格式版本: ${docFormatVersion}   (frontend/src/engine/document/version/DocumentFormatVersion.ts)
+引擎版本    : ${editorVersion}   (packages/emr-document-engine/src/engine/document/version/EditorVersion.ts)
+文档格式版本: ${docFormatVersion}   (packages/emr-document-engine/src/engine/document/version/DocumentFormatVersion.ts)
 许可证      : MPL-2.0
 
 远程
