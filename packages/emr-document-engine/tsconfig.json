@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationMap": false,
+    "rootDir": "src",
+    "outDir": "dist/types",
+    "baseUrl": ".",
+    "paths": {
+      "react": ["../../frontend/node_modules/@types/react"],
+      "react/jsx-runtime": ["../../frontend/node_modules/@types/react/jsx-runtime"],
+      "react-dom": ["../../frontend/node_modules/@types/react-dom"],
+      "fflate": ["../../frontend/node_modules/fflate"]
+    }
+  },
+  "include": [
+    "src/engine",
+    "src/platform/dom",
+    "src/platform/react",
+    "src/lib/export",
+    "src/lib/documentExport.ts",
+    "src/lib/printJob.ts",
+    "src/lib/provenance.ts"
+  ],
+  "exclude": [
+    "src/engine/dist",
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ]
+}

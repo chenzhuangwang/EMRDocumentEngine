@@ -1,6 +1,6 @@
 AI EDITOR ARCHITECTURE CONTRACT
 Project: EMR Document Engine
-Scope: frontend/src/engine
+Scope: packages/emr-document-engine (引擎源码; 2026-10 物理剥离前是 frontend/src/engine)
 Status: MANDATORY
 
 This document defines architectural invariants for AI-assisted development.
@@ -4088,3 +4088,113 @@ entry.
 
   - The outline is a FLAT list indented by level, not a collapsible
     tree. Nesting renders correctly; folding does not exist yet.
+
+============================================================
+32. DISTRIBUTION PACKAGE BOUNDARY
+============================================================
+
+The engine is DISTRIBUTED as a package, not only consumed in-tree.
+
+The package is PHYSICALLY SEPARATED from the application. Its root is
+`packages/emr-document-engine/`, and it holds SOURCE, manifest and
+build config together:
+
+    packages/emr-document-engine/
+        package.json      manifest (name @emrde/document-engine)
+        vite.config.ts    lib build (four entries)
+        tsconfig.json     declaration build
+        src/engine/       engine core
+        src/platform/dom/ browser host
+        src/platform/react/ React adapter
+        src/lib/          export / print / provenance feature layer
+        dist/             build output (gitignored)
+
+The four source subtrees keep the same relative positions they had
+before the split (`frontend/src/{engine,platform,lib}`), which is why
+every pre-existing relative import inside the package still resolves
+verbatim.
+
+The APPLICATION imports the package BY NAME. Its manifest declares
+subpath entries:
+
+    "."        engine core        (src/engine/index.ts)
+    "./dom"    browser host       (src/platform/dom/index.ts)
+    "./react"  React adapter      (src/platform/react/index.ts)
+    "./export" export / print     (src/lib/export/index.ts)
+
+Consequences that are BINDING, not stylistic:
+
+32.1 A file that enters the distributed package MUST NOT import
+     through a build-time alias (the @/ prefix). Aliases are a
+     bundler convenience and are NOT rewritten into the emitted
+     .d.ts; an alias in shipped source produces declarations no
+     external project can resolve. Packaged files import
+     RELATIVELY.
+
+32.2 The engine directory MUST NOT grow re-export shims that point
+     at platform/ or the UI, purely to expose them from the
+     package. The §27 dependency direction is unchanged by
+     packaging — a shim IS a dependency. dom / react / export
+     enter the package as BUILD ENTRIES, never as files under
+     engine/.
+
+32.3 The engine core entry is safe to import with no DOM (§29).
+     The "./dom", "./react" and "./export" entries are NOT: they
+     are browser-side by construction. A consumer that needs
+     Node / Worker / SSR MUST import the core entry alone.
+
+32.4 React is a PEER of the "./react" entry only. The core, dom
+     and export entries MUST NOT acquire a React dependency
+     through packaging (§10).
+
+32.5 Distributed output MUST remain readable Source Code Form
+     (IP-POLICY §5): the library build MUST NOT minify, mangle or
+     obfuscate.
+
+32.6 The package manifest and its build output MUST NOT live inside
+     a directory the application resolves through an alias.
+
+     The physical split makes this structurally impossible — the
+     package root and the application source tree are separate
+     directories under the repository root, and the application's
+     `@/` alias is anchored to its OWN src/ (regex `^@\//`, not a
+     bare `@`). The rule is retained as a REGRESSION GUARD: moving
+     the package back under the application tree is one `mv`, and
+     the failure it causes is silent.
+
+     WHY it is load-bearing, not tidiness: if a manifest lands in a
+     directory an application alias resolves to, Vite reads its
+     `exports` and resolves the bare specifier to `dist/index.js` —
+     the BUILT bundle — while deep specifiers still resolve to
+     SOURCE. The app then holds TWO module instances of the engine:
+     module-level state (ErrorRecovery's reporter, the locale
+     singleton, the id counters) splits in half. It does not fail
+     loudly — it fails as a silently dead wire. Measured, not
+     theorised: with dist/index.js present under the aliased
+     directory, ErrorReporting.test.ts fails because the store
+     reporter was installed into one copy and the loader reported
+     into the other.
+
+     Enforcement: `frontend/src/__tests__/EnginePackageBoundary.test.ts`.
+
+32.7 The application's alias to the package MUST point at the
+     package SOURCE, never at its build output. Development is
+     ZERO-BUILD: editing an engine file must take effect without
+     running `engine:pack` first. Distribution is a separate
+     consumer path and goes through the manifest's `exports` →
+     `dist`, so the two never have to agree on where the bytes
+     come from.
+
+     Corollary — the application's own alias MUST NOT be a bare `@`
+     prefix, or it will hijack the scoped package name
+     (`@emrde/document-engine` starts with `@`). It is anchored:
+     `^@\//`.
+
+     Corollary — the package has NO node_modules of its own. The
+     repository ships a single dependency tree
+     (`frontend/node_modules`) and deliberately does not use npm
+     workspaces: no root lockfile, no install step. The package's
+     runtime dependencies (react as a peer, fflate) are resolved by
+     explicit alias / `paths` entries in the application config,
+     and by the consumer's own package manager after distribution.
+

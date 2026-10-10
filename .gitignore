@@ -4,6 +4,10 @@ frontend/dist/
 frontend/.vite/
 *.local
 
+# ===== 引擎分发包产物 (契约 §32) =====
+packages/emr-document-engine/dist/
+dist-packages/
+
 # ===== Java / Maven =====
 target/
 *.class
