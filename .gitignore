@@ -42,3 +42,7 @@ Desktop.ini
 archive/
 *.bundle
 SHA256SUMS
+
+# AOCI agent host integration (machine-bound; do not commit)
+.mcp.json
+.mcp.json.backup.*

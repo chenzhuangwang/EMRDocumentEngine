@@ -14,7 +14,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { DocumentCompareView } from '@/components/views/DocumentCompareView'
 import { documentApi } from '@/services/api'
 import type { DocumentTree } from '@/engine/document/core/DocumentModel'
-import { NodePool, buildNodePool } from '@/engine/document/core/NodePool'
+import type { NodePool } from '@/engine/document/core/NodePool'
+import { loadComparePair } from '@/lib/compareDocuments'
 import { ArrowLeft } from 'lucide-react'
 import { useTranslation } from '@/i18n/useTranslation'
 
@@ -40,16 +41,13 @@ export default function ComparePage() {
       const newData = newRes.data.data
       if (oldData?.content && newData?.content) {
         try {
-          const oldTree = JSON.parse(oldData.content) as DocumentTree
-          const newTree = JSON.parse(newData.content) as DocumentTree
-          setOldDoc(oldTree)
-          setNewDoc(newTree)
-          const oldMap = new Map<string, import('@/engine/document/core/DocumentModel').BaseNode>()
-          oldMap.set(oldTree.id, oldTree as unknown as import('@/engine/document/core/DocumentModel').BaseNode)
-          setOldPool(buildNodePool(oldMap, { body: oldTree.id }))
-          const newMap = new Map<string, import('@/engine/document/core/DocumentModel').BaseNode>()
-          newMap.set(newTree.id, newTree as unknown as import('@/engine/document/core/DocumentModel').BaseNode)
-          setNewPool(buildNodePool(newMap, { body: newTree.id }))
+          // 装载走 DocumentLoader 单一加载路径 (见 lib/compareDocuments) —— 池必须是
+          // **完整**的, 自行 buildNodePool 只塞根节点会让比较视图读不到任何正文。
+          const pair = loadComparePair(oldData.content, newData.content)
+          setOldDoc(pair.old.doc)
+          setNewDoc(pair.new.doc)
+          setOldPool(pair.old.pool)
+          setNewPool(pair.new.pool)
         } catch { setError(t('compare.parseError')) }
       } else {
         setError(t('compare.emptyError'))

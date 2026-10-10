@@ -1,0 +1,491 @@
+#AOCI-CODE-VOLUME: 1
+
+===D:/czw/EMRDocumentEngine/===
+.gitattributes[FV4T]: F:强制所有文本以 LF 检出(* text=auto eol=lf)，保证跨平台字节一致 | R:- | A:- | S:AOCI 基线按原始字节比对；CRLF 重写会把整棵索引树判为 stale，故须锁定 LF
+.gitignore[FV4T]: F:声明不入库的构建产物、IDE/环境文件与 AOCI 宿主配置(.mcp.json) | R:code:.gitattributes | A:- | S:勿把 aoci.txt/.aoci/AGENTS.md 等认知资产加入忽略，被忽略的会被 scan 静默跳过
+AGENTS.md[SZ5T]: F:AOCI 仓库认知的 Agent 指令区块(aoci:begin/end)，说明认知闭环、维护边界与最小入口 | R:code:aoci.txt | A:- | S:由 aoci init 生成维护；本区块不重建 Onboarding 流程，机器事实以 aoci_rules 与 Guide 为准
+IP-POLICY.md[SS6S]: F:声明知产防护四层(文件头/隐形溯源/归档+历史/许可)的真实能力边界与明确不做的事 | R:code:LICENSE,code:NOTICE | A:- | S:不做代码混淆/加密/遥测/渲染水印；零宽标识可被一次性剥离属已知取舍；不改变用户所见是硬约束
+LICENSE[SZ5M]: F:MPL-2.0 许可证全文，声明文件级 copyleft 及本项目不适用 Exhibit B | R:code:NOTICE,code:IP-POLICY.md | A:- | S:明确不适用 Exhibit B，故可与 GPL 等 Secondary License 组合；不得移除该声明
+NOTICE[SZ4T]: F:版权、双远程地址、许可证历史(MIT→MPL-2.0 更正记录)与第三方组件声明 | R:code:LICENSE,code:IP-POLICY.md | A:- | S:README 曾自 2026-07-17 误标 MIT；该表述非许可授予，以 MPL-2.0 为准
+README.en.md[SL4M]: F:README.md 的英文版，内容与中文版对齐 | R:code:README.md | A:- | S:须与 README.md 保持同步
+README.md[SG6M]: F:项目主文档：定位、功能、架构、技术栈、API、数据库表、构建与贡献指南 | R:code:README.en.md,code:LICENSE,code:.claude/AI_EDITOR_CONTRACT.md | A:- | S:许可证段已由 MIT 更正为 MPL-2.0；导出矩阵中 OFD/CDA 已实现，PDF/DOCX 仍为规划
+docker-compose.yml[OV5T]: F:四服务编排(mysql/redis/backend/nginx), 挂 schema.sql+seed.sql 初始化库, nginx 托管前端 dist | R:code:backend/Dockerfile,code:frontend/nginx.conf | A:- | S:mysql 仅空数据卷时执行初始化脚本
+nginx.conf[OV4T]: F:前端静态站点 + 反向代理: 静态回退 index.html, /api 与 /ws 代理到 backend:8080 | R:code:frontend/vite.config.ts | A:- | S:/api/ 与 /ws/ 代理到 backend:8080; 前端 try_files 回退 index.html
+package.json[FV4T]: F:仓库根工作区包: 只放版权/溯源归档四个工具链脚本, 无依赖 | R:code:scripts/apply-headers.mjs,code:scripts/check-headers.mjs,code:scripts/verify-provenance.mjs,code:scripts/archive-snapshot.mjs | A:- | S:根 package.json 只管工具链, 应用代码在 frontend/ 与 backend/
+pre-push[XV3T]: F:git 客户端 hook 样本: push 后台等待后 POST 请求通知 GoCD 拉取新代码 | R:code:knowledge/GoCD-安装配置指南.md | A:- | S:push 后后台通知 GoCD; 含硬编码服务器地址与本地文件写入
+
+===D:/czw/EMRDocumentEngine/.claude/===
+AI_EDITOR_CONTRACT.md[SG8L]: F:定义前端引擎(frontend/src/engine)的 31 条强制架构不变量与禁止状态，是 AI 实现/重构/评审的硬约束 | R:code:.claude/CLAUDE.md,code:README.md | A:- | S:四级严格度 MUST NOT/MUST/SHOULD/TARGET；TARGET 不要求立即重构，禁止仅为满足 TARGET 做大规模重构
+CLAUDE.md[SG6T]: F:AI 入口提示，要求修改 frontend/src/engine 前先阅读并遵守 AI_EDITOR_CONTRACT.md | R:code:.claude/AI_EDITOR_CONTRACT.md | A:- | S:仅在改动引擎前触发；不改引擎时无需读取契约
+
+===D:/czw/EMRDocumentEngine/.super-dev/===
+SESSION_BRIEF.md[SZ3S]: F:Super Dev 会话简报，记录 R30-R66 交付清单、构建基线与架构决策 | R:code:.super-dev/WORKFLOW.md | A:- | S:-
+WORKFLOW.md[SZ3T]: F:Super Dev 流水线阶段状态与版本演进/关键决策编号记录 | R:code:.super-dev/SESSION_BRIEF.md | A:- | S:-
+
+===D:/czw/EMRDocumentEngine/.trae/skills/gzh-graphite-workflow/===
+SKILL.md[XZ2S]: F:公众号「石墨极简风」排版的项目级加速 skill，固化组件模板、校验流水线与输出命名 | R:code:.trae/skills/gzh-graphite-workflow/scripts/fix_punct.py | A:- | S:附件 A/B/C/D 及发布附件区块不进正文；橙色≤3 处；禁用 white-space:pre
+
+===D:/czw/EMRDocumentEngine/.trae/skills/gzh-graphite-workflow/scripts/===
+fix_punct.py[XL2T]: F:将 <span leaf=""> 内英文直引号与中文后半角标点批量改为中文全角 | R:code:.trae/skills/gzh-graphite-workflow/SKILL.md | A:fix_quotes_in_leaf,fix_punct_in_leaf,process | S:必须用 re.DOTALL 贪婪匹配；[^<]* 会漏改 span 内嵌套 <strong> 的情况
+
+===D:/czw/EMRDocumentEngine/backend/===
+Dockerfile[OV3T]: F:后端两阶段镜像：temurin17 JDK 构建 jar → JRE 运行，暴露 8080 | R:code:backend/pom.xml | A:- | S:-
+pom.xml[FV6S]: F:后端 Maven 配置：Spring Boot 3.3.2/Java 17、MyBatis-Plus 3.5.7、JJWT 0.12.6、springdoc 2.6.0 | R:code:backend/Dockerfile,code:backend/src/main/resources/application.yml | A:- | S:-
+
+===D:/czw/EMRDocumentEngine/backend/src/main/java/com/emr/===
+EmrApplication.java[EG5T]: F:Spring Boot 应用主入口，启动后端 | R:code:backend/src/main/java/com/emr/config/SecurityConfig.java | A:EmrApplication,main | S:-
+
+===D:/czw/EMRDocumentEngine/backend/src/main/java/com/emr/config/===
+MybatisPlusConfig.java[MD5T]: F:MyBatis-Plus 配置：createdAt/updatedAt 自动填充 + 注册乐观锁插件 | R:code:backend/src/main/java/com/emr/entity/Document.java | A:insertFill,updateFill,mybatisPlusInterceptor | S:缺乐观锁插件时 @Version 的 updateById 会因 MP_OPTLOCK_VERSION_ORIGINAL 未绑定而报错
+SecurityConfig.java[MS7S]: F:Spring Security 配置：无状态 JWT 过滤器、放行规则、CORS 与 BCrypt 编码器 | R:code:backend/src/main/java/com/emr/util/JwtUtil.java,code:backend/src/main/java/com/emr/repository/UserRepository.java | A:securityFilterChain,corsConfigurationSource,passwordEncoder,jwtAuthenticationFilter | S:/api/v1/auth/**、/api-docs/**、/swagger-ui/**、/ws/** 放行，其余需鉴权；CORS 仅允许 localhost:3000/5173
+WebSocketConfig.java[MN3T]: F:启用 WebSocket 并注册 ServerEndpointExporter | R:- | A:serverEndpointExporter | S:-
+
+===D:/czw/EMRDocumentEngine/backend/src/main/java/com/emr/controller/===
+AuthController.java[EI6T]: F:认证入口(/api/v1/auth)：登录、登出、获取当前用户 | R:code:backend/src/main/java/com/emr/service/AuthService.java | A:login,logout,getCurrentUser | S:login 捕获 RuntimeException 统一以 code=401 返回
+DocumentController.java[EB7T]: F:文档入口(/api/v1/documents)：分页列表(关键字/状态)、创建、详情、更新、删除 | R:code:backend/src/main/java/com/emr/service/DocumentService.java | A:list,create,getById,update,delete | S:-
+TemplateController.java[EB6T]: F:模板入口(/api/v1/templates)：列表(分类/关键字)、详情、创建、更新、删除 | R:code:backend/src/main/java/com/emr/service/TemplateService.java | A:list,getById,create,update,delete | S:create/update 用 Map<String,String> 接收，无字段校验
+
+===D:/czw/EMRDocumentEngine/backend/src/main/java/com/emr/dto/===
+ApiResponse.java[CD6T]: F:统一响应包装{code,message,data}及 success/error 工厂 | R:code:backend/src/main/java/com/emr/controller/AuthController.java | A:ApiResponse,success,error | S:业务错误也返回 HTTP 200，真正状态在 body 的 code 字段
+CreateDocumentRequest.java[CD4T]: F:创建文档请求体：title(必填)、templateId、content(JSON) | R:code:backend/src/main/java/com/emr/entity/Document.java | A:- | S:-
+LoginRequest.java[CI3T]: F:登录请求体：username、password(均 @NotBlank) | R:code:backend/src/main/java/com/emr/controller/AuthController.java | A:- | S:-
+LoginResponse.java[CI4T]: F:登录响应：accessToken、refreshToken、user | R:code:backend/src/main/java/com/emr/service/AuthService.java | A:- | S:-
+PageResult.java[CD4T]: F:通用分页结果：records、total、page、size | R:code:backend/src/main/java/com/emr/service/DocumentService.java | A:- | S:-
+UpdateDocumentRequest.java[CD4T]: F:更新文档请求体：title、content、status(均可选) | R:code:backend/src/main/java/com/emr/service/DocumentService.java | A:- | S:-
+UserDTO.java[CI4T]: F:用户视图对象：id、username、realName、role | R:code:backend/src/main/java/com/emr/entity/User.java | A:- | S:有意不含 password，避免泄露哈希
+
+===D:/czw/EMRDocumentEngine/backend/src/main/java/com/emr/entity/===
+Annotation.java[PD5T]: F:批注实体，映射 t_annotation | R:code:backend/src/main/resources/db/schema.sql | A:Annotation | S:-
+AuditLog.java[PO4T]: F:审计日志实体，映射 t_audit_log | R:code:backend/src/main/resources/db/schema.sql | A:AuditLog | S:表结构就绪，写入/查询尚未接入
+Document.java[PB8T]: F:文档实体(t_document)：JSON 内容、模型版本、加密 DEK、乐观锁 version、逻辑删除 | R:code:backend/src/main/java/com/emr/service/DocumentService.java,code:backend/src/main/resources/db/schema-h2.sql | A:Document | S:content 为 DocumentTree(去分页化, body:FlowBody) JSON；@Version 由乐观锁插件递增，勿手动改
+DocumentVersion.java[PB5T]: F:文档历史版本实体(t_document_version) | R:code:backend/src/main/java/com/emr/service/DocumentService.java | A:DocumentVersion | S:-
+Template.java[PB6T]: F:模板实体(t_template)：分类、JSON 内容、公开标志、乐观锁 | R:code:backend/src/main/java/com/emr/service/TemplateService.java | A:Template | S:-
+User.java[PI6T]: F:用户实体(t_user)：用户名、BCrypt 密码、角色、启用标志 | R:code:backend/src/main/java/com/emr/config/SecurityConfig.java | A:User | S:password 存 BCrypt 哈希，非明文
+
+===D:/czw/EMRDocumentEngine/backend/src/main/java/com/emr/repository/===
+AuditLogRepository.java[PO3T]: F:审计日志 Mapper(BaseMapper) | R:code:backend/src/main/java/com/emr/entity/AuditLog.java | A:AuditLogRepository | S:-
+DocumentRepository.java[PB5T]: F:文档 Mapper(BaseMapper) | R:code:backend/src/main/java/com/emr/entity/Document.java | A:DocumentRepository | S:-
+DocumentVersionRepository.java[PB3T]: F:文档版本 Mapper(BaseMapper) | R:code:backend/src/main/java/com/emr/entity/DocumentVersion.java | A:DocumentVersionRepository | S:-
+TemplateRepository.java[PB4T]: F:模板 Mapper(BaseMapper) | R:code:backend/src/main/java/com/emr/entity/Template.java | A:TemplateRepository | S:-
+UserRepository.java[PI5T]: F:用户 Mapper，扩展 findByUsername(@Select 按用户名查询) | R:code:backend/src/main/java/com/emr/service/AuthService.java | A:UserRepository,findByUsername | S:-
+
+===D:/czw/EMRDocumentEngine/backend/src/main/java/com/emr/service/===
+AuthService.java[AI7T]: F:认证服务：校验用户名/密码/启用状态并签发 access/refresh token | R:code:backend/src/main/java/com/emr/util/JwtUtil.java,code:backend/src/main/java/com/emr/repository/UserRepository.java | A:login,getCurrentUser | S:refreshToken 以 "${userId}:refresh" 作 subject 区分；未启用(getEnabled=0/null)用户拒绝登录
+DocumentService.java[AB8S]: F:文档服务：分页查询、创建(写初始版本)、更新(更新前归档旧版)、删除 | R:code:backend/src/main/java/com/emr/repository/DocumentVersionRepository.java,code:backend/src/main/java/com/emr/entity/Document.java | A:listDocuments,createDocument,updateDocument,deleteDocument | S:更新 content 前先插 t_document_version；version 由乐观锁插件自动+1，禁止手动递增(否则 WHERE version 偏大，影响 0 行)
+TemplateService.java[AB6T]: F:模板服务：按分类/关键字列表、创建、更新、删除 | R:code:backend/src/main/java/com/emr/repository/TemplateRepository.java | A:listTemplates,createTemplate,updateTemplate,deleteTemplate | S:-
+
+===D:/czw/EMRDocumentEngine/backend/src/main/java/com/emr/util/===
+BCryptHashGenerator.java[XS2T]: F:开发期工具：为种子用户生成 BCrypt 哈希(strength 10) | R:- | A:BCryptHashGenerator,main | S:非运行时组件，需 Spring Security 在 classpath 上手工运行
+JwtUtil.java[MS6T]: F:JWT 工具：HMAC 签名签发/校验 token 并提取 subject(userId) | R:code:backend/src/main/java/com/emr/config/SecurityConfig.java | A:generateToken,getUserIdFromToken,validateToken | S:密钥取自 jwt.secret，Keys.hmacShaKeyFor 要求 ≥32 字节
+
+===D:/czw/EMRDocumentEngine/backend/src/main/resources/===
+application-dev.yml[FC5T]: F:开发配置：H2 内存库(MySQL 模式)、H2 控制台、SQL 初始化、禁用 Redis 自动配置 | R:code:backend/src/main/resources/application.yml,code:backend/src/main/resources/db/schema-h2.sql | A:- | S:经 autoconfigure.exclude 关闭 Redis，无 Redis 也能启动
+application.yml[FC7S]: F:主配置：8080 端口、MySQL/Redis、MyBatis-Plus(雪花ID/逻辑删除/驼峰)、JWT、springdoc | R:code:backend/src/main/resources/application-dev.yml | A:- | S:全局逻辑删除字段 deleted(1删/0存)，主键 assign_id；DB_PASSWORD/JWT_SECRET 支持环境变量覆盖
+schema.sql[FD6S]: F:MySQL 8.0 权威 DDL(架构 v20.34): 文档/版本/模板/用户/权限/审计/质控/锁/批注/打印历史 | R:code:backend/src/main/resources/db/schema-h2.sql | A:- | S:权威 DDL, 与 schema-h2.sql 列差异大且须手工同步; t_document.content 为 JSON
+
+===D:/czw/EMRDocumentEngine/backend/src/main/resources/db/===
+schema-h2.sql[FD5S]: F:H2(MySQL 兼容模式)建表脚本，供开发/测试环境 | R:code:backend/src/main/resources/db/schema.sql | A:- | S:与 schema.sql 存在列差异：H2 版 t_document 多 model_version/encryption_key/kek_version 且 content 为 TEXT，两脚本须同步
+schema.sql[FD6S]: F:MySQL 8.0 建库建表脚本(7 张 t_ 表：用户/文档/模板/版本/审计/批注/批注回复) | R:code:backend/src/main/resources/db/schema-h2.sql | A:- | S:t_document.content 为 JSON 类型并含逻辑删除 deleted；MySQL 专用，开发用 schema-h2.sql
+seed-h2.sql[FD3T]: F:开发/测试环境的 H2 种子数据(2 用户 + 1 空白模板, 密码 admin123) | R:code:backend/src/main/resources/db/seed.sql | A:- | S:哈希与 seed.sql 不同源, 是 admin123 的另一份 BCrypt
+seed.sql[FD3T]: F:MySQL 种子数据: 4 用户(admin/designer/doctor01/doctor02, 密码 admin123) + 2 模板 | R:code:backend/src/main/resources/db/schema.sql | A:- | S:由 docker-compose 挂载执行; 与 seed-h2.sql 哈希不同源
+
+===D:/czw/EMRDocumentEngine/frontend/===
+.dockerignore[FV3T]: F:前端构建上下文排除项(node_modules/dist/.vite/IDE/环境变量) | R:code:frontend/Dockerfile | A:- | S:-
+Dockerfile[OV4T]: F:前端两阶段镜像: node20 构建 → nginx:alpine 托管, 经 envsubst 注入 BACKEND_HOST/PORT | R:code:frontend/nginx.conf,code:frontend/package.json | A:- | S:nginx.conf 须复制为 templates/default.conf.template 供 envsubst; npm ci 需 package-lock.json
+index.html[EU4T]: F:前端 HTML 入口: 挂载 #root, 加载 /src/main.tsx, 预连 Google Fonts | R:code:frontend/src/main.tsx | A:- | S:含 <meta name="generator" content="EMRDocumentEngine"> 生成器标识
+nginx.conf[ON4T]: F:前端站点配置: SPA 回退 index.html, /api 与 /ws 反代后端 | R:code:frontend/Dockerfile | A:- | S:用 set $backend_host 变量形式 proxy_pass 使主机名请求期解析, 避免启动期 host not found 退出
+package-lock.json[FV3L]: F:前端依赖锁(npm lockfileVersion 3), 锁定全部传递依赖版本 | R:code:frontend/package.json | A:- | S:由 npm 生成, 勿手工编辑; Dockerfile 用 npm ci 依赖它
+package.json[FV5T]: F:前端清单: 脚本(dev/build=tsc --noEmit && vite build/test=vitest) 与依赖(React18/Vite/Zustand/Radix/KaTeX/Yjs) | R:code:frontend/package-lock.json | A:- | S:build 先跑 tsc --noEmit, 类型错误即构建失败
+postcss.config.js[FV3T]: F:PostCSS 管道: tailwindcss + autoprefixer | R:code:frontend/tailwind.config.ts | A:- | S:-
+tailwind.config.ts[FV5S]: F:Tailwind 配置: chrome/line 配色绑到 CSS 变量 rgb(var(--emr-*, <standard 原值>) / <alpha-value>) | R:code:frontend/src/platform/dom/chromeTokens.ts | A:- | S:必须带第二参兜底(standard 原值), 否则 bootstrap 未跑到时 bg-chrome/80 会静默变不透明
+tsconfig.json[FV5T]: F:前端 TS 配置: strict + noUnusedLocals/Parameters, 路径别名 @/* → src/* | R:- | A:- | S:noUnusedLocals/noUnusedParameters 为真 —— 未使用的变量或参数会让 tsc 直接失败
+tsconfig.node.json[FV3T]: F:Node 侧构建脚本 TS 配置: 仅覆盖 vite.config.ts | R:code:frontend/tsconfig.json | A:- | S:include 仅 vite.config.ts; 并入 src 会致 lib/target 冲突
+vite.config.ts[FV5T]: F:Vite 构建配置: React 插件 + @ 别名 + 开发代理(/api→8080, /ws) + vitest 配置 | R:- | A:- | S:开发端口 3001; vitest setupFiles 指向 engine/__tests__/setup.ts, 改动会影响全部测试
+
+===D:/czw/EMRDocumentEngine/frontend/src/===
+App.tsx[EU5T]: F:顶层路由: / 首页, /editor(+/:id, /new), /compare/:oldId/:newId, 未知路径重定向首页 | R:code:frontend/src/pages/EditorPage.tsx,code:frontend/src/pages/HomePage.tsx | A:App | S:-
+errorReporting.ts[IO4T]: F:引擎错误上报落点: 把 ErrorRecovery 三级容错的错误接到 store, 由 StatusBar 呈现 | R:code:frontend/src/engine/ErrorRecovery.ts,code:frontend/src/store/index.ts | A:installErrorReporter | S:单独成模块而非写在 main.tsx 是可测考虑(入口接线无测试守着); 幂等
+index.css[FU4S]: F:全局样式入口: Tailwind 三层 + chrome token CSS 变量兜底 + 工具栏/侧栏/属性面板组件类 | R:code:frontend/src/platform/dom/chromeTokens.ts | A:- | S:input/select/textarea 未指定底色时统一兜 chrome token(否则深色漏白); 排除 data-ctl-overlay
+main.tsx[EG6T]: F:React 入口: 渲染前依次装错误上报落点、bootstrap 语言与 chrome 主题, 再挂 App | R:code:frontend/src/errorReporting.ts,code:frontend/src/i18n/bootstrap.ts,code:frontend/src/platform/dom/chromeTheme.ts,code:frontend/src/store/index.ts | A:- | S:三项 bootstrap 必须在 render() 之前同步跑完(否则首帧恒中文/恒 standard 会闪一下); chrome 主题订阅放本处, 兜住任何 setThemePreset 真正落 DOM
+vite-env.d.ts[FV2T]: F:Vite 客户端类型引用(vite/client) | R:- | A:- | S:-
+
+===D:/czw/EMRDocumentEngine/frontend/src/__tests__/===
+nodeShims.d.ts[TQ4T]: F:测试专用的最小 Node 类型声明(仅 node:fs/path/process 三个具名导出) | R:- | A:- | S:刻意不装 @types/node: 它注入全局 Timeout 返回类型, 会撞崩引擎 LayeredRenderer 的 number 断言
+
+===D:/czw/EMRDocumentEngine/frontend/src/components/common/===
+LanguageMenu.tsx[CU5T]: F:顶栏语言切换下拉(zh-CN/en-US), 经 useTranslation.setLocale | R:code:frontend/src/i18n/bootstrap.ts,code:frontend/src/i18n/useTranslation.ts | A:LanguageMenu | S:文案全走 LocaleMessages, 不在组件内维护第二份 zh/en 字面量
+RepoLinks.tsx[CU4T]: F:顶栏 Gitee/GitHub 仓库入口, 内联 Gitee 品牌 SVG | R:code:frontend/src/components/layout/HeaderBar.tsx | A:RepoLinks,GiteeIcon,GITEE_REPO_URL | S:品牌 hover 类须完整字面量(Tailwind 扫源码); URL 常量供复用
+ThemeMenu.tsx[CU5T]: F:界面外壳主题切换下拉(standard/eyeCare/print/dark), 写 useUIStore.themePreset | R:code:frontend/src/platform/dom/chromeTheme.ts,code:frontend/src/components/editor/EditorProvider.tsx | A:ThemeMenu | S:改 preset 触发 chrome token 与画布 token 双路径(EditorProvider 订阅后 Editor.setTheme)
+
+===D:/czw/EMRDocumentEngine/frontend/src/components/dialogs/===
+BookmarkDialog.tsx[ZU5M]: F:书签/交叉引用对话框: 插入命名书签, 或选类型+目标插入引用 | R:- | A:BookmarkDialog | S:交叉引用格式 label/page/labelPage 决定 displayText 是否带 {page}/{number} 占位符, 由 LayoutEngine 排版期展开(契约 §12.2)
+ControlChoiceDialog.tsx[ZU6M]: F:单选/复选控件配置弹框(契约 §12.7): 5 tab, 单份 options 数组为单一事实源 | R:code:frontend/src/components/dialogs/controlConfigShared.tsx | A:ControlChoiceDialog,draftFrom | S:legacy(select/undefined)且未切多选语义时保持原 controlType 不做打开即迁移; 仅单选↔复选切换才显式落 controlType
+ControlInputDialog.tsx[ZU6M]: F:输入域控件配置弹框(契约 §12.7): 5 tab, 形态 kind 联动 controlType | R:code:frontend/src/components/dialogs/controlConfigShared.tsx | A:ControlInputDialog,kindFrom | S:未填 inline 候选且已绑码表时须不写 enums, 否则码表永不可达(绑定静默失效); 仅显式改形态才清 dictionary
+DocumentPropertiesDialog.tsx[ZU6M]: F:文档属性对话框(契约 §7.7/§7.8): 编辑 title + 元数据, 只产出规范化值交父层经命令写入 | R:code:frontend/src/engine/document/core/DocumentModel.ts | A:DocumentPropertiesDialog | S:绝不直改 DocumentModel; 脏态关闭需二次确认; keywords 逗号串↔string[] 交 normalizeDocumentMetadata 去重
+ExportDialog.tsx[ZU5S]: F:导出格式选择弹框: pdf/word/ofd/cda/elements/html/txt/json | R:code:frontend/src/lib/documentExport.ts | A:ExportDialog,FORMATS | S:仅 available=true 可选; pdf/word 当前 false(标「即将推出」)
+FindReplaceDialog.tsx[ZU5M]: F:查找替换对话框(Ctrl+F/H): 实时搜索/结果计数/大小写/全词/正则 | R:code:frontend/src/engine/FindReplaceEngine.ts | A:FindReplaceDialog | S:切换选项时即时重搜(经 setTimeout); 匹配数/替换词决定替换按钮可用性
+PageSetupDialog.tsx[ZU5M]: F:页面设置对话框: 页边距/纸张(A4/A3/Letter)/版式三 tab, 含节应用范围 | R:- | A:PageSetupDialog,MarginField,PagePreview | S:pageVerticalGap 仅改渲染视口间隙不改 SLIF 存储坐标; 切方向时宽高互换
+PasteSpecialDialog.tsx[ZU5S]: F:选择性粘贴对话框(Ctrl+Shift+V): 保留源格式/匹配目标/纯文本 | R:- | A:PasteSpecialDialog | S:默认选中 match-destination
+PrintDialog.tsx[ZU5M]: F:打印对话框: 页码范围/份数/双面/续打断点(来自打印历史) | R:code:frontend/src/services/PrintHistoryService.ts | A:PrintDialog,PrintSettings | S:打印机/份数/单双面由系统打印窗口生效(JS 无法操控原生对话框), 界面如实说明; 每次打开按 initialSettings 重算(常驻挂载)
+PrintPreviewDialog.tsx[ZU5S]: F:打印预览对话框: 页导航 + 打印按钮, 内嵌 A4 预览 | R:code:frontend/src/components/dialogs/PrintDialog.tsx | A:PrintPreviewDialog | S:预览纸面硬编码 bg-white 非 token —— 打印须 WYSIWYG, 深色外壳下纸仍是白的
+SectionCodeDialog.tsx[ZU5S]: F:设置/清除节的 sectionCode(契约 §31.14) | R:code:frontend/src/engine/document/core/DocumentModel.ts | A:SectionCodeDialog | S:空串 = 真删键(非写空值), 由 Editor.setSectionCode 归一化; 每次打开同步 current
+WatermarkDialog.tsx[ZU5S]: F:水印设置对话框: 文字/字号/颜色/透明度/旋转/间距 | R:code:frontend/src/engine/render/Draw.ts | A:WatermarkDialog | S:onRemove 仅当文档已有水印时传入 —— 水印是文档内容(契约 §12.4), 设/删入口须同在; 默认文字按语言 seed
+controlConfigShared.tsx[CU5M]: F:控件配置弹框共享层(契约 §12.7): 家族路由/创建种子/深克隆/共享表单控件/码表绑定字段 | R:code:frontend/src/platform/data/controlLibrary.ts,code:frontend/src/platform/data/dictionaryCatalog.ts | A:controlFamilyOf,initialConfigForCreate,cleanDefinition,DictionaryField | S:码表绑定只对下拉(select)开放: radio/checkbox 的 inline enums 恒优先, 绑码表等于发布可证明不生效的控件
+
+===D:/czw/EMRDocumentEngine/frontend/src/components/editor/===
+ContextMenu.tsx[ZU4T]: F:编辑器右键菜单呈现层: 包裹 Radix DropdownMenu, 固定定位在右键坐标 | R:code:frontend/src/components/editor/contextMenuModel.ts,code:frontend/src/components/editor/useEditorContextMenu.ts | A:ContextMenu | S:entries 为空直接返回 null 不弹空菜单; onCloseAutoFocus preventDefault 保焦点
+EditorProvider.tsx[IG7S]: F:React↔Canvas 引擎桥: 创建 Editor, 注入 DOM 宿主与码表, 订阅主题/语言并暴露 store 快照 hook | R:code:frontend/src/components/editor/RuntimeControlOverlay.tsx,code:frontend/src/components/editor/SectionStructureOverlay.tsx | A:EditorProvider,useEditor,useEditorRef,useEditorReady,useEditorStoreSnapshot | S:父 useEffect 晚于子 mount effect → 出 ready 标志供子组件等待, 避免 editorRef.current 恒 null 静默漏绑; store 用 useSyncExternalStore+version 订阅(in-place mutation)
+RuntimeControlOverlay.tsx[ZI7L]: F:控件无缝内联编辑覆盖层(契约 §12.6): 在 Canvas 隐藏 field 处放同字体透明 DOM 编辑面 | R:code:frontend/src/components/editor/EditorProvider.tsx,code:frontend/src/engine/layout/text/TextWrap.ts | A:RuntimeControlOverlay,useFieldText,GrowingField | S:值写入唯一路径 editor.setControlValue; 卸载即幂等提交(切换/失焦/点空白), Escape 丢弃; 折行复用 wrapControlText 保证编辑面与静态渲染一致
+SectionStructureOverlay.tsx[ZI6M]: F:画布上的 Section 结构可视化(契约 §31.14): 按嵌套深度画竖线+sectionCode, 选中叠高亮框 | R:code:frontend/src/components/editor/EditorProvider.tsx | A:SectionStructureOverlay | S:纯 DOM 叠加层不参与排版/命中测试; 空节无矩形不画线; 后台标签页 rAF 挂起 → document.hidden 退回 250ms 轮询
+TableGrowOverlay.tsx[ZI6S]: F:可增长表「+ 添加行」入口(契约 §12.9): 编辑/表单模式挂按钮, 设计模式挂只读标记 | R:code:frontend/src/components/editor/EditorProvider.tsx | A:TableGrowOverlay | S:真正强制在命令层(非可增长表 append 必被拒); 后台标签页 rAF 挂起 → document.hidden 退回定时轮询
+contextMenuModel.ts[ZU5M]: F:右键菜单纯函数模型: 由 EditorContextSnapshot + 样式投影派生条目(label/enabled/checked) | R:code:frontend/src/components/editor/ContextMenu.tsx | A:buildContextMenuModel | S:纯函数不能挂 hook —— t() 由调用方注入, 缺省回退 zh-CN 字面量; Section 操作经 sectionFact 附加而非新 kind
+controlMessages.ts[CU3T]: F:控件校验拒绝原因→用户文案映射(UI 层) | R:code:frontend/src/components/editor/RuntimeControlOverlay.tsx | A:controlRejectMessage | S:纯函数不挂 hook, t() 由调用方注入, 缺省回退 zh-CN
+useEditorContextMenu.ts[ZU5S]: F:右键菜单状态+动作分派 hook: 采集快照/折叠选区, 按 action id 分派到 Editor API(均经命令) | R:code:frontend/src/components/editor/contextMenuModel.ts | A:useEditorContextMenu | S:命中点未覆盖选区时折叠选区并移光标(Word 行为); 动作后 editor.focus() 恢复焦点, 否则 Radix 关闭丢焦点致快捷键失效
+
+===D:/czw/EMRDocumentEngine/frontend/src/components/layout/===
+EditorLayout.tsx[ZU6M]: F:编辑器整体布局: 顶栏+工具栏+侧栏+画布+状态栏, 阅读模式隐藏外壳 | R:code:frontend/src/components/layout/HeaderBar.tsx,code:frontend/src/components/layout/Sidebar.tsx,code:frontend/src/components/layout/Toolbar.tsx | A:EditorLayout,defaultTemplates | S:默认模板数据存 i18n 键而非字面量, 渲染时按当前语言展开
+HeaderBar.tsx[ZU6M]: F:顶部导航栏: Logo/标题内联输入/保存指示 + 撤销重做保存导入属性 + 主题语言仓库用户 | R:code:frontend/src/components/layout/EditorLayout.tsx | A:HeaderBar,DocumentTitleInput,SaveIndicator | S:标题内联输入本地草稿+失焦/回车提交(避免逐键污染 undo 栈), canonical 仍为 engine doc.title
+Sidebar.tsx[ZU6M]: F:侧边栏: tabs(模板/元素/大纲/批注/质控)与各自面板 | R:code:frontend/src/components/sidebar/OutlineNav.tsx,code:frontend/src/components/panels/CommentPanel.tsx,code:frontend/src/components/panels/QCResultPanel.tsx | A:Sidebar,SidebarTab,TemplateList,ElementPalette | S:搜索框仅模板/元素两列表页渲染(其余 tab 无搜索语义)
+StatusBar.tsx[ZU6M]: F:状态栏: 不可见字符/节结构开关 + 页码/字数/量表分 + 缩放 + 错误提示 + 模式切换 + 在线 | R:code:frontend/src/components/views/ModeSwitcher.tsx | A:StatusBar,EngineErrorChip,SaveStatusIcon | S:量表分(§12.6.2 layerE)与质控合规分是两回事故独立标注; 无 counted 时不渲染; 错误 chip 有键则现读语言包重译
+Toolbar.tsx[ZU8L]: F:主工具栏: 历史/字体字号/标题/文本样式/颜色/元素插入/段落/列表/页眉页脚/插件动作/文件操作 | R:code:frontend/src/components/toolbar/HeaderFooterToolbar.tsx,code:frontend/src/engine/plugins/PluginManager.ts | A:Toolbar,FontDropdown,HeadingDropdown,FieldDropdown,InsertControlDropdown,ExportDropdown | S:label 一律存 i18n 键不存双语字面量(否则翻译表副本必然漂移); 控件插入收拢为 3 类向导(§12.7)不直接插默认控件
+
+===D:/czw/EMRDocumentEngine/frontend/src/components/panels/===
+CommentPanel.tsx[ZU6M]: F:批注面板: 列表/筛选(全部/未解决/已解决)/回复线程/resolve/新建批注 | R:code:frontend/src/engine/document/core/DocumentModel.ts | A:CommentPanel | S:onNewComment 返回 false 表示锚定失败(无选区或跨段落), 面板据此提示, 不出现「点了没反应」
+PerfPanel.tsx[OO4S]: F:性能诊断浮层: FPS/帧耗时/布局耗时/缓存命中率 | R:- | A:PerfPanel | S:summary(引擎 getPerfMetrics)优先于外部注入值; 默认隐藏, 点图标展开
+QCResultPanel.tsx[ZU5S]: F:质控结果面板: 评分+等级(A-D)+三级问题列表+点击定位 | R:code:frontend/src/engine/qc/QCEngine.ts | A:QCResultPanel | S:仅带 paragraphPath 的问题可跳转; 无定位条目禁用成非按钮(避免点击无反应)
+
+===D:/czw/EMRDocumentEngine/frontend/src/components/sidebar/===
+OutlineNav.tsx[ZU6S]: F:大纲导航面板: 树形大纲+点击跳转+当前高亮+节行操作 | R:code:frontend/src/components/sidebar/outlineModel.ts | A:OutlineNav,SectionActions | S:节行必须用 sectionId 定位, 不得把节 id 塞进 paragraphPath(空节无段落, 会造出 CursorState 解析不出的非法路径)
+RecentDocuments.tsx[ZU5S]: F:最近文档列表: localStorage 存最近 10 份, 侧栏快速打开 | R:- | A:RecentDocuments,getRecentDocuments,addRecentDocument | S:持久化键 emr-recent-docs, 上限 10
+outlineModel.ts[ZU5S]: F:大纲投影纯函数(契约 §31.14): 按真结构树前序输出大纲行(节行在内容之前) | R:code:frontend/src/components/sidebar/OutlineNav.tsx,code:frontend/src/engine/render/TOCGenerator.ts | A:buildOutlineItems | S:节行只带 sectionId, 空节 paragraphPath 留空; 遍历走 pool.getChildren 结构树入口而非逻辑流
+
+===D:/czw/EMRDocumentEngine/frontend/src/components/toolbar/===
+HeaderFooterToolbar.tsx[ZU5S]: F:页眉页脚上下文工具栏: 首页不同/奇偶页不同开关+插入页码/日期+区域标签+关闭 | R:code:frontend/src/components/layout/Toolbar.tsx | A:HeaderFooterToolbar | S:两开关决定逐页变体(契约 §7.9), 经 onConfigChange→SetHeaderFooterConfigCommand 写入
+
+===D:/czw/EMRDocumentEngine/frontend/src/components/views/===
+DesignControlPalette.tsx[ZU5T]: F:设计态控件库浮动面板: 按分类列控件, 点击经 Editor.insertControl 插入 | R:code:frontend/src/platform/data/controlLibrary.ts | A:DesignControlPalette | S:仅 mode==='design' 渲染; 目录数据归 platform/data, 引擎不硬编码医疗字典
+DesignControlProperties.tsx[ZU6S]: F:设计态控件属性面板(契约 §12.5): 就地编辑选中控件 TemplateDefinition 的 7 个可编辑字段 | R:code:frontend/src/components/views/controlDisplay.ts,code:frontend/src/components/editor/EditorProvider.tsx | A:DesignControlProperties | S:round-trip 保持 controlType 不变(插入时写定, 面板只读展示); 语义身份只读不产生写入; 文本字段 onBlur 提交避免逐字污染 undo 栈
+DocumentCompareView.tsx[ZU6M]: F:文档比较视图(R47): 差异列表(插入/删除/修改/相等)+颜色编码+统计栏+接受/拒绝 | R:code:frontend/src/engine/DocumentDiffer.ts | A:DocumentCompareView,DiffRow | S:diff 经 DocumentDiffer.compare(useMemo 缓存); 标签走 i18n 键
+ModeSwitcher.tsx[ZU4T]: F:编辑器模式切换下拉(edit/readonly/form/clean/design/print), 内嵌于状态栏 | R:- | A:ModeSwitcher | S:-
+ReadingMode.tsx[ZU4T]: F:全屏阅读模式(R40): 隐藏工具栏/侧栏/状态栏, 仅显示文档 + 退出提示 | R:- | A:ReadingModeOverlay | S:active 时注册 window keydown(Escape) 退出
+controlDisplay.ts[CU4T]: F:控件属性面板只读展示投影(契约 §12.5): controlType 展示名 + 语义身份卡, 纯函数无写入 | R:code:frontend/src/platform/data/controlLibrary.ts | A:controlTypeDisplayName,semanticIdentityOf | S:不调用 setControlDefinition(无「展示即迁移」); 未知 controlType 保留原值; 纯函数 t() 注入
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/===
+AutoCorrectEngine.ts[DB4S]: F:自动更正引擎(R43): 24 条医学缩写规则(如 i.v.g.t.t.→静脉滴注), 可配置词库 + 正则 | R:- | A:AutoCorrectEngine,AutoCorrectRule | S:checkAtCursor 锚定光标前最近一词的词尾; wholeWord 用前后边界; check 一次只替换一处
+AutoSaveManager.ts[RR5S]: F:自动保存引擎(R34): 防抖 3000ms + 环形保留 3 版 + 崩溃恢复检测 | R:code:frontend/src/engine/host/EditorHost.ts | A:AutoSaveManager | S:持久化经 StorageHost 注入, 引擎不触碰 indexedDB(契约 §28); markDirty 重置定时器, saveNow 立即保存
+DocumentDiffer.ts[DB5M]: F:文档比较引擎(R46): 段落级 LCS + 文本节点级 diff, 输出 DiffResult[] | R:code:frontend/src/engine/document/selection/SelectionCollector.ts | A:DocumentDiffer,DiffResult,TextChange | S:段落序用 bodyBlockSpine(W2)有意不比对表格 cell 内段落, 不得改用 W3; 相邻 delete+insert 合并为 modify
+Editor.ts[AG9L]: F:编辑器门面类: 组合文档/布局/渲染/交互/命令/状态/插件/QC/自动保存, 对 UI 暴露统一 API | R:code:frontend/src/engine/command/CommandManager.ts,code:frontend/src/engine/host/EditorHost.ts,code:frontend/src/engine/command/commands/StructuralCommands.ts | A:Editor | S:所有文档变更经 Command 系统(契约 §5/§6); setDocument 经 safeLoadDocument 唯一入口; 门面方法收口到命令, 不直接改 doc/pool
+ErrorRecovery.ts[RR6M]: F:错误降级三级容错: safeRenderParticle / safeRenderPage / safeLoadDocument + safeAsync | R:- | A:safeRenderPage,safeLoadDocument,safeAsync,setErrorReporter | S:safeRenderPage 给了 rect 时只覆盖该页(否则一页出错刷满整屏); safeLoadDocument 回落值由调用方给(不抄第二份默认值); 回落也失败须先报再抛原始错误
+FindReplaceEngine.ts[DB6M]: F:查找替换引擎(TASK-451): findAll/findNext/findPrevious/computeReplacement, 支持正则/大小写/全词 | R:code:frontend/src/engine/document/selection/SelectionCollector.ts | A:FindReplaceEngine,MatchResult,FindOptions | S:替换不在此改文档, 改由 ReplaceTextCommand 经 CommandManager; 排序基准用全文档 spine, 禁用 doc.body.children.indexOf(页眉/页脚会得 -1)
+PerformanceMetrics.ts[OO4S]: F:性能埋点(R57): 采集 renderFrame/layout/keystroke/cache, 定时 + 卸载时经 PlatformHost 上报 | R:code:frontend/src/engine/host/EditorHost.ts | A:PerformanceMetrics,PerfSummary | S:sendBeacon 与 onBeforeUnload 经 PlatformHost(契约 §28); 环形上限 500 条
+index.ts[CG7M]: F:引擎统一导出 barrel: Host 边界/命令/布局/模型/组件等公共 API | R:code:frontend/src/engine/Editor.ts | A:- | S:逻辑流遍历器仅供读路径导出(写/序列化走结构树, 契约 §31.2)
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/__tests__/===
+helpers.ts[TQ3T]: F:测试共享桩: testHost/testMeasurer/noopClipboard(P5 DI) | R:code:frontend/src/platform/dom/index.ts | A:testHost,testMeasurer,noopClipboard | S:引擎无全局 host 注册表后各测试集中从此构造依赖注入
+setup.ts[TQ4S]: F:Vitest 环境桩: 劫持 Canvas getContext 返回 mock 2d ctx + Radix 所需浏览器 API polyfill | R:- | A:- | S:必须在任何测试前 monkey-patch Canvas 原型: jsdom getContext('2d') 会 throw; 另需 Radix polyfill
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/command/===
+ClipboardManager.ts[DB6M]: F:编辑器内存剪贴板: 复制按选区 offset 裁剪 + 深度克隆(全新 UUID), 粘贴返回结构化节点 | R:code:frontend/src/engine/command/commands/InsertNodesCommand.ts | A:ClipboardManager,ClipboardData | S:范围计算与 selectionSpine 一致; 非文本节点占 1 偏移单位; image 数据不可被系统剪贴板纯文本覆盖
+CommandManager.ts[AB8S]: F:命令编排器(架构 §6.5): execute→forward→失效传播→undoStack→emit document:changed/state:changed | R:code:frontend/src/engine/command/CommandUndoRedoStack.ts,code:frontend/src/engine/layout/incremental/DirtyTracker.ts | A:CommandManager,beginMacro,endMacro | S:beginMacro/endMacro 间收集子命令不推栈, 结束打包为单个 MacroCommand; 插件钩子放 finally; emit 顺序先失效后 document:changed(保 render 用最新光标)
+CommandUndoRedoStack.ts[AB7T]: F:命令撤销栈(架构 §6.4): 500ms 自动合并窗口 + 栈深上限 100 | R:code:frontend/src/engine/command/ICommand.ts | A:CommandUndoRedoStack | S:先 forward 成功才入栈(异常不污染栈); canMerge 需 type/author 相同且在 500ms 窗口内; push 不 forward 供事务提交
+ICommand.ts[AB7S]: F:命令接口与 CommandContext(架构 §6.1): ICommand/MergeableCommand/StatePatch/SerializedCommand | R:- | A:ICommand,MergeableCommand,StatePatch,generateCommandId,PositionalCommand | S:CommandContext 联合类型 local/collab 保证 Phase1→2 平滑; forward 每次 redo 会再跑一遍(幂等要求见 MintedNodes)
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/command/commands/===
+AppendTableRowCommand.ts[AB6M]: F:可增长表追加一行(契约 §12.9): 克隆末行结构(控件为新节点且不复制值) | R:code:frontend/src/engine/command/commands/MintedNodes.ts | A:AppendTableRowCommand | S:门控 dynamicRows!==true 命令层拒绝; definition.single 控件不克隆; value 不克隆(新行构造为空); undo 须同时清 pool 与 TemplateDefinitionStore 避孤儿定义
+DeleteRangeCommand.ts[AB7M]: F:范围删除(架构 §6.3): 字符偏移删除, 跨非文本节点整体删除 | R:code:frontend/src/engine/command/commands/InsertTextCommand.ts | A:DeleteRangeCommand | S:范围触及非文本节点或整段删空时快照整段, invert 走 RestoreDeleteRangeCommand(文本反转重建不出非文本节点); 删空后补一个空文本节点防僵尸
+FormatTextCommand.ts[AB7M]: F:文本样式格式化(架构 §6.3b): FormatText/ClearFormat/FormatPainter/FormatTextRange(段内局部选区) | R:code:frontend/src/engine/document/selection/SelectionCollector.ts | A:FormatTextCommand,ClearFormatCommand,FormatPainterCommand,FormatTextRangeCommand | S:清除/格式刷是「替换非合并」(未指定字段重置默认); Range 拆分节点须在铸造那一刻逐节点快照(末态快照重放会拿到已截断文本)
+HeaderFooterConfigCommand.ts[AB5T]: F:页眉页脚选项变更(架构 §5/§7.3): differentFirstPage/differentOddEven | R:- | A:SetHeaderFooterConfigCommand | S:开关决定逐页变体改变带高→必须 full 重排; invert 仅恢复被 patch 覆盖的字段
+InsertControlCommand.ts[AB6M]: F:设计态控件库插入(契约 §12.4): 写 SmartTextNode.element + TemplateDefinitionStore | R:code:frontend/src/engine/command/commands/InsertNodesCommand.ts | A:InsertControlCommand | S:single:true 且同身份已存在则拒绝; 段内偏移落文本中间先拆节点(否则落行尾); undo 须删 store 条目避免孤儿
+InsertImageCommand.ts[AB5M]: F:光标处插入图片(TASK-447): 文本中间拆分文本节点 | R:code:frontend/src/engine/command/commands/MintedNodes.ts | A:InsertImageCommand | S:显示宽不超内容区(794-180); undo 摘图+后半段+恢复被截断文本
+InsertNodesCommand.ts[AB6L]: F:粘贴命令(v4 就地拼接): 拆分当前段→反序列化→首段并入左半→其余新段→右半追加末段 | R:code:frontend/src/engine/command/ClipboardManager.ts | A:InsertNodesCommand,elementIdentity,isSingleValueDuplicate | S:单段落粘贴就地拼接不多出空行; 反序列化重新生成 UUID(禁恢复旧 id); single 守卫键在「已存在节点」; 粘贴经 resolveParagraphRegion 不泄漏 body
+InsertTextCommand.ts[AB7S]: F:文本插入(架构 §6.2): 字符偏移经 resolveCharOffset → (textNodeId, localOffset) | R:code:frontend/src/engine/command/commands/DeleteRangeCommand.ts | A:InsertTextCommand | S:严禁把 offset 直接当 para.children 下标; 样式不同则拆分 TextNode; 非文本目标处新建文本节点而非拆分
+MacroCommand.ts[AB5T]: F:复合命令(架构 RULE 11): 多条子命令合并为单个可撤销单元 | R:code:frontend/src/engine/command/ICommand.ts | A:MacroCommand | S:forward 聚合为单次 patch(invalidation full); invert 逆序反转全部子命令
+MergeParagraphCommand.ts[AB6M]: F:退格并段(架构 §6.6): 当前段 children 追加到上一段后删除当前段 | R:code:frontend/src/engine/state/CaretScope.ts | A:MergeParagraphCommand | S:上一兄弟非段落(表格/图片等)时拒绝并段; invert 用前后两段子树快照整体重建
+MintedNodes.ts[AB7S]: F:「铸造一次」节点台账(契约 §8.3): 命令 forward 多次调用时复用同一批 id | R:- | A:MintedOnce,captureMintedSubtree,reregisterMintedSubtree | S:判据=execute→undo×N→redo×N 后带 id 的序列化逐字节相同; 铸造+构造内部结构进 once 区, 把根放进容器留外面; 快照深拷贝保留 id 且池放副本
+ParagraphStyleCommand.ts[AB5T]: F:段落格式命令: 对齐/缩进/列表, 支持多段落批量 + MergeableCommand 合并 | R:- | A:ParagraphStyleCommand | S:单段 invalidation paragraph, 多段 flowbody; invert 逐段恢复旧样式并手动合并为单命令
+ParagraphUtils.ts[CB4T]: F:normalizeParagraph 共享: 合并相邻同样式 TextNode(避免 InsertText/DeleteRange 循环依赖) | R:code:frontend/src/engine/document/factory/ElementFormatter.ts | A:normalizeParagraph | S:合并后经 removeOrphanLeaf 清理孤儿叶节点
+RemoveControlCommand.ts[AB5S]: F:删除 smarttext 控件(契约 §12.1): deletable:false 拒绝 | R:- | A:RemoveControlCommand | S:deletable 守卫只作用有 TemplateDefinition 的 smarttext; forward 返回 null 不入 undo 栈; smarttext 是叶节点
+ReplaceTextCommand.ts[AB6M]: F:文本替换命令(架构 §5/§8, §26): 单次/全部替换复用同一命令(全部=单 undo 单元) | R:code:frontend/src/engine/command/commands/SetControlValueCommand.ts | A:ReplaceTextCommand,ReplaceEdit | S:占位符 smarttext 不参与查找; number 做文本→number 归并, checkbox 拒绝并记录理由(非静默); smarttext 写入经 SetControlValueCommand
+SetControlValueCommand.ts[AB7S]: F:运行时控件值写入唯一原语(契约 §12.6, VR-3) | R:code:frontend/src/engine/document/control/ControlValue.ts | A:SetControlValueCommand | S:经 validateControlValue 做层A值型+层B写权限, 非法值返回 null 无突变; 规范空态 undefined=清空用 deleteNodeField; 不做 dictionary 隐式展开
+SetTableGrowableCommand.ts[AB5T]: F:切换表格「填写时可增长」(契约 §12.9): 只改行为开关 | R:- | A:SetTableGrowableCommand | S:dynamicRows 是文档内容须走命令; 关闭写回 undefined 而非 false(缺省=固定表); invalidation none
+SplitParagraphCommand.ts[AB6S]: F:回车拆段(架构 §6.6): 字符偏移定位→截断→分裂→新段插入区域 | R:code:frontend/src/engine/state/CaretScope.ts | A:SplitParagraphCommand | S:非文本内联原子只按边界切, 绝不切占位文本; 经 resolveParagraphRegion 支持 cell/页眉页脚; invert 走 MergeParagraphCommand
+StateCommand.ts[AB5T]: F:光标/选区变更命令(架构 §6.7): SetCursorCommand / SetSelectionCommand | R:- | A:SetCursorCommand,SetSelectionCommand | S:无文档副作用, invert 返回 null; 唯一路径 Handler→Command
+StructuralCommands.ts[AB7L]: F:结构性变更命令集(架构 §5/§8): 移除/插入块/脚注/批注/页设/表格/移动块/节 等 18 类命令 | R:code:frontend/src/engine/command/commands/MintedNodes.ts | A:RemoveNodesCommand,InsertSectionCommand,UpdateSectionCommand,TableStructureCommand,MoveBlockCommand | S:RemoveNodesCommand 是插入类命令通用逆操作; 表格结构用子树快照 undo(colspan/rowspan 难逆推); Section 只在 body/Section 下(§31.13)
+UpdateControlDefinitionCommand.ts[AB5T]: F:设计态控件属性就地编辑(契约 §12.5): 改 store 的 TemplateDefinition | R:- | A:UpdateControlDefinitionCommand | S:nodeId 须存在且为 smarttext 否则拒绝; 未注入 store 则 no-op; 不改 element/value
+UpdateControlElementCommand.ts[AB6S]: F:控件语义层编辑命令(契约 §12.7): 语义层唯一命令改写口 + 无变化判定工具 | R:code:frontend/src/engine/command/commands/SetControlValueCommand.ts | A:UpdateControlElementCommand,elementEquals,definitionEquals,controlConfigChanged | S:一命令只改一层(语义层); 比较前递归剔除 undefined 键; 语义变更→flowbody
+UpdateDocumentPropertiesCommand.ts[AB5T]: F:文档级元数据变更(契约 §7.7/§7.8): 改 DocumentTree.metadata | R:- | A:UpdateDocumentPropertiesCommand | S:next 须已是合法 metadata(规范化在边界层); undefined/空→delete; invalidation none
+UpdateDocumentTitleCommand.ts[AB5T]: F:文档标题变更(契约 §7.7/§7.8): 编辑 DocumentTree.title | R:- | A:UpdateDocumentTitleCommand | S:title 非 metadata(§7.7); 空串也是合法标题; invalidation none
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/context/===
+EditorContext.ts[DU7M]: F:右键命中上下文只读快照(契约 RULE 10): 纯函数 buildContextSnapshot + isCoversPoint | R:code:frontend/src/engine/state/CaretScope.ts | A:EditorContextSnapshot,buildContextSnapshot,isCoversPoint | S:快照 MUST NOT 含菜单项/动作/React 状态; Section 是附加事实 sectionFact 而非新 kind(避免顶掉 text 菜单); 判别序 控件→页眉页脚→cell→table→...
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/document/control/===
+ControlBox.ts[DB7S]: F:控件视觉盒几何 + 单一视觉分类配方(契约 §12.6): computeControlBox + controlVisualRecipe | R:code:frontend/src/engine/document/control/ControlFieldGeometry.ts | A:computeControlBox,controlVisualRecipe,controlVisualType,controlInlineLeadTrail | S:Render 与 HitTest 共用同一几何(不设第二套); controlType 用 string 避免 document→feature 倒挂; 盒高=ascent+descent 不加垂直 padding
+ControlFieldGeometry.ts[DB7S]: F:控件编辑文本区几何单源(契约 §12.6/§12.7): textX/textRightX/contentW | R:code:frontend/src/engine/document/control/ControlBox.ts | A:computeFieldRegion,FieldRegion | S:与 ControlParticle field 分支逐项一致(防两套 inset 漂移); select/date 视为无括号
+ControlOptions.ts[DB6T]: F:checkbox/radio 内联候选项横向布局(契约 §12.6): 渲染与命中共用 | R:code:frontend/src/engine/document/core/DocumentModel.ts | A:layoutControlOptions,controlOptionsWidth,emptyOptionsPlaceholder | S:渲染与命中同一布局函数防边界漂移; 空候选占位是函数非常量(随语言变, 不缓存)
+ControlValue.ts[DB8M]: F:运行时控件值规范类型 + 校验(契约 §12.6): validateControlValue 层A 值型/值域 | R:code:frontend/src/engine/document/control/Dictionary.ts | A:validateControlValue,isControlValueEmpty,normalizeCheckboxValue,controlDisplayLength | S:层A 只管值型/值域, 写权限由命令层注入(避免 core→feature 倒挂); 规范空态 undefined/''/[]; 精度越界拒绝不四舍五入, 长度越界拒绝不截断; checkbox 按候选声明序归一
+Dictionary.ts[DD6T]: F:外部字典候选源(契约 §12.6 VR-7/§12.6.4): DictionaryProvider + DictionaryStore | R:code:frontend/src/engine/document/core/DocumentModel.ts | A:DictionaryProvider,DictionaryStore | S:format.dictionary 是外部引用不在引擎内隐式展开; resolve 未加载→undefined=不展开退回自由文本; inline enums 优先于 dictionary; 候选是运行时数据不序列化
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/document/core/===
+ContainerChildTypes.ts[DB8S]: F:「哪个容器允许哪些子节点」唯一事实源(契约 §31.13): CHILD_TYPES_OF 表 | R:code:frontend/src/engine/document/core/DocumentModel.ts | A:CHILD_TYPES_OF,isLegalChild,assertLegalChild,childTypesOf | S:表逐条对应契约 §31.13, 改表=改契约; Section 可嵌 Section, cell 可嵌 table, body 多 section_break; isLegalChild 无契约放行≠childTypesOf 缺失即抛
+DocumentModel.ts[DB9L]: F:ModelD 树形文档模型权威定义(架构 §2.1-§2.2): 17 种 NodeType + 样式/ElementMeta/DocumentTree/PageSetup | R:code:frontend/src/engine/document/core/ContainerChildTypes.ts,code:frontend/src/engine/document/core/NodePool.ts | A:NodeType,DocumentTree,ElementMeta,SmartTextNode,normalizeDocumentMetadata,generateId | S:children 全 ID 化(NodePool 引用), 节点不存 parentId; 存储去分页化 DocumentTree→body:FlowBody; ControlValue undefined=未填; title 非 metadata
+HeaderFooterRegions.ts[DB7S]: F:页眉/页脚「变体→数组」与「段落归属」唯一解析器(契约 §7.9): 6 个变体数组选取与归属 | R:code:frontend/src/engine/document/core/DocumentModel.ts | A:resolveVariantForPage,hfArrayOf,ensureHfArray,hfParagraphsForPage,resolveHfParagraphLocation | S:变体由开关驱动而非数组存在与否; 可选变体(首页/偶数页)空数组须删回缺失态(键存在性是文档形状)
+NodePool.ts[DD9L]: F:节点池(架构 §2.1): 5 条铁律 — 单向引用/顺序保证/统一入口/ID 不可变/遍历范式 | R:code:frontend/src/engine/document/core/ContainerChildTypes.ts,code:frontend/src/engine/document/core/DocumentModel.ts | A:NodePool,traversePool,buildNodePool | S:nodes 只读, 写须经 addNode/removeNode; insertChild 校验容器子类型(§31.13); updateNode 拒 id/type; moveChildTo 的 toIndex 为摘除后下标
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/document/factory/===
+ElementFormatter.ts[DB7M]: F:节点工厂 + 树操作 + 样式工具(架构 §2.4): createDocument/Paragraph/Text/SmartText/Table/Section 等 | R:code:frontend/src/engine/document/core/DocumentModel.ts,code:frontend/src/engine/document/core/NodePool.ts | A:createDocument,createParagraph,createSmartTextNode,smartTextDisplayValue,extractStyle,uniformTextStyle | S:smartTextDisplayValue 有值显值否则占位符; smartTextFindReplaceText 与显示值分离(占位符不参与查找); 域 cachedValue 按建节点时语言固化
+FieldFormatter.ts[DB5S]: F:域代码→显示文本纯函数(契约 §12): 渲染与导出共用同一份域解析 | R:code:frontend/src/engine/document/core/DocumentModel.ts | A:resolveFieldText,representativeFieldText | S:纯净不读全局时间/文档, 由 ctx 注入; 日期格式随 locale; 量宽代表值与 resolveFieldText 同形不得漂移
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/document/io/===
+DocumentLoader.ts[DD8L]: F:文档加载 6 步流水线: detect→checkCompatibility→upgrade→validate→buildModel→buildPool | R:code:frontend/src/engine/document/version/ModelUpgrader.ts,code:frontend/src/engine/document/core/ContainerChildTypes.ts | A:loadDocument,loadDocumentFromObject,LoadError | S:非法容器子类型在 validate 拒绝(§31.13); 模板/表现 store 从 artifact 顶层读回; 缺 modelVersion 视为 1.0.0
+DocumentSerializer.ts[DD6S]: F:文档序列化(节点扁平表嵌入): 输出 DocumentTree + nodes 扁平表 + modelVersion | R:code:frontend/src/engine/document/io/DocumentLoader.ts | A:serializeDocument,collectDocumentNodes | S:ID 引用结构必须带扁平节点表否则重载丢 payload; 两 per-editor store 写为顶层字段不混入节点; 全部页眉页脚变体须入扁平表
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/document/selection/===
+SelectionCollector.ts[DB7L]: F:选区→段落区间/文本节点投影唯一实现(§11.2): FormatRange + 逻辑文档流遍历器 | R:code:frontend/src/engine/document/core/HeaderFooterRegions.ts,code:frontend/src/engine/document/core/ContainerChildTypes.ts | A:bodyBlockSpine,bodyParagraphSpine,sectionsOf,paragraphTextLength,selectionSpine | S:endOffset exclusive, MAX_SAFE_INTEGER 表示段末; 逻辑流仅供读路径, 写/序列化/容器身份走结构树 pool.getChildren
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/document/table/===
+MergeMatrix.ts[DB5S]: F:表格合并矩阵(R64): 跟踪 colspan/rowspan + 空间命中 findCellAt | R:code:frontend/src/engine/document/core/DocumentModel.ts | A:MergeMatrix,buildMergeMatrix,CellSpan | S:buildMergeMatrix 列数按 sum(colspan) 推算而非 cells.length(修复 colspan 低估); ignoreRowspan 供渲染未展开期
+TableOps.ts[DB6L]: F:表格结构操作纯函数(Phase 5): insert/delete Row/Column, 基于 MergeMatrix 处理 span 跨界 | R:code:frontend/src/engine/document/table/MergeMatrix.ts | A:buildCellGrid,insertRow,deleteRow,insertColumn,deleteColumn,mergeRange | S:colIndex 为网格列下标非 row.children 下标; 跨界 rowspan/colspan 单元格 +1/-1
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/document/version/===
+DocumentFormatVersion.ts[DD6T]: F:文档格式版本(架构 Phase2): semver + 当前 4.7.0 + 版本比较工具 | R:- | A:CURRENT_DOCUMENT_VERSION,parseVersion,compareVersions,versionToString,SLIFVersion | S:SLIFVersion 是名义独立版本域(brand 字段), 不得与 DocumentFormatVersion 互相赋值; 缺 modelVersion 视为 1.0.0
+EditorVersion.ts[DD3T]: F:引擎代码版本(semver), 当前 v21 | R:code:frontend/src/engine/document/version/DocumentFormatVersion.ts | A:EDITOR_VERSION | S:与 DocumentFormatVersion 严格区分(代码版本 vs 文档格式版本)
+ModelUpgrader.ts[DD6M]: F:文档格式版本升级器(架构 Phase2): 链式 v_N→v_{N+1} 注册与升级 | R:code:frontend/src/engine/document/version/DocumentFormatVersion.ts | A:ModelUpgrader,modelUpgrader,VersionUpgrader | S:不实现 downgrade; 多个迁移是显式 NO-OP(加法字段); ModelUpgrader 不得被绕过处理受支持旧版本
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/evaluation/===
+ControlScorer.ts[DB5S]: F:控件量表评分(契约 §12.6.2 layer E): 汇总候选项 numericValue 为文档级量表分 | R:code:frontend/src/engine/document/core/DocumentModel.ts | A:scoreControls,ScoreResult,ScorableControl | S:只读派生不校验/不写入/不序列化; 非 QCResult.score(不同事实不同 owner); 空态不计分, 无 numericValue 贡献 0, 无命中计 uncounted
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/format/===
+FormatPainter.ts[DB5S]: F:格式刷 feature module(契约 §11.2): 复制光标样式 → 拖拽/点击应用 | R:code:frontend/src/engine/command/commands/FormatTextCommand.ts | A:FormatPainter | S:样式快照含全部字段(格式刷是替换非合并); 瞬态 style 归本模块, 激活布尔经 EditorStore; 单次使用后退出
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/host/===
+EditorHost.ts[IG8M]: F:平台能力边界六元组(契约 §27): 纯类型零 DOM, Text/Font/Surface/Viewport/Input/Platform | R:- | A:EditorHost,TextHost,SurfaceHost,InputHost,PlatformHost,StorageHost | S:engine 不得直接访问 document/window/navigator/indexedDB; CanvasRenderingContext2D/事件载荷为 §28 注入例外; 依赖方向 platform/dom → engine 单向
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/i18n/===
+index.ts[CL6L]: F:国际化基础(R53): LocaleMessages 强类型 + locale 单例(setLocale/getLocale + 订阅) | R:code:frontend/src/i18n/bootstrap.ts,code:frontend/src/i18n/useTranslation.ts | A:locale,LocaleManager,formatMessage,LocaleMessages | S:locale 是 app-wide 单例不得挪进 EditorStore/Zustand(§27.3); 订阅形状照抄 EditorStore; 漏键 tsc 即挂
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/import/===
+TemplateImporter.ts[IB6L]: F:外部模板 JSON→引擎四层模型(契约 §12.2): 字段按归属路由 | R:code:frontend/src/engine/template/TemplateDefinition.ts,code:frontend/src/engine/render/presentation/PresentationStyle.ts | A:TemplateImporter,templateImporter,isExternalTemplate | S:不得在 SmartTextNode/ElementMeta/Paragraph 上新持久字段承载 TemplateDefinition/PresentationStyle 层内容; 无归宿字段丢弃或推迟
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/interaction/===
+ControlHitTest.ts[IU6S]: F:控件命中检测纯函数(契约 §12.3/§12.6): 设计态整节点 + 运行时拓扑分离 | R:code:frontend/src/engine/document/control/ControlBox.ts,code:frontend/src/engine/layout/core/SLIF.ts | A:findControlItemAt,findRuntimeControlHitAt | S:field 用 computeControlBox 与 Render 同源; options 逐选项几何命中永不退回整 node 一个 box; 坐标口径与 Draw/MouseHandler 同源
+EventBus.ts[MM7T]: F:引擎事件总线(架构 §8.1): 类型安全 EventPayloadMap | R:- | A:EventBus,EventPayloadMap | S:handler 抛错被捕获不打断其余订阅; document:changed/state:changed 载荷类型化
+IMEHandler.ts[IU5T]: F:IME 输入法抽象(架构 §8.4): 封装 composition 差异, 经 ImeSurface 委托 | R:code:frontend/src/engine/host/EditorHost.ts | A:InputComposer | S:compositionend 后 50ms 去重 Firefox/Safari 的重复 input; 合成期间不触发
+KeyboardHandler.ts[IU7L]: F:键盘事件→Command(架构 §8.1): 光标导航/输入/快捷键/空文档补段落 | R:code:frontend/src/engine/command/commands/InsertTextCommand.ts,code:frontend/src/engine/state/CaretScope.ts | A:KeyboardHandler | S:模式门控(只读/表单禁编辑, 设计模式专属); 经 host.input.attachContainer 挂容器事件
+MouseHandler.ts[IU7L]: F:鼠标拖拽选区(架构 §8.2): 跨段落/跨行 + 表格列宽拖拽 + 控件命中 | R:code:frontend/src/engine/interaction/ControlHitTest.ts,code:frontend/src/engine/layout/table/TableCoordUtil.ts | A:MouseHandler | S:列宽拖拽一次手势至多一条命令(过阈值才提交); 双击阈值 400ms/8px
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/layout/control/===
+ControlLayoutHint.ts[DB6S]: F:行内控件盒量宽+折行单源(契约 §12.8): 正文/cell/页眉页脚三路径共用 | R:code:frontend/src/engine/document/control/ControlBox.ts,code:frontend/src/engine/layout/text/TextWrap.ts | A:smarttextLayoutHint | S:控件总推进宽不得超可用宽(超则折行, 盒宽锁定可用宽纵向长高); 不 import template 特征层
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/layout/core/===
+LayoutContext.ts[DB3T]: F:布局上下文类型(v21.0 抽取): LayoutConfig 页边距/页尺寸 | R:- | A:LayoutConfig | S:-
+LayoutEngine.ts[DB9L]: F:布局编排器(架构 §7.3): LineBreaker/PageBreaker 调度 + 增量分页, 输出 SLIFPage[] | R:code:frontend/src/engine/layout/core/SLIF.ts,code:frontend/src/engine/layout/line/LineBreaker.ts,code:frontend/src/engine/layout/page/PageBreaker.ts | A:LayoutEngine | S:独立于 Draw 无 Canvas 依赖; 域页码/交叉引用预留宽需上轮页数, 至多两轮布局; config 硬编码不接收 doc.pageSetup(消费方须取 SLIF 实测尺寸)
+LayoutResult.ts[DB3T]: F:布局结果类型别名(v21.0): = SLIFPage[] | R:code:frontend/src/engine/layout/core/SLIF.ts | A:LayoutResult | S:-
+SLIF.ts[DB8S]: F:标准布局中间格式(架构 §7.7): SLIFPage/Item/Row/Cell + getFlatPageItems 展平 | R:code:frontend/src/engine/document/core/DocumentModel.ts | A:SLIFPage,SLIFItem,getFlatPageItems,tableRowUnitHeight,CELL_PAD | S:展平表格 cell 内项须递归(嵌套表); 每层用自己的表身份填 ownerTableId; SLIFVersion 名义独立版本域
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/layout/footnote/===
+FootnoteLayout.ts[DB5M]: F:脚注布局引擎(TASK-460): 收集 FootnoteRef 编号 + 每页底部预留脚注区 | R:code:frontend/src/engine/layout/core/SLIF.ts | A:FootnoteLayout,FootnoteEntry,FootnoteConfig | S:编号跨页连续; 脚注区最大高默认 0.3 页高
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/layout/incremental/===
+DirtyTracker.ts[DB6S]: F:脏区追踪器(架构 §7.5): 段落/页面/节点级脏标记供增量布局 | R:- | A:DirtyTracker,DirtyScope | S:markFullDocument 清空其他脏集; version 递增供订阅
+IncrementalLayout.ts[DB5T]: F:增量布局引擎(TASK-482): 仅重算脏段落, 干净段复用缓存 | R:code:frontend/src/engine/layout/incremental/DirtyTracker.ts | A:IncrementalLayout,CachedParagraphLayout | S:isValid = 有缓存且非脏; computeStats 复用/重算计数
+LayoutCache.ts[DP5T]: F:三级布局缓存(架构 §7.4): inline/block/page, 键=节点 ID 经 getNodeVersion 失效 | R:- | A:LayoutCache | S:失效判据是 version 相等而非存在
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/layout/line/===
+LineBreaker.ts[KB7L]: F:换行引擎(v5.0): CJK+英文混排断行 + 中文避头尾(kinsoku) | R:code:frontend/src/engine/layout/text/TextMeasurer.ts | A:LineBreaker | S:行头/行尾禁止字符集(避头尾); 触发禁止规则时前后调整 1-2 字符; 元素量宽用 fieldReserveText 而非占位符
+LineLayout.ts[DB3T]: F:行级排版数据类型(v21.0): LineElement/FontConfig/LineBreakOptions/ILine | R:- | A:LineElement,ILine,LineBreakOptions | S:control 提示含 ownLine/wrapWidth(契约 §12.8)
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/layout/page/===
+PageBreaker.ts[KB7M]: F:分页引擎: 精确分页 + 孤行/寡行控制 | R:code:frontend/src/engine/layout/page/PageLayout.ts | A:PageBreaker | S:孤行/寡行控制 MIN_PARAGRAPH_LINES=2; 表格行(pageable)为块边界不参与孤寡; 分页符/分节符断页
+PageLayout.ts[DB3T]: F:页级排版数据类型(v21.0): ILine/IPage 分页器视角 | R:- | A:ILine,IPage | S:pageable hook 由 LayoutEngine 注入自持游标
+PageStartTable.ts[DB5T]: F:增量分页索引表(TASK-485): 段落→起始页, 支持二分与增量更新 | R:- | A:PageStartTable,PageEntry | S:findFirstParagraphOnPage 二分; shiftFrom 后续段落页偏移
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/layout/table/===
+TableCoordUtil.ts[KB6L]: F:统一坐标转换(架构 §7.8): 屏幕/逻辑文档/页面内/cell 局部四层 | R:code:frontend/src/engine/layout/core/SLIF.ts | A:screenToDoc,screenToPage,findPageByDocY,pageCenteringOffset | S:禁止调用方内联手算坐标, 统一经此模块
+TablePaginator.ts[KB6M]: F:表格跨页续排纯函数分页器: 按可用高切 TableFragment[] | R:code:frontend/src/engine/layout/core/SLIF.ts | A:createTablePaginator,TableFragment,PaginateResult | S:分页游标由闭包自持; requiresNewPage 为显式状态不得用 height===0; rowspan 单元格 P1 行内切显式不支持
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/layout/text/===
+CharWidthHelper.ts[KB5S]: F:逐字符累积宽度: 光标/选区精确定位(区分半角全角) | R:code:frontend/src/engine/layout/text/TextMeasurer.ts | A:cumulativeCharWidths,findCharIndexAtX,computeOffsetInItems | S:替代 uniform charW = bodyW/textLen
+FontFallback.ts[DB5M]: F:字体降级引擎(架构 §3): 缺字检测 + 降级链→FontRun[] | R:code:frontend/src/engine/host/EditorHost.ts | A:FontFallback,FontRun,CJK_FALLBACK_CHAIN | S:缺字检测经 FontHost.isGlyphAvailable(契约 §27); 预定义 CJK/Latin 降级链
+FontManager.ts[DB6M]: F:字体管理器(架构 §3.1): 注册/系统字体查询/度量提取/ensureReady | R:code:frontend/src/engine/layout/text/FontMetrics.ts,code:frontend/src/engine/host/EditorHost.ts | A:FontManager,FontDescriptor,FontVariant | S:经 FontHost/TextHost 委托, 引擎不触碰 document.fonts; 度量 upem=1000; 字体未就绪禁入编辑态
+FontMetrics.ts[DB5T]: F:字体度量数据(架构 §3.1): ascent/descent/lineGap + resolveLineHeight 唯一入口 | R:- | A:FontMetrics,DEFAULT_FONT_METRICS,resolveLineHeight | S:行高公式固定禁止启发式估算; 默认 SimSun 度量 upem=1000
+ScriptResolver.ts[DL5M]: F:Unicode 脚本检测与字体分配(架构 §3): detectScript + resolveScriptRuns | R:code:frontend/src/engine/layout/text/FontFallback.ts | A:ScriptResolver,scriptResolver,ScriptRun,MultiLangFontConfig | S:使用 Unicode Property Escapes; 支持 Hans/Latin/Kana/Hangul/Arabic/Thai/Devanagari
+TextMeasurer.ts[DB7M]: F:文本测量器(架构 §3): 三级精度(Canvas/HarfBuzz/预计算) + LRU 缓存 | R:code:frontend/src/engine/layout/text/FontManager.ts,code:frontend/src/engine/host/EditorHost.ts | A:TextMeasurer,CharMetrics | S:经 TextHost.measure 委托平台; 缓存上限 10000; L2/L3 为预留
+TextWrap.ts[KB4T]: F:控件文本折行纯函数(契约 §12.6): wrapControlText | R:- | A:wrapControlText | S:空串→['']占一行; 超宽逻辑行逐字符软折(与 break-all 一致); 纯函数可脱 DOM
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/layout/viewport/===
+MemoryManager.ts[DP5S]: F:内存管理器(R56): 容量限制 + LRU 淘汰 + 统计 | R:- | A:MemoryManager,MemoryStats | S:满时淘汰最久未访问; TextMeasurer/FontManager/LayoutCache 共享策略
+VirtualViewport.ts[DP5T]: F:视口虚拟化(R55): 仅渲染可视区 + overscan 页 | R:- | A:VirtualViewport,VisibleRange | S:viewportHeight 由调用方注入不读 window(契约 §28); overscan 默认 1
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/loaders/===
+DocumentLoaderRegistry.ts[IB5M]: F:多格式文档加载器注册表(R63): 扩展名/内容检测路由 | R:code:frontend/src/engine/document/io/DocumentLoader.ts | A:DocumentLoaderRegistry,documentLoaderRegistry,IDocumentLoader | S:先注册优先匹配, 同名覆盖; 先按扩展名再内容检测; XML/HL7 当前为占位
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/plugins/===
+PluginManager.ts[ZE5M]: F:插件系统(R61, 契约 §12): IPlugin + PluginManager + 8 类扩展点 | R:code:frontend/src/engine/command/CommandManager.ts | A:PluginManager,IPlugin,PluginContext,ToolbarAction | S:PluginContext 不暴露 EventBus/EditorStore, 光标经 onCursorMoved; 插件钩子环绕命令执行
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/qc/===
+QCEngine.ts[DB6L]: F:医学文书质控引擎(R52): 8 条内置规则 + 外部自定义规则, 产出 QCResult(评分/等级/问题)供质控面板消费 | R:code:frontend/src/engine/document/core/DocumentModel.ts,code:frontend/src/engine/document/selection/SelectionCollector.ts,code:frontend/src/engine/document/control/ControlValue.ts,code:frontend/src/engine/document/core/HeaderFooterRegions.ts | A:QCEngine,getRules,QCRule,QCIssue,QCResult,QCIssueLocation | S:内置规则文案存 i18n 键(存字面量=切语言后不重跑永远旧语言); 扣分固定 error-15/warning-5/info-2; 字数/段数口径取段落逻辑流含表格 cell, 只读 body 直接子节点会漏计表格
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/render/===
+BookmarkRenderer.ts[DB5M]: F:书签/交叉引用解析器: 遍历 CrossReferenceNode 解析目标页码与显示文本 | R:code:frontend/src/engine/document/selection/SelectionCollector.ts,code:frontend/src/engine/document/core/NodePool.ts | A:BookmarkRenderer,ResolvedReference,resolveAll,resolveOne | S:ref 可为书签名或节点 id —— UI 的 getBookmarkTargets 传 id, 只认 name 会永远解析不出; 页码须按书签自身 targetId 定位锚点段落, 而非按书签节点恰好落在的段落
+Draw.ts[DB9L]: F:纯渲染消费者(架构 §7.3): 接收 LayoutEngine 的 SLIFPage[] 驱动三层渲染, 屏幕与打印共用同一条粒子分派 | R:code:frontend/src/engine/layout/core/LayoutEngine.ts,code:frontend/src/engine/render/LayeredRenderer.ts,code:frontend/src/engine/render/HitTestIndex.ts,code:frontend/src/engine/layout/core/SLIF.ts,code:frontend/src/engine/interaction/EventBus.ts | A:Draw,render,scheduleRender,getCaretClientRect,getControlClientRect,getAllSectionClientRects | S:图片粒子必须绑定本 Draw 实例, 不得注册进模块级 registry(重挂载后复用旧闭包 → 图片只画灰框); 字符定位口径统一为「文本计 text.length / 原子内联计 1」, comments 高亮·光标·选区三处必须同源否则错位; rAF 合并渲染同帧只执行最后一次
+HitTestIndex.ts[KB7L]: F:命中检测空间索引(架构 §7.6): 页分桶 + Y 二分定位顶级块, Level 2 下潜表格 cell | R:code:frontend/src/engine/layout/core/SLIF.ts,code:frontend/src/engine/document/table/MergeMatrix.ts,code:frontend/src/engine/layout/text/CharWidthHelper.ts | A:HitTestIndex,hitTest,hitTestTable,hitTestColumnBorder,TableHitResult,ColumnBorderHit | S:只索引顶级块, cell 内文字不进 Level 1(getFlatPageItems 不参与); 嵌套表在 cell.items 里是 cell 局部坐标, 递归前须加 cell 原点折算; 列宽拖拽只产内部边界(表左右外缘永不命中)
+LayeredRenderer.ts[DB8L]: F:三层 Canvas 渲染(架构 §7.5): static 页面背景/水印 / content 文本 / interact 光标选区, 画布尺寸=视口+overscan | R:code:frontend/src/engine/host/EditorHost.ts,code:frontend/src/engine/state/CoordinateSystem.ts,code:frontend/src/engine/state/canvasTokens.ts | A:LayeredRenderer,renderStatic,syncSizes,prepareWatermark,startCursorBlink,setTokens | S:pageVerticalGap 仅改渲染视口偏移, 绝不动 SLIFPage.height/item.y 与命中; 本模块不创建 canvas, 一律经 host.surface 委托(契约 §27.2); 光标闪烁用 setInterval 非 rAF
+TOCGenerator.ts[DB5M]: F:目录生成器: 提取 outlineLevel>0 段落建树, 生成含制表符前导线与页码的目录页(SLIFPage) | R:code:frontend/src/engine/document/selection/SelectionCollector.ts,code:frontend/src/engine/document/factory/ElementFormatter.ts,code:frontend/src/engine/i18n/index.ts | A:TOCGenerator,TOCEntry,TOCConfig,extractEntries,generatePages | S:目录标题缺省不固化在模块常量(会把语言冻在模块加载那刻), 空串表示现读语言包; TOCEntry.sectionId 与 outlineLevel 正交, 不参与排序
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/render/particles/===
+BarcodeParticle.ts[DB3S]: F:条形码/二维码渲染粒子(R45): 纯 Canvas 2D 简化 Code128B, 数据走 item.text | R:code:frontend/src/engine/render/particles/IParticle.ts | A:createBarcodeParticle | S:只支持可打印 ASCII, 范围外字符静默映射为空格码值(含中文会画出错图案而非报错)
+ChartParticle.ts[DB4M]: F:图表渲染粒子(R62): 纯 Canvas 2D 柱/折线/饼/雷达/散点/面积, 数据为 item.text 里的 JSON | R:code:frontend/src/engine/render/particles/IParticle.ts | A:createChartParticle | S:item.text 是 JSON 而非显示文本, 解析失败画占位框; 已注册但布局不产 chart item, 实际不渲染
+CommentParticle.ts[DB2T]: F:批注标记渲染粒子(R32): 淡黄高亮背景 + 边距气泡图标; 导出 COMMENT_HIGHLIGHT 与 commentHighlight 颜色单一来源 | R:code:frontend/src/engine/render/particles/IParticle.ts,code:frontend/src/engine/state/canvasTokens.ts | A:createCommentParticle,COMMENT_HIGHLIGHT,commentHighlight | S:本粒子未被 registry 调度: 未注册 'comment', 高亮实际由 Draw 绘制
+ControlParticle.ts[DB8M]: F:控件/SmartText 粒子渲染器: 按 controlVisualRecipe 单点分类绘制 field(方括号/textarea 四边框)与 options(内联选项组) | R:code:frontend/src/engine/document/control/ControlBox.ts,code:frontend/src/engine/document/control/ControlValue.ts,code:frontend/src/engine/document/control/ControlOptions.ts,code:frontend/src/engine/template/TemplateDefinition.ts,code:frontend/src/engine/render/presentation/PresentationStyle.ts | A:createControlParticle | S:唯一分类决策点在 ControlBox.controlVisualRecipe(不变量 6), 本文件只按 recipe.kind 分支, 不得再持一套 dataType→配色映射; 空 enums 画占位而非退化输入框(不变量 3); masked 下不得暴露 glyph 选中态
+FootnoteParticle.ts[DB3T]: F:脚注引用渲染粒子(R31): 在正文绘上标编号, 字号 = size*0.75 | R:code:frontend/src/engine/render/particles/IParticle.ts,code:frontend/src/engine/state/canvasTokens.ts | A:createFootnoteParticle | S:上标字号 = size*0.75; 颜色缺省回退 tokenSet.footnoteRef
+IParticle.ts[CB6T]: F:粒子渲染器接口(R30): 所有粒子实现 type + render, 经 ParticleRegistry 由 Draw 类型驱动调度 | R:code:frontend/src/engine/layout/core/SLIF.ts,code:frontend/src/engine/render/presentation/PresentationStyle.ts,code:frontend/src/engine/template/TemplateDefinition.ts | A:IParticle,RenderOptions | S:RenderOptions.tokenSet 由 Draw 在 render() 入口拍快照注入, 各粒子不得自行读 CSS 变量; elementOf/controlValueOf 是语义值读取源, 与 SLIFItem.text 显示串分离
+ImageParticle.ts[DB4T]: F:图片粒子渲染器(R33): 从 resolveUrl 取图绘制, 未加载时画虚线占位框 | R:code:frontend/src/engine/host/EditorHost.ts,code:frontend/src/engine/state/canvasTokens.ts | A:createImageParticle | S:缓存与闭包随 createImageParticle 新建, 不得进模块级单例 registry(重挂载会按旧 pool 解析 URL)
+ListParticle.ts[DB4S]: F:列表标记渲染与编号格式化(R30): 项目符号与有序编号(阿拉伯/字母/罗马/中文), 渲染与导出共用 | R:code:frontend/src/engine/state/canvasTokens.ts | A:ListParticle,resolveBulletChar,formatOrderedNumberRaw,toRoman,toCjkIdeographic,estimateMarkerWidth | S:中文数字编号 ≥1000 回退为阿拉伯数字; 字母编号是双射 base-26; Raw 版供布局与导出
+ParticleAdapters.ts[IB4S]: F:把 Text/Separator/List 静态粒子包装成 IParticle 实例, 供 ParticleRegistry 调度 | R:code:frontend/src/engine/render/particles/ParticleRegistry.ts,code:frontend/src/engine/render/particles/TextParticle.ts | A:textParticle,separatorParticle,fieldParticle,listParticle | S:separator 固定实线且宽为整页可用宽(614); 读池里的 lineStyle 会与 OFD/打印不一致
+ParticleRegistry.ts[IB5T]: F:粒子渲染器注册表(R30): 按 SLIFItem.type/nodeType 注册与查找, 替代 Draw 里的 if/else 分支 | R:code:frontend/src/engine/render/particles/IParticle.ts | A:ParticleRegistry,particleRegistry | S:模块级全局单例; 重复注册同 type 只 console.warn 后覆盖; 按实例绑定的粒子(图片)不得注册进来
+SeparatorParticle.ts[DB3S]: F:分隔线渲染粒子(TASK-463): solid/dashed/dotted/double 四线型 + full/fixed 宽度与对齐 | R:code:frontend/src/engine/state/canvasTokens.ts | A:SeparatorParticle | S:颜色优先级 el.color > tokenSet.hfDivider > '#6B7280'
+TableParticle.ts[DB6S]: F:表格粒子渲染器(R37): 按 headerRows+rows 画单元格底纹/边框/文本, cell 内嵌套表递归 | R:code:frontend/src/engine/render/particles/ParticleRegistry.ts,code:frontend/src/engine/layout/core/SLIF.ts | A:createTableParticle | S:'table' 未注册进 registry(Draw 对顶层表格直接造实例), 故 cell 内嵌套表须模块内递归而非查表; ci2.y 是行顶非基线, 须自行加 ascent
+TextParticle.ts[DB7M]: F:文本粒子渲染器(v5.0/TASK-475): 字体/度量/颜色/高亮/下划线/删除线/上下标 + 不可见字符模式 | R:code:frontend/src/engine/state/canvasTokens.ts | A:TextParticle | S:颜色优先级 修订色 > el.color > tokenSet.textInk > options.defaultColor; 行高一律取 Canvas 实测 ascent/descent(options 传入优先), 用固定倍率估算会与布局和光标漂移
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/render/presentation/===
+PresentationStyle.ts[DB6S]: F:表现层/盒模型样式层(契约 §2.2): borderStyle/contentWrap/contentStyle/minWidth/textAlign 按节点 id 关联 | R:code:frontend/src/engine/document/core/DocumentModel.ts | A:PresentationStyle,PresentationStyleStore,PresentationStyleMap | S:这层回答「怎么渲染」, 契约 §2.2 明令不得进 DocumentModel/ElementMeta; 实例级 per-editor 状态, 非模块级单例(§27.3)
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/security/===
+SecurityConfig.ts[CS4T]: F:编辑器安全配置(R68): 四维权限 network/file/data/script + XSS 过滤与 HTML 转义 | R:- | A:EditorSecurityConfig,SecurityChecker,sanitizeHtml,sanitizeText,isSafeHtml,DEFAULT_SECURITY_CONFIG | S:默认仅 data 为 true, 其余三维 false; sanitizeHtml 是正则黑名单而非解析器, 不可当强沙箱
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/state/===
+CaretScope.ts[DB7M]: F:光标域与段落区域解析: 从 paragraphPath 实时派生 body/cell, 并给出真容器真下标(契约 §31.2 Q9) | R:code:frontend/src/engine/document/core/HeaderFooterRegions.ts,code:frontend/src/engine/document/selection/SelectionCollector.ts,code:frontend/src/engine/document/core/NodePool.ts | A:getCaretScope,resolveParagraphRegion,resolveBlockParent,resolveSiblingRange,resolveCellPosition,isPoolRegion | S:结构命令要真兄弟数组真下标, 不得用逻辑流 W2/W3 代替; 跨 body/section/变体/不同 cell 的选区一律返回 null; 域实时派生不持久化
+CoordinateSystem.ts[CB5T]: F:三层坐标转换(架构 §7.2): 文档逻辑像素 ↔ 画布物理像素 ↔ 屏幕 CSS 像素 | R:- | A:CoordinateSystem,CoordinateTransform | S:docToCanvas 同时乘 scale 与 dpr, docToScreen 只乘 scale; dpr 由 host.surface 注入不读 window
+EditorRuntimeState.ts[CB6S]: F:运行时状态模型(架构 §4.1): cursor/selection/view/ime/history, 不持久化不参与协作同步 | R:code:frontend/src/engine/state/HistoryState.ts | A:EditorRuntimeState,CursorState,SelectionState,ViewState,createDefaultRuntimeState | S:paragraphPath 恒为 2 元素 [documentRootId, paragraphId], 祖先容器不在此承载(插入容器 id 会静默改变 path[length-2] 兜底语义); offset 是 UTF-16 码元偏移
+EditorStore.ts[DD8M]: F:编辑器全局状态(零框架依赖的可观察对象): 文档/运行时/脏标记/模式/控件选中/Section 选中投影 | R:code:frontend/src/engine/state/EditorRuntimeState.ts,code:frontend/src/engine/document/core/DocumentModel.ts | A:EditorStore,EditorStoreState,setCursor,setSelection,setSelectedSectionId,onCursorOrSelectionChange | S:setCursor 是唯一清零点 —— 光标一动节选中即失效(结构选中与文本光标互斥), 且调用方须先落光标再写 id 顺序不可颠倒; 每次 notify 递增 version 供 useSyncExternalStore
+EditorTheme.ts[DC5T]: F:画布主题(4 预设 standard/eyeCare/print/dark): 持当前预设, 切主题落 CSS 变量并发事件 | R:code:frontend/src/engine/state/canvasTokens.ts,code:frontend/src/engine/host/EditorHost.ts,code:frontend/src/engine/interaction/EventBus.ts | A:EditorTheme,ThemePreset,ThemeColors,isThemePreset | S:落 CSS 变量经 host.platform.applyTheme, 本模块不直接碰 DOM(契约 §28); Draw/粒子读内存 tokenSet 快照, 不依赖 CSS 变量回流
+HistoryState.ts[CD3T]: F:撤销/重做深度状态: canUndo/canRedo/undoDepth/redoDepth | R:code:frontend/src/engine/command/CommandUndoRedoStack.ts | A:HistoryState | S:只维护深度与可用性, 不持命令本身(命令栈归 CommandUndoRedoStack)
+canvasTokens.ts[CD6M]: F:画布主题 token 表: 4 预设 × 28 token, 值为 "R G B" 三元组, 渲染时拼 rgb/alpha | R:code:frontend/src/engine/state/EditorTheme.ts | A:CANVAS_TOKENS,CANVAS_TOKEN_NAMES,asRgb,withAlpha,CanvasTokenSet,isCanvasTokenName | S:standard 预设严格对齐各粒子今日硬编码 hex(除 cursorColor 由 '#000000' 改深灰是设计意图), 保证批量替换零视觉回归; 本文件不得引入任何运行时副作用
+
+===D:/czw/EMRDocumentEngine/frontend/src/engine/template/===
+ControlTypeMapping.ts[DB4T]: F:输入域家族 dataType ↔ controlType 的默认种子建议(契约 §12.1/§12.7) | R:code:frontend/src/engine/template/TemplateDefinition.ts,code:frontend/src/engine/document/core/DocumentModel.ts | A:controlTypeForDataType,controlTypeForMultiple | S:仅供配置弹框建议, 非反推: VR-15 禁止由 dataType 推断 controlType, 落盘须显式写入
+TemplateDefinition.ts[DB7S]: F:模板设计期属性层(契约 §12.1): deletable/editable/tips/label/prefix/suffix/single/controlType 按节点 id 关联 | R:code:frontend/src/engine/document/core/DocumentModel.ts,code:frontend/src/engine/document/control/ControlBox.ts | A:TemplateDefinition,TemplateDefinitionStore,ControlType,TemplateDefinitionMap | S:这 8 字段不得进 DocumentModel/SmartTextNode/ElementMeta(契约 §12.1); controlType 与 dataType/showType 三者正交各自演化互不推导; 旧文档缺失保持 undefined
+
+===D:/czw/EMRDocumentEngine/frontend/src/i18n/===
+bootstrap.ts[LL4T]: F:i18n 启动: 渲染前定语言, 并订阅 locale 变更落 localStorage 与 html lang | R:code:frontend/src/engine/i18n/index.ts,code:frontend/src/i18n/useTranslation.ts | A:bootstrapLocale,readStoredLocale,storeLocale,LOCALES,isLocale,LocaleMeta | S:必须在 render() 前跑(否则首帧恒中文); 订阅放此处, 任何 setLocale 都落盘并更新 html lang
+useTranslation.ts[LU4T]: F:i18n 的 React 绑定: useLocale/useTranslation 经 useSyncExternalStore 桥到 locale 单例 | R:code:frontend/src/engine/i18n/index.ts,code:frontend/src/i18n/bootstrap.ts | A:useLocale,useTranslation,Translation | S:不放进 EditorProvider(主页不挂它, 会一调就抛); 未订阅的组件切语言不会刷新
+
+===D:/czw/EMRDocumentEngine/frontend/src/lib/===
+documentExport.ts[DB6M]: F:文档 → 纯文本/HTML 导出(UI 层纯函数): 块序 页眉→正文→页脚, 表格经 MergeMatrix 还原列位 | R:code:frontend/src/engine/document/selection/SelectionCollector.ts,code:frontend/src/engine/document/core/HeaderFooterRegions.ts,code:frontend/src/engine/document/table/MergeMatrix.ts,code:frontend/src/engine/render/particles/ListParticle.ts | A:buildExportText,buildExportHtml,collectTableText,collectParagraphText,collectParagraphRuns,getListMarker | S:表格必须先于段落分发 —— 表格也带 children, 会以「有 children 的段落」闯过闸门被当成行 id 遍历而静默产出空行; cell 文本须压成单行, 字面 \n 会撑破 TSV 行结构
+printJob.ts[DB4T]: F:打印任务范围解析与历史记录构造(纯函数): 范围钳制 + completed 判定 + 续打断点 | R:code:frontend/src/services/PrintHistoryService.ts | A:resolvePrintRange,selectPrintPages,isPrintFinished,buildPrintRecord,printDocKey,PrintRange | S:文档键读写必须同走 printDocKey, 否则 'unsaved' 与 undefined 不匹配会让断点静默失效
+provenance.ts[CS6M]: F:导出产物取证溯源标识: 零宽字符(ZWSP/ZWNJ)载荷编解码 + HTML meta / TXT 末行 / JSON 顶层注入 | R:code:frontend/src/engine/document/version/EditorVersion.ts | A:encodeMarker,decodeMarker,stampExportHtml,stampExportText,stampExportObject,stampExportXml | S:零宽字符必须写成转义序列, 绝不写字面 Cf(review 不可见且会被格式化器剥离); 刻意排除 U+200D ZWJ(天然存在于 emoji 组合序列会破坏位对齐); 标识是取证备用非防盗
+utils.ts[LG2T]: F:通用工具: cn 类名合并 / formatDate / formatWordCount / debounce / generateId | R:code:frontend/src/engine/i18n/index.ts | A:cn,formatDate,formatWordCount,debounce,generateId | S:formatDate 的 locale 必须现读, 不得硬编码 'zh-CN'
+compareDocuments.ts[DB4T]: F:版本比较的两份文档装载(纯函数): 经 DocumentLoader 建出完整 doc + NodePool | R:code:frontend/src/engine/document/io/DocumentLoader.ts,code:frontend/src/pages/ComparePage.tsx | A:loadComparePair,ComparePair,LoadedDocument | S:必须走 DocumentLoader: buildNodePool 不展开子节点, 只塞根节点会建出仅含根的池
+
+===D:/czw/EMRDocumentEngine/frontend/src/lib/export/__tests__/===
+fixtures.ts[TQ3S]: F:导出特性层共享测试夹具: build/addSmartText/addSection/addTable 与 s1Element/enumElement 便捷构造 | R:code:frontend/src/engine/document/factory/ElementFormatter.ts,code:frontend/src/lib/export/fields.ts | A:build,addSmartText,addSection,addTable,s1Element,enumElement | S:节占第一个被收编段落的原位置(排序断言依赖); nodes 是可写 Map, 生产只读
+
+===D:/czw/EMRDocumentEngine/frontend/src/lib/export/===
+cdaExport.ts[IB6M]: F:HL7 CDA R2 骨架导出: ClinicalDocument → structuredBody → component/section → entry/observation | R:code:frontend/src/lib/export/fields.ts,code:frontend/src/lib/export/xmlWriter.ts,code:frontend/src/lib/provenance.ts | A:buildCdaXml,CDA_NS,EMRDE_NS,UNASSIGNED_SECTION_CODE,CdaExportInput,CdaResult | S:空节必须输出(扁平格式表达不了); 无节归属内容归合成节 UNASSIGNED 并标 anonymous; sectionCode 重复时两节都出并标记, 不去重不报错; 未填字段出 nullFlavor=NI
+elementsExport.ts[IB5T]: F:结构化元素 JSON(导出特性层纯函数): 每个 smarttext 控件一条, 同时给机器码与显示名 | R:code:frontend/src/lib/export/fields.ts | A:buildElementsDocument,ELEMENTS_SCHEMA_VERSION,ELEMENTS_KIND,ElementsDocumentMeta | S:now 由调用方注入(不用 Date.now())保证可确定复现; _provenance 由 UI 边界附加, 本函数不写
+fields.ts[DB8L]: F:文档 → 字段清单的语义投影(三个新导出格式唯一一份): 数据元码/名称/值/显示值/候选/所属节/表格归属 | R:code:frontend/src/engine/document/selection/SelectionCollector.ts,code:frontend/src/engine/document/core/HeaderFooterRegions.ts,code:frontend/src/engine/document/core/DocumentModel.ts,code:frontend/src/engine/document/control/ControlValue.ts | A:collectFields,FieldRecord,FieldProjection,SectionRecord,FieldLocation,DisplaySource | S:显示值有候选表时走候选表映射, 不得改用 smartTextDisplayValue(它返回原样机器码, 会让导出与屏幕不一致); 未填字段不过滤(未填是有意义的事实); 遍历一律走 spine/hfParagraphsForExport, 禁碰 doc.body.children
+xmlWriter.ts[CB5S]: F:XML 转义与元素组装(导出特性层纯函数): 文本/属性转义 + 自闭合 + XML 声明 | R:code:frontend/src/lib/provenance.ts | A:escapeXmlText,escapeXmlAttr,xmlElement,xmlTextNode,createXmlCtx,xmlDeclaration | S:不复用 documentExport.escapeHtml(它不转引号, 且属性值里的 \t\n\r 会被属性值归一化静默改写); 非法字符一律剔除并计数, 调用方必须上报不得静默
+zipWriter.ts[IB4T]: F:OFD 容器打包: 基于 fflate 的 zipSync, 支持 STORED/压缩与固定 mtime | R:code:frontend/src/lib/export/ofd/buildOfd.ts | A:buildZip,ZipEntry,ZipOptions | S:不读 Date.now(), mtime 由调用方固定(字节可复现是签章前提); 重名条目直接抛错
+
+===D:/czw/EMRDocumentEngine/frontend/src/lib/export/ofd/===
+buildOfd.ts[IB7M]: F:OFD 产物编排入口: 可序列化 DTO(页面几何/测量端口/元数据) → buildOfdModel → XML 分件 → ZIP | R:code:frontend/src/lib/export/ofd/ofdModel.ts,code:frontend/src/lib/export/ofd/ofdXml.ts,code:frontend/src/lib/export/zipWriter.ts,code:frontend/src/lib/export/fields.ts | A:buildOfd,OfdBuildInput,OfdBuildResult,deriveBusinessMeta,OfdSignaturePort,OFD_SIGNATURE_ENTRIES | S:不声称符合 OFD-H(正文未取得); 不内嵌字体, 版式靠逐字形 DeltaX 保证; zipTime 由调用方固定传入(字节可复现是签章前提); 派生不出的业务字段留空并列 notDerived, 不编造
+ofdHMapping.ts[FB5T]: F:OFD-H 术语与命名空间的唯一映射点(重命名缝): 命名空间常量 + ASCII 机器键 + 目标名对照表 | R:code:frontend/src/lib/export/ofd/ofdXml.ts,code:frontend/src/lib/export/ofd/buildOfd.ts | A:OFD_NS,EMRH_NS,META_KEYS,OFD_H_TERM,termOf,MetaKey | S:OFD_H_TERM 今日全为 undefined —— 空不是遗漏而是如实(正文未取得就不编术语名); 机器键一律纯 ASCII, 人读标签由 UI 经 labels 注入
+ofdModel.ts[DB8L]: F:SLIF → OFD 对象图(纯函数): 把已排版页翻译成毫米坐标的 Text/Path/Image 对象, 不重排版 | R:code:frontend/src/engine/layout/core/SLIF.ts,code:frontend/src/lib/export/fields.ts | A:buildOfdModel,mm,boxStr,toOfdColor,OfdModel,CharAdvancePort | S:页面盒取 SLIFPage.width/height 而非 doc.pageSetup(LayoutEngine config 硬编码且从不接收 pageSetup, 取它会与所有对象坐标打架); 不用 getFlatPageItems(它漏续页重复表头), 自己遍历 headerRows+rows; 页 ID 与层 ID 同取全局分配器否则撞号
+ofdXml.ts[DB7L]: F:OFD 对象图 → 各 XML 分件(OFD.xml/Document.xml/Pages/Res 等): 纯函数, 元素顺序按标准排列 | R:code:frontend/src/lib/export/ofd/ofdModel.ts,code:frontend/src/lib/export/xmlWriter.ts,code:frontend/src/lib/export/fields.ts,code:frontend/src/lib/export/ofd/ofdHMapping.ts | A:buildOfdEntries,buildOfdEntryPoint,buildOfdDocument,OfdXmlInput,OfdDocInfo,OfdEntry | S:OFD 的 XSD 用 sequence 而非 all, 元素顺序错阅读器直接判非法; 版本声明 1.0 更保守(1.2 要求读者支持更多特性)
+
+===D:/czw/EMRDocumentEngine/frontend/src/mocks/===
+admissionRecord.json[TB3L]: F:演示用「入院记录」文档 mock: 页面设置 + body.children 节点 id 序列 + 扁平 nodes 节点表 | R:code:frontend/src/mocks/documents.ts | A:- | S:id 引用必须配扁平 nodes 表(缺表重载即丢 payload)
+documents.ts[IB3T]: F:Mock 文档兜底源(后端不可用): HomePage 列表与 EditorPage 详情同出一份数据, 以 id 为键 | R:code:frontend/src/services/api.ts,code:frontend/src/mocks/admissionRecord.json | A:MOCK_DOCUMENTS,MOCK_DOCUMENT_LIST,getMockDocumentDetail | S:content 须是 JSON 字符串, 引擎就地改写对象图, 存引用会污染模块单例
+
+===D:/czw/EMRDocumentEngine/frontend/src/pages/===
+ComparePage.tsx[AU4T]: F:文档版本比较页(路由 /compare/:oldId/:newId): 经 loadComparePair 装载两份文档后交给 DocumentCompareView | R:code:frontend/src/services/api.ts,code:frontend/src/lib/compareDocuments.ts,code:frontend/src/components/views/DocumentCompareView.tsx | A:- | S:装载须经 lib/compareDocuments; 自建池只塞根节点会让差异恒为 0
+EditorPage.tsx[AU8L]: F:编辑器主页面(ModelD): 装配 Provider/叠加层/二十余对话框, 承载导出(JSON/TXT/HTML/CDA/OFD/元素)、打印与质控 | R:code:frontend/src/components/editor/EditorProvider.tsx,code:frontend/src/lib/documentExport.ts,code:frontend/src/lib/export/fields.ts,code:frontend/src/lib/export/ofd/buildOfd.ts,code:frontend/src/lib/printJob.ts,code:frontend/src/mocks/documents.ts | A:- | S:新增导出分支走 downloadBlob, 既有 json/txt/html 分支保持原内联写法不动(已在浏览器跑通); 打印与打印预览共用 openPrintWindow 同一输出路径
+HomePage.tsx[AU5M]: F:首页文档列表: 搜索过滤 + 状态徽章 + 删除 + 最近文档入口(RecentDocuments 唯一挂载点) | R:code:frontend/src/mocks/documents.ts,code:frontend/src/components/sidebar/RecentDocuments.tsx,code:frontend/src/lib/utils.ts | A:- | S:列表恒取 MOCK_DOCUMENT_LIST(真实 documentApi.list 调用被注释), 后端恢复后须改回, 否则一直显示演示数据
+
+===D:/czw/EMRDocumentEngine/frontend/src/platform/data/===
+controlLibrary.ts[DB6M]: F:设计态控件库目录(契约 §12.4): 医疗数据元目录 + 通用控件 widget 目录 + 库默认标签清理 | R:code:frontend/src/engine/document/core/DocumentModel.ts,code:frontend/src/engine/template/TemplateDefinition.ts | A:CONTROL_LIBRARY,CONTROL_WIDGETS,controlWidgetById,stripWidgetDefaultLabels,isWidgetDefaultLabel,stripWidgetDefaultLabelsFromObject | S:控件库属前端平台, 引擎不得硬编码医疗字典(只暴露 insertControl); 库默认 label 须在导入/导出两侧同时清理, 否则旧文档会渲染出多余文字
+dictionaryCatalog.ts[DB6S]: F:外部码表目录(契约 §12.6.4): 码表 id 常量与候选数据; 候选为运行时数据, 不进 document artifact | R:code:frontend/src/engine/document/core/DocumentModel.ts,code:frontend/src/platform/data/dictionaryStore.ts | A:DICTIONARY_ID,DICTIONARY_CATALOG,dictionaryEntryById,dictionaryIds | S:目录 id 是合成值(前 8 位仿国标编号, 后 24 位固定填充), 生产须换真实主键; inline enums 恒优先于码表
+dictionaryStore.ts[IB4T]: F:DictionaryStore 工厂: 把内置码表目录装进引擎 store, 由 UI 在 Editor 构造后注入 | R:code:frontend/src/platform/data/dictionaryCatalog.ts | A:createDictionaryStore | S:每次返回独立实例(非全局单例)以免跨编辑器串扰; 未加载时控件退回自由文本
+
+===D:/czw/EMRDocumentEngine/frontend/src/platform/dom/===
+DomInputHost.ts[IU6S]: F:浏览器交互宿主(契约 §27.1): 建 hidden textarea 作 IME surface + 挂容器/全局事件, 经 InputHost 供引擎 | R:code:frontend/src/engine/host/EditorHost.ts | A:DomInputHost | S:必须先 mount(container) 再建 IME surface 或挂监听, 否则抛错; 引擎不触碰 textarea/document/window
+DomPlatformHost.ts[IG6S]: F:浏览器平台宿主(契约 §27.1): 剪贴板 + 主题 CSS 变量 + 埋点上报 + 卸载生命周期 | R:code:frontend/src/engine/state/canvasTokens.ts,code:frontend/src/engine/state/EditorTheme.ts,code:frontend/src/platform/dom/DomStorageHost.ts | A:DomPlatformHost | S:旧 8 字段画布变量与 28 个 --emr-cnv-* 均备而不发、当前零渲染消费; 剪贴板与上报在无 API 时静默降级
+DomStorageHost.ts[ID5T]: F:IndexedDB 自动保存快照宿主(契约 §27.1): emr-editor-autosave 库 snapshots 表 + documentId/savedAt 索引 | R:code:frontend/src/engine/host/EditorHost.ts | A:DomIndexedDBStorage | S:必须先 init() 就绪才能 put/list/remove(内部直接用 this.db), 未 init 会抛
+DomSurfaceHost.ts[IU7S]: F:浏览器渲染表面宿主(契约 §27.2): 建/挂 canvas 三层(z-index 1/2/3) + 离屏 canvas + spacer + rAF | R:code:frontend/src/engine/host/EditorHost.ts | A:DomSurfaceHost | S:必须先 mount(container); loadImage 加载失败不 resolve(静默不显示), 与旧 Image 行为一致
+DomTextHost.ts[IU6S]: F:浏览器文本/字体宿主(契约 §27): 离屏 canvas 测量、字体度量(upem=1000)、字形与字体可用性、系统字体查询 | R:code:frontend/src/engine/layout/text/FontMetrics.ts,code:frontend/src/engine/layout/text/FontManager.ts | A:DomTextHost,createDomTextHost | S:度量用 100px 字号再归一到 1000 upem 以减少浮点误差; 系统字体查询无权限时降级为常见中文字体列表
+chromeTheme.ts[IU5S]: F:界面外壳(chrome)主题化: 4 预设 → 19 个 --emr-* CSS 变量 + color-scheme + data-theme | R:code:frontend/src/platform/dom/chromeTokens.ts,code:frontend/src/engine/state/EditorTheme.ts | A:applyChromeTheme,readStoredChromePreset,storeChromePreset,CHROME_PRESETS,CHROME_THEME_STORAGE_KEY,isThemePreset | S:与引擎 EditorTheme 两套并存不要合并; 变量名刻意与画布 8 变量不重名; 未知预设整体回落 standard, 不留半套外观
+chromeTokens.ts[CU6S]: F:chrome token 纯数据表: 4 预设 × 19 token, 值为 "R G B" 三元组 | R:code:frontend/src/platform/dom/chromeTheme.ts,code:frontend/tailwind.config.ts | A:CHROME_TOKENS,CHROME_TOKEN_NAMES,chromeCssVar,STANDARD_CHROME_TOKENS,ChromeTokenSet,ChromeTokenName | S:存 RGB 三元组而非 hex, 否则 Tailwind 的 /<alpha-value> 透明度会静默失效; 本文件不得引入任何运行时 import(jiti 求值)
+index.ts[EU5T]: F:platform/dom 出口: 导出四个 DOM 宿主并组装浏览器 EditorHost(无 DOM 副作用, 需显式 mount) | R:code:frontend/src/engine/host/EditorHost.ts,code:frontend/src/platform/dom/DomSurfaceHost.ts,code:frontend/src/platform/dom/DomInputHost.ts,code:frontend/src/platform/dom/DomPlatformHost.ts,code:frontend/src/platform/dom/DomTextHost.ts | A:createDomEditorHost,DomEditorHost | S:text/font 合并为 DomTextHost, surface/viewport 合并为 DomSurfaceHost; 模块加载零副作用(契约 §29)
+
+===D:/czw/EMRDocumentEngine/frontend/src/services/===
+PrintHistoryService.ts[PD4T]: F:打印历史服务: localStorage 存最近 20 条记录, 支持按文档查续打断点 | R:code:frontend/src/lib/printJob.ts | A:PrintHistoryService,printHistory,PrintRecord | S:全局单例; 超 20 条截断; 记录须由 printJob.buildPrintRecord 构造(completed 与断点语义在那)
+api.ts[IN6S]: F:后端 API 客户端(axios): 请求带 Bearer token, 401 自动刷新并重放, 失败清 token 跳登录 | R:- | A:documentApi,templateApi,authApi,DocumentDetail,DocumentListItem,ApiResponse | S:baseURL 取 VITE_API_BASE_URL 否则 /api/v1; DocumentDetail.content 是 DocumentTree 的 JSON 字符串而非对象
+
+===D:/czw/EMRDocumentEngine/frontend/src/store/===
+index.ts[DD6S]: F:Zustand app 级状态: 引擎错误通知(带去重) + 用户 + 侧栏/主题 UI 状态; 不含编辑器事实 | R:code:frontend/src/services/api.ts,code:frontend/src/platform/dom/chromeTheme.ts,code:frontend/src/engine/state/EditorStore.ts | A:useEditorStore,useUserStore,useUIStore,EngineErrorNotice,SidebarTab | S:主题放这里而非 EditorStore(主页/对比页不挂 EditorProvider); 错误去重键优先 key+params, 用 message 会让切语言后同一条重新弹出
+
+===D:/czw/EMRDocumentEngine/knowledge/===
+GoCD-安装配置指南.md[SV4M]: F:GoCD CI/CD 安装配置指南: Server+Agent 架构、流水线配置与部署步骤 | R:code:knowledge/startup-guide.md | A:- | S:文档级操作指南, 与仓库实际流水线无自动校验; 改动基础设施后须人工核对本文
+document-version-system-design.md[SB6M]: F:文档格式/版本/加载/迁移/序列化架构设计(Phase 1, 2026-08-27): 设计稿, 不写代码 | R:code:frontend/src/engine/document/version/DocumentFormatVersion.ts,code:frontend/src/engine/document/version/ModelUpgrader.ts,code:frontend/src/engine/document/io/DocumentLoader.ts | A:- | S:设计阶段快照, 与现行实现可能已分叉 —— 引用前须对代码复核
+editor-page-structure.md[SU5M]: F:/editor/:id 页面结构分析(2026-07-31 快照): 路由、组件树、布局三列与文件清单 | R:code:frontend/src/pages/EditorPage.tsx | A:- | S:2026-09-16 仅复核属性面板同源 4 处, 正文其余条目未逐条复核(文中已标可疑项), 引用前须对代码复核
+integration-test-report-2026-08-03.md[SQ3S]: F:集成测试报告(2026-08-03, Round 8~10): 构建/类型/用例结果与覆盖范围 | R:- | A:- | S:2026-08-03 的历史快照, 模块数/包体/用例数不代表当前状态
+layout-refactor-regression-test-checklist.md[SQ3S]: F:layout/ 分层重构回归测试清单(2026-08-27): 8 子目录职责对照与零行为变化验证 | R:code:frontend/src/engine/layout/core/LayoutEngine.ts,code:frontend/src/engine/layout/line/LineBreaker.ts | A:- | S:该重构已完成, 清单路径即当前布局, 新增 layout 文件须归入对应子目录
+startup-guide.md[SG4T]: F:项目启动指南: 前端 Vite 与后端启动命令 | R:code:frontend/vite.config.ts | A:- | S:前端启动在 frontend/ 目录执行; 端口与代理以 vite.config.ts 为准
+state-cleanup-regression-test-checklist.md[SQ3S]: F:state/ 清理回归测试清单(2026-08-27): 删死代码 RangeManager + 抽出 HistoryState | R:code:frontend/src/engine/state/HistoryState.ts,code:frontend/src/engine/state/EditorStore.ts | A:- | S:RangeManager 已删不得复活: 其 API 与当前选区模型不兼容
+编辑器功能清单.md[SG5L]: F:编辑器功能清单(基于代码盘点, 2026-09-01): 按编号逐条列已实现功能与边界 | R:code:frontend/src/engine/Editor.ts | A:- | S:条目编号被他文交叉引用, 只可校正指向不可重排编号
+
+===D:/czw/EMRDocumentEngine/knowledge/每日推文/===
+AI推广契约.md[SZ5L]: F:「旺de碎碎念」公众号 AI 推广契约 v2.4(EMR-PROMO-AI-001): 90 天路径、日更节奏与事实合规红线 | R:code:knowledge/每日推文/选题蓄水池.md | A:- | S:契约明示不构成结果保证且含事实合规约束 —— 引用项目数字前必须对代码核对, 不得为增长编造事实
+选题蓄水池.md[SZ4S]: F:公众号选题蓄水池: 下一波坑位选题卡(标题/支柱/关键词/切入/配图/数据依据) | R:code:knowledge/每日推文/AI推广契约.md | A:- | S:常备 ≥14 篇; 取出即登记消耗, 每周五补池 —— 不得只取不补
+
+===D:/czw/EMRDocumentEngine/knowledge/每日推文/公众号/已发/===
+公众号文章-EMR电子病历文档引擎.md[SZ2S]: F:公众号推广稿: EMR 电子病历文档编辑器总览(产品定位与价值) | R:- | A:- | S:-
+公众号文章-三层Canvas渲染架构static-content-interact.md[SZ2M]: F:公众号内核系列: 三层 Canvas 渲染架构(static/content/interact)与滚动不掉帧 | R:code:knowledge/每日推文/公众号/已发/公众号文章-为什么不用ProseMirror自研Canvas内核的取舍.md | A:- | S:-
+公众号文章-为什么不用ProseMirror自研Canvas内核的取舍.md[SZ2M]: F:公众号内核系列: 不用 ProseMirror、自研 Canvas 的三个约束与取舍 | R:code:knowledge/每日推文/公众号/已发/公众号文章-三层Canvas渲染架构static-content-interact.md | A:- | S:-
+公众号文章-修改留痕与审计追溯.md[SZ2M]: F:公众号推广稿: 电子病历修改留痕与审计追溯(谁改的/改了啥/何时改) | R:- | A:- | S:-
+公众号文章-医院信息科的时间都去哪了.md[SZ2M]: F:公众号推广稿: 医院信息科工作耗散与效率 | R:- | A:- | S:-
+公众号文章-合规审计视角下的电子病历.md[SZ2M]: F:公众号推广稿: 从审计/质控/留痕视角看电子病历里的坑 | R:- | A:- | S:-
+公众号文章-国庆值班.md[SZ2S]: F:公众号推广稿: 节假日值班场景下如何把病历写得接得上、找得到、断不了 | R:- | A:- | S:-
+公众号文章-开源EMR文档编辑器求Star.md[SZ2S]: F:公众号推广稿: 开源 EMR 文档编辑器招募 Star | R:- | A:- | S:-
+公众号文章-性能实录从8s压到400ms.md[SZ2M]: F:公众号推广稿: 性能优化实录(2000 行病历从 8s 降到 400ms 的定位与取舍) | R:- | A:- | S:文中 8s→400ms 等数字是写作时快照, 会随代码漂移, 引用前须重测
+公众号文章-打印与预览一致WYSIWYG.md[SZ2M]: F:公众号推广稿: 打印与预览一致的 WYSIWYG 口径与页脚陷阱 | R:- | A:- | S:-
+公众号文章-把质量管在源头结构化录入与质控.md[SZ2M]: F:公众号推广稿: 结构化录入与源头质控(质量是录进去的而非查出来的) | R:code:frontend/src/engine/qc/QCEngine.ts | A:- | S:-
+公众号文章-护士站补记录.md[SZ2M]: F:公众号推广稿: 护理记录“连着记”的痛点与护士站补记录 | R:- | A:- | S:-
+公众号文章-架构契约如何让AI不写坏你的代码.md[SZ2L]: F:公众号推广稿: 用架构契约约束 AI 不越界(含表格跨页 P0/P1/P2 降级回顾) | R:code:knowledge/每日推文/公众号/已发/公众号文章-表格跨页与合并矩阵算法.md | A:- | S:本文是契约解读稿, 判据以 .claude/AI_EDITOR_CONTRACT.md 为准
+公众号文章-模板化书写科室经验怎么沉淀.md[SZ2M]: F:公众号推广稿: 病历模板化书写与科室经验沉淀 | R:- | A:- | S:-
+公众号文章-测试账本1500个测试.md[SZ2M]: F:公众号推广稿: 医疗软件为何不能靠人工点, 以及测试账本的攒法 | R:- | A:- | S:文中 1500+ 测试数是写作时快照, 会漂移, 引用前须重跑核对
+公众号文章-电子病历编辑器选型盘点.md[SZ2T]: F:公众号推广稿: 按成熟度分三梯队盘点主流开源与商用病历编辑器 | R:- | A:- | S:-
+公众号文章-病历数据的活与死.md[SZ2M]: F:公众号推广稿: 病历数据“活”(可编码可统计)与“死”(导出成文字)的差别 | R:- | A:- | S:-
+公众号文章-病历编辑器为什么成了HIS的咽喉.md[SZ2S]: F:公众号推广稿: 病历编辑器为何是 HIS 中最易被忽略却关键的环节 | R:- | A:- | S:-
+公众号文章-病历编辑器被问最多的5个问题.md[SZ2M]: F:公众号推广稿: 集中回答关于病历编辑器的 5 个高频问题 | R:code:knowledge/每日推文/公众号/已发/公众号文章-三层Canvas渲染架构static-content-interact.md | A:- | S:-
+公众号文章-病历编辑器选型地图商业套件开源内核自研各适合谁.md[SZ2M]: F:公众号推广稿: 商业套件/开源内核/自研三条路线的选型决策地图 | R:- | A:- | S:-
+公众号文章-编辑器撤销栈与Command模式.md[SZ2M]: F:公众号内核系列: 撤销栈与 Command 模式(为何不能靠快照) | R:code:frontend/src/engine/command/CommandUndoRedoStack.ts | A:- | S:-
+公众号文章-行断与分页UAX14与孤行寡行控制.md[SZ2M]: F:公众号内核系列: 断行(UAX#14)与分页(孤行寡行控制) | R:code:frontend/src/engine/layout/line/LineBreaker.ts,code:frontend/src/engine/layout/page/PageBreaker.ts | A:- | S:-
+公众号文章-表格跨页与合并矩阵算法.md[SZ2L]: F:公众号内核系列: 表格跨页与合并矩阵算法(P0/P1/P2 降级) | R:code:frontend/src/engine/document/table/MergeMatrix.ts,code:frontend/src/engine/layout/table/TablePaginator.ts | A:- | S:-
+公众号文章-选型提问清单5个问题.md[SZ2M]: F:公众号推广稿: 选型前该先问的 5 个问题 | R:- | A:- | S:-
+公众号文章-门诊医生的一天.md[SZ2M]: F:公众号推广稿: 门诊医生写病历的时间占比与自测方法 | R:- | A:- | S:-
+
+===D:/czw/EMRDocumentEngine/knowledge/每日推文/掘金/===
+掘金文章-为什么不用ProseMirror.md[SZ2M]: F:掘金投稿: 不依赖 ProseMirror 手写文档内核的三个约束 | R:code:knowledge/每日推文/公众号/已发/公众号文章-为什么不用ProseMirror自研Canvas内核的取舍.md | A:- | S:-
+
+===D:/czw/EMRDocumentEngine/knowledge/每日推文/知乎/===
+知乎回答-病历编辑器该自研还是用现成框架.md[SZ2S]: F:知乎回答: 病历编辑器该自研还是基于现成富文本框架魔改 | R:- | A:- | S:-
+
+===D:/czw/EMRDocumentEngine/output/===
+1-research.md[SG3M]: F:文档编辑器引擎调研报告(v3.0, 2026-07-29): 项目结构、技术决策与功能优先级调研 | R:code:output/2-prd.md | A:- | S:2026-07-29 调研快照, 技术决策与优先级可能与现行实现不符
+2-prd.md[SG3L]: F:产品需求文档 PRD(v3.2, 2026-07-29): 分节符/选择性粘贴/文档比较/字数统计等需求条目 | R:code:output/3-architecture.md | A:- | S:v3.2 PRD(2026-07-29) 快照, 需求条目以现行代码与契约为准
+3-architecture-v18-backup.md[SG2L]: F:架构设计文档旧版备份(v18.0, 2026-07-29): 章节结构专项收敛的归档稿 | R:code:output/3-architecture.md | A:- | S:v18.0 旧版架构备份(已被 v21.0 取代), 仅供对照, 不得据此实现
+3-architecture.md[SG6L]: F:架构设计文档(v21.0, 2026-08-12): 回归树形嵌套 + 二级碰撞检测 + CaretScope + SLIF 嵌套表格 | R:code:output/5-spec.md | A:- | S:v21.0 架构设计; 与 .claude/AI_EDITOR_CONTRACT.md 冲突时以契约为准
+4-uiux.md[SG3L]: F:UI/UX 设计文档(v3.0, 2026-07-29): 工具栏/对话框/面板与交互设计 | R:code:output/2-prd.md | A:- | S:v3.0 UI/UX 设计(2026-07-29) 快照, 与现行主题/i18n 实现可能不符
+5-spec-v3-backup.md[SG2L]: F:技术规格说明书旧版备份(v3.0, 2026-07-28): EditorRuntimeState/Command/增量布局等规格 | R:code:output/5-spec.md | A:- | S:v3.0 旧版 Spec 备份(已被 v4.0 取代), 仅供对照
+5-spec.md[SG4L]: F:技术规格说明书(v4.0, 2026-07-29): TASK 按 P0→P3 分层, 覆盖编辑器核心功能任务组 | R:code:output/3-architecture.md | A:- | S:TASK 编号被他文交叉引用, 重排会使引用失效
+
+===D:/czw/EMRDocumentEngine/scripts/===
+apply-headers.mjs[XV4S]: F:批量写入 MPL-2.0 文件头: 支持 --dry-run 与 --replace(改写既有头块) | R:code:scripts/headers.config.mjs,code:scripts/header-io.mjs | A:- | S:幂等(SPDX 哨兵); 只前插不改写既有字节; 换主体须跑 --replace
+archive-snapshot.mjs[XV5S]: F:生成可独立验证的离线归档快照: repo.bundle + source.tar.gz + SHA256SUMS + MANIFEST | R:code:frontend/src/lib/provenance.ts | A:- | S:输出目录在仓库内即硬拒绝(归档进仓库会被提交带走而失去证据意义)
+check-headers.mjs[XQ4T]: F:文件头校验 CI 门禁(只读): 范围内已跟踪文件缺 SPDX 哨兵则 exit 1 | R:code:scripts/headers.config.mjs,code:scripts/header-io.mjs | A:- | S:只读门禁; 与 apply-headers 共用配置与 IO, 校验范围=写入范围
+header-io.mjs[XV4S]: F:文件头工具链共享 IO: 文件枚举、EOL/BOM 探测、插入点与「已有头」判定 | R:code:scripts/headers.config.mjs | A:- | S:只前插不改既有字节(BOM/行尾原样保留); BOM 写成转义序列不写字面
+headers.config.mjs[FV5S]: F:文件头工具链唯一真源: HOLDER/YEAR/LICENSE_ID、幂等哨兵与许可证护栏 | R:code:scripts/apply-headers.mjs,code:scripts/check-headers.mjs,code:scripts/header-io.mjs | A:- | S:头工具链唯一真源(apply 与 check 共用); LICENSE_GUARD 不匹配时 apply 拒绝运行
+retheme-chrome.mjs[XU3M]: F:中性色 Tailwind class → chrome token 的机械替换 codemod, 带 --dry 对账模式 | R:code:frontend/src/platform/dom/chromeTokens.ts,code:frontend/src/index.css | A:- | S:对账是内建断言: 旧类归零且替换点数=匹配点数, 任一不成立即 exit 1
+verify-provenance.mjs[XS5M]: F:取证验证工具: 从导出件提取并解码溯源标识, 关联回仓库与提交, 支持 --selftest | R:code:frontend/src/lib/provenance.ts | A:- | S:与 frontend/src/lib/provenance.ts 各自实现同一编解码, 用同一可见 FIXTURE_BITS 钉住防漂移
