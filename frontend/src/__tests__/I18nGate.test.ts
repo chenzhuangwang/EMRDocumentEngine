@@ -25,42 +25,75 @@
 //   B. 用「翻译结果反推当前语言」—— t(...) === '字面量' 的判定式
 //   C. 硬编码语言标识 ('zh-CN' / 'en-US') —— 日期格式化那类 bug 的形式化
 //
-// 扫描范围是**整个 src/**, 不只是 UI 层: 第二批把引擎层也接了进来, 而引擎层
+// 扫描范围是**整个源码面**, 不只是 UI 层: 第二批把引擎层也接了进来, 而引擎层
 // 恰恰藏着最隐蔽的那个 bug —— FieldFormatter 的 `toLocaleDateString('zh-CN')`
 // 让 en-US 界面下的日期域渲染成中文格式, 且 FieldTextContext 里根本没有
 // locale 字段, 调用方想注入都没地方传。UI 层闸门扫不到它。
+//
+// ------------------------------------------------------------
+// 引擎物理剥离之后 (契约 §32) 的调整
+// ------------------------------------------------------------
+//
+// 引擎源码已搬到 packages/emr-document-engine/src —— 它仍然是**同一份必须接
+// i18n 的代码**, 所以本闸门改成**双根遍历**: 应用 `frontend/src` 与引擎包
+// `packages/emr-document-engine/src` 都在范围内, 键前缀 `app:` / `pkg:` 区分。
+// 遍历方式从 import.meta.glob 改成 node:fs —— glob 以 Vite root (frontend/) 为
+// 基准, 跨 root 扫包外目录不可靠 (声明见同目录 nodeShims.d.ts)。
 //
 // 与 ChromeTokenGate 同一思路: 靠肉眼扫 40 个文件发现不了, 就交给闸门。
 // 改白名单时想清楚: 加进白名单等于承认那处不接 i18n 是**设计**, 不是欠债。
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { cwd } from 'node:process'
 
-// 构建期读入全部源码文本 (key 为 /src/... 相对项目根)
-const uiSources = import.meta.glob('/src/**/*.{ts,tsx}', {
-  as: 'raw',
-  eager: true,
-}) as Record<string, string>
+/** 应用源码根 (vitest 的 cwd 是 frontend/) */
+const APP_SRC = join(cwd(), 'src')
+/** 引擎包源码根 (契约 §32 物理剥离后的位置) */
+const PKG_SRC = join(cwd(), '..', 'packages', 'emr-document-engine', 'src')
+
+/** 递归列出目录下全部文件, key 为 `<prefix><相对路径>` (正斜杠) */
+function walk(dir: string, prefix: string, rel = ''): Array<[string, string]> {
+  const out: Array<[string, string]> = []
+  for (const name of readdirSync(dir)) {
+    const abs = join(dir, name)
+    const next = rel ? `${rel}/${name}` : name
+    if (statSync(abs).isDirectory()) out.push(...walk(abs, prefix, next))
+    else out.push([`${prefix}${next}`, abs])
+  }
+  return out
+}
+
+const uiSources: Record<string, string> = {}
+for (const [key, abs] of [...walk(APP_SRC, 'app:'), ...walk(PKG_SRC, 'pkg:')]) {
+  if (!/\.(ts|tsx)$/.test(key) || key.endsWith('.d.ts')) continue
+  uiSources[key] = readFileSync(abs, 'utf8')
+}
 
 const FILES = Object.keys(uiSources)
-  .filter((f) => !f.includes('/__tests__/'))
+  .filter((f) => !f.includes('__tests__/'))
   .sort()
 
 /**
  * 闸门必须真的扫到这些文件 —— 否则下面的空数组断言全是假通过。
  * (ChromeTokenGate 用同样的手法防"闸门自己漏扫": 那比没有闸门更危险。)
+ *
+ * 应用侧四项守 UI 层; 引擎侧五项守当初漏掉的那半 —— 它们现在住在包里,
+ * 但接不接 i18n 的标准不变。
  */
 const MUST_SCAN = [
-  '/src/components/layout/Toolbar.tsx',
-  '/src/components/layout/Sidebar.tsx',
-  '/src/pages/EditorPage.tsx',
-  '/src/pages/HomePage.tsx',
-  // 引擎层 —— 第二批接入的对象, 必须真扫到
-  '/src/engine/qc/QCEngine.ts',
-  '/src/engine/ErrorRecovery.ts',
-  '/src/engine/document/factory/FieldFormatter.ts',
-  '/src/engine/document/control/ControlOptions.ts',
-  '/src/engine/loaders/DocumentLoaderRegistry.ts',
+  'app:components/layout/Toolbar.tsx',
+  'app:components/layout/Sidebar.tsx',
+  'app:pages/EditorPage.tsx',
+  'app:pages/HomePage.tsx',
+  // 引擎层 —— 第二批接入的对象, 物理剥离后仍必须真扫到
+  'pkg:engine/qc/QCEngine.ts',
+  'pkg:engine/ErrorRecovery.ts',
+  'pkg:engine/document/factory/FieldFormatter.ts',
+  'pkg:engine/document/control/ControlOptions.ts',
+  'pkg:engine/loaders/DocumentLoaderRegistry.ts',
 ]
 
 /**
@@ -73,25 +106,25 @@ const MUST_SCAN = [
  */
 const EXEMPT = new Set([
   // ---- 语言包本身 (它就是翻译存储, 中文是数据不是文案) ----
-  '/src/engine/i18n/index.ts',
-  '/src/i18n/bootstrap.ts',              // LOCALES 的语言自名「简体中文」不随界面语言变
+  'pkg:engine/i18n/index.ts',
+  'app:i18n/bootstrap.ts',              // LOCALES 的语言自名「简体中文」不随界面语言变
 
   // ---- 领域数据: 中文是正确内容 ----
-  '/src/engine/AutoCorrectEngine.ts',    // 医嘱缩写 → 中文词表 (i.v. → 静脉滴注)
-  '/src/engine/render/particles/ListParticle.ts', // CJK 数字字形 (一/二/三…), 两种语言下都是它
-  '/src/engine/layout/line/LineBreaker.ts',       // 中文避头尾字符集, 纯布局数据不上屏
-  '/src/platform/data/controlLibrary.ts',         // 控件库名 (患者姓名…); §12.4 明确「引擎不得硬编码医学字典」
-  '/src/platform/data/dictionaryCatalog.ts',      // GB/T 国标码表 (性别/婚姻状况…)
-  '/src/platform/dom/DomTextHost.ts',             // 字体度量取样字符 '中' (量全角宽用)
-  '/src/mocks/documents.ts',                      // mock 病历的医生名 ('李医生') —— 病历内容不是界面文案
+  'pkg:engine/AutoCorrectEngine.ts',    // 医嘱缩写 → 中文词表 (i.v. → 静脉滴注)
+  'pkg:engine/render/particles/ListParticle.ts', // CJK 数字字形 (一/二/三…), 两种语言下都是它
+  'pkg:engine/layout/line/LineBreaker.ts',       // 中文避头尾字符集, 纯布局数据不上屏
+  'app:platform/data/controlLibrary.ts',         // 控件库名 (患者姓名…); §12.4 明确「引擎不得硬编码医学字典」
+  'app:platform/data/dictionaryCatalog.ts',      // GB/T 国标码表 (性别/婚姻状况…)
+  'pkg:platform/dom/DomTextHost.ts',             // 字体度量取样字符 '中' (量全角宽用)
+  'app:mocks/documents.ts',                      // mock 病历的医生名 ('李医生') —— 病历内容不是界面文案
 
   // ---- 固定文本 ----
-  '/src/lib/provenance.ts',              // 版权署名 'Copyright (c) 2026 陈庄旺' —— 导出件的法务标识
+  'pkg:lib/provenance.ts',              // 版权署名 'Copyright (c) 2026 陈庄旺' —— 导出件的法务标识
 
   // ---- 纯函数 t 注入 + zh-CN 兜底 (无 hook 上下文, 见各文件头) ----
-  '/src/components/editor/contextMenuModel.ts',
-  '/src/components/editor/controlMessages.ts',
-  '/src/components/views/controlDisplay.ts',
+  'app:components/editor/contextMenuModel.ts',
+  'app:components/editor/controlMessages.ts',
+  'app:components/views/controlDisplay.ts',
 ])
 
 /** 中文区间 (CJK 统一表意文字) */
@@ -202,8 +235,10 @@ function scanHardcodedLocale(file: string, src: string): Hit[] {
 const SCANNED = FILES.filter((f) => !EXEMPT.has(f))
 const literalHits = SCANNED.flatMap((f) => scanLiterals(f, uiSources[f]))
 const guessHits = SCANNED.flatMap((f) => scanLocaleGuessing(f, uiSources[f]))
-// 硬编码语言只对运行时层 (engine / lib) 生效 —— UI 层处理 locale 本身是合法的
-const LOCALE_SCOPE = SCANNED.filter((f) => f.startsWith('/src/engine/') || f.startsWith('/src/lib/'))
+// 硬编码语言只对运行时层 (引擎包 / 应用 lib) 生效 —— UI 层处理 locale 本身是合法的
+const LOCALE_SCOPE = SCANNED.filter(
+  (f) => f.startsWith('pkg:engine/') || f.startsWith('pkg:lib/') || f.startsWith('app:lib/'),
+)
 const localeHits = LOCALE_SCOPE.flatMap((f) => scanHardcodedLocale(f, uiSources[f]))
 
 const fmt = (h: Hit) => `${h.file}:${h.line} [${h.kind}] ${h.text}`
@@ -217,6 +252,11 @@ describe('I18nGate — 扫描覆盖', () => {
     }
   })
 
+  it('两个根都真的扫到了 (跨 root 遍历坏掉时会静默变成"只扫一半")', () => {
+    expect(FILES.some((f) => f.startsWith('app:'))).toBe(true)
+    expect(FILES.some((f) => f.startsWith('pkg:'))).toBe(true)
+  })
+
   it('白名单文件真实存在 (删了文件却留着白名单 = 白名单在保护空气)', () => {
     for (const f of EXEMPT) {
       expect(FILES).toContain(f)
@@ -225,7 +265,7 @@ describe('I18nGate — 扫描覆盖', () => {
 })
 
 describe('I18nGate — 不得硬编码用户可见中文', () => {
-  it('全 src/ 无中文文案字面量 (领域数据见 EXEMPT)', () => {
+  it('全源码面 (应用 + 引擎包) 无中文文案字面量 (领域数据见 EXEMPT)', () => {
     expect(literalHits.map(fmt)).toEqual([])
   })
 })
