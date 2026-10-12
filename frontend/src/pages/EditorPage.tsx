@@ -1083,8 +1083,13 @@ function EditorPageInner({
         },
         provenance: provenanceRecord(),
         now: new Date(),
-        // 固定 mtime: 同一文档两次导出应逐字节相同 (可复现, 也是将来签章的前提)
-        zipTime: new Date(0),
+        // 固定 mtime: 同一文档两次导出应逐字节相同 (可复现, 也是将来签章的前提)。
+        // 必须是 ZIP 的 DOS 时间能表示的年份 —— 该字段只有 7 位存年 (相对 1980),
+        // 可表示区间是 1980..2099; 传 epoch 0 (1970) 会让 fflate 直接抛
+        // "date not in range 1980-2099", 导出在写字节前就失败。
+        // 也不能取 1980 这一下界: DOS 时间按**本地时间**编码, 西半球的 1980-01-01T00:00Z
+        // 会退到 1979 年。取区间中段, 与测试里的 ZIP_TIME 保持同一个值。
+        zipTime: new Date('2026-01-01T00:00:00Z'),
       })
 
       downloadBlob(built.bytes, 'application/ofd', 'ofd')

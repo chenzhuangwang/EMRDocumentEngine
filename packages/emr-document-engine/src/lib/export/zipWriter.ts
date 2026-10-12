@@ -47,8 +47,23 @@ function toBytes(data: Uint8Array | string): Uint8Array {
  *
  * 重名条目直接抛错: ZIP 以路径为键, 重名会让后一条**静默覆盖**前一条,
  * 而「少了一个分件」在阅读器里表现为内容缺失而不是报错 (契约 §31.5)。
+ *
+ * mtime 超出 ZIP 的 DOS 时间区间同样直接抛错, 理由同上: fflate 内部会抛一个
+ * 只有数字码的 `err(10)`, 从依赖栈里冒出来时看不出是哪个入参的问题 —— 在边界
+ * 上换成指名道姓的一句话。区间与 fflate 判据一致 (见其 dostime):
+ *
+ *     y = 本地年份 - 1980,  0 <= y <= 119  即 1980..2099
+ *
+ * 按**本地时间**取年份, 故 1980-01-01T00:00Z 这类下界值在西半球会退到 1979 ——
+ * 固定 mtime 应取区间中段, 不要贴着端点。
  */
 export function buildZip(entries: readonly ZipEntry[], opts: ZipOptions): Uint8Array {
+  const year = new Date(opts.mtime).getFullYear()
+  if (!(year >= 1980 && year <= 2099)) {
+    throw new Error(
+      `buildZip: mtime must fall within 1980-2099 (ZIP DOS timestamp range), got ${opts.mtime.toISOString()} (local year ${year})`,
+    )
+  }
   const files: Record<string, [Uint8Array, { level: 0 | 6 }]> = {}
   const seen = new Set<string>()
   for (const entry of entries) {

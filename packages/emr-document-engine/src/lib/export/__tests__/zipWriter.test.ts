@@ -74,4 +74,17 @@ describe('buildZip', () => {
       { name: 'Doc_0/x.xml', data: 'b' },
     ], { mtime: MTIME })).toThrow(/duplicate entry name/)
   })
+
+  // 回归: 上一批 ofd 落地时应用侧传的固定 mtime 是 epoch 0 (1970), 落在 ZIP 的
+  // DOS 时间区间之外, 导出在写任何字节前就失败 —— 而全部测试都过了, 因为测试
+  // 自己给的是区间内常量, 没人测应用真正传的值。这里把边界钉死。
+  it('mtime 超出 1980..2099 抛错, 且错误信息点名 mtime (不泄漏成依赖栈里的 err(10))', () => {
+    expect(() => buildZip([{ name: 'a.txt', data: 'x' }], { mtime: new Date(0) }))
+      .toThrow(/mtime must fall within 1980-2099/)
+  })
+
+  it('区间端点可表示 —— 1980 与 2099 两端的年内值都能打包成功', () => {
+    expect(() => buildZip([{ name: 'a.txt', data: 'x' }], { mtime: new Date('1980-06-15T12:00:00Z') })).not.toThrow()
+    expect(() => buildZip([{ name: 'a.txt', data: 'x' }], { mtime: new Date('2099-06-15T12:00:00Z') })).not.toThrow()
+  })
 })
