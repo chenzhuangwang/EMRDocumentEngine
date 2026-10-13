@@ -3378,10 +3378,21 @@ MUST:
 - Code outside the walker module MUST NOT iterate
   `doc.body.children` (or re-implement the walk by hand).
   This is enforced by a static gate —
-  `engine/__tests__/DocumentWalkGate.test.ts` — which fails CI on
-  any traversal outside the walker and outside an explicit,
+  `frontend/src/__tests__/DocumentWalkGate.test.ts` — which fails CI
+  on any traversal outside the walker and outside an explicit,
   justified whitelist. Adding a whitelist entry means declaring
   "this site is STRUCTURE semantics", not "this is debt".
+
+- The gate lives in the APPLICATION tree ON PURPOSE and scans BOTH
+  source roots (`frontend/src` as `app:`, `packages/emr-document-engine/
+  src` as `pkg:`). The rule it enforces is repository-wide: app code
+  can grab a DocumentTree and walk it just as engine code can. Moving
+  the gate into the package (§32) would restrict it to the package
+  half and let the application half drift UNENFORCED — silently.
+  Same dual-root shape as I18nGate. Traversal is via `node:fs`, not
+  `import.meta.glob`, so it is not anchored to the Vite root. (Decided
+  deliberately at split time; this is an architectural choice, not a
+  workaround.)
 
 - The whitelist is exactly the Q9 set below plus the walker
   itself, the serializer/loader, the version migration, the

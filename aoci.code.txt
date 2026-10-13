@@ -16,7 +16,7 @@ pre-push[XV3T]: F:git 客户端 hook 样本: push 后台等待后 POST 请求通
 .dockerignore[OV4T]: F:声明仓库根构建上下文下必须排除的内容(依赖树/构建产物/版本库/后端/知识库), 供 frontend/Dockerfile 使用 | R:code:frontend/Dockerfile | A:- | S:只在上下文放宽到仓库根后才生效; 不排除则宿主机 node_modules 与 .git 一并进上下文
 
 ===D:/czw/EMRDocumentEngine/.claude/===
-AI_EDITOR_CONTRACT.md[SG8L]: F:定义引擎分包与前端应用的 32 条强制架构不变量与禁止状态, 是 AI 实现/重构/评审的硬约束 | R:code:.claude/CLAUDE.md,code:README.md | A:- | S:四级严格度 MUST NOT/MUST/SHOULD/TARGET; TARGET 不要求立即重构, 禁止仅为其做大规模重构; §32 分发分包边界的违规是静默失效(源码出 @/ 别名或 manifest 落进别名目录 → 应用加载两份引擎实例)
+AI_EDITOR_CONTRACT.md[SG8L]: F:定义引擎分包与前端应用的 32 条强制架构不变量与禁止状态, 是 AI 实现/重构/评审的硬约束 | R:code:.claude/CLAUDE.md,code:README.md | A:- | S:四级严格度 MUST NOT/MUST/SHOULD/TARGET; TARGET 不要求立即重构, 禁止仅为其做大规模重构; §32 分发分包边界的违规是静默失效(源码出 @/ 别名或 manifest 落进别名目录 → 应用加载两份引擎实例); §31.1 明写遍历口径闸门在 frontend/src/__tests__/DocumentWalkGate.test.ts 且有意双根扫描 app:+pkg:, 不得随引擎包搬进 packages/
 CLAUDE.md[SG6T]: F:AI 入口提示, 要求修改 packages/emr-document-engine(引擎源码)前先阅读并遵守 AI_EDITOR_CONTRACT.md | R:code:.claude/AI_EDITOR_CONTRACT.md | A:- | S:仅在改动引擎源码前触发; 不改引擎时无需读取契约
 
 ===D:/czw/EMRDocumentEngine/.super-dev/===
