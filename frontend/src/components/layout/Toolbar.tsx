@@ -129,7 +129,7 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
 
   return (
     <>
-    <div className="h-toolbar bg-chrome border-b border-line-subtle flex items-center px-3 gap-0.5 flex-shrink-0 overflow-x-auto select-none">
+    <div className="h-toolbar bg-chrome border-b border-line-subtle flex items-center px-3 gap-0.5 flex-shrink-0 overflow-x-auto overflow-y-hidden scrollbar-thin select-none whitespace-nowrap">
       {/* 组1：历史操作 */}
       <ToolbarGroup>
         <ToolbarButton title={`${t('editor.undo')} (Ctrl+Z)`} disabled={!canUndo} onClick={() => onFormat?.('undo')}>

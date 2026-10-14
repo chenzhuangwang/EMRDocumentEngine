@@ -72,12 +72,17 @@
     @apply bg-chrome-accent-strong text-chrome-accent-ink hover:bg-chrome-accent-stronger;
   }
 
+  /* flex-shrink-0: 工具栏外层是 overflow-x-auto 滚动容器, 其 flex 子女默认
+     shrink:1 —— 内容恒宽于视口时它们会被压到内容宽度以下, 按钮里的中文标签
+     于是折成两行 (实测「导出」span 20px→40px), 行高被撑破 → 纵向溢出。
+     溢出被 overflow-y-hidden 藏起来只是看不见, 局促感还在。零收缩让单行保持
+     自然宽度, 横向滚动才是唯一的溢出出口。 */
   .toolbar-btn-group {
-    @apply flex items-center gap-0.5 px-1;
+    @apply flex items-center gap-0.5 px-1 shrink-0;
   }
 
   .toolbar-divider {
-    @apply w-px h-6 bg-chrome-strong mx-1;
+    @apply w-px h-6 bg-chrome-strong mx-1 shrink-0;
   }
 
   /* 侧边栏 */

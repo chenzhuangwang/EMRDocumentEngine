@@ -69,7 +69,7 @@ export function HeaderFooterToolbar({
   const closeTitle = section === 'header' ? t('editor.hf.closeHeaderTitle') : t('editor.hf.closeFooterTitle')
 
   return (
-    <div className="flex items-center gap-1 px-2 py-1 bg-chrome-subtle border-b border-line">
+    <div className="flex items-center gap-1 px-2 py-1 bg-chrome-subtle border-b border-line flex-shrink-0">
       {/* 首页不同 */}
       <button
         className={cn(

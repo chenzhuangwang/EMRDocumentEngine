@@ -117,7 +117,7 @@ export default {
       },
       spacing: {
         'header': '48px',
-        'toolbar': '40px',
+        'toolbar': '44px',
         'statusbar': '28px',
         'sidebar': '240px',
         'properties': '280px',

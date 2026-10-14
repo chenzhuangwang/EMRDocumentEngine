@@ -200,8 +200,7 @@ export class LayeredRenderer {
       if (this.watermarkConfig) {
         const wm = this.watermarkConfig
         if (wm.type === 'tile' && this.watermarkPattern) {
-          ctx.fillStyle = this.watermarkPattern
-          ctx.fillRect(0, pageY, page.width, page.height)
+          fillTileWatermark(ctx, this.watermarkPattern, pageY, page.width, page.height)
         } else if (wm.type === 'text') {
           this.drawTextWatermark(ctx, pageY, page.width, page.height, wm)
         } else if (wm.type === 'image' && this.watermarkImage) {
@@ -352,6 +351,30 @@ const L_LINE_WIDTH = 0.5  // 线宽 0.5px
 const L_COLOR_FALLBACK = '#CCCCCC' // 浅灰 (tokenSet 缺时兜底)
 const L_OFFSET_X = 24     // 距页面左右边缘
 const L_ALPHA = 0.7       // 透明度
+
+/**
+ * 平铺水印: 以**该页左上角**为图块原点, 让图案随页面一起滚动。
+ *
+ * 直接 `ctx.fillRect(0, pageY, …)` 会把图案锚在**画布/视口原点** —— 画布被
+ * fixCanvasScrollOffset 用 `style.top = scrollTop` 钉在视口顶部, 静态层
+ * setTransform 里也不含滚动偏移, 于是图案原点落在视口原点而非页面原点:
+ * 滚动时页面滑走、水印留在原地, 观感就是"水印跟着滚动"。
+ *
+ * `translate(0, pageY)` 把网格原点搬到页面原点后即为页锚定 —— 与 text/image
+ * 水印及 drawPageCornerMarks 同一口径 (它们都用 pageY 作绝对坐标)。
+ * 每页各自以左上角为原点, 翻页后每页纹理一致 (Word/WPS 行为)。
+ */
+export function fillTileWatermark(
+  ctx: CanvasRenderingContext2D,
+  pattern: CanvasPattern,
+  pageY: number, pageW: number, pageH: number,
+): void {
+  ctx.save()
+  ctx.translate(0, pageY)
+  ctx.fillStyle = pattern
+  ctx.fillRect(0, 0, pageW, pageH)
+  ctx.restore()
+}
 
 /** 绘制L角 — 横纵独立方向, 保证四角开口朝页面内侧 */
 function drawLMark(
