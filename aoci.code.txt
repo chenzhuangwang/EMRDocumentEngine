@@ -508,11 +508,12 @@ index.ts[EG6T]: F:浏览器宿主入口(契约 §27): 合并 text/font → DomTe
 EditorProvider.tsx[IU7M]: F:React ↔ 引擎通用适配器(契约 §10/§32): Editor 生命周期 + Context + useSyncExternalStore 订阅桥 | R:code:packages/emr-document-engine/src/platform/react/index.ts,code:packages/emr-document-engine/src/engine/Editor.ts,code:packages/emr-document-engine/src/platform/dom/index.ts | A:EditorProvider,EditorContext,useEditor,useEditorRef,useEditorReady,useEditorStoreSnapshot | S:构造 Editor 的 effect 依赖须为空, 否则宿主重建会让 canvas 与监听整体重来; 子组件靠 ready 标志而非 editorRef.current —— 子 mount effect 早于父 effect, 直读恒 null; themePreset/dictionaries 受控注入
 index.ts[EG4T]: F:React 适配器出口(分包 ./react 子路径入口): 转出 EditorProvider / context / 四个 hook | R:code:packages/emr-document-engine/src/platform/react/EditorProvider.tsx | A:EditorProvider,EditorContext,useEditor,useEditorRef,useEditorReady,useEditorStoreSnapshot | S:React 是这一层的 peer dependency; 引擎核心(./)与宿主实现(./dom)均不含 React(§32.4)
 
-===D:/czw/EMRDocumentEngine/knowledge/引擎集成指南/===
-README.md[SG4T]: F:「引擎集成指南」目录入口, 用一句话说清引擎框架无关 + 给中英两版索引 | R:code:knowledge/引擎集成指南/zh-CN/README.md | A:- | S:引擎未发布到 npm registry, 从 dist-packages/*.tgz 安装; 具体命令以 zh-CN/en-US 两版为准
-
 ===D:/czw/EMRDocumentEngine/knowledge/引擎集成指南/en-US/===
-README.md[SG6L]: F:zh-CN 版集成指南的英文版: 四类宿主(React/Vue/原生JS/纯 Node)接入、导出、主题、i18n、许可与排错表 | R:code:knowledge/引擎集成指南/zh-CN/README.md | A:- | S:须与 zh-CN 版同步; 手工接线清单中「滚动同步无默认实现」与「子组件 effect 早于父 effect」两条是把 silently-dead 缺陷写成可执行约束, 不得删
+integration-into-external-project.md[SG6L]: F:zh-CN 版集成指南的英文版: 四类宿主(React/Vue/原生JS/纯 Node)接入、导出、主题、i18n、许可与排错表 | R:code:knowledge/引擎集成指南/zh-CN/集成到外部项目.md | A:- | S:须与 zh-CN 版同步; 手工接线清单中「滚动同步无默认实现」与「子组件 effect 早于父 effect」两条是把 silently-dead 缺陷写成可执行约束, 不得删
 
 ===D:/czw/EMRDocumentEngine/knowledge/引擎集成指南/zh-CN/===
-README.md[SG6L]: F:引擎分包的完整集成教程: React(官方适配器)、Vue/原生 JS(手工接线)、纯 Node, 并含模型速查/模式/API 速查/排错表 | R:code:knowledge/引擎集成指南/en-US/README.md,code:packages/emr-document-engine/README.md | A:- | S:代码示例已对真实 API 验证; 「手动接线清单」三条(滚动同步无默认实现、子 mount effect 早于父 effect、不自带 ResizeObserver)是集成者会默会的假前提, 不得删
+集成到外部项目.md[SG6L]: F:引擎分包的完整集成教程: React(官方适配器)、Vue/原生 JS(手工接线)、纯 Node, 并含模型速查/模式/API 速查/排错表 | R:code:knowledge/引擎集成指南/en-US/integration-into-external-project.md,code:packages/emr-document-engine/README.md | A:- | S:代码示例已对真实 API 验证; 「手动接线清单」三条(滚动同步无默认实现、子 mount effect 早于父 effect、不自带 ResizeObserver)是集成者会默会的假前提, 不得删
+
+===D:/czw/EMRDocumentEngine/knowledge/引擎集成指南/===
+指南总览.md[SG4T]: F:「引擎开发指南」目录总览: 说清引擎可被任意项目导入, 并登记本目录名项指南(中英两版链接)与新增约定 | R:code:knowledge/引擎集成指南/zh-CN/集成到外部项目.md | A:- | S:新增指南按 <语言>/<指南名>.md 追加并登记; 文件名写清主题不用 README(同名难辨)
+

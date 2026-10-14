@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-14T03:45:18Z",
+  "updated_at": "2026-10-14T05:53:41Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
@@ -95,9 +95,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "30129c6a718d39beba07364a073f554ac87c68de01b3ec5ad6a5566eea6701b4",
-      "size": 123858,
-      "normalized_sha256": "30129c6a718d39beba07364a073f554ac87c68de01b3ec5ad6a5566eea6701b4"
+      "sha256": "7fb0b4bf9d99e835850ec699ea85ed4c59319d8e6f09dd138fd7e4715f805407",
+      "size": 124007,
+      "normalized_sha256": "7fb0b4bf9d99e835850ec699ea85ed4c59319d8e6f09dd138fd7e4715f805407"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1982,11 +1982,29 @@
       "size": 20289,
       "normalized_sha256": "aa4dcf17c0a05f7500d775f4d5d9efda0b32bf5ab0d5e69efa09af858642de57"
     },
+    "knowledge/引擎集成指南/en-US/integration-into-external-project.md": {
+      "role": "index",
+      "sha256": "aa4dcf17c0a05f7500d775f4d5d9efda0b32bf5ab0d5e69efa09af858642de57",
+      "size": 20289,
+      "normalized_sha256": "aa4dcf17c0a05f7500d775f4d5d9efda0b32bf5ab0d5e69efa09af858642de57"
+    },
     "knowledge/引擎集成指南/zh-CN/README.md": {
       "role": "index",
       "sha256": "5236b3e293bf6b424a762dbba5b53c5755a50f3cc01bc61d4dc1171b4b73d304",
       "size": 19154,
       "normalized_sha256": "5236b3e293bf6b424a762dbba5b53c5755a50f3cc01bc61d4dc1171b4b73d304"
+    },
+    "knowledge/引擎集成指南/zh-CN/集成到外部项目.md": {
+      "role": "index",
+      "sha256": "5236b3e293bf6b424a762dbba5b53c5755a50f3cc01bc61d4dc1171b4b73d304",
+      "size": 19154,
+      "normalized_sha256": "5236b3e293bf6b424a762dbba5b53c5755a50f3cc01bc61d4dc1171b4b73d304"
+    },
+    "knowledge/引擎集成指南/指南总览.md": {
+      "role": "index",
+      "sha256": "b5a975f88f3c53cc958f76b60e9ef5c55591e173ab371997e38e98e6c4b80b97",
+      "size": 1042,
+      "normalized_sha256": "b5a975f88f3c53cc958f76b60e9ef5c55591e173ab371997e38e98e6c4b80b97"
     },
     "knowledge/每日推文/AI推广契约.md": {
       "role": "index",
