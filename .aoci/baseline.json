@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-13T10:26:43Z",
+  "updated_at": "2026-10-14T03:45:18Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
@@ -95,9 +95,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "41a0f94b63a8593dd29b865756ca60ae033bffd4a613ce30a60253ee3685613a",
-      "size": 122321,
-      "normalized_sha256": "41a0f94b63a8593dd29b865756ca60ae033bffd4a613ce30a60253ee3685613a"
+      "sha256": "30129c6a718d39beba07364a073f554ac87c68de01b3ec5ad6a5566eea6701b4",
+      "size": 123858,
+      "normalized_sha256": "30129c6a718d39beba07364a073f554ac87c68de01b3ec5ad6a5566eea6701b4"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1970,6 +1970,24 @@
       "size": 4848,
       "normalized_sha256": "fcf3ab3cd3fc2922f31cd24d9c5cb51fb1b39848812ced0332b96d43fa5ceeeb"
     },
+    "knowledge/引擎集成指南/README.md": {
+      "role": "index",
+      "sha256": "223adcc9b7776170bd360276e8aa1acdc6043895bd3ab1dae3bb494a2dd047d5",
+      "size": 1033,
+      "normalized_sha256": "223adcc9b7776170bd360276e8aa1acdc6043895bd3ab1dae3bb494a2dd047d5"
+    },
+    "knowledge/引擎集成指南/en-US/README.md": {
+      "role": "index",
+      "sha256": "aa4dcf17c0a05f7500d775f4d5d9efda0b32bf5ab0d5e69efa09af858642de57",
+      "size": 20289,
+      "normalized_sha256": "aa4dcf17c0a05f7500d775f4d5d9efda0b32bf5ab0d5e69efa09af858642de57"
+    },
+    "knowledge/引擎集成指南/zh-CN/README.md": {
+      "role": "index",
+      "sha256": "5236b3e293bf6b424a762dbba5b53c5755a50f3cc01bc61d4dc1171b4b73d304",
+      "size": 19154,
+      "normalized_sha256": "5236b3e293bf6b424a762dbba5b53c5755a50f3cc01bc61d4dc1171b4b73d304"
+    },
     "knowledge/每日推文/AI推广契约.md": {
       "role": "index",
       "sha256": "f732e683e626bcc8f3c0d3cd26f6b768ae90623150d37ac246ab4b5caca37e64",
@@ -2206,9 +2224,9 @@
     },
     "packages/emr-document-engine/README.md": {
       "role": "index",
-      "sha256": "d2c07795e4108d3c00d1b4c7fa469a07af4fd4d1d86fd96d86d9922f8719a387",
-      "size": 3588,
-      "normalized_sha256": "d2c07795e4108d3c00d1b4c7fa469a07af4fd4d1d86fd96d86d9922f8719a387"
+      "sha256": "5482ebd0ed9850f4027cb8b7603002dfd4bad8c0a307ca9017684f3403c76d01",
+      "size": 3806,
+      "normalized_sha256": "5482ebd0ed9850f4027cb8b7603002dfd4bad8c0a307ca9017684f3403c76d01"
     },
     "packages/emr-document-engine/package.json": {
       "role": "index",

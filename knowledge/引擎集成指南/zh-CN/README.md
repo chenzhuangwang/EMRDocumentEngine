@@ -1,0 +1,485 @@
+# @emrde/document-engine 集成指南
+
+把 EMR 文档引擎嵌进你的项目。本文覆盖四类宿主：**React**、**Vue**、
+**原生 JS**、**纯 Node / Worker**，以及导入导出、主题、国际化、许可。
+
+> 面向对象：第一次集成引擎的外部开发者。
+> 只想知道「最短可跑通路径」的话，读 §1 与对应框架那一节即可；其余按需查阅。
+
+---
+
+## 0. 引擎是什么
+
+一份**框架无关、平台无关**的电子病历文档编辑内核。
+
+```
+@emrde/document-engine
+├─ "."       引擎核心   文档模型 / 命令 / 布局 / 渲染 / 事件 / i18n / 序列化
+├─ "./dom"   浏览器宿主 canvas 表面 / IME / 剪贴板 / IndexedDB 自动保存
+├─ "./react" React 适配器 EditorProvider + 4 个 hook
+└─ "./export" 导出打印层 TXT / HTML / 结构化元素 / HL7 CDA / OFD / 打印记录
+```
+
+两个关键事实，决定了它「能不能用、怎么用」：
+
+1. **核心入口不含任何浏览器全局**（`document` / `window` / `navigator` /
+   `indexedDB` 都不碰）。平台能力全部经一个注入的接口对象 `EditorHost` 进入。
+   所以核心入口在 Node、Web Worker、SSR 里都能 `import`，不会抛。
+2. **引擎不假设你用什么框架**。React 适配器是官方提供的便利层；Vue / Svelte /
+   原生 JS 用 `./dom` 的浏览器宿主，按 §4 的三步接线即可，引擎本身一行不改。
+
+---
+
+## 1. 安装
+
+引擎目前**未发布到 npm registry**，从仓库打 tarball 安装。
+
+### 1.1 取包（二选一）
+
+**A. 在引擎仓库内打包：**
+
+```bash
+git clone <引擎仓库>
+cd <引擎仓库>
+npm --prefix frontend install      # 先装前端依赖树（本仓库不发 npm workspaces，只有这一份依赖）
+npm run engine:pack                # 产物：dist-packages/emrde-document-engine-<version>.tgz
+```
+
+**B. 直接拿现成 tarball：** `dist-packages/*.tgz`（若对方已打过包）。
+
+想把「包能不能被仓库外项目导入」这件事先验证一遍，可以跑：
+
+```bash
+npm run engine:verify
+```
+
+它会把 tarball 解到一个**仓库之外**的临时目录，按真实 `node_modules` 布局跑一个
+消费脚本 —— 验的是包自己的 `exports` 映射，而不是仓库里的路径别名。
+
+### 1.2 装到你的项目
+
+```bash
+npm install /abs/path/to/emrde-document-engine-21.0.0.tgz
+# 或 pnpm add / yarn add
+```
+
+`react` / `react-dom` 是**可选** peer 依赖：只用核心层或导出层时不需要装它们。
+
+---
+
+## 2. 子路径与运行环境
+
+| 子路径 | 作用 | 无 DOM 环境可导入？ |
+|---|---|---|
+| `@emrde/document-engine` | 引擎核心：模型、命令、布局、序列化、i18n | ✅ 可以 |
+| `@emrde/document-engine/dom` | 浏览器宿主实现 | ❌ 需要浏览器 |
+| `@emrde/document-engine/react` | React 适配器 | ❌ 需要 React + DOM |
+| `@emrde/document-engine/export` | 导出 / 打印纯函数层 | ✅ 可以（OFD 打包需要 `fflate`） |
+
+> **`fflate` 是唯一的运行期依赖**，由包的 `dependencies` 提供，你无需单独安装。
+
+---
+
+## 3. React
+
+### 3.1 最短可跑通
+
+```tsx
+import { useRef } from 'react'
+import { EditorProvider, useEditorRef, useEditorStoreSnapshot } from '@emrde/document-engine/react'
+
+export function App() {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  return (
+    // 容器必须 position:relative 且有确定高度，引擎的 canvas 层挂在它里面
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <EditorProvider containerRef={containerRef} document={doc}>
+        <MyToolbar />
+      </EditorProvider>
+      <div ref={containerRef} style={{ flex: 1, position: 'relative', overflowY: 'auto' }} />
+    </div>
+  )
+}
+
+function MyToolbar() {
+  const editorRef = useEditorRef()
+  const isDirty = useEditorStoreSnapshot((s) => s.isDirty)
+  const canUndo = useEditorStoreSnapshot((s) => s.runtime.history.canUndo)
+
+  return (
+    <>
+      <button disabled={!canUndo} onClick={() => editorRef.current?.undo()}>撤销</button>
+      <button disabled={!editorRef.current?.canRedo()} onClick={() => editorRef.current?.redo()}>重做</button>
+      <span>{isDirty ? '未保存' : '已保存'}</span>
+    </>
+  )
+}
+```
+
+`document` 是可选的：不传就是一个可编辑的空白文档。
+
+### 3.2 四个 hook
+
+| hook | 返回 | 用途 |
+|---|---|---|
+| `useEditorRef()` | `RefObject<Editor \| null>` | 拿 Editor 实例调 API（引用稳定） |
+| `useEditor()` | `Editor \| null` | 同上，但**只在 Editor 就绪后**才非 null |
+| `useEditorReady()` | `boolean` | 需要「就绪」布尔值、又要跨副作用同步时用 |
+| `useEditorStoreSnapshot(sel)` | 选中投影 | 订阅运行时状态，触发 React 重渲染 |
+
+**两个必须知道的坑：**
+
+- ❗ **子组件的 mount effect 早于父组件的 effect。** Provider 在自己的
+  `useEffect` 里创建 Editor，所以子组件在 mount 时 `editorRef.current` **恒为
+  `null`**。要在子组件里挂监听器，依赖 `useEditorReady()`（或 `useEditor()`）
+  而不是直接读 `editorRef.current` —— 否则监听器会静默漏绑。
+- ❗ **`useEditorStoreSnapshot` 用 `version` 变化触发重渲染**，不是靠对象引用。
+  selector 返回一个新对象（如 `(s) => ({ a: s.a })`）也安全，但**不要**在
+  selector 里做重计算 —— 它每次渲染都跑。
+
+### 3.3 受控 props
+
+`EditorProvider` 刻意**不依赖任何应用级 store**，主题、码表都由你从自己的状态传入：
+
+```tsx
+<EditorProvider
+  containerRef={containerRef}
+  document={doc}
+  themePreset={themePreset}          // 'standard' | 'eyeCare' | 'print' | 'dark'
+  dictionaries={dictionaryProvider}  // 外部码表候选源（可选）
+  autoFocus={true}                   // 同页多个编辑器时，通常只让一个取焦点
+>
+```
+
+- `themePreset` 变更 → 适配器调 `editor.setTheme()` 重绘画布。
+- `dictionaries` 是**只在创建时读一次**的注入源（换文档不重置），构造你自己的
+  `DictionaryStore` 传进来即可；不传则控件退回自由文本输入。
+- 语言（locale）是**进程级单例**，不走 props —— 见 §7。
+
+---
+
+## 4. Vue / Svelte / 原生 JS（手工接线）
+
+引擎提供的是「框架无关的宿主」+「可订阅的状态对象」。React 适配器做的三件事，
+你在 Vue 里等价复刻即可：**① 建宿主并 mount；② 建 Editor；③ 把 store / locale
+的订阅桥到响应式系统。**
+
+### 4.1 安装宿主
+
+```bash
+npm install @emrde/document-engine @emrde/document-engine/dom
+```
+
+### 4.2 三步接线
+
+```ts
+import { Editor, locale } from '@emrde/document-engine'
+import { createDomEditorHost } from '@emrde/document-engine/dom'
+
+// ① 建浏览器宿主，并把渲染表面 / 输入面挂到容器
+const host = createDomEditorHost()
+host.surface.mount(containerEl)   // 容器需 position:relative + 确定高度
+host.input.mount(containerEl)
+
+// ② 建 Editor（构造时即完成首帧布局 + 渲染 + 启动光标闪烁）
+const editor = new Editor(host, doc)
+
+// ③ 容器滚动 → 引擎视口同步
+containerEl.addEventListener('scroll', () => {
+  editor.syncScrollPosition(containerEl.scrollTop)
+}, { passive: true })
+```
+
+> ⚠️ **滚动同步没有默认实现。** 引擎监听了键盘、鼠标、焦点、可见性，
+> 但**不监听容器的 `scroll` 事件** —— 不接这一步，滚动时画布会错位/留白。
+> React 适配器也不代劳（示例应用自己接的）。所有框架都要自己做。
+
+### 4.3 Vue 3：把引擎状态桥进响应式
+
+引擎的 `EditorStore` 与 `locale` 都实现了 `subscribe(listener) => unsubscribe` +
+`getVersion()`（形状一致，便于照抄）。用 `shallowRef` + 版本号做最朴素的桥：
+
+```vue
+<script setup lang="ts">
+import { onMounted, onBeforeUnmount, ref, shallowRef, computed } from 'vue'
+import { Editor, locale } from '@emrde/document-engine'
+import { createDomEditorHost } from '@emrde/document-engine/dom'
+
+const containerEl = ref<HTMLDivElement | null>(null)
+const editor = shallowRef<Editor | null>(null)
+const version = ref(0)          // 版本号一变，依赖它的 computed / 模板就重算
+
+let unsubStore = () => {}
+let unsubLocale = () => {}
+
+onMounted(() => {
+  const host = createDomEditorHost()
+  host.surface.mount(containerEl.value!)
+  host.input.mount(containerEl.value!)
+
+  const ed = new Editor(host)
+  editor.value = ed
+
+  unsubStore = ed.getStore().subscribe(() => { version.value++ })
+  unsubLocale = locale.subscribe(() => { ed.refreshForLocale(); version.value++ })
+
+  const onScroll = () => ed.syncScrollPosition(containerEl.value!.scrollTop)
+  containerEl.value!.addEventListener('scroll', onScroll, { passive: true })
+  onBeforeUnmount(() => containerEl.value?.removeEventListener('scroll', onScroll))
+})
+
+onBeforeUnmount(() => {
+  unsubStore(); unsubLocale()
+  editor.value?.destroy()      // 务必调用：解绑全局监听、销毁自动保存、移除画布
+})
+
+// 从版本号读快照（accessor 每次都读最新，version 只是依赖触发器）
+const isDirty = computed(() => { version.value; return editor.value?.getStore().state.isDirty ?? false })
+const canUndo = computed(() => { version.value; return editor.value?.canUndo() ?? false })
+</script>
+
+<template>
+  <div>
+    <button :disabled="!canUndo" @click="editor?.undo()">撤销</button>
+    <span>{{ isDirty ? '未保存' : '已保存' }}</span>
+    <div ref="containerEl" style="position: relative; height: 600px; overflow-y: auto" />
+  </div>
+</template>
+```
+
+> 💡 `cachedProjection`/`computed` 里那句 `version.value;` 是**刻意的依赖声明**：
+> 引擎状态是**原地修改**（in-place mutation），快照对象引用不变，只有 `version`
+> 单调递增。所以要让 Vue 知道「该重算了」，读一下 `version.value`。
+
+### 4.4 原生 JS
+
+```js
+const host = createDomEditorHost()
+host.surface.mount(el); host.input.mount(el)
+const editor = new Editor(host)
+
+editor.getStore().subscribe(() => {
+  document.querySelector('#dirty').textContent = editor.getStore().state.isDirty ? '未保存' : '已保存'
+})
+editor.on('contentChange', () => console.log('文档已变'))
+el.addEventListener('scroll', () => editor.syncScrollPosition(el.scrollTop), { passive: true })
+
+window.addEventListener('beforeunload', () => editor.destroy())
+```
+
+### 4.5 手工接线清单（别漏）
+
+| # | 事项 | 漏了会怎样 |
+|---|---|---|
+| 1 | `host.surface.mount(el)` / `host.input.mount(el)` | 建层时抛 `mount(container) must be called before creating layers` |
+| 2 | 容器 `position:relative` + 确定高度 | 画布定位错乱 / 无滚动区 |
+| 3 | `scroll` → `editor.syncScrollPosition(t)` | 滚动错位（**无默认实现**，见 §4.2） |
+| 4 | 订阅 `locale` → `editor.refreshForLocale()` | 切语言后画布不刷新（域代码日期格式不变） |
+| 5 | 卸载时 `editor.destroy()` | 全局监听器、IndexedDB、光标定时器泄漏 |
+| 6 | 容器尺寸变化时重绘（见 §4.6） | 窗口/容器缩放后画布尺寸不跟随 |
+
+### 4.6 容器尺寸变化
+
+引擎**不自带 `ResizeObserver`** —— 视口尺寸读的是宿主 `viewport.size()`，需要一个
+外部触发来重绘。容器尺寸变化时手动触发一次即可：
+
+```js
+const ro = new ResizeObserver(() => {
+  editor.getEventBus().emit('render:request')   // 引擎重新量视口 + 重绘
+})
+ro.observe(containerEl)
+// 卸载时 ro.disconnect()
+```
+
+### 4.7 其它框架
+
+Svelte / Solid / Angular 同理 —— 引擎的契约只有一条：
+**`subscribe(...) => unsubscribe` + `getVersion()`**。把这两个桥到你框架的响应式
+原语即可，不需要引擎提供适配层。
+
+---
+
+## 5. 纯 Node / Worker（无 UI）
+
+文档的**读写完全不需要宿主**：`loadDocument` / `serializeDocument` 是纯数据函数，
+连 `EditorHost` 都不需要。适合服务端落库、批处理、导出流水线。
+
+```ts
+import { loadDocument, serializeDocument, buildNodePool } from '@emrde/document-engine'
+
+// 从 JSON 字符串加载（内部：detect 版本 → 兼容检查 → 升级 → 校验 → 建模型 → 建池）
+const { doc, pool, wasUpgraded, sourceVersion } = loadDocument(jsonString)
+
+// 改数据……（无 Editor 时直接操作模型）
+
+// 序列化回 JSON（与 loadDocument 对偶，逐字节可往返）
+const saved = serializeDocument(doc, pool)
+```
+
+> 序列化产出的 JSON **必须带扁平节点表**（`nodes` 字段）—— 只有 `body.children`
+> 的 id 序列而缺节点表，重新加载会丢失全部 payload。用 `serializeDocument`
+> 生成即可，别手拼。
+
+导出层也是纯函数，同样可在无 DOM 环境跑：
+
+```ts
+import { buildExportText, buildExportHtml, collectFields, buildCdaXml } from '@emrde/document-engine/export'
+
+const txt = buildExportText(doc, pool)
+const html = buildExportHtml(doc, pool)
+
+// 结构化导出（CDA / OFD / 结构化元素）共用同一份字段投影
+const projection = collectFields({
+  doc, pool,
+  templateDefinitions: /* 你的 TemplateDefinitionStore */,
+  sectionTree: sectionTreeOf(doc, pool),
+})
+const cda = buildCdaXml({ projection, document: { id: doc.id, title: doc.title } })
+```
+
+---
+
+## 6. 文档模型速查
+
+```ts
+import { createDocument, createParagraph, createTextNode, buildNodePool } from '@emrde/document-engine'
+
+// 空白文档
+const doc = createDocument('我的病历')
+
+// 手搓「一段文字」并建池（写路径一律走结构树 + 扁平节点表）
+const para = createParagraph()
+const text = createTextNode('主诉：')
+para.children = [text.id]
+doc.body.children = [para.id]
+
+const flat = new Map([[para.id, para], [text.id, text], [doc.id, doc]])
+const pool = buildNodePool(flat, { body: doc.id })
+```
+
+**两条铁律**（决定「数据会不会静默损坏」）：
+
+- 📌 **文档是「扁平节点表 + id 引用」**：节点的 `children` 存的是 id，不是对象。
+  序列化时必须带 `nodes` 表。
+- 📌 **读写口径不能混**：
+  - **结构树**（真实下标 / 兄弟 / 容器身份 / 序列化）→ 用 `pool.getChildren(id)`；
+  - **逻辑阅读顺序** → 用引擎的遍历器 `bodyBlockSpine` / `bodyParagraphSpine`
+    （在 `SelectionCollector` 里）。
+  引擎里有静态闸门（CI）禁止在遍历器之外直接迭代 `doc.body.children` —— 因为它
+  对「含 Section / 嵌套表格」的文档会给出错误结果。你写扩展代码时请守同一条规矩。
+
+---
+
+## 7. 国际化
+
+`locale` 是**引擎级单例**（不是某个 Editor 的实例状态）：
+
+```ts
+import { locale } from '@emrde/document-engine'
+
+locale.setLocale('en-US')     // 'zh-CN' | 'en-US'
+locale.getLocale()            // 当前语言
+const unsub = locale.subscribe(() => { /* 你的 UI 重渲染 */ })
+```
+
+- 切语言后**画布不会自己刷新**：必须调 `editor.refreshForLocale()`（React 适配器
+  已代劳；手工接线要自己调，见 §4.5 第 4 条）。它会重排 + 重绘（域代码的日期格式
+  随语言变宽），但**不标脏、不入 undo 栈** —— 语言不是文档内容。
+- 引擎的报错、质控文案等走引擎内置语言包；**你自己的 UI 文案由你自己国际化**。
+
+---
+
+## 8. 主题
+
+引擎**不发 CSS**。有两套 token，别混淆：
+
+| token 集 | 归属 | 影响 |
+|---|---|---|
+| `canvasTokens`（28 个） | 引擎内存持有 | **画布内容**（纸张、文字、光标色…） |
+| CSS 变量（你自己定） | 你的应用 | **你的外壳**（工具栏、按钮、背景…） |
+
+切换画布主题：
+
+```ts
+editor.setTheme('dark')       // 'standard' | 'eyeCare' | 'print' | 'dark'
+editor.getTheme()
+```
+
+React 下传 `themePreset` prop 即可（见 §3.3）。
+
+想让**外壳**也跟随主题，你自己订阅主题变化并把颜色落到 CSS 变量即可 —— 引擎不
+规定形式（示例应用是落到 `--emr-*` 变量，可作为参考，但那是应用侧实现）。
+
+---
+
+## 9. 模式
+
+```ts
+type EditorMode = 'edit' | 'readonly' | 'form' | 'clean' | 'design' | 'print'
+editor.setMode('form')
+```
+
+| 模式 | 语义 |
+|---|---|
+| `edit` | 完整编辑（设计者 + 填写者） |
+| `readonly` | 只读浏览 |
+| `form` | 只让填控件值，禁止改结构 |
+| `clean` | 干净呈现（隐藏编辑态视觉） |
+| `design` | 设计态：编辑控件定义 |
+| `print` | 打印态 |
+
+---
+
+## 10. Editor API 速查
+
+`Editor` 是统一门面。常用方法（全量见包内 `dist/types/engine/Editor.d.ts`）：
+
+**文档**：`setDocument` / `getDocument` / `getSerializedDocument` /
+`getDocumentTitle` / `setDocumentTitle` / `getDocumentMetadata` / `applyDocumentProperties`
+
+**编辑**：`undo` / `redo` / `canUndo` / `canRedo` / `copy` / `cut` / `paste` /
+`selectAll` / `deleteSelection` / `deleteNode` / `moveBlock` / `insertTable(rows, cols)` /
+`insertImage(dataUrl)` / `insertFieldCode(type)` / `insertFootnote` / `insertBookmark` /
+`insertSection(opts?)` / `insertControl(element, def?)` / `pasteSpecial(fmt)`
+
+**控件**：`setControlValue(nodeId, value)` / `getControlValue(nodeId)` /
+`getControlSnapshot(nodeId)` / `getElement(nodeId)` / `applyControlConfig(...)` /
+`computeControlScore()`
+
+**投影 / 查询**：`getWordCount()` / `runQC()` / `findAll(query, opts)` /
+`findNext` / `replaceAll` / `getSelectedControlId()` / `selectSection(id)` /
+`listSections()` / `getComments()`
+
+**基础设施**：`getStore()` / `getPool()` / `getDraw()` / `getEventBus()` /
+`getPluginManager()` / `setTheme(preset)` / `refreshForLocale()` / `setMode(mode)` /
+`setScale(scale)` / `focus()` / `destroy()`
+
+**事件**：`on(type, cb)` / `off(type, cb)`，`type ∈ 'ready' | 'contentChange' |
+'modeChange' | 'selectionChange' | 'save'`。
+
+---
+
+## 11. 许可与取证溯源
+
+引擎以 **MPL-2.0** 分发，且分发的是**可读 Source Code Form**（不压缩、不混淆，
+见仓库 `IP-POLICY.md` §5）。包内附 `LICENSE` 与 `NOTICE`。
+
+导出产物（HTML / TXT / JSON / XML）会注入**不可见的溯源标识**（零宽字符编码的
+`EMRDE1` 帧），用于回连到仓库与提交。这是刻意设计的取证特性，不是 bug；仓库内提供
+`verify:provenance` 工具可解码验证。
+
+---
+
+## 12. 排错
+
+| 现象 | 原因 / 解法 |
+|---|---|
+| `mount(container) must be called before creating layers` | 忘了 `host.surface.mount(el)`（§4.5-1） |
+| 滚动时画布错位/留白 | 没接 `editor.syncScrollPosition(t)`（§4.2） |
+| 子组件里 `editorRef.current` 恒为 `null` | 子 effect 早于父 effect，改用 `useEditorReady()`（§3.2） |
+| 切语言后画布不刷新 | 没调 `editor.refreshForLocale()`（§4.5-4） |
+| 窗口缩放后画布尺寸不对 | 没接 `ResizeObserver` → `render:request`（§4.6） |
+| 重新加载文档后内容为空 | 序列化时缺扁平节点表 `nodes`（§6） |
+| 消费方拿到的类型是 `any` | 包 `exports` 的 `types` 路径与声明树不匹配（分发侧问题，报给引擎维护者） |
+| 运行时出现两份引擎实例 | 包被解析到「源码」与「产物」两条路径 —— 检查你的别名/`exports` 是否自相打架 |
