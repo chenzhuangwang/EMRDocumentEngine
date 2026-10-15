@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-14T09:50:02Z",
+  "updated_at": "2026-10-15T09:33:27Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
@@ -95,9 +95,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "ec9791f3763e3c122dce79572caebf10496d131203d9c675f11e222c094e9950",
-      "size": 124410,
-      "normalized_sha256": "ec9791f3763e3c122dce79572caebf10496d131203d9c675f11e222c094e9950"
+      "sha256": "f421b61e68416544bceb57eb860acd2f0233e559cb5db35addacbbabdff367c8",
+      "size": 124960,
+      "normalized_sha256": "f421b61e68416544bceb57eb860acd2f0233e559cb5db35addacbbabdff367c8"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1975,6 +1975,12 @@
       "sha256": "fcf3ab3cd3fc2922f31cd24d9c5cb51fb1b39848812ced0332b96d43fa5ceeeb",
       "size": 4848,
       "normalized_sha256": "fcf3ab3cd3fc2922f31cd24d9c5cb51fb1b39848812ced0332b96d43fa5ceeeb"
+    },
+    "knowledge/引擎能力补齐-设计方案.md": {
+      "role": "index",
+      "sha256": "5526247cc2189c586b20371e311e9133d6132c386995573d88caba0387bf3563",
+      "size": 49686,
+      "normalized_sha256": "5526247cc2189c586b20371e311e9133d6132c386995573d88caba0387bf3563"
     },
     "knowledge/引擎集成指南/README.md": {
       "role": "index",
