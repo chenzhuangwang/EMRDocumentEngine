@@ -1278,6 +1278,9 @@ Concrete ownership anchors (God Object drift to reverse):
     table merge/split algorithms  → document/table/TableOps.ts
     format painter (copy/apply)   → its own feature module
     selection-collection loop     → ONE shared helper, not 3 copies
+    control binding projection    → document/control/ControlProjection.ts
+                                    (the bulk data-binding reading order and
+                                    bound-item shape; §12.10)
 
 These are the specific drifts found in Editor.ts at the
 architecture freeze. They are the pattern to reverse, NOT to extend.
@@ -1760,6 +1763,39 @@ Editing goes through the command system (RULE 4):
     Control Config Dialog MAY offer a default dataType suggestion when
     controlType changes, but MUST persist controlType explicitly and
     MUST NOT silently overwrite an explicitly configured dataType.
+
+    Semantic identity — the WRITABILITY OF element.code IS SCOPE-
+    SPLIT, and this contract used to be silent about it, which left
+    "the semantic identity is read-only" resting on a UI comment and
+    one panel test. It is now written down:
+
+        Control Config Dialog   → element.code.internal and
+                                  element.code.dataElement ARE
+                                  editable. The dialog already
+                                  writes a whole-replacement
+                                  ElementMeta through
+                                  Editor.applyControlConfig, and
+                                  elementEquals compares ALL fields
+                                  (stable stringify) — so code is
+                                  already a writable part of that
+                                  payload; no new command is needed.
+        lightweight properties  → KEEPS the read-only semantic-
+        panel                     identity display. It MUST NOT grow
+                                  a code editor.
+
+    Uniqueness is NOT enforced on either key, and this section does
+    NOT add one. The only identity guard in the engine remains
+    TemplateDefinition.single (§12.1), applied at insert/paste time.
+    A duplicate identity is a legitimate document state — which is
+    exactly why the binding API reports ambiguity instead of picking
+    a winner (§12.10.2).
+
+    NOTE for readers who expect the implicit read-only rule: it was
+    never a contract rule, and it is not becoming one. The reason it
+    LOOKS like one is that hand-inserted generic controls carry the
+    library's synthetic placeholder codes on BOTH keys, so editing
+    them was never useful before a binding API existed that keys on
+    them.
 
     Guard interaction — an edited flag takes effect immediately at
     its existing command consumption point:
@@ -2440,6 +2476,155 @@ Known limitations (recorded, NOT silently ignored):
     in the middle remains the toolbar's existing insertRow, which does
     not clone controls.
 
+------------------------------------------------------------
+12.10 Bulk data binding
+------------------------------------------------------------
+
+An external system (HIS / EMR platform) holds a PATIENT DATA SET and
+must put it into a document, then read back what the document holds.
+Today the engine answers this only per-node
+(Editor.setControlValue / getControlValue), and a node id is a RUNTIME
+identity the caller cannot know. This section defines the
+document-level pair.
+
+    Editor.getBoundValues(opts?): BoundValues
+    Editor.setBoundValues(obj, opts?): BoundValuesWriteResult
+
+12.10.1 The binding key — meaning, not node id
+------------------------------------------------------------
+
+    opts.keyOf?: (element: ElementMeta | undefined) => string | undefined
+
+DEFAULT (when keyOf is absent): element.code.dataElement, falling back
+to element.code.internal — the SAME order and fallback as the existing
+elementIdentity helper (§12.1 / §12.4). The engine MUST NOT invent a
+third identity rule.
+
+    WHY dataElement IS THE DEFAULT, despite it being neither unique
+    nor authorable today:
+
+    - It is the SEMANTIC identity ("what this field IS"); internal is
+      closer to a local alias.
+    - The importer carries it in from real templates
+      (TemplateImporter maps el.code.dataElement verbatim), so a
+      document that came from a hospital template HAS real values.
+      A hand-inserted generic control has only the library's synthetic
+      placeholder on BOTH keys (controlLibrary documents DE99.99.00X
+      as synthetic), i.e. it has no meaningful identity to bind to.
+    - The engine already resolves by it (findByDE, exported) and
+      already emits it as the primary coded value in CDA
+      (code.dataElement → code/codeSystem, internal → codeSystemName),
+      so a second rule would be a second truth.
+
+    CONSEQUENCE THAT MUST NOT BE DISCOVERED LATE: two hand-inserted
+    instances of the same generic control share one synthetic code.
+    Duplicate keys are therefore the COMMON case for scaffold
+    documents, not a rare edge. §12.10.2 is built for that.
+
+12.10.2 Duplicates are reported, never resolved silently
+------------------------------------------------------------
+
+    THE ENGINE MUST NOT PICK A WINNER.
+
+Silently filling one of two same-key controls produces a document that
+looks filled and is half empty — a clinical-safety failure, not a
+convenience question. Therefore:
+
+    GET  → every item is returned; items sharing a key are all present,
+           and BoundValues.duplicates names the key with its nodeIds.
+           The read direction does not hide the ambiguity either: a
+           caller that sees no duplicate signal would assume a write
+           is safe.
+    SET  → a key matching MORE THAN ONE node is written to NONE of them
+           and is reported in `ambiguous` with its candidateNodeIds.
+           This holds even when the values would validate.
+
+12.10.3 Write semantics
+------------------------------------------------------------
+
+    - EVERY write goes through validateControlValue, from the same
+      source of permissions and dictionary candidates as §12.6.3.
+      The batch API is a new CALLER of the single value boundary, never
+      a second boundary.
+    - NO value coercion. VR-9 (enum membership), VR-10 (scale, no
+      silent rounding) and VR-11 (length, no silent truncation) apply
+      unchanged. An external code that does not match the candidate set
+      is REJECTED with its reason, not translated — the engine MUST NOT
+      hardcode any medical mapping (§12).
+    - PARTIAL SUCCESS IS A LEGAL RESULT and MUST be legible:
+        { applied, rejected: [{key, reason}], ambiguous: [{key,
+        candidateNodeIds}], unmatched: [key] }
+      Reported, not silently dropped — the same posture as
+      Editor.replaceAll's {replaced, rejected} (ReplaceTextCommand,
+      §12.6.3).
+    - ONE UNDO UNIT for the whole batch. Precedent: ReplaceTextCommand
+      applies N edits inside one undo entry by invoking
+      SetControlValueCommand.forward per node instead of stacking each
+      command. The batch follows that shape.
+    - AN EMPTY BATCH PUSHES NOTHING. If no key matches, no undo entry
+      is created (same guard shape as §12.9's append).
+    - VR-3 IS UNCHANGED: SetControlValueCommand.forward remains the
+      ONLY place SmartTextNode.value is written.
+
+12.10.4 Where the projection lives — and why it is NOT shared
+------------------------------------------------------------
+
+The reading order comes from the §31 walkers, always:
+
+    body   → bodyParagraphSpine(doc, pool)
+    header → hfParagraphsForExport(doc, 'header')
+    footer → hfParagraphsForExport(doc, 'footer')
+
+    The projection's home is document/control/ControlProjection.ts.
+
+It MUST NOT import lib/export/fields.ts's collectFields, and MUST NOT
+be refactored into a module both share. Reasons, in order:
+
+    1. engine/ → lib/ is forbidden (§19). lib/export/fields.ts imports
+       the engine barrel, so the reverse edge is a genuine cycle, and
+       §32 packages "." and "./export" as separate build entries.
+    2. collectFields has exactly ONE consumer today, the application's
+       three export call sites. There is no engine-side consumer, so
+       there is nothing to share: extracting a common core would move a
+       mature 400+ line module used by three export formats (OFD / CDA
+       / elements) to serve two new APIs that need a fraction of it.
+
+    The duplication this accepts is the ~16-line glue loop
+    (paragraph ids → smarttext child ids → a record), NOT the traversal
+    rules, which both sides already take from the same engine
+    primitives. That is a recorded, bounded duplication — it MUST NOT
+    be "fixed" by importing upward.
+
+    KNOWN DISPLAY DIVERGENCE, already true before this section and
+    deliberately preserved: the export projection resolves a dictionary
+    candidate's display NAME, while the render path reads only inline
+    format.enums. Bound items carry `displaySource` so a caller can tell
+    which one it got. Reconciling the two is a separate change and MUST
+    NOT be smuggled into this feature.
+
+------------------------------------------------------------
+12.11 Completeness gate (required fields at completion time)
+------------------------------------------------------------
+
+    Editor.validateRequired(): { ok: boolean; missing: MissingField[] }
+
+isControlValueComplete (§12.6.2 layer C) already decides "is an EMPTY
+value acceptable at completion time". This section gives it a
+document-level entry point. It is a READ-ONLY query.
+
+    - It MUST NOT reuse QCResult, and MUST NOT be expressed as a score.
+      QCResult.score/grade is a COMPLIANCE score (§7.5 / §12.6.2 layer
+      E); completeness is a different fact with a different owner. They
+      MUST NOT be merged or share a field.
+    - The ENGINE DECIDES; THE APPLICATION GATES. The engine owns no
+      save. It answers "which fields are missing" and stops there; the
+      policy of blocking, warning, or ignoring belongs to the host.
+    - MissingField carries nodeId + paragraphPath so the host can
+      NAVIGATE to the offending control — the same locator shape as
+      QCIssueLocation, which the QC panel's click-to-locate depends on.
+    - It MUST be runnable without running QC: a host that wants only the
+      completeness answer MUST NOT be forced to compute compliance.
+
 ============================================================
 13. DOCUMENT SERIALIZATION
 ============================================================
@@ -2763,7 +2948,22 @@ Especially avoid:
     Engine → React
     Engine → UI
     Zustand → DocumentModel mutation
+    engine/ → lib/
     Collaboration → arbitrary internal node mutation
+
+engine/ → lib/ is the newest entry and the least obvious one, because
+the two are SIBLINGS under src/ and skin-deep it looks harmless. The
+direction is enforced by the packaging too (§32): "." and "./export"
+are separate build entries, so a lib symbol reachable from engine would
+either pull the export bundle into the core bundle or become a genuine
+cycle — lib/export/fields.ts:27 already imports the engine barrel.
+
+Consequence for feature design: when a feature needs something that
+lives in lib/, the answer is NOT to import it upward. Either the fact
+is duplicated deliberately (and that duplication is recorded), or the
+shared core is moved DOWN into engine/ first. §12.10.4 is a worked
+example of choosing the former.
+
 
 ============================================================
 20. BEFORE MODIFYING ARCHITECTURE

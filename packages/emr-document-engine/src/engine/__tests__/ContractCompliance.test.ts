@@ -15,6 +15,7 @@
 //   §10  React 依赖禁令
 //   §9   Yjs 依赖禁令
 //   §27  engine → platform/UI 依赖方向
+//   §19  engine → src/lib 依赖方向    (lib 与 engine 是兄弟目录, §27 之外)
 //   §6.1 NodePool 单一变更咽喉       (.nodes.set/delete + nodes 只读暴露 + children readonly)
 //   §6.2 非结构字段外部直写禁令      (pageSetup/headerFooterConfig/metadata/modelVersion)
 //   §15  EventBus 唯一实现
@@ -169,6 +170,28 @@ describe('契约不变量可执行验证 (ContractCompliance)', () => {
       }
     }
     expect(hits, `engine 反向依赖 platform/UI (契约 §27/§1):\n  ${hits.join('\n  ')}`).toEqual([])
+  })
+
+  it('§27/§19: engine 不得反向依赖 src/lib (特性层)', () => {
+    // §19 与 §32 共同禁止 engine → lib。此前 §27 的闸门只匹配 platform /
+    // components / pages, lib/ 漏在网外 —— 而 lib/ 与 engine/ 是 src/ 下的
+    // 兄弟目录, 看起来无害, 实际是单向依赖: lib/export/fields.ts:27 已经
+    // 导入 engine barrel, 反向一条边即成环, 且 §32 把 "." 与 "./export"
+    // 打成两个 bundle。
+    //
+    // 只匹配相对路径 (../ 开头) 且路径段含 lib —— 避免把 npm 包名里带
+    // "lib" 的第三方依赖误判 (如 'libfoo'/'some-lib')。
+    const re = /from\s+['"]((?:\.\.\/)+lib\/[^'"]*)['"]/g
+    const hits: string[] = []
+    for (const file of ENGINE_FILES) {
+      const src = engineSources[file]
+      re.lastIndex = 0
+      let m: RegExpExecArray | null
+      while ((m = re.exec(src))) {
+        hits.push(`${rel(file)}:${lineOf(src, m.index)}  ${m[1]}`)
+      }
+    }
+    expect(hits, `engine 反向依赖 src/lib (契约 §19/§27/§32):\n  ${hits.join('\n  ')}`).toEqual([])
   })
 
   it('§6.1: 不得绕过 NodePool 直接变更 pool.nodes', () => {
