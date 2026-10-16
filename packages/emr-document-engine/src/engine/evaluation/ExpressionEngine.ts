@@ -48,8 +48,10 @@ export type CalcErrorCode =
   | 'empty_reference'
   /** 字符串不是数字却参与了算术/数值比较 (§12.12.4) */
   | 'not_a_number'
-  /** 引用了自己或成环 (§12.12.6, 由调用方在建图时报出) */
+  /** 引用了自己或成环 (§12.12.6, 由依赖图在建图时报出) */
   | 'cycle'
+  /** 两条公式对**同一个控件**给出的可见性互相矛盾 → 不猜哪条算数 (§12.12.5) */
+  | 'conflicting_visibility'
   /** 结果类型不能当作显示值 */
   | 'not_displayable'
 
@@ -446,7 +448,7 @@ interface EvalState {
   directives: VisibilityDirective[]
 }
 
-function evaluateAst(ast: Ast, ctx: CalcContext, state: EvalState): CalcValue | CalcError {
+function evaluateAstInner(ast: Ast, ctx: CalcContext, state: EvalState): CalcValue | CalcError {
   switch (ast.kind) {
     case 'literal':
       return ast.value
@@ -463,7 +465,7 @@ function evaluateAst(ast: Ast, ctx: CalcContext, state: EvalState): CalcValue | 
     }
 
     case 'unary': {
-      const operand = evaluateAst(ast.operand, ctx, state)
+      const operand = evaluateAstInner(ast.operand, ctx, state)
       if (isErr(operand)) return operand
       if (ast.op === '!') {
         const b = asBool(operand)
@@ -474,12 +476,12 @@ function evaluateAst(ast: Ast, ctx: CalcContext, state: EvalState): CalcValue | 
     }
 
     case 'ternary': {
-      const cond = evaluateAst(ast.cond, ctx, state)
+      const cond = evaluateAstInner(ast.cond, ctx, state)
       if (isErr(cond)) return cond
       const b = asBool(cond)
       if (isErr(b)) return b
       // 只求值命中的那一支 —— 另一支里的引用不许影响结果(短路)
-      return evaluateAst(b ? ast.then : ast.else, ctx, state)
+      return evaluateAstInner(b ? ast.then : ast.else, ctx, state)
     }
 
     case 'binary':
@@ -499,21 +501,21 @@ function evaluateBinary(
 
   // 逻辑运算短路: 右侧不成立时右侧不求值
   if (op === '&&' || op === '||') {
-    const left = evaluateAst(ast.left, ctx, state)
+    const left = evaluateAstInner(ast.left, ctx, state)
     if (isErr(left)) return left
     const lb = asBool(left)
     if (isErr(lb)) return lb
     if (op === '&&' && !lb) return false
     if (op === '||' && lb) return true
-    const right = evaluateAst(ast.right, ctx, state)
+    const right = evaluateAstInner(ast.right, ctx, state)
     if (isErr(right)) return right
     const rb = asBool(right)
     return isErr(rb) ? rb : rb
   }
 
-  const left = evaluateAst(ast.left, ctx, state)
+  const left = evaluateAstInner(ast.left, ctx, state)
   if (isErr(left)) return left
-  const right = evaluateAst(ast.right, ctx, state)
+  const right = evaluateAstInner(ast.right, ctx, state)
   if (isErr(right)) return right
 
   switch (op) {
@@ -608,11 +610,11 @@ function evaluateCall(
   // 一直是短路的, IF 必须与它同语义, 否则同一件事的两种写法会给出不同结果。
   if (name === 'IF') {
     if (ast.args.length !== 3) return { code: 'bad_arguments', message: 'IF takes three arguments' }
-    const cond = evaluateAst(ast.args[0], ctx, state)
+    const cond = evaluateAstInner(ast.args[0], ctx, state)
     if (isErr(cond)) return cond
     const b = asBool(cond)
     if (isErr(b)) return b
-    return evaluateAst(b ? ast.args[1] : ast.args[2], ctx, state)
+    return evaluateAstInner(b ? ast.args[1] : ast.args[2], ctx, state)
   }
 
   const fn = BUILTINS[name] ?? ctx.functions?.get(name)
@@ -620,7 +622,7 @@ function evaluateCall(
 
   const args: CalcValue[] = []
   for (const a of ast.args) {
-    const v = evaluateAst(a, ctx, state)
+    const v = evaluateAstInner(a, ctx, state)
     if (isErr(v)) return v
     args.push(v)
   }
@@ -760,14 +762,24 @@ const BUILTINS: Record<string, (args: readonly CalcValue[], ctx: CalcContext) =>
 export function evaluateFormula(src: string, ctx: CalcContext): CalcResult {
   const ast = parseFormula(src)
   if (isErr(ast)) return { ok: false, error: ast }
+  return evaluateAst(ast as Ast, ctx)
+}
 
+/**
+ * 按**已解析的 AST** 求值。
+ *
+ * 存在的理由: 依赖图在建图时已经解析过每条公式一次, 而 AST 在一次建图内是稳定的
+ * —— 重算时再解析一遍等于把词法+语法成本乘以"每条公式 × 每次重算"。
+ * 收尾逻辑与 `evaluateFormula` **就是同一段**, 不是复制品。
+ */
+export function evaluateAst(ast: Ast, ctx: CalcContext): CalcResult {
   const state: EvalState = { directives: [] }
-  const value = evaluateAst(ast, ctx, state)
+  const value = evaluateAstInner(ast, ctx, state)
   if (isErr(value)) return { ok: false, error: value }
 
   if (state.directives.length > 0) {
     // 一条公式只产一条指令 —— 短路保证同一分支里的多个 SHOW/HIDE 不会同时生效,
-    // 但真的写了两条(如 `SHOW([A]) + SHOW([B])`)就不该猜哪一条算数。
+    // 但真的写了两条(如 `SHOW([A]) && SHOW([B])`)就不该猜哪一条算数。
     if (state.directives.length > 1) {
       return {
         ok: false,
@@ -796,6 +808,61 @@ export function evaluateFormula(src: string, ctx: CalcContext): CalcResult {
     }
   }
   return { ok: true, role: 'value', value }
+}
+
+/**
+ * 静态收集表达式里的引用 —— **不求值**, 只走 AST。
+ *
+ * 两个用途, 都不是可选的:
+ *   1. **依赖索引** (§12.12.6): 改了 A 要让引用 A 的公式重算, 就必须在建图时
+ *      知道每条公式读了哪些键。
+ *   2. **作者化面** (§12.12.9): 要告诉作者"这条公式引用了哪几个键", 以及
+ *      哪几个键当前是撞键的。
+ *
+ * `valueRefs` 与 `targetRefs` 分开, 因为它们是两种东西:
+ *   valueRefs  = 被**读**的键 —— 它们变了要重算 (是真依赖)
+ *   targetRefs = SHOW/HIDE **指向**的键 —— 本公式决定那个控件的可见性,
+ *                但读它的值并不能改变本公式的结果, 所以**不是依赖**
+ *                (混在一起会让"改了被隐藏控件的值 → 触发公式重算"这种无谓重算,
+ *                 更糟的是会把可见性边当成依赖边, 于是一对互斥的 SHOW/HIDE
+ *                 被误判成环)。
+ */
+export function collectReferences(ast: Ast): { valueRefs: string[]; targetRefs: string[] } {
+  const valueRefs: string[] = []
+  const targetRefs: string[] = []
+  const seenValue = new Set<string>()
+  const seenTarget = new Set<string>()
+
+  const walk = (node: Ast, insideDirective: boolean): void => {
+    switch (node.kind) {
+      case 'literal':
+        return
+      case 'ref':
+        if (insideDirective) {
+          if (!seenTarget.has(node.key)) { seenTarget.add(node.key); targetRefs.push(node.key) }
+        } else if (!seenValue.has(node.key)) {
+          seenValue.add(node.key); valueRefs.push(node.key)
+        }
+        return
+      case 'unary':
+        walk(node.operand, insideDirective)
+        return
+      case 'binary':
+        walk(node.left, insideDirective); walk(node.right, insideDirective)
+        return
+      case 'ternary':
+        walk(node.cond, insideDirective); walk(node.then, insideDirective); walk(node.else, insideDirective)
+        return
+      case 'call': {
+        const isDirective = node.name.toUpperCase() === 'SHOW' || node.name.toUpperCase() === 'HIDE'
+        for (const arg of node.args) walk(arg, isDirective)
+        return
+      }
+    }
+  }
+
+  walk(ast, false)
+  return { valueRefs, targetRefs }
 }
 
 /**
