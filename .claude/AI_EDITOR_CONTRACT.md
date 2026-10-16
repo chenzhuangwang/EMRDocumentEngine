@@ -1281,6 +1281,13 @@ Concrete ownership anchors (God Object drift to reverse):
     control binding projection    → document/control/ControlProjection.ts
                                     (the bulk data-binding reading order and
                                     bound-item shape; §12.10)
+    value → display text, and the  → document/control/ControlDisplay.ts
+    candidate set a control offers    (the ONE implementation; the export
+                                    layer and the binding projection both
+                                    read it — §12.10.4. It lives in engine/
+                                    because lib/export/fields.ts already
+                                    imports the engine barrel, so the
+                                    reverse edge would be a cycle.)
 
 These are the specific drifts found in Editor.ts at the
 architecture freeze. They are the pattern to reverse, NOT to extend.
@@ -2539,6 +2546,17 @@ convenience question. Therefore:
            and is reported in `ambiguous` with its candidateNodeIds.
            This holds even when the values would validate.
 
+           THE EMPTY KEY IS NOT ADDRESSABLE. A control whose
+           dataElement AND internal are both empty has NO canonical
+           identity, and the empty string means exactly that — it is not
+           an address shared by "all anonymous controls". A write keyed on
+           '' is therefore reported in `unmatched` and writes nothing.
+           The reason is behavioral stability: allowing it would make the
+           same call silently hit the single anonymous control today and
+           flip to `ambiguous` the moment a second one appears. The READ
+           direction still returns those items (key: '') — "this control
+           has no identity" is a fact the caller needs.
+
 12.10.3 Write semantics
 ------------------------------------------------------------
 
@@ -2595,6 +2613,27 @@ be refactored into a module both share. Reasons, in order:
     primitives. That is a recorded, bounded duplication — it MUST NOT
     be "fixed" by importing upward.
 
+    VALUE → DISPLAY TEXT IS THE OPPOSITE CASE, and it went the other
+    way: that resolution (resolveDisplay) and the candidate set a
+    control offers (enumOptionsFor) were MOVED DOWN into
+    document/control/ControlDisplay.ts, and lib/export/fields.ts now
+    re-exports them instead of owning them. The §11 test ("the same
+    non-trivial logic implemented a second time") is met by a different
+    count than the glue loop: the binding projection needs the exact
+    same display and the exact same candidate set as the export
+    projection, and a caller comparing the two would be comparing two
+    implementations. §19's second option ("move the shared core DOWN
+    into engine/ first") is what applies here — the direction is
+    lib/ → engine/, which is allowed.
+
+    The line between the two cases is TRAVERSAL vs RESOLUTION. The
+    traversal is duplicated because each side's walk is small and each
+    is already standing on a shared engine primitive; the resolution is
+    moved down because it is a rule with real semantics (inline enums
+    win over dictionary candidates; a present-but-empty enums object
+    suppresses the dictionary) and a second copy would drift. Neither
+    is a licence to move collectFields down.
+
     KNOWN DISPLAY DIVERGENCE, already true before this section and
     deliberately preserved: the export projection resolves a dictionary
     candidate's display NAME, while the render path reads only inline
@@ -2624,6 +2663,19 @@ document-level entry point. It is a READ-ONLY query.
       QCIssueLocation, which the QC panel's click-to-locate depends on.
     - It MUST be runnable without running QC: a host that wants only the
       completeness answer MUST NOT be forced to compute compliance.
+    - COVERAGE MUST BE THE §12.10 PROJECTION'S, not a second walk. The
+      gate's answer and the binding API's answer must range over the
+      same controls, or a host gets "readable but not checkable" (or the
+      reverse). It lives in document/control/CompletenessGate.ts and is a
+      CONSUMER of the projection — the reading order is not re-derived.
+      The judgment itself stays isControlValueComplete's (§12.6.2 layer
+      C); this section adds no second definition of "empty".
+
+    The host policy that this batch installs (a product decision, not a
+    contract rule): on !ok, LIST the missing fields with click-to-jump
+    and STILL ALLOW the save. Hard-blocking a save would lose a
+    clinician's in-progress work, which is a worse failure than storing
+    an incomplete document that the dialog has just made visible.
 
 ============================================================
 13. DOCUMENT SERIALIZATION
@@ -2962,7 +3014,10 @@ Consequence for feature design: when a feature needs something that
 lives in lib/, the answer is NOT to import it upward. Either the fact
 is duplicated deliberately (and that duplication is recorded), or the
 shared core is moved DOWN into engine/ first. §12.10.4 is a worked
-example of choosing the former.
+example of BOTH, chosen per case: the reading-order glue loop is
+duplicated (and recorded as such), while the value → display-text
+resolution was moved down, because a second copy of a semantic rule
+would drift and a second copy of a 16-line loop would not.
 
 
 ============================================================
