@@ -63,10 +63,23 @@ export class UpdateControlDefinitionCommand implements ICommand {
     if (hasFields) store.set(this.nodeId, this.next!)
     else store.delete(this.nodeId)
 
-    // 设计期属性不参与布局重排 (label/prefix/suffix 为 draw-time overlay,
-    // 其余为命令层守卫), invalidation 'none' (§12.5)。仍走命令系统, 触发
-    // markDirty 与 templateDefinitions 持久化 (§12.1)。
-    return { invalidation: 'none' }
+    // 设计期属性里**有一个字段确实是布局的输入: formula** (§12.12.8)。它算出的
+    // 显示文本既决定控件盒宽也决定折行 (与值走同一条 smarttextLayoutHint), 所以
+    // 改了公式**必须重排** —— 否则症状是"改了公式, 页面没反应": 作者在配置弹框里
+    // 改完、点了应用, 页面上还是旧值, 直到别的原因碰上一次重排。作者化面就靠这一次
+    // 重排才看得见效果 (§12.12.9)。
+    //
+    // 判据只认 formula, 且**两侧取公式本身** (不是"条目在不在"): 给一个原本没有
+    // 定义表的控件加上 controlType/label 仍是 'none' (与今天一致), 而加上/改掉/
+    // 删掉一条公式都是 'flowbody' —— 公式的出现与消失同样要重排。
+    // label / prefix / suffix 与 controlType **刻意不进这个判据** —— 契约 §12.5
+    // 明写附属字面量是 draw-time overlay, "their layout interaction (wrapping, width
+    // contribution) is DEFERRED", 而 ControlLayoutHint 今天就已按它们扣减盒宽。
+    // 这条不一致是**既有偏差, 本批不顺手改**: 改它等于替 §12.5 拍板, 得先把那句
+    // 契约改掉 (同理 §11 的"第二份实现")。其余字段 (deletable/editable/tips/single)
+    // 是命令层守卫的输入, 与布局无关, 仍走 'none' (§12.1)。
+    const layoutRelevant = this.old?.formula !== this.next?.formula
+    return { invalidation: layoutRelevant ? 'flowbody' : 'none' }
   }
 
   invert(_ctx: CommandContext): ICommand | null {

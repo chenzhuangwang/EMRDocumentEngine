@@ -31,6 +31,11 @@ interface DocSpec {
   formula: Record<string, string>
   /** nodeId → 原始值 */
   value: Record<string, ControlValue | undefined>
+  /**
+   * nodeId → 值版本号 (模拟 NodePool.getNodeVersion)。
+   * 省略 = 全 0 (不提供版本比对, 只认显式失效)。
+   */
+  versions?: Record<string, number>
 }
 
 /** 夹具 + 一个可观察的时钟调用计数 */
@@ -43,6 +48,7 @@ function makeSet(doc: DocSpec, at: Date = NOW) {
     valueOf: (id) => doc.value[id],
     nodesFor: (key) => doc.nodes.filter((id) => (doc.key[id] ?? '') === key),
     now: () => { clock.calls++; return clock.at },
+    versionOf: doc.versions ? (id) => doc.versions![id] ?? 0 : undefined,
   }
   const set = new ComputedValues(deps)
   set.reset()
@@ -212,6 +218,44 @@ describe('依赖失效只重算受影响的', () => {
     set.invalidateForValues(['anon'])
     set.ensure()
     expect(clock.calls).toBe(before)
+  })
+
+  it('**兜底: 没人调 invalidateForValues 时, 版本号变了也要重算**', () => {
+    // 写值的路径不止一条 (单点 / 批量绑定 / 查找替换 / 导入器), 漏一个调用方
+    // 就会静默沿用旧值 —— 而且看起来完全正常。版本号由池在 updateNode 时自增,
+    // 不需要任何写入方配合。
+    const { set, clock, doc } = makeSet({
+      nodes: ['x', 'src'],
+      key: { x: 'X', src: 'SRC' },
+      formula: { x: '[SRC] + 1' },
+      value: { src: 1 },
+      versions: { src: 0 },
+    })
+    set.ensure()
+    expect(set.displayOf('x')).toBe('2')
+    expect(clock.calls).toBe(1)
+
+    // 有人绕过了失效通知直接改了值 (并 bump 了版本)
+    doc.value.src = 10
+    doc.versions!.src = 1
+    set.ensure()
+    expect(clock.calls).toBe(2)
+    expect(set.displayOf('x')).toBe('11')
+  })
+
+  it('兜底只看**被依赖**的节点, 无关节点版本变了不重算', () => {
+    const { set, clock, doc } = makeSet({
+      nodes: ['x', 'src', 'loner'],
+      key: { x: 'X', src: 'SRC', loner: 'LONER' },
+      formula: { x: '[SRC] + 1' },
+      value: { src: 1, loner: 9 },
+      versions: { src: 0, loner: 0 },
+    })
+    set.ensure()
+    expect(clock.calls).toBe(1)
+    doc.versions!.loner = 5
+    set.ensure()
+    expect(clock.calls).toBe(1)
   })
 })
 

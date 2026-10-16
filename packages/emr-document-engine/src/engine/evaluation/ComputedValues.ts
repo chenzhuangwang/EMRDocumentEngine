@@ -77,6 +77,17 @@ export interface ComputedValuesDeps {
   /** 某节点的**原始**运行值 */
   valueOf(nodeId: string): ControlValue | undefined
   /**
+   * 某节点的**值版本号** (`NodePool.getNodeVersion`)。
+   *
+   * 这是重算正确性的兜底: 显式 `invalidateForValues` 要求每个写入方都记得调它,
+   * 而写值的路径不止一条 (单点写入 / 批量绑定 / 查找替换 / 导入器) —— 漏一个就
+   * 会静默沿用旧的计算值, 而且**看起来完全正常**。版本号由池在 `updateNode` 时
+   * 自增, 不需要任何写入方配合。
+   *
+   * 可选: 不提供时退化为"只认显式失效"(单测与将来的无池场景)。
+   */
+  versionOf?(nodeId: string): number
+  /**
    * 时钟。**由构造方提供, 在本模块要求重算时调用一次** (§12.12.7)。
    * 本模块内不得出现 `new Date()` (静态闸门守)。
    */
@@ -116,10 +127,14 @@ export class ComputedValues {
   private plans = new Map<string, FormulaPlan>()
   /** key → 读了该键的公式节点 */
   private dependentsOfKey = new Map<string, Set<string>>()
-  /** 依赖图的邻接表 (只含公式节点之间的边), 建图时检环 */
+  /** 依赖图的邻接表 (只含值公式之间的边), 建图时检环 */
   private adjacency = new Map<string, string[]>()
   /** 参与了环的节点 —— 这些节点的求值顺序无定义, 一律报 cycle */
   private cyclic = new Set<string>()
+  /** 值进了某条公式的节点 —— 它们的版本号变了就必须重算 */
+  private watched = new Set<string>()
+  /** watched 的版本快照 (兜底判据, 见 ComputedValuesDeps.versionOf) */
+  private watchedVersions = new Map<string, number>()
 
   private computedAtValue: Date | null = null
   private dirty = true
@@ -169,6 +184,32 @@ export class ComputedValues {
     }
 
     this.buildGraphAndDetectCycles()
+
+    // 收集"值进了某条公式"的节点 —— 它们的版本号是重算的兜底判据
+    this.watched = new Set()
+    for (const plan of this.plans.values()) {
+      for (const key of plan.valueRefs) {
+        for (const owner of this.deps.nodesFor(key)) this.watched.add(owner)
+      }
+    }
+    this.snapshotVersions()
+  }
+
+  private snapshotVersions(): void {
+    this.watchedVersions.clear()
+    const versionOf = this.deps.versionOf
+    if (!versionOf) return
+    for (const id of this.watched) this.watchedVersions.set(id, versionOf(id))
+  }
+
+  /** 被依赖的值有没有动过 (兜底; 无 versionOf 时恒 false) */
+  private versionsChanged(): boolean {
+    const versionOf = this.deps.versionOf
+    if (!versionOf) return false
+    for (const id of this.watched) {
+      if (this.watchedVersions.get(id) !== versionOf(id)) return true
+    }
+    return false
   }
 
   /**
@@ -221,6 +262,10 @@ export class ComputedValues {
   /**
    * 值写入后按依赖失效 (§12.12.6)。
    *
+   * **这是提示而不是正确性机制**: 它要求每个写入方都记得调, 而写值的路径不止
+   * 一条。正确性由 `versionOf` 的版本比对兜底 (见 `ensure()`), 所以漏调它只会
+   * 让重算晚一点发生, 不会算错。
+   *
    * 只标脏, 不立刻重算 —— 一次批量写入可能连着改好几个字段, 重算留到读之前
    * 一次做完 (布局/渲染/导出各调一次 `ensure()`, 第一次真算, 之后是 no-op)。
    */
@@ -229,17 +274,22 @@ export class ComputedValues {
     for (const nodeId of nodeIds) {
       const key = this.deps.keyOf(nodeId)
       if (key === '') continue
-      // 键变了也可能影响: 旧键与新键都要看 —— 调用方保证 changed 列表里带上
-      // 所有被改动的节点, 这里按各自当前的键反查即可
       if (this.dependentsOfKey.get(key)?.size) { this.dirty = true; return }
     }
   }
 
-  /** 读之前调一次: 脏则重算 (时钟在这一刻读一次) */
+  /**
+   * 读之前调一次: 脏、或**被依赖的值版本变了**, 则重算。
+   *
+   * 版本这一路是兜底: 任何写值的路径 (`updateNode`) 都会自增节点版本, 不需要
+   * 写入方配合。缺了它, 一个漏调 `invalidateForValues` 的写入方就会让整份文档
+   * 沿用旧的计算值 —— 而且看起来完全正常。
+   */
   ensure(): void {
-    if (!this.dirty) return
+    if (!this.dirty && !this.versionsChanged()) return
     this.recompute()
     this.dirty = false
+    this.snapshotVersions()
   }
 
   // ---- 读 ----

@@ -102,6 +102,8 @@ import { boundControlProjectionOf } from './document/control/ControlProjection'
 import type { BoundValues } from './document/control/ControlProjection'
 import { missingRequiredOf } from './document/control/CompletenessGate'
 import type { CompletenessResult } from './document/control/CompletenessGate'
+import { ComputedValues } from './evaluation/ComputedValues'
+import type { CalcFunction, CalcResult } from './evaluation/ExpressionEngine'
 import { validateControlValue, isControlValueEmpty } from './document/control/ControlValue'
 import type { ControlValueValidationResult, ControlValuePermissions } from './document/control/ControlValue'
 
@@ -207,6 +209,38 @@ export class Editor {
   private templateDefinitions: TemplateDefinitionStore | null = null
   private presentationStyles: PresentationStyleStore | null = null
   private dictionaries: DictionaryProvider | null = null
+
+  // ---- 计算式引擎 (契约 §12.12) ----
+  /**
+   * 计算值集合 —— **per-editor 派生状态**, 不随文档序列化。本类即 §12.12.7 说的
+   * "持有 set 的一方": 时钟由它读 (`now: () => new Date()`), 而 `evaluation/`
+   * 内一次钟都不读 (静态闸门守)。
+   *
+   * 在构造函数里**建好就交给 Draw**(见构造函数), 不是惰性等到某个读 API 被调用 ——
+   * 惰性意味着"没人调 getComputedDisplay 的宿主"整套公式静默不生效。
+   */
+  private readonly computedValues: ComputedValues
+  /** 键索引快照 —— 重建判据见 ensureComputedValuesSynced */
+  private cvIds: string[] = []
+  private cvKeyOf = new Map<string, string>()
+  private cvNodesByKey = new Map<string, string[]>()
+  /** 上次同步时的池/定义表**身份** (见 ensureComputedValuesSynced: 计数器会撞号) */
+  private cvPool: NodePool | null = null
+  private cvDefs: TemplateDefinitionStore | null = null
+  private cvStructureVersion = -1
+  private cvDefinitionVersion = -1
+  /**
+   * 键索引待重建 (element 改名 = 绑定键改名)。
+   *
+   * 由 **`document:changed` 的失效范围**置位 (见 commitDocumentChange): 元素影响
+   * 布局与渲染, 故任何改元素的命令都必须声明 `flowbody`/`full` ——
+   * `UpdateControlElementCommand` 正是如此, 它的 undo/redo 也走同一条通道。
+   * 用这条既有的、命令自己声明的信号, 就不必在每个改元素的地方手工补一次计数
+   * (漏一个就静默改不到, 而症状是"公式找不到键")。
+   */
+  private cvKeyIndexStale = true
+  /** 集成方注册的纯函数 (§12.12.2) —— 同一张表被 set 读走, 故只建一次 */
+  private readonly calcFunctions = new Map<string, CalcFunction>()
   private _clickToFocus: (e: MouseEvent) => void
   private _onWindowFocus: () => void
   private _onVisibilityChange: () => void
@@ -236,7 +270,23 @@ export class Editor {
     this.eventBus = new EventBus()
     // 把 eventBus 注入主题 —— 后续 setTheme 同步发 'canvas-theme:changed'
     this.theme.attachEventBus(this.eventBus)
-    this.draw = new Draw(host, this.eventBus, this.measurer, this.doc, this.theme)
+    // 计算值集合 (契约 §12.12.6/§12.12.7): 在这里建, 随即交给 Draw。deps 全是闭包
+    // (惰性读 pool/store), 故此刻建是安全的; 时钟 (now) 由**本类**读, 不在
+    // evaluation/ 里 (那里有静态闸门)。
+    this.computedValues = new ComputedValues({
+      nodeIds: () => this.cvIds,
+      keyOf: (id) => this.cvKeyOf.get(id) ?? '',
+      formulaOf: (id) => this.templateDefinitions?.get(id)?.formula,
+      nodesFor: (key) => this.cvNodesByKey.get(key) ?? [],
+      valueOf: (id) => (this.pool.nodes.get(id) as SmartTextNode | undefined)?.value,
+      // 值版本兜底 (§12.12.6): 写值的路径不止一条, 漏一个调用方就会静默沿用
+      // 旧的计算值 —— 节点版本由池在 updateNode 时自增, 不需要写入方配合
+      versionOf: (id) => this.pool.getNodeVersion(id),
+      // 时钟由**本类**读 —— 它在引擎根, `evaluation/` 之外 (§12.12.7)
+      now: () => new Date(),
+      functions: this.calcFunctions,
+    })
+    this.draw = new Draw(host, this.eventBus, this.measurer, this.doc, this.theme, this.computedValues)
     this.store = new EditorStore(this.doc)
     // 光标/选区移动后实时同步段落/文本样式投影 (工具栏联动), 单一 choke point
     this.store.onCursorOrSelectionChange(() => this.syncStyleProjections())
@@ -458,6 +508,16 @@ export class Editor {
    *   5. 工具栏/状态栏同步 (notifyListeners 'contentChange')
    */
   private commitDocumentChange(invalidation: import('./command/ICommand').InvalidationScope): void {
+    // 键索引失效 (契约 §12.12.6): 语义层 (element) 变更 = 绑定键改名, 而它既不动
+    // 结构 (pool.structureVersion) 也不动公式 (templateDefinitions.version)。
+    // 判据借**命令自己声明的失效范围**: 元素影响布局与渲染, 故任何改元素的命令都
+    // 必须声明 flowbody/full (UpdateControlElementCommand 正是如此, 它的 undo/redo
+    // 也经这条通道) —— 于是不必在每个改元素的地方手工补一次计数; 那种做法漏一个
+    // 就静默改不到, 症状是"公式找不到键"。输入 (InsertTextCommand) 声明 paragraph,
+    // 故不在此列, 击键仍然只花几次比较。
+    // 注意**放在 'none' 早退之前**: 判据是失效范围本身, 与后续走哪条渲染路径无关。
+    if (invalidation === 'flowbody' || invalidation === 'full') this.cvKeyIndexStale = true
+
     // 主题切换走 'none' 早退 (v6.1): 不重布局, 只重绘
     // 但 store.documentTitle 投影 + contentChange 通知仍走 (UpdateDocumentTitleCommand 等
     // 合法 'none' 路径仍需同步 UI)
@@ -475,7 +535,7 @@ export class Editor {
       return
     }
     const t0 = performance.now()
-    this.draw.recomputeLayout(this.pool, invalidation)
+    this.recomputeLayout(invalidation)
     const t1 = performance.now()
     const cursor = this.store.state.runtime.cursor
     console.debug(
@@ -1248,6 +1308,106 @@ export class Editor {
   validateRequired(): CompletenessResult {
     const missing = missingRequiredOf(this.getBoundValues(), this.doc.id)
     return { ok: missing.length === 0, missing }
+  }
+
+  // ---- 计算式引擎 (契约 §12.12) ----
+
+  /**
+   * 键索引与公式图的重建判据 —— 几次**整数/引用比较**, 不做任何遍历。
+   *
+   * 每条信号各管一类变更, 缺一条都有一个静默症状:
+   *   cvPool 引用 + pool.structureVersion → 换文档 / 控件增删 (索引里的节点集合旧了)
+   *   cvDefs 引用 + templateDefinitions.version → 换定义表 / 公式增删改
+   *                                              (症状: 改了公式, 页面没反应)
+   *   cvKeyIndexStale → element 变更即绑定键改名 (症状: 公式找不到键)
+   *
+   * **为什么数字之外还要比引用**: 两个计数器都会**撞号** —— 新池的 structureVersion
+   * 从 0 重数, 旧池恰好停在 0 就相等; 从 artifact 读回的定义表版本 = 定义条数, 两份
+   * 文档条数相同就相等。只比数字会在"换文档"那一刻静默沿用上一份文档的键索引, 而那
+   * 是最难看出的一类错 (公式都在, 只是指向别人的节点)。
+   *
+   * **值的变化不在这里** —— 它最频繁 (每次输入), 交给 ComputedValues 内部的节点版本
+   * 比对 (§12.12.6), 于是本方法在每次击键上只花几次比较。
+   */
+  private ensureComputedValuesSynced(): void {
+    const defs = this.templateDefinitions
+    const sv = this.pool.structureVersion
+    const dv = defs?.version ?? 0
+    if (this.cvPool === this.pool &&
+        this.cvDefs === defs &&
+        !this.cvKeyIndexStale &&
+        this.cvStructureVersion === sv &&
+        this.cvDefinitionVersion === dv) return
+    this.syncComputedValues()
+  }
+
+  /** 重建键索引快照, 并让集合重建公式图 —— 两份东西同源 (同一份 §12.10 投影) */
+  private syncComputedValues(): void {
+    const projection = this.getBoundValues()
+    this.cvIds = []
+    this.cvKeyOf.clear()
+    this.cvNodesByKey.clear()
+    for (const item of projection.items) {
+      this.cvIds.push(item.nodeId)
+      this.cvKeyOf.set(item.nodeId, item.key)
+      // 无身份的控件不进键索引 —— 它无法被引用, 正是 §12.12.3 的"未找到"
+      if (item.key === '') continue
+      const arr = this.cvNodesByKey.get(item.key) ?? []
+      arr.push(item.nodeId)
+      this.cvNodesByKey.set(item.key, arr)
+    }
+    this.cvPool = this.pool
+    this.cvDefs = this.templateDefinitions
+    this.cvStructureVersion = this.pool.structureVersion
+    this.cvDefinitionVersion = this.templateDefinitions?.version ?? 0
+    this.cvKeyIndexStale = false
+    this.computedValues.reset()
+  }
+
+  /**
+   * 注册一个集成方自定义函数 (契约 §12.12.2)。
+   *
+   * **信任级别等同插件**: 它是集成者自己的代码, 不是终端用户数据。求值器仍然
+   * 触不到任何宿主全局, 只有注册过的纯函数可被调用。
+   */
+  registerCalcFunction(name: string, fn: CalcFunction): void {
+    this.calcFunctions.set(name.toUpperCase(), fn)
+  }
+
+  /**
+   * 试算 / 校验一条公式 (契约 §12.12.9) —— 作者化面的**唯一入口**。
+   *
+   * UI MUST NOT 伸进 `evaluation/` 内部: 引用怎么解析、撞键怎么办、时钟取哪一刻,
+   * 都是引擎的事实。这里返回的 CalcResult 里错误是**分类**的
+   * (未找到 / 撞键 / 语法 / 未知函数 / 环 / 类型), 不是一句"公式有误"。
+   *
+   * `forNodeId` 是正在编辑的控件: 试算它的新公式时, 引用它自己的键读的是**原始值**
+   * 而不是它当前算出来的结果 (否则像在照镜子)。
+   */
+  evaluateFormula(formula: string, forNodeId?: string): CalcResult {
+    this.ensureComputedValuesSynced()
+    return this.computedValues.preview(formula, forNodeId)
+  }
+
+  /** 某控件的派生显示值 (契约 §12.12.8); 无公式/算不出 → undefined */
+  getComputedDisplay(nodeId: string): string | undefined {
+    this.ensureComputedValuesSynced()
+    this.computedValues.ensure()
+    return this.computedValues.displayOf(nodeId)
+  }
+
+  /** 某控件是否参与布局 (契约 §12.12.5); 无公式 → true */
+  isControlVisible(nodeId: string): boolean {
+    this.ensureComputedValuesSynced()
+    this.computedValues.ensure()
+    return this.computedValues.visibleOf(nodeId)
+  }
+
+  /** 有问题的公式 (供作者化面与诊断) —— 错误可分类, 便于逐条显示 */
+  getFormulaErrors(): Array<{ nodeId: string; error: import('./evaluation/ExpressionEngine').CalcError }> {
+    this.ensureComputedValuesSynced()
+    this.computedValues.ensure()
+    return this.computedValues.errors()
   }
 
   /**
@@ -2466,13 +2626,29 @@ export class Editor {
   }
 
   /**
+   * 重排的**唯一前置**: 先把键索引与公式图对齐, 再重排 (契约 §12.12.6)。
+   *
+   * 两个布局入口都经它 —— `commitDocumentChange` (document:changed 流水线, 不跑
+   * 插件钩子) 与 `relayout` (换文档 / undo / redo, 环绕插件钩子)。漏掉任何一条,
+   * 那条路径上的公式就按上一次的键索引算: 换文档后指向别人的节点、撤销一次元素
+   * 改名后指向已经改掉的旧键 —— 两种都不报错, 只是算错。
+   *
+   * 判据本身只花几次整数/引用比较 (见 ensureComputedValuesSynced), 所以它落在
+   * 每次击键的路径上也无所谓。
+   */
+  private recomputeLayout(invalidation?: import('./command/ICommand').InvalidationScope): void {
+    this.ensureComputedValuesSynced()
+    this.draw.recomputeLayout(this.pool, invalidation)
+  }
+
+  /**
    * 重排重绘 —— 插件 layout 钩子在此环绕 (before → 布局 → after)。
    * 三处调用点统一走这里, 使钩子不会因某个路径忘了调用而漏触发。
    */
   private relayout(): void {
     const hook = this.pluginManager.getHook()
     hook.emitBeforeLayout(this.pool)
-    this.draw.recomputeLayout(this.pool)
+    this.recomputeLayout()
     hook.emitAfterLayout(this.pool)
   }
 

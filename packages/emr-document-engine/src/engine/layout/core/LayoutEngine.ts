@@ -15,7 +15,7 @@
 // 导出链路可直接消费 SLIFPage[]
 // ================================================================
 
-import type { DocumentTree, Paragraph, TextNode, SmartTextNode, ElementEnumOption } from '../../document/core/DocumentModel'
+import type { DocumentTree, Paragraph, TextNode, SmartTextNode, ElementEnumOption, ElementMeta } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
 import {
   isVariantEnabled, resolveVariantForPage, type HeaderFooterVariant,
@@ -60,6 +60,19 @@ export interface InlineControlInfo {
   label?: string
   prefix?: string
   suffix?: string
+  /**
+   * 计算式算出的显示值 (契约 §12.12.8) —— 有则**取代**控件自身的值/占位符。
+   *
+   * 布局只管用它量宽与折行; **LayoutEngine 不需要知道"公式"是什么**
+   * (它连 formula 这个字段都读不到, 这里只有算好的结果)。
+   */
+  computedDisplay?: string
+  /**
+   * 是否参与布局 (契约 §12.12.5 SHOW/HIDE)。`false` 时该控件不产出任何
+   * SLIFItem —— 于是自然不可命中、光标进不去。
+   * 缺省/`undefined` = 可见 (与"没有公式"一致)。
+   */
+  visible?: boolean
 }
 
 /** 单个页眉/页脚带的布局产物 (items 的 y 相对带顶) */
@@ -279,14 +292,21 @@ export class LayoutEngine {
           const childType = (child as unknown as Record<string, unknown>).type as string
           if (childType === 'text' || childType === 'smarttext' || childType === 'cross_reference') {
             const tn = child as unknown as TextNode
+            // 控件的有效显示与可见性 (契约 §12.12.8): 计算值优先, 没有就用控件自身
+            // 的值/占位符。不可见的控件**整个跳过** —— 不产出 SLIFItem, 于是自然
+            // 不可命中、光标也进不去 (§12.12.5 的既定结果, 不需要额外机制)。
+            const view = childType === 'smarttext'
+              ? this.controlViewOf(childId, (child as SmartTextNode).element, (child as SmartTextNode).value, tn.text)
+              : undefined
+            if (view && !view.visible) continue
             // 交叉引用节点使用 displayText (展开 {page}/{number}, 见 resolveCrossRefDisplay)
             const textVal = childType === 'cross_reference'
               ? this.resolveCrossRefDisplay(
                   child as unknown as { id: string; refType: string; targetRef: string; displayText?: string; text?: string },
                   doc, pool,
                 )
-              : childType === 'smarttext'
-                ? controlValueDisplay((child as SmartTextNode).element, (child as SmartTextNode).value, tn.text)
+              : view
+                ? view.display
                 : tn.text
             const value = listMarker ? listMarker + textVal : textVal
             if (listMarker) listMarker = '' // 仅首节点添加
@@ -304,7 +324,7 @@ export class LayoutEngine {
             let smartFont: string | undefined
             let smartSize: number | undefined
             if (childType === 'smarttext') {
-              const info = this.controlInfoOf?.(childId)
+              const info = view?.info
               const font = tn.font || runDefault.font
               const size = tn.size || runDefault.size
               smartFont = font
@@ -894,13 +914,19 @@ export class LayoutEngine {
             // 表格 cell 内控件 — 与正文/页眉共用 smarttextLayoutHint (契约 §12.8):
             // 候选组宽 / 方括号+affordance / 文本域折行 / label·prefix·suffix lead·trail
             // 全部同源, 且内容宽于 cell 文本宽时折行而非溢出 cell。
-            const display = controlValueDisplay((child as SmartTextNode).element, (child as SmartTextNode).value, (child as { text: string }).text)
+            // 有效显示与可见性也走同一个入口 (§12.12.8 / §12.12.5)。
+            const view = this.controlViewOf(
+              textId, (child as SmartTextNode).element, (child as SmartTextNode).value,
+              (child as { text: string }).text,
+            )
+            if (!view.visible) continue
+            const display = view.display
             // 未显式设字体/字号时继承同段落文字 run (与周围文字协调)
             const rd = this.paraRunDefault(pool, para.children, DEFAULT_SIZE)
             const font = child.font || rd.font
             const size = child.size || rd.size
             const measure = (t: string) => this.measurer.measureWidth(t, { font, size, bold: child.bold, italic: child.italic })
-            const info = this.controlInfoOf?.(textId)
+            const info = view.info
             const control = smarttextLayoutHint({
               value: child.value,
               display,
@@ -1134,17 +1160,20 @@ export class LayoutEngine {
         const childType = (child as unknown as Record<string, unknown>).type as string
         if (childType === 'text' || childType === 'smarttext') {
           const tn = child as unknown as TextNode
-          // smarttext: 有值显示值、无值回退占位符 (与正文一致); text: 原文
-          const display = childType === 'smarttext'
-            ? controlValueDisplay((child as SmartTextNode).element, (child as SmartTextNode).value, tn.text)
-            : tn.text
+          // smarttext: 计算值优先, 无则值/占位符 (与正文一致); text: 原文。
+          // 不可见的控件**整个跳过** —— 与正文/表格 cell 同一处置 (§12.12.5)。
+          const view = childType === 'smarttext'
+            ? this.controlViewOf(tn.id, (child as SmartTextNode).element, (child as SmartTextNode).value, tn.text)
+            : undefined
+          if (view && !view.visible) continue
+          const display = view ? view.display : tn.text
           // 控件预留宽 (与正文一致): checkbox/radio 候选组 / 方括号+affordance,
           // 否则纯文本宽。使页眉内控件不与后续文字/选项重叠。
           let control: LineElement['control']
           let smartFont: string | undefined
           let smartSize: number | undefined
           if (childType === 'smarttext') {
-            const info = this.controlInfoOf?.(tn.id)
+            const info = view?.info
             const rd = this.paraRunDefault(pool, para.children, BASE_FONT_SIZE)
             const font = tn.font || rd.font
             const size = tn.size || rd.size
@@ -1407,6 +1436,34 @@ export class LayoutEngine {
   /** 注入内联渲染预留宽信息源 (契约 §12.6), null 清除 (缺省行为不变)。 */
   setControlInfoOf(fn: ((nodeId: string) => InlineControlInfo | undefined) | null): void {
     this.controlInfoOf = fn
+  }
+
+  /**
+   * 控件的**有效**显示文本与可见性 (契约 §12.12.8 / §12.12.5)。
+   *
+   * 计算值优先; 没有就退回控件自身的值/占位符 —— 退回那一路与今天**逐字一致**,
+   * 所以没有公式的文档行为不变。
+   *
+   * 三处布局路径 (正文 / 表格 cell / 页眉页脚) 共用它。这三处此前各写一遍
+   * `controlValueDisplay(...)`, 正是 §12.8 记录过的那种"每路径一份"; 若再让计算值
+   * 各写一遍, 就不是三份而是六份了。
+   *
+   * 注意它**只问"显示什么、可不可见"**, 不问为什么 —— LayoutEngine 至今不知道
+   * "公式"这件事的存在。
+   */
+  private controlViewOf(
+    nodeId: string,
+    element: ElementMeta | undefined,
+    value: unknown,
+    placeholder: string,
+  ): { display: string; visible: boolean; info: InlineControlInfo | undefined } {
+    const info = this.controlInfoOf?.(nodeId)
+    return {
+      display: info?.computedDisplay ?? controlValueDisplay(element, value as never, placeholder),
+      // 缺省可见 —— 与"这个控件没有公式"一致 (没公式就没有理由藏它)
+      visible: info?.visible !== false,
+      info,
+    }
   }
 }
 

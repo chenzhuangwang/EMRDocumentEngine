@@ -687,7 +687,7 @@ const BUILTINS: Record<string, (args: readonly CalcValue[], ctx: CalcContext) =>
     return age
   },
 
-  DIFF_DATE_DAYS: (args, ctx) => {
+  DIFF_DATE_DAYS: (args) => {
     if (args.length !== 2) return { code: 'bad_arguments', message: 'DIFF_DATE_DAYS takes two dates' }
     const a = argDate(args[0]); if (isErr(a)) return a
     const b = argDate(args[1]); if (isErr(b)) return b
@@ -695,7 +695,7 @@ const BUILTINS: Record<string, (args: readonly CalcValue[], ctx: CalcContext) =>
     return Math.round((b.getTime() - a.getTime()) / MS_PER_DAY)
   },
 
-  DIFF_DATE_HOURS: (args, ctx) => {
+  DIFF_DATE_HOURS: (args) => {
     if (args.length !== 2) return { code: 'bad_arguments', message: 'DIFF_DATE_HOURS takes two dates' }
     const a = argDate(args[0]); if (isErr(a)) return a
     const b = argDate(args[1]); if (isErr(b)) return b

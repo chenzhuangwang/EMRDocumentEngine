@@ -89,6 +89,18 @@ export type TemplateDefinitionMap = ReadonlyMap<string, TemplateDefinition>
  */
 export class TemplateDefinitionStore {
   private readonly map = new Map<string, TemplateDefinition>()
+  /** 变更计数 —— 供派生状态 (计算值集合) 判断"要不要重建索引" */
+  private _version = 0
+
+  /**
+   * 每次写入/删除自增。**只用于失效判断, 不是文档内容** (不序列化)。
+   *
+   * 为什么需要它: 计算值集合的依赖索引要按"哪些控件有公式"重建, 而公式住在
+   * 本 store 里 —— 它的变更既不动文档结构 (池的 structureVersion 不变), 也不
+   * 动节点 (节点版本不变)。缺了这个计数器, 改一条公式就不会触发重建,
+   * 症状是"改了公式, 页面没反应"。
+   */
+  get version(): number { return this._version }
 
   /** 读取某节点的设计期属性 (无则 undefined) */
   get(nodeId: string): TemplateDefinition | undefined {
@@ -103,15 +115,19 @@ export class TemplateDefinitionStore {
   /** 写入 (覆盖) 某节点的设计期属性 */
   set(nodeId: string, def: TemplateDefinition): void {
     this.map.set(nodeId, def)
+    this._version++
   }
 
   /** 删除某节点的设计期属性, 返回是否确实删除 */
   delete(nodeId: string): boolean {
-    return this.map.delete(nodeId)
+    const removed = this.map.delete(nodeId)
+    if (removed) this._version++
+    return removed
   }
 
   /** 清空全部设计期属性 */
   clear(): void {
+    if (this.map.size > 0) this._version++
     this.map.clear()
   }
 

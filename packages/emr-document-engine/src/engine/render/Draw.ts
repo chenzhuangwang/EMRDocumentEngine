@@ -38,6 +38,7 @@ import type { EditorRuntimeState } from '../state/EditorRuntimeState'
 import type { EditorHost } from '../host/EditorHost'
 import { CoordinateSystem } from '../state/CoordinateSystem'
 import { LayoutEngine } from '../layout/core/LayoutEngine'
+import type { ComputedValues } from '../evaluation/ComputedValues'
 import type { TextMeasurer } from '../layout/text/TextMeasurer'
 import { LayeredRenderer } from './LayeredRenderer'
 import { HitTestIndex } from './HitTestIndex'
@@ -96,6 +97,15 @@ export class Draw {
 
   // 模板设计期属性 (契约 §12.1) — per-editor 实例状态 (§7.6), 随 setDocument 更新
   private templateDefinitions: TemplateDefinitionStore | null = null
+  /**
+   * 计算值集合 (契约 §12.12.7/§12.12.8)。由 Editor 构造并注入 —— 它是
+   * **per-editor 的派生状态**, 不是文档内容。
+   *
+   * Draw 只读它, 且只在**每趟开头** `ensure()` 一次 (见 recomputeLayout /
+   * render): 布局与渲染读同一份 memo, 于是同一控件的盒宽与绘制的文字**构造上**
+   * 一致 —— 而两者是相隔很远的两趟, 各自求值就会分叉。
+   */
+  private computedValues: ComputedValues | null = null
   private templateDefinitionOf = (nodeId: string) => this.templateDefinitions?.get(nodeId)
 
   // 语义元数据 (契约 §2.1) — 控件 dataType 分类 / 隐私脱敏读取源, 随 setDocument 更新
@@ -154,11 +164,20 @@ export class Draw {
     measurer: TextMeasurer,
     doc?: DocumentTree,
     theme?: EditorTheme,
+    computedValues?: ComputedValues | null,
   ) {
     this.host = host
     this.measurer = measurer
     this.eventBus = eventBus
     if (theme) this.theme = theme
+    // 计算值集合 (契约 §12.12.7): **在构造处**收下, 不在 setDocument。
+    //
+    // 判据是"它随什么走": templateDefinitions 随**文档**走 (从 artifact 读回,
+    // 换文档即换), 所以走 setDocument; 而计算值集合是 **per-editor 派生状态**,
+    // 与 Editor 同生命周期, 身份一次定死。放进 setDocument 会漏掉"文档从头到尾
+    // 没换过"的路径 —— `new Editor(host, doc)` 之后再没人调 setDocument, 于是
+    // Draw 手上永远是 null, 公式**一条都不生效**且不报错 (死接缝)。
+    this.computedValues = computedValues ?? null
 
     const dpr = this.host.surface.devicePixelRatio() || 1
     this.coordSystem = new CoordinateSystem(dpr)
@@ -174,6 +193,11 @@ export class Draw {
         controlType: def?.controlType ?? controlVisualType(def?.controlType, hasEnums, el?.format?.enums?.multiple === true),
         options: el?.format?.enums?.data,
         label: def?.label, prefix: def?.prefix, suffix: def?.suffix,
+        // 计算值 (契约 §12.12.8): 布局据此量宽与决定是否跳过。**只读 memo, 不在这里
+        // 重算** —— ensure() 由每趟开头调 (见 recomputeLayout / render), 放进这个
+        // 逐控件回调里会退化成 O(N²)。
+        computedDisplay: this.computedValues?.displayOf(nodeId),
+        visible: this.computedValues?.visibleOf(nodeId),
       }
     })
     this.renderer = new LayeredRenderer(this.host, this.coordSystem)
@@ -239,6 +263,9 @@ export class Draw {
   recomputeLayout(pool: NodePool, _invalidation?: string): SLIFPage[] {
     if (!this.document) return []
     this.pool = pool
+    // 计算值: 布局趟开头 ensure() 一次 (契约 §12.12.7)。脏了才真算, 时钟在那时读
+    // 一次; 不脏则连钟都不读 —— 于是同一份文档的布局与渲染必然读到同一个值。
+    this.computedValues?.ensure()
     // 当前统一全量布局; invalidation scope 预留用于未来增量优化
     this.pages = this.layoutEngine.fullLayout(this.document, pool)
     this.hitTestIndex.rebuild(this.pages)
@@ -567,6 +594,11 @@ export class Draw {
 
   render(pool?: NodePool, runtimeState?: EditorRuntimeState): void {
     if (this.pages.length === 0) return
+
+    // 计算值: 渲染趟开头 ensure() 一次 (契约 §12.12.7)。渲染**不重排** —— 它画的
+    // 是上一次布局产出的 SLIF, 而滚动/缩放每次都跑 render; 不在这里 ensure 就会
+    // 让"布局用旧值、绘制用新值"成为可能。
+    this.computedValues?.ensure()
 
     // ---- 画布主题 token 拍快照 (Draw 同步持表) ----
     const tokens: CanvasTokenSet = this.theme?.tokenSet ?? STANDARD_CANVAS_TOKENS
