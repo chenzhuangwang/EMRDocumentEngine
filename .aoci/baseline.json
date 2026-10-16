@@ -1,13 +1,13 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-16T09:00:14Z",
+  "updated_at": "2026-10-16T11:07:53Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
-      "sha256": "9371086f6ee472b129b9f50954bda7a817b64eddf92f72edf8b1e2229481e7eb",
-      "size": 186290,
-      "normalized_sha256": "9371086f6ee472b129b9f50954bda7a817b64eddf92f72edf8b1e2229481e7eb"
+      "sha256": "a880a320959c3e5ce62466a03f5729a4f12228e0dcaa7fba9412df61855660ad",
+      "size": 201901,
+      "normalized_sha256": "a880a320959c3e5ce62466a03f5729a4f12228e0dcaa7fba9412df61855660ad"
     },
     ".claude/CLAUDE.md": {
       "role": "index",
@@ -95,9 +95,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "3ed9101d1be91738505e9e08a58fbf9ea1d8f9824bf7665cb968685d8c58b576",
-      "size": 129871,
-      "normalized_sha256": "3ed9101d1be91738505e9e08a58fbf9ea1d8f9824bf7665cb968685d8c58b576"
+      "sha256": "848dda07998cf8d9aeb0c7867c71752834c3a49c71f5a5fb33e99b3d6cc23b45",
+      "size": 133589,
+      "normalized_sha256": "848dda07998cf8d9aeb0c7867c71752834c3a49c71f5a5fb33e99b3d6cc23b45"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -440,6 +440,12 @@
       "size": 5593,
       "normalized_sha256": "8c3cc76b7912e2721e68be8f31bbdd23157dc124b8347eaa00efeb2a2f0f826f"
     },
+    "frontend/src/__tests__/FormulaAuthoringGate.test.ts": {
+      "role": "observe",
+      "sha256": "564e4fd26d965dd8a03b06939fc8d452351e151428c2eb38bce1c4afc19ee8d3",
+      "size": 4963,
+      "normalized_sha256": "564e4fd26d965dd8a03b06939fc8d452351e151428c2eb38bce1c4afc19ee8d3"
+    },
     "frontend/src/__tests__/I18nGate.test.ts": {
       "role": "observe",
       "sha256": "e0592973f64d43f14569e5b47621d9e33c4b7c2bdd78b66831ba0496de8da0b4",
@@ -448,9 +454,9 @@
     },
     "frontend/src/__tests__/SectionModel.test.ts": {
       "role": "observe",
-      "sha256": "fb018d6260f78c973dc081bda0cdbcb037348285cff33ea44432cebdcaf5c5c5",
-      "size": 9762,
-      "normalized_sha256": "fb018d6260f78c973dc081bda0cdbcb037348285cff33ea44432cebdcaf5c5c5"
+      "sha256": "060c7cae9b6842388b19ee2d10600b22690fe4f02aa0d745698f2309d97253a6",
+      "size": 9943,
+      "normalized_sha256": "060c7cae9b6842388b19ee2d10600b22690fe4f02aa0d745698f2309d97253a6"
     },
     "frontend/src/__tests__/documentExport.demo.test.ts": {
       "role": "observe",
@@ -520,15 +526,15 @@
     },
     "frontend/src/components/dialogs/ControlChoiceDialog.tsx": {
       "role": "index",
-      "sha256": "f15edb162e170b7b17f844c0995b43f905d47cef753811ea6c9685c4d93db142",
-      "size": 21280,
-      "normalized_sha256": "eff4528d53edbf5cd78847f4f06ff1bd6f0626ec299ca6d31417b49b3dbdea33"
+      "sha256": "3723d6547e03505e09a8b0d23d0e12bca387e284fa1146e7d0520ce5ff024dfd",
+      "size": 22562,
+      "normalized_sha256": "3723d6547e03505e09a8b0d23d0e12bca387e284fa1146e7d0520ce5ff024dfd"
     },
     "frontend/src/components/dialogs/ControlInputDialog.tsx": {
       "role": "index",
-      "sha256": "1cf15fbe740930775c3d846b4ef69ed5ed4766f35b375ddd8b27552908afa722",
-      "size": 21333,
-      "normalized_sha256": "1cf15fbe740930775c3d846b4ef69ed5ed4766f35b375ddd8b27552908afa722"
+      "sha256": "cb13860e226f9c7dafb26cf3e5c54637d26a9c4ee3b38b9ee125d9107451057c",
+      "size": 22821,
+      "normalized_sha256": "cb13860e226f9c7dafb26cf3e5c54637d26a9c4ee3b38b9ee125d9107451057c"
     },
     "frontend/src/components/dialogs/DocumentPropertiesDialog.tsx": {
       "role": "index",
@@ -592,15 +598,15 @@
     },
     "frontend/src/components/dialogs/__tests__/ControlChoiceDialog.test.tsx": {
       "role": "observe",
-      "sha256": "d4d9c45ee0025ec0aa9ca4ce720fc0e481a350422a420548ca2a3abed2df783d",
-      "size": 8122,
-      "normalized_sha256": "d4d9c45ee0025ec0aa9ca4ce720fc0e481a350422a420548ca2a3abed2df783d"
+      "sha256": "f9adffcb3475048480148a614d11a4180824ead3a5593cc1ebbfe030b336c6c2",
+      "size": 11994,
+      "normalized_sha256": "f9adffcb3475048480148a614d11a4180824ead3a5593cc1ebbfe030b336c6c2"
     },
     "frontend/src/components/dialogs/__tests__/ControlInputDialog.test.tsx": {
       "role": "observe",
-      "sha256": "8600237dc5e3ebbd2dc48eb57e0566e925e09fcd24a63f19db49377a61762fcf",
-      "size": 17735,
-      "normalized_sha256": "8600237dc5e3ebbd2dc48eb57e0566e925e09fcd24a63f19db49377a61762fcf"
+      "sha256": "2163af0b85782bd3249d5222c35449aed50241977663a2f89f71755a9d1e9b57",
+      "size": 21118,
+      "normalized_sha256": "2163af0b85782bd3249d5222c35449aed50241977663a2f89f71755a9d1e9b57"
     },
     "frontend/src/components/dialogs/__tests__/DocumentPropertiesDialog.test.tsx": {
       "role": "observe",
@@ -613,6 +619,12 @@
       "sha256": "246befc5838b53428ee3dd8c84d552e44a1c6738b43dec584932bc0d215c2f37",
       "size": 2917,
       "normalized_sha256": "3ada1b7f077a4fb934083276e75c6b8998d02202b426a02bdc4fdb82ddfbff75"
+    },
+    "frontend/src/components/dialogs/__tests__/FormulaField.test.tsx": {
+      "role": "observe",
+      "sha256": "57145178409d8620f8b8a6b0c824cc9f8b9cfeb09710f3288594f406e072c6f4",
+      "size": 5373,
+      "normalized_sha256": "57145178409d8620f8b8a6b0c824cc9f8b9cfeb09710f3288594f406e072c6f4"
     },
     "frontend/src/components/dialogs/__tests__/PrintDialog.test.tsx": {
       "role": "observe",
@@ -634,9 +646,9 @@
     },
     "frontend/src/components/dialogs/controlConfigShared.tsx": {
       "role": "index",
-      "sha256": "424b6bedb486d6b099afd8493894d1f2f8f06220914bfff94ec4a5b0c731b214",
-      "size": 13600,
-      "normalized_sha256": "60d98f8ee0b4ec5ffac8b4e31fef6941181e8ca0fbd844912d72ef8687cc1c2f"
+      "sha256": "cf81aa3c7eccf7f22e85aee13573f1b546b35175d1d4c292b625f699021acce9",
+      "size": 19678,
+      "normalized_sha256": "cf81aa3c7eccf7f22e85aee13573f1b546b35175d1d4c292b625f699021acce9"
     },
     "frontend/src/components/editor/ContextMenu.tsx": {
       "role": "index",
@@ -1786,9 +1798,9 @@
     },
     "frontend/src/pages/EditorPage.tsx": {
       "role": "index",
-      "sha256": "f2a06ea53e1a8db15f2bb417deebfce7ade75d8269dd414889c3c5c41200b2eb",
-      "size": 75934,
-      "normalized_sha256": "2814ef3a89f95b618d2fb9c0ecae2843bbfde87e720136852548f1867752bb91"
+      "sha256": "fbeff93856d86d8b40c1d196ba15ed4cda391316b602442c5cea9a1d1937c3d1",
+      "size": 77579,
+      "normalized_sha256": "fbeff93856d86d8b40c1d196ba15ed4cda391316b602442c5cea9a1d1937c3d1"
     },
     "frontend/src/pages/HomePage.tsx": {
       "role": "index",
@@ -1990,9 +2002,9 @@
     },
     "knowledge/引擎能力补齐-设计方案.md": {
       "role": "index",
-      "sha256": "6483fb05bd7c8bd52811e0e3325c537f8909d3c327cbd12c36f9ca8ea5869fec",
-      "size": 58511,
-      "normalized_sha256": "6483fb05bd7c8bd52811e0e3325c537f8909d3c327cbd12c36f9ca8ea5869fec"
+      "sha256": "1d6419713cf28aeddadcb35cd6ae32313bb881fb0a348273901a5509624f140e",
+      "size": 88220,
+      "normalized_sha256": "1d6419713cf28aeddadcb35cd6ae32313bb881fb0a348273901a5509624f140e"
     },
     "knowledge/引擎集成指南/README.md": {
       "role": "index",
@@ -2008,9 +2020,9 @@
     },
     "knowledge/引擎集成指南/en-US/integration-into-external-project.md": {
       "role": "index",
-      "sha256": "aa4dcf17c0a05f7500d775f4d5d9efda0b32bf5ab0d5e69efa09af858642de57",
-      "size": 20289,
-      "normalized_sha256": "aa4dcf17c0a05f7500d775f4d5d9efda0b32bf5ab0d5e69efa09af858642de57"
+      "sha256": "b49a8b50fc03874d958c8727defd520cae897c63e98d7064935fcc89acc9ef41",
+      "size": 23733,
+      "normalized_sha256": "b49a8b50fc03874d958c8727defd520cae897c63e98d7064935fcc89acc9ef41"
     },
     "knowledge/引擎集成指南/zh-CN/README.md": {
       "role": "index",
@@ -2020,9 +2032,9 @@
     },
     "knowledge/引擎集成指南/zh-CN/集成到外部项目.md": {
       "role": "index",
-      "sha256": "5236b3e293bf6b424a762dbba5b53c5755a50f3cc01bc61d4dc1171b4b73d304",
-      "size": 19154,
-      "normalized_sha256": "5236b3e293bf6b424a762dbba5b53c5755a50f3cc01bc61d4dc1171b4b73d304"
+      "sha256": "5aac30cd4eff515b9aaf7ed344ba02f980c202c17f565137fbe883a55cd2c665",
+      "size": 22244,
+      "normalized_sha256": "5aac30cd4eff515b9aaf7ed344ba02f980c202c17f565137fbe883a55cd2c665"
     },
     "knowledge/引擎集成指南/指南总览.md": {
       "role": "index",
@@ -2296,9 +2308,9 @@
     },
     "packages/emr-document-engine/src/engine/Editor.ts": {
       "role": "index",
-      "sha256": "3fb34c1ff730902668670efab1678a85eb15fed7eac06c40e2433cf9bebd0964",
-      "size": 161996,
-      "normalized_sha256": "627377507193dfbb2ed38bc2afdcc6a12ef150c43f8ae7e44656297db334f2b0"
+      "sha256": "869f3d9dc16b3b5c50ed1e923976bd534a2cca3a3b3440045de1ff83269441a6",
+      "size": 167723,
+      "normalized_sha256": "869f3d9dc16b3b5c50ed1e923976bd534a2cca3a3b3440045de1ff83269441a6"
     },
     "packages/emr-document-engine/src/engine/ErrorRecovery.ts": {
       "role": "index",
@@ -2396,6 +2408,18 @@
       "size": 19217,
       "normalized_sha256": "ca4ba57c08ccfeedf2da8a38e61927fd7e055ca3c9b07719a48020cc22a48add"
     },
+    "packages/emr-document-engine/src/engine/__tests__/ComputedValuePipeline.test.ts": {
+      "role": "observe",
+      "sha256": "599a0806344c4fc5f0921d55985906aae1380b51c557794fb12a0589e1877e16",
+      "size": 17992,
+      "normalized_sha256": "599a0806344c4fc5f0921d55985906aae1380b51c557794fb12a0589e1877e16"
+    },
+    "packages/emr-document-engine/src/engine/__tests__/ComputedValues.test.ts": {
+      "role": "observe",
+      "sha256": "d6fb779fad7ae87bf3eb3654f31f938fd11c4a76b3cb0844772b6b1064710cc2",
+      "size": 18217,
+      "normalized_sha256": "d6fb779fad7ae87bf3eb3654f31f938fd11c4a76b3cb0844772b6b1064710cc2"
+    },
     "packages/emr-document-engine/src/engine/__tests__/ConfigureControl.test.ts": {
       "role": "observe",
       "sha256": "ce7e3a88b6735cd41a0c213092b81b500e2ec5c512441aea5ad59fe482245886",
@@ -2410,9 +2434,9 @@
     },
     "packages/emr-document-engine/src/engine/__tests__/ContractCompliance.test.ts": {
       "role": "observe",
-      "sha256": "6229c3253db5c78f0aab26881e496d1fd3ef59d30ea24a0bf0e42944cf902b9a",
-      "size": 13768,
-      "normalized_sha256": "6229c3253db5c78f0aab26881e496d1fd3ef59d30ea24a0bf0e42944cf902b9a"
+      "sha256": "05b26504d8232d06d8791377e8393f78dd5efa0ec43581ebb6f51e31920f1623",
+      "size": 17078,
+      "normalized_sha256": "05b26504d8232d06d8791377e8393f78dd5efa0ec43581ebb6f51e31920f1623"
     },
     "packages/emr-document-engine/src/engine/__tests__/ControlEditGeometry.test.ts": {
       "role": "observe",
@@ -2618,6 +2642,12 @@
       "size": 7091,
       "normalized_sha256": "e4840d99e1f99fa03505d4079f9f37fc11797b1ca9ca2f73975a1bb58e6ba281"
     },
+    "packages/emr-document-engine/src/engine/__tests__/ExpressionEngine.test.ts": {
+      "role": "observe",
+      "sha256": "d97dc8d6d4df34e712fd8338ccd1d65a67a36c312e2bcd4cc7a72af36c76feb6",
+      "size": 15612,
+      "normalized_sha256": "d97dc8d6d4df34e712fd8338ccd1d65a67a36c312e2bcd4cc7a72af36c76feb6"
+    },
     "packages/emr-document-engine/src/engine/__tests__/Factories.test.ts": {
       "role": "observe",
       "sha256": "19a677dd016f3d0319ebaf40e361f05f71b15fd7514918ad261331f1e313707e",
@@ -2782,9 +2812,9 @@
     },
     "packages/emr-document-engine/src/engine/__tests__/ModelUpgrader.test.ts": {
       "role": "observe",
-      "sha256": "11aa5aa15f799c2cbc7d67946f472ec6e7c6749fc0adeea7e3e1d373d3fd03e2",
-      "size": 10446,
-      "normalized_sha256": "11aa5aa15f799c2cbc7d67946f472ec6e7c6749fc0adeea7e3e1d373d3fd03e2"
+      "sha256": "f576253c30c5f4912c4e52fe30a9659b27e23fe2ec2febf17a6033874cdcd4cd",
+      "size": 14131,
+      "normalized_sha256": "f576253c30c5f4912c4e52fe30a9659b27e23fe2ec2febf17a6033874cdcd4cd"
     },
     "packages/emr-document-engine/src/engine/__tests__/MouseHandlerButton.test.ts": {
       "role": "observe",
@@ -3244,9 +3274,9 @@
     },
     "packages/emr-document-engine/src/engine/command/commands/UpdateControlDefinitionCommand.ts": {
       "role": "index",
-      "sha256": "5112ebbd7ca24eadc77895a7153f05fe5f0221f2d627a82a6ece6cfb8e0458aa",
-      "size": 3539,
-      "normalized_sha256": "5112ebbd7ca24eadc77895a7153f05fe5f0221f2d627a82a6ece6cfb8e0458aa"
+      "sha256": "c4b0787e1da696c1b220c11c7b98940d89b0e904dcde6a4d024c1f53eab1224e",
+      "size": 4772,
+      "normalized_sha256": "c4b0787e1da696c1b220c11c7b98940d89b0e904dcde6a4d024c1f53eab1224e"
     },
     "packages/emr-document-engine/src/engine/command/commands/UpdateControlElementCommand.ts": {
       "role": "index",
@@ -3394,9 +3424,9 @@
     },
     "packages/emr-document-engine/src/engine/document/version/DocumentFormatVersion.ts": {
       "role": "index",
-      "sha256": "a49364777e87dcde84a4f880b510fb60fe55fb94b768b53b5de1915029d762fc",
+      "sha256": "e772bfaea8615cd4002976148a8918226479c801765ab6e893361d1b857b00ed",
       "size": 3832,
-      "normalized_sha256": "a49364777e87dcde84a4f880b510fb60fe55fb94b768b53b5de1915029d762fc"
+      "normalized_sha256": "e772bfaea8615cd4002976148a8918226479c801765ab6e893361d1b857b00ed"
     },
     "packages/emr-document-engine/src/engine/document/version/EditorVersion.ts": {
       "role": "index",
@@ -3406,15 +3436,27 @@
     },
     "packages/emr-document-engine/src/engine/document/version/ModelUpgrader.ts": {
       "role": "index",
-      "sha256": "b5e1798dc85143a902ed18cd9bf555b1fc2041a22b66fe3e779bb1c1a3fb08c5",
-      "size": 10691,
-      "normalized_sha256": "b5e1798dc85143a902ed18cd9bf555b1fc2041a22b66fe3e779bb1c1a3fb08c5"
+      "sha256": "6781dd442e7aa58951f1ec067105d4713162fb58ef964c1fe7cf738d19770b5c",
+      "size": 12044,
+      "normalized_sha256": "6781dd442e7aa58951f1ec067105d4713162fb58ef964c1fe7cf738d19770b5c"
+    },
+    "packages/emr-document-engine/src/engine/evaluation/ComputedValues.ts": {
+      "role": "index",
+      "sha256": "5d00e035a756c3d7305d1bf694f59cdb0318e144b615f9d37d9bc0d6378f2411",
+      "size": 21134,
+      "normalized_sha256": "5d00e035a756c3d7305d1bf694f59cdb0318e144b615f9d37d9bc0d6378f2411"
     },
     "packages/emr-document-engine/src/engine/evaluation/ControlScorer.ts": {
       "role": "index",
       "sha256": "033c89e651e2cd258f281d73b02f953ef37bc2928a42000702a15c84f204f0d6",
       "size": 4323,
       "normalized_sha256": "033c89e651e2cd258f281d73b02f953ef37bc2928a42000702a15c84f204f0d6"
+    },
+    "packages/emr-document-engine/src/engine/evaluation/ExpressionEngine.ts": {
+      "role": "index",
+      "sha256": "046f7e9cdd2151246ec83edb0e3cff2301e7d0599fab06d11d793b317b50cde4",
+      "size": 33954,
+      "normalized_sha256": "046f7e9cdd2151246ec83edb0e3cff2301e7d0599fab06d11d793b317b50cde4"
     },
     "packages/emr-document-engine/src/engine/format/FormatPainter.ts": {
       "role": "index",
@@ -3430,9 +3472,9 @@
     },
     "packages/emr-document-engine/src/engine/i18n/index.ts": {
       "role": "index",
-      "sha256": "208507af78a8743e323c8b498b885485ef410aef0ce014aae9763f278ca3af9f",
-      "size": 139625,
-      "normalized_sha256": "42e7ae948aa0e551fd00b31de995bdf1365310c9364bea4d97d83e462c37bfbe"
+      "sha256": "e6a58a98f99c29b11ea54636228f4a431651109ad65427ab9636f38167c77e0d",
+      "size": 142501,
+      "normalized_sha256": "e6a58a98f99c29b11ea54636228f4a431651109ad65427ab9636f38167c77e0d"
     },
     "packages/emr-document-engine/src/engine/import/TemplateImporter.ts": {
       "role": "index",
@@ -3442,9 +3484,9 @@
     },
     "packages/emr-document-engine/src/engine/index.ts": {
       "role": "index",
-      "sha256": "af0a177f21507675e9bfc83a64a25af167213fe111b099f99f6cf6bf1f4ab029",
-      "size": 16365,
-      "normalized_sha256": "af0a177f21507675e9bfc83a64a25af167213fe111b099f99f6cf6bf1f4ab029"
+      "sha256": "0bb8dd78f094e4e7b526441f5425afb93198b0e8efad7998d7cfe164c7da1125",
+      "size": 16945,
+      "normalized_sha256": "0bb8dd78f094e4e7b526441f5425afb93198b0e8efad7998d7cfe164c7da1125"
     },
     "packages/emr-document-engine/src/engine/interaction/ControlHitTest.ts": {
       "role": "index",
@@ -3490,9 +3532,9 @@
     },
     "packages/emr-document-engine/src/engine/layout/core/LayoutEngine.ts": {
       "role": "index",
-      "sha256": "2643bcdfe515f8c1bd5bb2fc99bd5d814ffa07af23c3f143dca34855845a8339",
-      "size": 67445,
-      "normalized_sha256": "c182f0a0da91d49352b3a54aa62edde9e15bc2ff6008c99994754c551376f351"
+      "sha256": "8259608980a490fff601afc942da4bca9df5212dce88706495e6abd246b293f2",
+      "size": 70126,
+      "normalized_sha256": "57d4aeab4d10e2567736dfc0908ec6d588f4082180bf5b6deba293183c791f69"
     },
     "packages/emr-document-engine/src/engine/layout/core/LayoutResult.ts": {
       "role": "index",
@@ -3652,9 +3694,9 @@
     },
     "packages/emr-document-engine/src/engine/render/Draw.ts": {
       "role": "index",
-      "sha256": "eed56aa12e7b1400e411be75c0a1510003704701afaa282496dbad41f812a286",
-      "size": 89511,
-      "normalized_sha256": "6745a906f3f43317c443da7c50dce8a47ec5b1f14faa69e07b2c3f82aec6ded2"
+      "sha256": "394171d7d873537a101f1be72565914e28c8ee0f9ee94191f113dcf2887dc328",
+      "size": 91733,
+      "normalized_sha256": "f1acf2227fffe4d5efe9206bf034c936ab2b7b88707424cd856daf0396834986"
     },
     "packages/emr-document-engine/src/engine/render/HitTestIndex.ts": {
       "role": "index",
@@ -3820,9 +3862,9 @@
     },
     "packages/emr-document-engine/src/engine/template/TemplateDefinition.ts": {
       "role": "index",
-      "sha256": "90593805268fa9ef2049026ab2811c334694c67556cd1f83642d1f8e88d1a87b",
-      "size": 4797,
-      "normalized_sha256": "90593805268fa9ef2049026ab2811c334694c67556cd1f83642d1f8e88d1a87b"
+      "sha256": "816293c2404367bf0955ea9c3d4d5725b5ea368002e82ebafb0464b8314bb4b3",
+      "size": 6268,
+      "normalized_sha256": "816293c2404367bf0955ea9c3d4d5725b5ea368002e82ebafb0464b8314bb4b3"
     },
     "packages/emr-document-engine/src/lib/__tests__/documentExport.test.ts": {
       "role": "observe",
@@ -3844,9 +3886,9 @@
     },
     "packages/emr-document-engine/src/lib/documentExport.ts": {
       "role": "index",
-      "sha256": "03c73e3eb023b63a4356cf61cdbd676bca6aa54e70f0862c44f4fe596ce85a7f",
-      "size": 14326,
-      "normalized_sha256": "03c73e3eb023b63a4356cf61cdbd676bca6aa54e70f0862c44f4fe596ce85a7f"
+      "sha256": "fbc2947b0f2b13067f3c440cd4284ceb8fb27cc5200c9a84476e0bb427dfe890",
+      "size": 15778,
+      "normalized_sha256": "fbc2947b0f2b13067f3c440cd4284ceb8fb27cc5200c9a84476e0bb427dfe890"
     },
     "packages/emr-document-engine/src/lib/export/__tests__/cdaExport.test.ts": {
       "role": "observe",
@@ -3898,9 +3940,9 @@
     },
     "packages/emr-document-engine/src/lib/export/fields.ts": {
       "role": "index",
-      "sha256": "59fa4543df138aeee08558f0ec52b3361a3fc062d4532f473eaefe0d2ec682f1",
-      "size": 14107,
-      "normalized_sha256": "59fa4543df138aeee08558f0ec52b3361a3fc062d4532f473eaefe0d2ec682f1"
+      "sha256": "96641afe51f4a1cb1e02523f26e920a22f1beb253bfda874de8465c8c8937c88",
+      "size": 14653,
+      "normalized_sha256": "96641afe51f4a1cb1e02523f26e920a22f1beb253bfda874de8465c8c8937c88"
     },
     "packages/emr-document-engine/src/lib/export/index.ts": {
       "role": "index",
