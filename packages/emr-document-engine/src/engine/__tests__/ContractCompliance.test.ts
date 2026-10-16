@@ -217,6 +217,64 @@ describe('契约不变量可执行验证 (ContractCompliance)', () => {
       .toEqual(['command/commands/SetControlValueCommand.ts'])
   })
 
+  it('§12.12.2: 求值器不得读挂钟, 也不得触任何宿主全局', () => {
+    // evaluation/ 是白名单文法的求值器 —— 它对标的是"参考实现直接跑裸 JS"
+    // 那个反面。三条禁令各有理由:
+    //   new Date() / Date.now() → 时钟必须由持 computed-value set 的一方在重算
+    //     那一刻注入 (§12.12.7); 求值器自己读钟会让布局与绘制拿到两个时刻。
+    //     **只禁无参 new Date()**: `new Date(y, m, d)` 是确定性的日期解析
+    //     (把作者的 'YYYY-MM-DD' 变成 Date 去做差), 与读挂钟是两件事。
+    //   eval / new Function      → 白名单文法形同虚设。
+    //   globalThis / window / document → §27-§29 纯净性。**必须按"全局访问"形状
+    //     匹配**(后接 . 或 [), 否则会把 import 路径里的 `../document/core/...`
+    //     判成宿主全局 —— 这条闸门第一版就栽在这里。
+    const banned: Array<{ re: RegExp; why: string }> = [
+      { re: /\bnew\s+Date\s*\(\s*\)/, why: 'reads the clock (must be injected)' },
+      { re: /\bDate\s*\.\s*now\s*\(/, why: 'reads the clock (must be injected)' },
+      { re: /\beval\s*\(/, why: 'eval' },
+      { re: /\bnew\s+Function\s*\(/, why: 'new Function' },
+      { re: /\bglobalThis\b/, why: 'host global' },
+      { re: /(^|[^.\w])window[.[]/, why: 'host global' },
+      { re: /(^|[^.\w])document[.[]/, why: 'host global' },
+    ]
+    const files = ENGINE_FILES.filter((f) => f.includes('/evaluation/'))
+    // 自证非空: 目录被挪走时这条必须红, 而不是"零个文件所以零违例"
+    expect(files.length, 'evaluation/ 下应有源文件').toBeGreaterThan(0)
+
+    const hits: string[] = []
+    for (const file of files) {
+      const src = stripComments(engineSources[file])
+      for (const { re, why } of banned) {
+        re.lastIndex = 0
+        const m = re.exec(src)
+        if (m) hits.push(`${rel(file)}:${lineOf(src, m.index)}  ${why}`)
+      }
+    }
+    expect(hits, `求值器触了禁止的东西 (契约 §12.12.2/§12.12.7):\n  ${hits.join('\n  ')}`)
+      .toEqual([])
+  })
+
+  it('§12.8: 控件折行的调用点只允许在 ControlLayoutHint (渲染侧只能读 controlLines)', () => {
+    // 这条守的是 §12.8 已经真出过一次的漂移: 表格 cell 与页眉页脚两条路径
+    // 当年**连 textarea 分支都没有**, 于是控件整块横向溢出。折行决策是"每配方
+    // 一份实现"的典型嫌疑人, 所以钉住调用点而不是钉住"有没有折行代码"。
+    //
+    // wrapControlText 的**定义**在 layout/text/TextWrap.ts、经引擎 barrel
+    // re-export(供外部), 这些都合法; 非法的是**在别处再调用它**去自己折一次。
+    const re = /\bwrapControlText\s*\(/g
+    const hits: string[] = []
+    for (const file of ENGINE_FILES) {
+      const src = stripComments(engineSources[file])
+      // 定义处与 barrel 的 re-export 不算调用点
+      if (file.endsWith('/layout/text/TextWrap.ts')) continue
+      if (file.endsWith('/engine/index.ts')) continue
+      re.lastIndex = 0
+      if (re.test(src)) hits.push(rel(file))
+    }
+    expect(hits, `控件折行被搬到了别处 (契约 §12.8):\n  ${hits.join('\n  ')}`)
+      .toEqual(['layout/control/ControlLayoutHint.ts'])
+  })
+
   it('§6.1: 不得绕过 NodePool 直接变更 pool.nodes', () => {
     const re = /\.nodes\.(set|delete)\(/g
     const hits: string[] = []
