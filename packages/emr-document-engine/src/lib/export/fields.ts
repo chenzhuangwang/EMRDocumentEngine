@@ -266,6 +266,11 @@ function buildField(
   const def = input.templateDefinitions?.get(nodeId)
   const format = element?.format
   const enumOptions = enumOptionsFor(nodeId, element, input.optionsOf)
+  // display 只由**实际值**决定, 刻意不看计算值 (§12.12) —— 见文件头「数据路径」一节:
+  // 计算值是给读者看的派生显示 (屏幕/打印/OFD 页面/TXT/HTML 都读它), 而这里产出的是
+  // **数据** (结构化元素 / CDA 观察值 / OFD 数据区), 里面出现的每一个值都必须是医生
+  // 真正填下的。把算出来的值混进来, 就等于让下游系统以为"这个字段有值", 与
+  // §12.12.1 第 3 条 (计算值不得冒充已填) 同一件事, 只是换了个出口。
   const { display, source: displaySource } = resolveDisplay(value, placeholder, enumOptions)
 
   return {

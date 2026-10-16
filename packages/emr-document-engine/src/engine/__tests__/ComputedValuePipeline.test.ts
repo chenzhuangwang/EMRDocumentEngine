@@ -26,6 +26,7 @@ import {
 } from '../document/factory/ElementFormatter'
 import { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import { getFlatPageItems } from '../layout/core/SLIF'
+import { buildExportText, buildExportHtml } from '../../lib/documentExport'
 import { paragraphTextLength } from '../document/selection/SelectionCollector'
 import { NodeType } from '../document/core/DocumentModel'
 import type { Paragraph } from '../document/core/DocumentModel'
@@ -311,6 +312,39 @@ describe('可见性 SHOW / HIDE (§12.12.5)', () => {
     // 一起变红 —— 那正是需要有人来做决定的地方, 而不是让它悄悄漂移。
   })
 })
+
+// ================================================================
+// 往返一致 (契约 §4 / 设计 §3.4 第 4 条): 屏幕与导出件读同一个值
+// ================================================================
+
+describe('屏幕与导出件一致 (§12.12.1)', () => {
+  const EXPORT_NOW = new Date('2026-10-16T00:00:00Z')
+
+  it('TXT / HTML 导出件里的计算值与屏幕相同 (同一份 memo, 不各自求值)', () => {
+    const f = makeFixture([[{ ctrl: '源' }, { ctrl: '合计' }]], [
+      { name: '源', key: 'SRC', value: 2, dataType: 'N' },
+      { name: '合计', key: 'TOTAL', formula: '[SRC] + 1' },
+    ])
+    expect(laidOutText(f.editor, f.id['合计'])).toBe('3')
+
+    const doc = f.editor.getDocument()
+    const pool = f.editor.getPool()
+    // displayOf 传的就是引擎那一份 memo —— 导出件不自己求值, 也不知道公式长什么样
+    const displayOf = (id: string) => f.editor.getComputedDisplay(id)
+
+    expect(buildExportText(doc, pool, EXPORT_NOW, displayOf)).toBe('23')
+    expect(buildExportHtml(doc, pool, EXPORT_NOW, displayOf)).toContain('23')
+
+    // 打印与 OFD 无需再测: 它们消费的正是这份 SLIF (Draw.getPages →
+    // renderPageToContext / buildOfdModel), 计算值在布局期就进了 item.text,
+    // 与上面第一条断言是同一份数据 —— §12.12.7 的 memo 就是这个"构造上一致"。
+
+    // 不传 displayOf → 逐字回到旧行为 (占位符): 老调用方与那批严格全串断言的
+    // 导出用例因此不受影响。
+    expect(buildExportText(doc, pool, EXPORT_NOW)).toBe('2[合计]')
+  })
+})
+
 
 // ================================================================
 // 与 §12.11 完整性闸门的边界

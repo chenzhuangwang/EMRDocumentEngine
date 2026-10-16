@@ -1064,6 +1064,8 @@ function EditorPageInner({
     if (!ed) return
     const doc = ed.getDocument()
     const pool = ed.getPool()
+    /** 计算值 (契约 §12.12.1): 导出件与屏幕必须读到同一份 memo, 不各自求值 */
+    const computedDisplayOf = (id: string) => ed.getComputedDisplay(id)
 
     if (format === 'json') {
       const tocGen = new TOCGenerator()
@@ -1084,15 +1086,17 @@ function EditorPageInner({
       URL.revokeObjectURL(url)
     } else if (format === 'txt') {
       // 页眉 + 正文 + 页脚 (含 smarttext 显示值 / 域代码), 见 lib/documentExport
+      // displayOf: 计算值 (契约 §12.12.1) —— 导出件必须与屏幕显示同一个值, 否则
+      // 屏幕上写着"40 岁"、TXT 里是个占位符, 而两边都对得上各自的代码。
       // stampExportText: 末尾追加不可见溯源标识 (不进入文档模型, 不改纯函数输出)
-      const blob = new Blob([stampExportText(buildExportText(doc, pool))], { type: 'text/plain' })
+      const blob = new Blob([stampExportText(buildExportText(doc, pool, new Date(), computedDisplayOf))], { type: 'text/plain' })
       const url = URL.createObjectURL(blob)
       const a = window.document.createElement('a')
       a.href = url; a.download = `document-${Date.now()}.txt`; a.click()
       URL.revokeObjectURL(url)
     } else if (format === 'html') {
       // stampExportHtml: head 内注入可读 meta, 正文末尾注入不可见溯源标识
-      const blob = new Blob([stampExportHtml(buildExportHtml(doc, pool))], { type: 'text/html' })
+      const blob = new Blob([stampExportHtml(buildExportHtml(doc, pool, new Date(), computedDisplayOf))], { type: 'text/html' })
       const url = URL.createObjectURL(blob)
       const a = window.document.createElement('a')
       a.href = url; a.download = `document-${Date.now()}.html`; a.click()

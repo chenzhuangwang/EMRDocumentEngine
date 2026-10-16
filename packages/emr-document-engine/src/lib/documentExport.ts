@@ -35,6 +35,8 @@ interface ParaLike {
   list?: ListStyle
 }
 interface InlineLike {
+  /** 节点 id —— 计算值按 nodeId 取 (契约 §12.12.1) */
+  id: string
   type?: string
   text?: string
   value?: unknown
@@ -93,6 +95,19 @@ function makeOrderedCounters() {
 }
 
 /** 域代码在导出稿中的解析上下文 (无分页 → 页数类域退化为 1) */
+/**
+ * 计算值的显示解析 (契约 §12.12.1/§12.12.8) —— 由调用方注入, 缺省 = 没有公式。
+ *
+ * 为什么导出**必须**读同一份: 计算值与域代码同类 (每次读现算、从不落盘), 而域代码在
+ * 本文件里就是这么处理的 (`resolveFieldText`)。少了这一路, 屏幕上写着"40 岁"、导出
+ * 件里却是一个占位符 —— 契约 §4 的往返一致 (屏幕与打印/导出同形) 当场破掉, 而两份
+ * 产物都对得上各自的代码, 谁都不会报错。
+ *
+ * 实现只认这一个入口: 传进来的通常就是 `Editor.getComputedDisplay` (它读的是那份
+ * memo, 三处消费者因此**构造上**一致), 本文件不自己求值、也不知道公式长什么样。
+ */
+export type ComputedDisplayOf = (nodeId: string) => string | undefined
+
 function exportFieldContext(doc: DocumentTree, now: Date) {
   // locale 现读: 导出件里的日期域格式应与导出那一刻的界面语言一致
   // (与渲染期 Draw.resolveFieldText 同源, 否则屏幕与导出件不一致)
@@ -105,6 +120,7 @@ export function collectParagraphText(
   pool: ExportPool,
   doc: DocumentTree,
   now: Date,
+  displayOf?: ComputedDisplayOf,
 ): string {
   const para = pool.nodes.get(paraId) as ParaLike | undefined
   if (!para?.children) return ''
@@ -114,7 +130,8 @@ export function collectParagraphText(
     const n = pool.nodes.get(cid) as InlineLike | undefined
     if (!n) continue
     if (n.type === 'text') out += (n.text || '')
-    else if (n.type === 'smarttext') out += smartTextDisplayValue(n as { text: string; value?: never })
+    // 计算值优先, 没有就退回值/占位符 —— 与布局侧 controlViewOf 同一条次序
+    else if (n.type === 'smarttext') out += displayOf?.(n.id) ?? smartTextDisplayValue(n as { text: string; value?: never })
     else if (n.type === 'field') out += resolveFieldText(n.fieldType, n.cachedValue, ctx)
   }
   return out
@@ -159,16 +176,17 @@ function collectCellText(
   pool: ExportPool,
   doc: DocumentTree,
   now: Date,
+  displayOf?: ComputedDisplayOf,
 ): string {
   const cell = pool.nodes.get(cellId) as CellLike | undefined
   if (!cell?.children) return ''
   const parts: string[] = []
   for (const childId of cell.children) {
     if (isTableNode(childId, pool)) {
-      const nested = collectTableText(childId, pool, doc, now)
+      const nested = collectTableText(childId, pool, doc, now, displayOf)
       if (nested) parts.push(nested)
     } else {
-      parts.push(collectParagraphText(childId, pool, doc, now))
+      parts.push(collectParagraphText(childId, pool, doc, now, displayOf))
     }
   }
   // 单元格内容必须留在**单行**内: 文本节点里可能带字面 \n (作者敲的回车),
@@ -186,6 +204,7 @@ export function collectTableText(
   pool: ExportPool,
   doc: DocumentTree,
   now: Date,
+  displayOf?: ComputedDisplayOf,
 ): string {
   const matrix = buildTableGrid(tableId, pool)
   const lines: string[] = []
@@ -193,7 +212,7 @@ export function collectTableText(
     const cells: string[] = []
     for (let c = 0; c < matrix.cols; c++) {
       const cellId = originCellAt(matrix, r, c)
-      cells.push(cellId ? collectCellText(cellId, pool, doc, now) : '')
+      cells.push(cellId ? collectCellText(cellId, pool, doc, now, displayOf) : '')
     }
     lines.push(cells.join('\t'))
   }
@@ -203,7 +222,9 @@ export function collectTableText(
 /**
  * 纯文本导出: 页眉块 → 正文块 → 页脚块 (块间空行分隔)。
  */
-export function buildExportText(doc: DocumentTree, pool: ExportPool, now: Date = new Date()): string {
+export function buildExportText(
+  doc: DocumentTree, pool: ExportPool, now: Date = new Date(), displayOf?: ComputedDisplayOf,
+): string {
   const blocks: string[] = []
   const blocksToEmit: Array<readonly string[]> = [
     hfParagraphsForExport(doc, 'header'),
@@ -218,13 +239,13 @@ export function buildExportText(doc: DocumentTree, pool: ExportPool, now: Date =
       // 再被逐个子节点当成行 id 遍历 → 静默产出一个空行。
       if (isTableNode(paraId, pool)) {
         counters.marker(undefined)   // 表格是块级非列表元素, 编号在此断掉
-        const tableText = collectTableText(paraId, pool, doc, now)
+        const tableText = collectTableText(paraId, pool, doc, now, displayOf)
         if (tableText) lines.push(tableText)
         continue
       }
       const para = pool.nodes.get(paraId) as ParaLike | undefined
       if (!para?.children) continue
-      lines.push(counters.marker(para.list) + collectParagraphText(paraId, pool, doc, now))
+      lines.push(counters.marker(para.list) + collectParagraphText(paraId, pool, doc, now, displayOf))
     }
     if (lines.length > 0) blocks.push(lines.join('\n'))
   }
@@ -239,6 +260,7 @@ export function collectParagraphRuns(
   pool: ExportPool,
   doc: DocumentTree,
   now: Date,
+  displayOf?: ComputedDisplayOf,
 ): Run[] {
   const para = pool.nodes.get(paraId) as ParaLike | undefined
   if (!para?.children) return []
@@ -249,7 +271,7 @@ export function collectParagraphRuns(
     if (!n) continue
     let piece = ''
     if (n.type === 'text') piece = n.text || ''
-    else if (n.type === 'smarttext') piece = smartTextDisplayValue(n as { text: string; value?: never })
+    else if (n.type === 'smarttext') piece = displayOf?.(n.id) ?? smartTextDisplayValue(n as { text: string; value?: never })
     else if (n.type === 'field') piece = resolveFieldText(n.fieldType, n.cachedValue, ctx)
     if (!piece) continue
     const run: Run = { text: piece, bold: !!n.bold, italic: !!n.italic, underline: !!n.underline }
@@ -286,6 +308,7 @@ function emitHtmlBlock(
   doc: DocumentTree,
   now: Date,
   out: string[],
+  displayOf?: ComputedDisplayOf,
 ): void {
   const counters = makeOrderedCounters()
   let inListType = ''       // 'bullet' | 'ordered' | ''
@@ -303,12 +326,12 @@ function emitHtmlBlock(
     if (isTableNode(paraId, pool)) {
       flushList()
       counters.marker(undefined)
-      emitHtmlTable(paraId, pool, doc, now, out)
+      emitHtmlTable(paraId, pool, doc, now, out, displayOf)
       continue
     }
     const para = pool.nodes.get(paraId) as ParaLike | undefined
     if (!para?.children) continue
-    const htmlText = runsToHtml(collectParagraphRuns(paraId, pool, doc, now))
+    const htmlText = runsToHtml(collectParagraphRuns(paraId, pool, doc, now, displayOf))
     const list = para.list
 
     if (list) {
@@ -340,6 +363,7 @@ function emitHtmlTable(
   doc: DocumentTree,
   now: Date,
   out: string[],
+  displayOf?: ComputedDisplayOf,
 ): void {
   const table = pool.nodes.get(tableId) as TableLike | undefined
   if (!table?.children?.length) return
@@ -358,8 +382,8 @@ function emitHtmlTable(
       if (span && span.rowspan > 1) attrs += ` rowspan="${span.rowspan}"`
       out.push(`<${tag}${attrs}>`)
       for (const childId of cell?.children ?? []) {
-        if (isTableNode(childId, pool)) emitHtmlTable(childId, pool, doc, now, out)
-        else out.push(runsToHtml(collectParagraphRuns(childId, pool, doc, now)))
+        if (isTableNode(childId, pool)) emitHtmlTable(childId, pool, doc, now, out, displayOf)
+        else out.push(runsToHtml(collectParagraphRuns(childId, pool, doc, now, displayOf)))
       }
       out.push(`</${tag}>`)
     }
@@ -372,7 +396,9 @@ function emitHtmlTable(
  * HTML 导出: 页眉块 → 正文块 → 页脚块。
  * 页眉/页脚用 <header>/<footer> 包住, 便于区分。
  */
-export function buildExportHtml(doc: DocumentTree, pool: ExportPool, now: Date = new Date()): string {
+export function buildExportHtml(
+  doc: DocumentTree, pool: ExportPool, now: Date = new Date(), displayOf?: ComputedDisplayOf,
+): string {
   const out: string[] = [
     '<!DOCTYPE html><html><head><meta charset="utf-8"><title>',
     escapeHtml(doc.title),
@@ -382,16 +408,16 @@ export function buildExportHtml(doc: DocumentTree, pool: ExportPool, now: Date =
   const header = hfParagraphsForExport(doc, 'header')
   if (header.length > 0) {
     out.push('<header>')
-    emitHtmlBlock(header, pool, doc, now, out)
+    emitHtmlBlock(header, pool, doc, now, out, displayOf)
     out.push('</header>')
   }
 
-  emitHtmlBlock(bodyBlockSpine(doc, pool), pool, doc, now, out)
+  emitHtmlBlock(bodyBlockSpine(doc, pool), pool, doc, now, out, displayOf)
 
   const footer = hfParagraphsForExport(doc, 'footer')
   if (footer.length > 0) {
     out.push('<footer>')
-    emitHtmlBlock(footer, pool, doc, now, out)
+    emitHtmlBlock(footer, pool, doc, now, out, displayOf)
     out.push('</footer>')
   }
 
