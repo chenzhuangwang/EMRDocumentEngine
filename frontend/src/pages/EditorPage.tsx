@@ -33,6 +33,7 @@ import { PerfPanel } from '@/components/panels/PerfPanel'
 import { PasteSpecialDialog, type PasteFormat } from '@/components/dialogs/PasteSpecialDialog'
 import { BookmarkDialog } from '@/components/dialogs/BookmarkDialog'
 import { SectionCodeDialog } from '@/components/dialogs/SectionCodeDialog'
+import { CompletenessDialog } from '@/components/dialogs/CompletenessDialog'
 import { DocumentPropertiesDialog } from '@/components/dialogs/DocumentPropertiesDialog'
 import { ControlInputDialog } from '@/components/dialogs/ControlInputDialog'
 import { ControlChoiceDialog } from '@/components/dialogs/ControlChoiceDialog'
@@ -58,6 +59,7 @@ import type { OutlineItem, SectionOutlineAction } from '@/components/sidebar/Out
 import { buildOutlineItems } from '@/components/sidebar/outlineModel'
 import type { EditorMode, ScoreResult, WatermarkConfig, PerfSummary } from '@emrde/document-engine'
 import type { QCIssue, QCResult } from '@emrde/document-engine'
+import type { MissingField } from '@emrde/document-engine'
 
 /**
  * 触发一次下载 (Blob → object URL → 隐藏 <a> 点击 → 释放)。
@@ -177,7 +179,34 @@ function EditorPageInner({
   type WizardKind = 'textInput' | 'radio' | 'checkbox'
   const [controlWizard, setControlWizard] = useState<{ open: boolean; kind: WizardKind }>({ open: false, kind: 'textInput' })
   const [controlEdit, setControlEdit] = useState<{ open: boolean; nodeId: string }>({ open: false, nodeId: '' })
-  const openControlEdit = useCallback((controlId: string) => setControlEdit({ open: true, nodeId: controlId }), [])
+  /**
+   * 各绑定键被**其他**控件占用的次数 (契约 §12.10.1) — 供控件配置弹框的撞键提示。
+   *
+   * 排除 excludeNodeId 是有意的: 提示要回答的是「改完之后会跟谁撞」, 不是「现在
+   * 跟谁撞」。既然自身被排除, 判定就只有一条规则 —— others >= 1 即撞 (弹框里
+   * 展示的 n 再 +1 把自己算回去)。
+   *
+   * 空键 (无身份的控件) 不计入: 它们既不为绑定服务, 也不该在输入框里被"撞中"。
+   */
+  const keyUsageOf = useCallback((excludeNodeId?: string): Map<string, number> => {
+    const counts = new Map<string, number>()
+    const ed = editorRef.current
+    if (!ed) return counts
+    for (const item of ed.getBoundValues().items) {
+      if (item.key === '') continue
+      if (excludeNodeId !== undefined && item.nodeId === excludeNodeId) continue
+      counts.set(item.key, (counts.get(item.key) ?? 0) + 1)
+    }
+    return counts
+  }, [editorRef])
+
+  /** 撞键提示的文档快照 — 打开弹框时取一次 (见 keyUsageOf 与弹框的 otherKeyUsage) */
+  const [controlKeyUsage, setControlKeyUsage] = useState<ReadonlyMap<string, number>>(new Map())
+
+  const openControlEdit = useCallback((controlId: string) => {
+    setControlKeyUsage(keyUsageOf(controlId))
+    setControlEdit({ open: true, nodeId: controlId })
+  }, [keyUsageOf])
   // 通用菜单只发 'properties' id; 弹框映射在设计态业务层这里完成 (契约 §12.7)。
   // 节代码对话框 (单字段): 记录目标节 id, 打开时从引擎读当前值
   const [sectionCodeTarget, setSectionCodeTarget] = useState<{ open: boolean; sectionId: string }>(
@@ -222,6 +251,15 @@ function EditorPageInner({
   const [pageSetupOpen, setPageSetupOpen] = useState(false)
   /** 质控结果 (契约 §12.2) — 只读派生, null = 尚未检查 */
   const [qcResult, setQcResult] = useState<QCResult | null>(null)
+  /**
+   * 保存前的必填未填确认框 (契约 §12.11)。missing 是**弹框打开那一刻**的快照:
+   * 弹框期间用户可能已经填了几个, 但"缺哪些"以本次保存的判定为准 —— 用户选
+   * "仍然保存"后不再重新判定 (避免"越填越弹")。
+   */
+  const [completeness, setCompleteness] = useState<{ open: boolean; missing: MissingField[] }>(
+    { open: false, missing: [] },
+  )
+
   /** 打印预览的页面图 (null = 未打开预览) */
   const [printPages, setPrintPages] = useState<string[] | null>(null)
   const [previewPage, setPreviewPage] = useState(0)
@@ -724,7 +762,8 @@ function EditorPageInner({
     }
   }, [editorRef])
 
-  const handleSave = useCallback(async () => {
+  /** 真正落盘 (不带闸门) —— Ctrl+S / 工具栏 / 确认框的"仍然保存"共用同一条路径 */
+  const performSave = useCallback(async () => {
     const editor = editorRef.current
     if (!editor) return
     const store = editor.getStore()
@@ -747,7 +786,40 @@ function EditorPageInner({
       console.error('保存失败:', err)
       store.setSaveStatus('error')
     }
-  }, [isNew, docId, editorRef])
+  }, [isNew, docId, editorRef, navigate])
+
+  /**
+   * 保存入口 (契约 §12.11): 先过完整性闸门, **再**落盘。
+   *
+   * 闸门**不硬拦** —— 缺必填项时弹确认框列出未填项 (可点击跳转), 三个出口:
+   * 跳到第一处 / 仍然保存 / 取消。理由是临床工作流: 医生要中途存草稿时硬拦会
+   * 丢工作, 而"存了一份不全的病历"至少是**可见**的 (确认框明说了缺什么)。
+   *
+   * 引擎只判定 (Editor.validateRequired), 拦不拦是本组件的事 —— 保存的所有权
+   * 在应用侧, 引擎不拥有保存 (§12.11)。
+   */
+  const handleSave = useCallback(async () => {
+    const editor = editorRef.current
+    if (!editor) return
+    const { ok, missing } = editor.validateRequired()
+    if (!ok) {
+      setCompleteness({ open: true, missing })
+      return
+    }
+    await performSave()
+  }, [editorRef, performSave])
+
+  /** 确认框"仍然保存" — 用户已看过缺项并明确选择继续 */
+  const handleSaveAnyway = useCallback(async () => {
+    setCompleteness({ open: false, missing: [] })
+    await performSave()
+  }, [performSave])
+
+  /** 确认框条目跳转 — 与质控问题/批注共用 revealLocation, 不另写一套定位 */
+  const handleMissingJump = useCallback((field: MissingField) => {
+    revealLocation(field.paragraphPath, 0)
+    setCompleteness({ open: false, missing: [] })
+  }, [revealLocation])
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -1161,6 +1233,9 @@ function EditorPageInner({
         if (type === 'section') { ed.insertSection(); return }
         // 表单控件 3 类向导 (契约 §12.7): 打开对应配置弹框, 确定后再插到光标
         if (type === 'textInput' || type === 'radio' || type === 'checkbox') {
+          // 撞键提示的文档快照, **在打开这一刻取一次** —— 不放在渲染里, 否则弹框里
+          // 每敲一个字符都要把全文投影重算一遍 (契约 §12.10.2 的投影不便宜)。
+          setControlKeyUsage(keyUsageOf())
           setControlWizard({ open: true, kind: type })
           return
         }
@@ -1235,6 +1310,7 @@ function EditorPageInner({
           open
           mode="create"
           initial={initialConfigForCreate('textInput')}
+          otherKeyUsage={controlKeyUsage}
           onClose={() => setControlWizard({ open: false, kind: controlWizard.kind })}
           onApply={applyWizardResult}
         />
@@ -1259,7 +1335,7 @@ function EditorPageInner({
         return family === 'choice' ? (
           <ControlChoiceDialog open mode="edit" initial={initial} onClose={closeControlEdit} onApply={applyControlEdit} />
         ) : (
-          <ControlInputDialog open mode="edit" initial={initial} onClose={closeControlEdit} onApply={applyControlEdit} />
+          <ControlInputDialog open mode="edit" initial={initial} otherKeyUsage={controlKeyUsage} onClose={closeControlEdit} onApply={applyControlEdit} />
         )
       })()}
       <DocumentPropertiesDialog
@@ -1388,6 +1464,14 @@ function EditorPageInner({
           editorRef.current?.setSectionCode(sectionCodeTarget.sectionId, code)
           setSectionCodeTarget((s) => ({ ...s, open: false }))
         }}
+      />
+      {/* 保存前完整性闸门 (契约 §12.11) — 只列缺项, 不硬拦 */}
+      <CompletenessDialog
+        open={completeness.open}
+        missing={completeness.missing}
+        onJump={handleMissingJump}
+        onSaveAnyway={handleSaveAnyway}
+        onClose={() => setCompleteness({ open: false, missing: [] })}
       />
       <BookmarkDialog
         open={bookmarkOpen}

@@ -20,6 +20,7 @@
 //   §6.2 非结构字段外部直写禁令      (pageSetup/headerFooterConfig/metadata/modelVersion)
 //   §15  EventBus 唯一实现
 //   §12.4 WatermarkConfig 单一 canonical home (document/core/DocumentModel)
+//   §12.6 VR-3 池内 value 变更单入口 (SetControlValueCommand)
 //
 // 这类不变量此前靠人肉审计 + 注释约定; 本测试让回归在 CI 直接暴露。
 //
@@ -192,6 +193,28 @@ describe('契约不变量可执行验证 (ContractCompliance)', () => {
       }
     }
     expect(hits, `engine 反向依赖 src/lib (契约 §19/§27/§32):\n  ${hits.join('\n  ')}`).toEqual([])
+  })
+
+  it('§12.6/VR-3: 池内节点的 value 变更只有一个入口 (SetControlValueCommand)', () => {
+    // 真正的不变量是「**池内**节点的运行时值变更只有一个入口」, 不是
+    // 「任何 `.value =` 全仓只出现一处」——后者是假的: 另有
+    // ElementFormatter.createSmartTextNode 与 TemplateImporter 两处也在赋值,
+    // 但都是**入池前的构造期**赋值, 与 VR-3 无关, 不该被这条闸门抓
+    // (设计文档 §2.4.1 的初稿按后者写, 落地当天就会红)。
+    //
+    // 故扫描「写池节点」的两种形状: updateNode 载荷里的 value, 与
+    // deleteNodeField 的 'value' (规范空态 = 删除该键, 契约 §12.6.1)。
+    // 期望值写成**非空数组** —— 正则若失效匹配不到任何东西, 这条会红而不是
+    // 悄悄通过 (自证非空)。
+    const re = /updateNode\s*\([^)]*value\s*:|deleteNodeField\s*\([^)]*['"]value['"]/g
+    const hits: string[] = []
+    for (const file of ENGINE_FILES) {
+      const src = stripComments(engineSources[file])
+      re.lastIndex = 0
+      if (re.test(src)) hits.push(rel(file))
+    }
+    expect(hits, `池内 value 变更出现多个入口 (契约 §12.6 VR-3):\n  ${hits.join('\n  ')}`)
+      .toEqual(['command/commands/SetControlValueCommand.ts'])
   })
 
   it('§6.1: 不得绕过 NodePool 直接变更 pool.nodes', () => {

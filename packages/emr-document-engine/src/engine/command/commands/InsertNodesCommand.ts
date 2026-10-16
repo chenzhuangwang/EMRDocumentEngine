@@ -26,6 +26,7 @@ import {
   createParagraph, createTextNode, createSmartTextNode, extractStyle,
 } from '../../document/factory/ElementFormatter'
 import { isControlValueEmpty } from '../../document/control/ControlValue'
+import { elementIdentity } from '../../document/control/ElementIdentity'
 import { generateId, NodeType } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
 import type { TemplateDefinitionStore } from '../../template/TemplateDefinition'
@@ -44,17 +45,8 @@ const TEXT_STYLE_KEYS = [
   'strikeout', 'color', 'highlight', 'superscript', 'subscript', 'letterSpacing',
 ]
 
-/**
- * 数据元身份: dataElement 优先, 回退 internal (契约 §12.1 single 守卫)。
- * 两者皆空 → 无规范身份 → 不参与唯一性约束。
- */
-export function elementIdentity(element: ElementMeta | undefined | null): string | null {
-  if (!element?.code) return null
-  const de = element.code.dataElement?.trim()
-  if (de) return de
-  const internal = element.code.internal?.trim()
-  return internal || null
-}
+// elementIdentity 已下沉到 document/control/ElementIdentity.ts (契约 §12.10.1):
+// 数据绑定要用同一条规则算键, 就地复制会让「哪个字段是什么」有两份实现。
 
 /**
  * 文档中是否已存在该数据元的 single:true 实例 (契约 §12.1 粘贴守卫)。

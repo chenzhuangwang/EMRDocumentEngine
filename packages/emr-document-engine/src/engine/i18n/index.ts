@@ -460,6 +460,22 @@ export interface LocaleMessages {
   'controlConfig.dict.badIdHint': string
   'controlConfig.dict.inlineOverrideHint': string
   'controlConfig.dict.platformHint': string
+  // 语义身份可编辑 (契约 §12.5 / §12.10.1: 两个键都是绑定键的候选)
+  'controlConfig.code.internalLabel': string
+  'controlConfig.code.internalPlaceholder': string
+  'controlConfig.code.dataElementLabel': string
+  'controlConfig.code.dataElementPlaceholder': string
+  'controlConfig.code.hint': string
+  'controlConfig.code.dupHint': string
+  // ============================================================
+  // 完整性闸门 (契约 §12.11) — 保存前必填未填确认框
+  // ============================================================
+  'completeness.title': string
+  'completeness.intro': string                // 插值 {n}
+  'completeness.listHint': string
+  'completeness.jumpToFirst': string
+  'completeness.saveAnyway': string
+  'completeness.unnamedField': string         // 控件无名称时的占位
   // ============================================================
   // RecentDocuments
   // ============================================================
@@ -1385,6 +1401,18 @@ const zhCN: LocaleMessages = {
   'controlConfig.dict.badIdHint': 'id 不是 32 位 hex。引用会按原样持久化，但平台侧可能解析不出候选 —— 此时控件退回自由文本 (VR-7)。',
   'controlConfig.dict.inlineOverrideHint': '该控件已声明内置候选项。内置候选恒优先于码表 (契约 §12.6.4)，此绑定当前不生效。',
   'controlConfig.dict.platformHint': '候选由平台预加载后注入编辑器；未加载时控件按自由文本处理，不报错。',
+  'controlConfig.code.internalLabel': '标识 (internal)',
+  'controlConfig.code.internalPlaceholder': '例如 CTL_INPUT',
+  'controlConfig.code.dataElementLabel': '数据元码 (dataElement)',
+  'controlConfig.code.dataElementPlaceholder': '例如 DE02.01.001.00',
+  'controlConfig.code.hint': '这两个键是批量绑定的取值依据（数据元码优先，为空时回退标识）。留空表示该控件没有规范身份，不参与绑定。',
+  'controlConfig.code.dupHint': '该键在文档中已被 {n} 个控件使用 —— 按此键绑定会报歧义，一个都不会写入。',
+  'completeness.title': '保存前检查',
+  'completeness.intro': '有 {n} 个必填项尚未填写：',
+  'completeness.listHint': '点击条目可跳转到该控件。',
+  'completeness.jumpToFirst': '跳到第一处',
+  'completeness.saveAnyway': '仍然保存',
+  'completeness.unnamedField': '(未命名控件)',
   // ===== RecentDocuments =====
   'recentDoc.title': '最近文档',
   'recentDoc.empty': '暂无最近文档',
@@ -2247,6 +2275,18 @@ const enUS: LocaleMessages = {
   'controlConfig.dict.badIdHint': 'Not a 32-char hex id. The reference is persisted as-is, but the platform may not resolve candidates — the control then falls back to free text (VR-7).',
   'controlConfig.dict.inlineOverrideHint': 'This control already declares inline candidates. Inline candidates always win over the dictionary (contract §12.6.4), so this binding has no effect.',
   'controlConfig.dict.platformHint': 'Candidates are preloaded by the platform and injected into the editor; while unloaded the control is treated as free text without error.',
+  'controlConfig.code.internalLabel': 'Identifier (internal)',
+  'controlConfig.code.internalPlaceholder': 'e.g. CTL_INPUT',
+  'controlConfig.code.dataElementLabel': 'Data element code (dataElement)',
+  'controlConfig.code.dataElementPlaceholder': 'e.g. DE02.01.001.00',
+  'controlConfig.code.hint': 'These two keys are what bulk binding resolves against (data element code first, falling back to the identifier). Leaving both empty means the control has no canonical identity and takes no part in binding.',
+  'controlConfig.code.dupHint': 'This key is already used by {n} control(s) in the document — binding by it reports ambiguity and writes to none of them.',
+  'completeness.title': 'Before saving',
+  'completeness.intro': '{n} required field(s) are still empty:',
+  'completeness.listHint': 'Click an entry to jump to that control.',
+  'completeness.jumpToFirst': 'Go to the first one',
+  'completeness.saveAnyway': 'Save anyway',
+  'completeness.unnamedField': '(unnamed control)',
   // ===== RecentDocuments =====
   'recentDoc.title': 'Recent Documents',
   'recentDoc.empty': 'No recent documents',

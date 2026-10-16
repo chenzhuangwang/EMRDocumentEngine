@@ -151,6 +151,29 @@ export type {
 } from './document/control/ControlValue'
 export { DictionaryStore } from './document/control/Dictionary'
 
+// ---- 控件显示值 / 候选来源 / 数据元身份 (契约 §11 / §12.6.4) ----
+// 显示值与候选的**唯一实现** —— 屏幕之外的消费方 (导出投影 §12.10.4、绑定 API
+// §12.10) 都读这一份, 否则同一份文档在两个消费方眼里值不一样。
+export { enumOptionsFor, resolveDisplay } from './document/control/ControlDisplay'
+export type { DisplaySource, DisplayResult } from './document/control/ControlDisplay'
+export { elementIdentity, defaultBindingKey } from './document/control/ElementIdentity'
+
+// ---- 批量数据绑定投影 (契约 §12.10) ----
+export { boundControlProjectionOf } from './document/control/ControlProjection'
+export type {
+  BoundItem, BoundDuplicate, BoundRegion, BoundValues, ControlProjection,
+  ControlProjectionInput, ControlProjectionOptions, ProjectionPool,
+} from './document/control/ControlProjection'
+export { SetBoundValuesCommand } from './command/commands/SetBoundValuesCommand'
+export type {
+  BoundValuesWriteResult, BoundWriteApplied, BoundWriteAmbiguous,
+  BoundWriteEntry, BoundWriteRejection,
+} from './command/commands/SetBoundValuesCommand'
+
+// ---- 完整性闸门 (契约 §12.11) ----
+export { missingRequiredOf } from './document/control/CompletenessGate'
+export type { CompletenessResult, MissingField } from './document/control/CompletenessGate'
+
 // ---- 页眉页脚变体解析 (契约 §7.9) ----
 export {
   hfArrayOf, ensureHfArray, trimHfArrayIfEmpty, isVariantEnabled, resolveVariantForPage,

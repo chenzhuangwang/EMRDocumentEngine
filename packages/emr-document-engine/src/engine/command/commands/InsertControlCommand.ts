@@ -31,7 +31,7 @@ import type { ElementMeta, SmartTextNode, TextNode } from '../../document/core/D
 import { NodeType } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
 import { createSmartTextNode, createTextNode, extractStyle } from '../../document/factory/ElementFormatter'
-import { elementIdentity } from './InsertNodesCommand'
+import { elementIdentity } from '../../document/control/ElementIdentity'
 import { MintedOnce } from './MintedNodes'
 import type { TemplateDefinition } from '../../template/TemplateDefinition'
 import type { CommandContext, ICommand, SerializedCommand, StatePatch } from '../ICommand'

@@ -96,6 +96,12 @@ import { locale } from './i18n/index'
 import { NodeType } from './document/core/DocumentModel'
 import type { ControlValue, ElementEnumOption, SmartTextNode } from './document/core/DocumentModel'
 import { SetControlValueCommand } from './command/commands/SetControlValueCommand'
+import { SetBoundValuesCommand } from './command/commands/SetBoundValuesCommand'
+import type { BoundWriteEntry, BoundValuesWriteResult } from './command/commands/SetBoundValuesCommand'
+import { boundControlProjectionOf } from './document/control/ControlProjection'
+import type { BoundValues } from './document/control/ControlProjection'
+import { missingRequiredOf } from './document/control/CompletenessGate'
+import type { CompletenessResult } from './document/control/CompletenessGate'
 import { validateControlValue, isControlValueEmpty } from './document/control/ControlValue'
 import type { ControlValueValidationResult, ControlValuePermissions } from './document/control/ControlValue'
 
@@ -1130,6 +1136,120 @@ export class Editor {
   getControlEditTarget(nodeId: string): ControlEditTarget | null {
     return this.draw.getControlEditTarget(nodeId)
   }
+
+  // ---- 批量数据绑定 (契约 §12.10) ----
+
+  /**
+   * 某控件的**字典型**枚举候选 (契约 §12.6.4) —— 绑定投影的 optionsOf 注入。
+   *
+   * 只提供「字典那一路」: inline `format.enums` 与字典的优先级由 ControlDisplay
+   * 判定 (inline 恒优先), 不在这里重复。与 getControlSnapshot / computeControlScore
+   * 同源 —— 三处读的是同一个 dictionary 字段。
+   */
+  private dictionaryCandidatesOf(nodeId: string): readonly ElementEnumOption[] | undefined {
+    const node = this.pool.nodes.get(nodeId) as SmartTextNode | undefined
+    const dictionaryId = node?.element?.format?.dictionary
+    return dictionaryId ? this.dictionaries?.resolve(dictionaryId) : undefined
+  }
+
+  /**
+   * 全文可绑定控件投影 (契约 §12.10.2 读方向)。
+   *
+   * 顺序 = 正文 → 页眉 → 页脚, 区域内按段落顺序 —— 取自 §31 的顺序原语
+   * (bodyParagraphSpine / hfParagraphsForExport), 与导出件的 order 同源,
+   * 不是"两份实现碰巧一样"。
+   *
+   * 同键多条**全部返回**并在 duplicates 里点名: 读方向也不隐藏歧义, 否则
+   * 调用方看到没有重复信号就会以为可以安全回写 (契约 §12.10.2)。
+   * 未填字段**不过滤** —— 「没填」是有意义的事实 (§12.11 的闸门就靠它)。
+   */
+  getBoundValues(opts?: {
+    keyOf?: (element: ElementMeta | undefined) => string | undefined
+  }): BoundValues {
+    return boundControlProjectionOf({
+      doc: this.doc,
+      pool: this.pool,
+      keyOf: opts?.keyOf,
+      optionsOf: (id) => this.dictionaryCandidatesOf(id),
+    })
+  }
+
+  /**
+   * 批量按键写入 (契约 §12.10.2 写方向 / §12.10.3 写语义)。
+   *
+   * 四条不可含糊的行为:
+   *   1. **不挑赢家**: 一个键命中多个节点 → 该键**一个都不写**, 只报 ambiguous
+   *      并附候选 nodeId。静默填一个, 出来的是一份"看着填了、实则半空"的病历。
+   *   2. **一律经 validateControlValue**: 与 setControlValue 同一道值边界
+   *      (同源 permissions/dictionary 候选), 本 API 是新调用方, 不是第二道边界。
+   *      VR-9/10/11 原样生效 —— 不做任何值强制转换, 匹配不上就报 reason。
+   *   3. **部分成功是合法结果**: applied / rejected / ambiguous / unmatched 四个桶
+   *      齐全, 谁也不被静默丢掉 (与 replaceAll 的 {replaced, rejected} 同口径)。
+   *   4. **整批一个撤销单元**; 一个键都没匹配上 → **不产生撤销条目**。
+   *
+   * 键的解析走的就是 getBoundValues 那一份投影 —— 读方向与写方向不可能对不上。
+   */
+  setBoundValues(
+    obj: Readonly<Record<string, ControlValue | undefined>>,
+    opts?: { keyOf?: (element: ElementMeta | undefined) => string | undefined },
+  ): BoundValuesWriteResult {
+    const projection = this.getBoundValues({ keyOf: opts?.keyOf })
+
+    // 键 → 节点。无身份的控件键是空串, 照常参与 (它们确实互相冲突)。
+    const byKey = new Map<string, string[]>()
+    for (const item of projection.items) {
+      const arr = byKey.get(item.key)
+      if (arr) arr.push(item.nodeId)
+      else byKey.set(item.key, [item.nodeId])
+    }
+
+    const entries: BoundWriteEntry[] = []
+    const ambiguous: BoundValuesWriteResult['ambiguous'] = []
+    const unmatched: string[] = []
+
+    for (const key of Object.keys(obj)) {
+      // 空键**不可寻址**: 空串的意思是"这个控件没有规范身份", 不是"所有匿名控件
+      // 共用的地址"。若允许写, 同一行调用会在文档里只有 1 个匿名控件时静默写中
+      // 它、出现第 2 个时突然变 ambiguous —— 行为随无关改动翻转。故一律 unmatched。
+      // 读方向照常返回这些条目 (key=''), 因为"没有身份"本身是有用的事实。
+      if (key === '') { unmatched.push(key); continue }
+      const nodeIds = byKey.get(key)
+      if (!nodeIds) { unmatched.push(key); continue }
+      if (nodeIds.length > 1) { ambiguous.push({ key, candidateNodeIds: [...nodeIds] }); continue }
+      entries.push({ key, nodeId: nodeIds[0], value: obj[key] })
+    }
+
+    // 空批不入栈 (契约 §12.10.3)。注意: 全部键都歧义/未匹配时也走这条路。
+    if (entries.length === 0) {
+      return { applied: [], rejected: [], ambiguous, unmatched }
+    }
+
+    const cmd = new SetBoundValuesCommand(generateCommandId(), Date.now(), 'user', entries)
+    this.execCommand(cmd)
+    return {
+      applied: [...cmd.applied],
+      rejected: [...cmd.rejected],
+      ambiguous,
+      unmatched,
+    }
+  }
+
+  /**
+   * 完成时点的完整性闸门 (契约 §12.11) —— 只读查询。
+   *
+   * 判据是既有的 layer C (isControlValueComplete, §12.6.2): 「required 且空」。
+   * 与 runQC() 的 score/grade **不是同一个事实** (那是合规分, §7.5), 故本方法
+   * 不产生命令、不入 undo 栈、不碰 qc/ —— 宿主只要完整性时不必先算合规。
+   * 引擎只回答"缺哪些"; 拦不拦是宿主的策略 (引擎不拥有保存)。
+   *
+   * missing 带 nodeId + paragraphPath, 宿主据此跳转到控件 —— 形状对齐
+   * QCIssueLocation (QC 面板的点击定位依赖同一形状)。
+   */
+  validateRequired(): CompletenessResult {
+    const missing = missingRequiredOf(this.getBoundValues(), this.doc.id)
+    return { ok: missing.length === 0, missing }
+  }
+
   /**
    * 运行时填表导航 (契约 §12.6) — 返回 anchor 所属区域内 (页眉 / 正文 / 页脚)
    * 按阅读顺序排列的「可填控件」nodeId 列表: 仅含 smarttext 且可写非脱敏
@@ -3352,6 +3472,15 @@ export interface IEditor {
   setControlValue(nodeId: string, value: ControlValue | undefined): ControlValueValidationResult
   getControlValue(nodeId: string): ControlValue | undefined
   getControlSnapshot(nodeId: string): ControlSnapshot | null
+  // ---- 批量数据绑定 / 完整性闸门 (契约 §12.10 / §12.11) ----
+  getBoundValues(opts?: {
+    keyOf?: (element: ElementMeta | undefined) => string | undefined
+  }): BoundValues
+  setBoundValues(
+    obj: Readonly<Record<string, ControlValue | undefined>>,
+    opts?: { keyOf?: (element: ElementMeta | undefined) => string | undefined },
+  ): BoundValuesWriteResult
+  validateRequired(): CompletenessResult
   getElement(nodeId: string): ElementMeta | undefined
   computeControlScore(): ScoreResult
   getControlClientRect(nodeId: string): { left: number; top: number; width: number; height: number } | null

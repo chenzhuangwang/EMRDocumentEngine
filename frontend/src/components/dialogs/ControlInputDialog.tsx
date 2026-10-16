@@ -24,7 +24,7 @@ import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { controlTypeForDataType } from '@emrde/document-engine'
 import type { ElementMeta, ElementEnumOption, TemplateDefinition } from '@emrde/document-engine'
-import { cleanDefinition, cloneData, CodeBadge, DictionaryField, Field, NumField, TextField, ToggleField, inputCls } from './controlConfigShared'
+import { cleanDefinition, cloneData, DictionaryField, Field, NumField, TextField, ToggleField, inputCls } from './controlConfigShared'
 import type { ControlConfigData } from './controlConfigShared'
 import { useTranslation } from '@/i18n/useTranslation'
 import type { LocaleMessages } from '@emrde/document-engine'
@@ -38,6 +38,16 @@ interface ControlInputDialogProps {
   initial: ControlConfigData
   onClose: () => void
   onApply: (result: ControlConfigData) => void
+  /**
+   * **其他**控件占用各绑定键的次数 (契约 §12.10.1), 由调用方在打开弹框时快照。
+   *
+   * 「其他」= 不含本弹框正在编辑的那个控件: edit 模式下把自身排除掉, 计数才是
+   * 「改完之后会跟谁撞」。于是判定只有一条规则 —— **others >= 1 就要提示**,
+   * 提示里的 n = others + 1 (含自己)。create 模式下没有"自己", 天然成立。
+   *
+   * 不在这里读 Editor: 弹框只持本地 draft (§12.7), 文档快照由调用方给。
+   */
+  otherKeyUsage?: ReadonlyMap<string, number>
 }
 
 type TabId = 'general' | 'format' | 'validate' | 'binding' | 'other'
@@ -83,6 +93,9 @@ interface Draft {
   multiple: boolean
   /** 外部码表引用 (ElementFormat.dictionary, 契约 §12.6.4) — 仅下拉形态可绑 */
   dictionary: string
+  /** 语义身份 (契约 §12.5: 本弹框内**可编辑**) —— 也是批量绑定的绑定键候选 */
+  internal: string
+  dataElement: string
 }
 
 function kindFrom(el: ElementMeta | undefined, def: TemplateDefinition | undefined): InputKind {
@@ -120,11 +133,13 @@ function draftFrom(initial: ControlConfigData): Draft {
     options: opts,
     multiple: fmt?.enums?.multiple === true,
     dictionary: fmt?.dictionary ?? '',
+    internal: el.code.internal ?? '',
+    dataElement: el.code.dataElement ?? '',
   }
 }
 
 export function ControlInputDialog({
-  open, mode, initial, onClose, onApply,
+  open, mode, initial, onClose, onApply, otherKeyUsage,
 }: ControlInputDialogProps) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState<Draft>(() => draftFrom(initial))
@@ -148,6 +163,15 @@ export function ControlInputDialog({
     el.name = draft.name
     el.required = draft.required ? true : undefined
     el.readonly = draft.readonly ? true : undefined
+    // 语义身份 (契约 §12.5: 在本弹框内可编辑)。
+    // 不新增命令: applyControlConfig 的 elementEquals 走 stableStringify 全字段
+    // 比较, code 本就在 payload 里 —— 改它天然会触发 UpdateControlElementCommand。
+    // 两键都 trim: elementIdentity 判身份时也 trim, 留着首尾空格会让"看着一样的
+    // 两个键"算成不同键 (绑定就会撞不上)。
+    el.code = {
+      internal: draft.internal.trim(),
+      dataElement: draft.dataElement.trim(),
+    }
 
     const fmt: NonNullable<ElementMeta['format']> = el.format ? cloneData(el.format) : {} as NonNullable<ElementMeta['format']>
 
@@ -220,6 +244,11 @@ export function ControlInputDialog({
 
   const kindLabel = t(KIND_LABEL_KEYS[draft.kind])
 
+  // 生效的绑定键 (契约 §12.10.1): dataElement 优先, 空回退 internal ——
+  // 与 elementIdentity 同一顺序, 不另立一套。空键 = 该控件无规范身份。
+  const effectiveKey = draft.dataElement.trim() || draft.internal.trim()
+  const othersUsingKey = effectiveKey === '' ? 0 : (otherKeyUsage?.get(effectiveKey) ?? 0)
+
   return (
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose() }}>
       <Dialog.Portal>
@@ -249,7 +278,11 @@ export function ControlInputDialog({
               {/* 常规 */}
               <Tabs.Content forceMount value="general" className="space-y-3">
                 <TextField label={t('dialog.label.dataElementName')} value={draft.name} onChange={(v) => patch({ name: v })} placeholder={t('controlConfig.namePlaceholder')} />
-                <CodeBadge element={initial.element} />
+                {/*
+                  这里原先有一个只读的 CodeBadge。语义身份在「其他」tab 变成可编辑
+                  之后它就成了**第二份显示**: 用户改完键, 这枚徽章还印着旧值。
+                  一个事实一处显示 —— 故移除, 不留「看着对但已经旧了」的副本。
+                */}
                 <TextField label={t('controlConfig.labelField')} value={draft.label} onChange={(v) => patch({ label: v })} placeholder={t('controlConfig.labelPlaceholder')} />
                 <div className="flex flex-wrap gap-x-6 gap-y-1 pt-1">
                   <ToggleField label={t('dialog.label.required')} checked={draft.required} onChange={(v) => patch({ required: v })} />
@@ -360,6 +393,23 @@ export function ControlInputDialog({
                   <ToggleField label={t('controlConfig.deletableLabel')} checked={draft.deletable} onChange={(v) => patch({ deletable: v })} />
                   <ToggleField label={t('controlConfig.editableLabel')} checked={draft.editable} onChange={(v) => patch({ editable: v })} />
                   <ToggleField label={t('controlConfig.singleLabel')} checked={draft.single} onChange={(v) => patch({ single: v })} />
+                </div>
+
+                {/*
+                  语义身份 (契约 §12.5)。**本弹框内可编辑, 轻量属性面板仍只读** ——
+                  这条作用域划分是契约明文, 不是随手加的开关。
+                  数据元码排在标识之前: 它是默认绑定键 (§12.10.1)。
+                */}
+                <div className="border-t border-line-subtle pt-3 space-y-3">
+                  <TextField label={t('controlConfig.code.dataElementLabel')} value={draft.dataElement} onChange={(v) => patch({ dataElement: v })} placeholder={t('controlConfig.code.dataElementPlaceholder')} />
+                  <TextField label={t('controlConfig.code.internalLabel')} value={draft.internal} onChange={(v) => patch({ internal: v })} placeholder={t('controlConfig.code.internalPlaceholder')} />
+                  <p className="text-[11px] leading-relaxed text-chrome-ink-muted">{t('controlConfig.code.hint')}</p>
+                  {/* 撞键提示: 不阻断应用 —— 重复身份是**合法**文档状态, 只是绑定会报歧义 (§12.10.2) */}
+                  {othersUsingKey >= 1 && (
+                    <p className="text-[11px] leading-relaxed text-amber-600">
+                      {t('controlConfig.code.dupHint', { n: othersUsingKey + 1 })}
+                    </p>
+                  )}
                 </div>
               </Tabs.Content>
             </div>

@@ -26,6 +26,15 @@ import {
   bodyParagraphSpine, hfParagraphsForExport, sectionOf,
 } from '../../engine'
 import type { ElementEnumOption, ElementMeta, ControlValue } from '../../engine/document/core/DocumentModel'
+// 显示值与候选来源的**唯一实现**已下沉到引擎 (契约 §12.10.4) —— 绑定 API
+// (§12.10) 与本投影必须给出逐字相同的 display/候选, 故两边都读这一份。
+// 导出层原样 re-export, 保持既有 import 路径不破。
+import {
+  enumOptionsFor, resolveDisplay,
+  type DisplaySource, type DisplayResult,
+} from '../../engine/document/control/ControlDisplay'
+export { enumOptionsFor, resolveDisplay }
+export type { DisplaySource, DisplayResult }
 
 /** 导出期读取池的最小结构 (只读; 结构上满足引擎的 SpinePool, 契约 §31) */
 export interface FieldPool {
@@ -178,72 +187,6 @@ export interface FieldProjectionInput {
 /** 「未填」的规范判据 (契约 §12.6.1): undefined / '' / [] 都是未填 */
 function isUnfilled(value: ControlValue | undefined): boolean {
   return value === undefined || value === '' || (Array.isArray(value) && value.length === 0)
-}
-
-/** 枚举候选: 与 Editor.getControlSnapshot 同一条规则 —— inline 存在则用它, 否则用字典型来源 */
-function enumOptionsFor(
-  nodeId: string,
-  element: ElementMeta | undefined,
-  optionsOf?: FieldProjectionInput['optionsOf'],
-): ElementEnumOption[] | null {
-  const inline = element?.format?.enums
-  if (inline !== undefined) {
-    return inline.data && inline.data.length > 0 ? inline.data : null
-  }
-  const external = optionsOf?.(nodeId)
-  return external && external.length > 0 ? [...external] : null
-}
-
-/** 显示值来源 —— 让「为什么这一条是机器码」可判定, 而不是靠猜 */
-export type DisplaySource =
-  /** 未填, display 是占位符 */
-  | 'placeholder'
-  /** 值经候选表映射成了显示名 */
-  | 'enum'
-  /** 值未经映射原样输出 (无候选表, 或候选表里查不到该码) */
-  | 'raw'
-
-interface DisplayResult {
-  display: string
-  source: DisplaySource
-}
-
-/**
- * 值 → 显示文本。
- *
- * 与渲染口径的关系: 有 **inline** 枚举时本函数与 `controlValueDisplay` 逐字一致
- * (屏幕也这么显示)。差别只在**字典型枚举**上 —— 渲染路径 (LayoutEngine →
- * controlValueDisplay) 只读 `format.enums.data`, 读不到字典, 因此屏幕会把机器码
- * 原样画出来; 这里改用已解析的候选表 (含注入的字典候选), 于是能给出显示名。
- *
- * 这是**刻意的**: 结构化导出是数据路径, 用户要的就是「机器码 + 显示名都给」;
- * 屏幕上字典枚举显示成码是本引擎的一处渲染缺口 (本轮范围外, 已记录), 导出不必
- * 复制它。`displaySource` 让这一差异可被下游识别。
- */
-function resolveDisplay(
-  value: ControlValue | undefined,
-  placeholder: string,
-  options: ElementEnumOption[] | null,
-): DisplayResult {
-  if (value === undefined || value === '') return { display: placeholder, source: 'placeholder' }
-  if (typeof value === 'number') return { display: String(value), source: 'raw' }
-
-  const nameOf = (v: string): { text: string; matched: boolean } => {
-    const hit = options?.find((o) => o.value === v)
-    return hit ? { text: hit.name, matched: true } : { text: v, matched: false }
-  }
-
-  if (Array.isArray(value)) {
-    if (value.length === 0) return { display: placeholder, source: 'placeholder' }
-    const mapped = value.map(nameOf)
-    return {
-      display: mapped.map((m) => m.text).join('、'),
-      source: mapped.some((m) => m.matched) ? 'enum' : 'raw',
-    }
-  }
-
-  const m = nameOf(value)
-  return { display: m.text, source: m.matched ? 'enum' : 'raw' }
 }
 
 /**

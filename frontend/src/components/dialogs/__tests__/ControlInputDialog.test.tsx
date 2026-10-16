@@ -259,3 +259,104 @@ describe('ControlInputDialog — 数据绑定 (码表)', () => {
     expect(payload.element.format?.dictionary).toBe(DICT_ID)
   })
 })
+
+// ================================================================
+// 语义身份可编辑 (契约 §12.5 / §12.10.1)
+//
+// 这两个键此前**在 UI 里根本写不进去** —— 全仓 19 处 `code: {...}` 都是只读构造,
+// 没有一处从输入框回写。于是"用数据元码绑定"对手插控件是不通的, 绑定 API 只剩
+// ambiguous。本组用例把"能写进去"钉成事实。
+//
+// 作用域是**本弹框**; 轻量属性面板仍只读 (那条由 DesignControlProperties.test.tsx
+// 的断言锁定, 本组不动它)。
+// ================================================================
+
+describe('ControlInputDialog — 语义身份可编辑 (契约 §12.5)', () => {
+  const OTHER_TAB = '内部'
+
+  function renderEdit(element: ElementMeta, otherKeyUsage?: Map<string, number>) {
+    const onApply = vi.fn()
+    const onClose = vi.fn()
+    render(
+      <ControlInputDialog
+        open mode="edit" initial={{ element, definition: undefined }}
+        otherKeyUsage={otherKeyUsage}
+        onClose={onClose} onApply={onApply}
+      />,
+    )
+    return { onApply, onClose }
+  }
+
+  it('改数据元码与标识 → 应用 payload 的 element.code 随之更新', () => {
+    const { onApply } = renderEdit(INPUT_EL)
+    fireEvent.click(screen.getByRole('tab', { name: OTHER_TAB }))
+    fireEvent.change(screen.getByLabelText(/数据元码/), { target: { value: 'DE02.01.001.00' } })
+    fireEvent.change(screen.getByLabelText(/标识 \(internal\)/), { target: { value: 'CTL_NAME' } })
+    fireEvent.click(applyBtn())
+
+    const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
+    expect(payload.element.code).toEqual({ internal: 'CTL_NAME', dataElement: 'DE02.01.001.00' })
+  })
+
+  it('两键都 trim —— 首尾空格会让"看着一样"的键算成不同键, 绑定就撞不上', () => {
+    const { onApply } = renderEdit(INPUT_EL)
+    fireEvent.click(screen.getByRole('tab', { name: OTHER_TAB }))
+    fireEvent.change(screen.getByLabelText(/数据元码/), { target: { value: '  DE_X  ' } })
+    fireEvent.change(screen.getByLabelText(/标识 \(internal\)/), { target: { value: '  CTL_X ' } })
+    fireEvent.click(applyBtn())
+
+    const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
+    expect(payload.element.code).toEqual({ internal: 'CTL_X', dataElement: 'DE_X' })
+  })
+
+  it('两键清空 → code 是空串 (无规范身份), 不是缺字段', () => {
+    const { onApply } = renderEdit(INPUT_EL)
+    fireEvent.click(screen.getByRole('tab', { name: OTHER_TAB }))
+    fireEvent.change(screen.getByLabelText(/数据元码/), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText(/标识 \(internal\)/), { target: { value: '' } })
+    fireEvent.click(applyBtn())
+
+    const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
+    // ElementCode 的两项都是必填 string, 清空 = 空串 (与 elementIdentity 判 null 的口径一致)
+    expect(payload.element.code).toEqual({ internal: '', dataElement: '' })
+  })
+
+  it('改键不影响其他字段 (name / format 原样带过)', () => {
+    const { onApply } = renderEdit(INPUT_EL)
+    fireEvent.click(screen.getByRole('tab', { name: OTHER_TAB }))
+    fireEvent.change(screen.getByLabelText(/数据元码/), { target: { value: 'DE_NEW' } })
+    fireEvent.click(applyBtn())
+
+    const payload = onApply.mock.calls[0][0] as { element: ElementMeta }
+    expect(payload.element.name).toBe('旧名')
+    expect(payload.element.format?.dataType).toBe('S1')
+  })
+
+  it('撞键提示: 别的控件已用该键 → 出现提示, 且 n 把自己算进去', () => {
+    renderEdit(INPUT_EL, new Map([['DE99.99.001', 1]]))
+    fireEvent.click(screen.getByRole('tab', { name: OTHER_TAB }))
+    // INPUT_EL 的 dataElement 正是 DE99.99.001, 另一个控件也用它 → 一共 2 个
+    expect(screen.getByText(/已被 2 个控件使用/)).toBeTruthy()
+  })
+
+  it('无人撞键 → 不出现提示 (空键不算撞: 无身份的控件不为绑定服务)', () => {
+    renderEdit(INPUT_EL, new Map())
+    fireEvent.click(screen.getByRole('tab', { name: OTHER_TAB }))
+    expect(screen.queryByText(/已被 \d+ 个控件使用/)).toBeNull()
+  })
+
+  it('提示随输入实时变化: 改成没人用的键 → 提示消失', () => {
+    renderEdit(INPUT_EL, new Map([['DE99.99.001', 1]]))
+    fireEvent.click(screen.getByRole('tab', { name: OTHER_TAB }))
+    expect(screen.getByText(/已被 2 个控件使用/)).toBeTruthy()
+    fireEvent.change(screen.getByLabelText(/数据元码/), { target: { value: 'DE_UNIQUE' } })
+    expect(screen.queryByText(/已被 \d+ 个控件使用/)).toBeNull()
+  })
+
+  it('数据元码优先于标识算键 (§12.10.1) —— 只有标识撞车时不报', () => {
+    // 别的控件用的是 CTL_INPUT (标识), 但本控件的 dataElement 有值 → 生效键是它
+    renderEdit(INPUT_EL, new Map([['CTL_INPUT', 3]]))
+    fireEvent.click(screen.getByRole('tab', { name: OTHER_TAB }))
+    expect(screen.queryByText(/已被 \d+ 个控件使用/)).toBeNull()
+  })
+})
