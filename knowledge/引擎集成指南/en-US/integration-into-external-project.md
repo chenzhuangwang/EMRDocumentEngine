@@ -477,6 +477,10 @@ editor.setMode('form')
 `getControlSnapshot(nodeId)` / `getElement(nodeId)` / `applyControlConfig(...)` /
 `computeControlScore()`
 
+**Computed values** (see §10.1): `registerCalcFunction(name, fn)` /
+`getComputedDisplay(nodeId)` / `isControlVisible(nodeId)` / `getFormulaErrors()` /
+`evaluateFormula(formula, nodeId?)`
+
 **Projection / queries**: `getWordCount()` / `runQC()` / `findAll(query, opts)` /
 `findNext` / `replaceAll` / `getSelectedControlId()` / `selectSection(id)` /
 `listSections()` / `getComments()`
@@ -487,6 +491,61 @@ editor.setMode('form')
 
 **Events**: `on(type, cb)` / `off(type, cb)`, where `type ∈ 'ready' | 'contentChange' |
 'modeChange' | 'selectionChange' | 'save'`.
+
+### 10.1 Computed values (formulas)
+
+A template author gives a control a **formula** (`TemplateDefinition.formula`) and the
+engine evaluates it on the read path. You do not have to wire anything for it: the
+formula lives in the template definition, and the value it produces is shared by layout
+and rendering through **one memoised set**.
+
+```ts
+import type { CalcValue, CalcError } from '@emrde/document-engine'
+
+// Register your own pure function (optional). Names are case-insensitive.
+editor.registerCalcFunction('BMI', (args: readonly CalcValue[]): CalcValue | CalcError => {
+  const [w, h] = args
+  if (typeof w !== 'number' || typeof h !== 'number') {
+    return { code: 'bad_arguments', message: 'BMI(weightKg, heightCm)' }  // errors are classified, not one generic message
+  }
+  return Math.round((w / ((h / 100) ** 2)) * 10) / 10
+})
+
+// Read side (for an authoring UI; most hosts never need it)
+editor.getComputedDisplay(nodeId)   // derived display text; undefined when there is no formula / it fails
+editor.isControlVisible(nodeId)     // result of SHOW/HIDE; true when there is no formula
+editor.getFormulaErrors()           // classified errors (unresolved / ambiguous / syntax / unknown function / cycle ...)
+editor.evaluateFormula('[SBP] - [DBP]', nodeId)  // try out a candidate formula (no leading =)
+```
+
+A reference is written as `[key]`, and that key is the control **binding key** (data
+element code first, identifier as fallback) — the same key the bulk binding API
+(`getBoundValues` / `setBoundValues`) uses. When one key matches several controls, a
+reference to it **reports an ambiguity and the whole formula fails to evaluate**: the
+engine never picks a winner, because a silently picked value reads as computed while
+being wrong.
+
+Four things you must know:
+
+- **The evaluator touches no host global and never runs arbitrary JavaScript.** It is a
+  lexer plus syntax-tree evaluator over a whitelisted grammar (references, literals,
+  arithmetic, comparison, logic, ternary, a closed builtin table). A formula can call
+  builtins and the pure functions **you** registered through `registerCalcFunction` —
+  **a registered function has the plugin trust level** (it is your own code), never
+  end-user data. Do not register user input as a function name.
+- **The result is derived and is never persisted.** It is not written into the field
+  value, so the "required" gate **cannot see it** (`validateRequired` still reports the
+  field as missing when the doctor did not fill it), it never lands on the undo stack,
+  and re-opening a saved document yields the same computed value (unless a dependency
+  changed — see the next point).
+- **The time basis is read once, when the set is recomputed, and does not tick while the
+  document sits idle.** A value like `GETAGE()` does not drift over time on its own.
+  For a medical record that is **intended**: a value the doctor has read must not change
+  behind their back before signing. If you need "refresh to now", trigger a document
+  change or re-`setDocument` from the host.
+- **Change formulas through `applyControlConfig`** (the same path as any other control
+  property), which re-lays out the page. Mutating the private `templateDefinitions` map
+  directly will not.
 
 ---
 

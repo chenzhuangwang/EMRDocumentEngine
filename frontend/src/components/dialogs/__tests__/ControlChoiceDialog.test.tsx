@@ -12,7 +12,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ControlChoiceDialog } from '../ControlChoiceDialog'
-import type { ElementMeta, ElementEnumOption, TemplateDefinition } from '@emrde/document-engine'
+import type { CalcResult, ElementMeta, ElementEnumOption, TemplateDefinition } from '@emrde/document-engine'
 
 const RADIO_EL: ElementMeta = {
   code: { internal: 'CTL_RADIO', dataElement: 'DE99.99.007' }, name: '症状',
@@ -160,5 +160,86 @@ describe('ControlChoiceDialog — 语义身份可编辑 (契约 §12.5)', () => 
     renderEdit(RADIO_EL, new Map([['CTL_RADIO', 3]]))
     fireEvent.click(screen.getByRole('tab', { name: BASE_TAB }))
     expect(screen.queryByText(/已被 \d+ 个控件使用/)).toBeNull()
+  })
+})
+
+// ================================================================
+// 计算 (契约 §12.12.9)
+//
+// 与 ControlInputDialog 的同名用例组**成对存在**。这不是为了对称好看: 契约明令
+// 「BOTH Control Config Dialogs MUST expose formula authoring … Exposing it in
+// one only would repeat the §12.5 mistake」—— 而两个弹框的 result 组装各写一份,
+// 只测一边, 另一边漏接就是"条款只兑现一半控件"。
+// ================================================================
+
+describe('ControlChoiceDialog — 计算 (契约 §12.12.9)', () => {
+  const FORMULA_TAB = '计算'
+
+  function renderFormula(definition?: TemplateDefinition, onPreviewFormula?: (f: string) => CalcResult) {
+    const onApply = vi.fn()
+    const onClose = vi.fn()
+    render(
+      <ControlChoiceDialog
+        open mode="edit"
+        initial={{ element: RADIO_EL, definition }}
+        referenceKeys={[{ key: 'DE99.99.007', name: '症状', ambiguous: false }]}
+        onPreviewFormula={onPreviewFormula}
+        onClose={onClose} onApply={onApply}
+      />,
+    )
+    return { onApply, onClose }
+  }
+
+  const formulaBox = () => screen.getByPlaceholderText(/收缩压/) as HTMLTextAreaElement
+
+  it('「计算」tab 打开时回填既有公式', () => {
+    renderFormula({ ...RADIO_DEF, formula: "[DE99.99.007] == 'Y' ? 1 : 0" })
+    fireEvent.click(screen.getByRole('tab', { name: FORMULA_TAB }))
+    expect(formulaBox().value).toBe("[DE99.99.007] == 'Y' ? 1 : 0")
+  })
+
+  it('写公式 → 应用 payload 的 definition.formula 随之更新', () => {
+    const { onApply } = renderFormula(RADIO_DEF)
+    fireEvent.click(screen.getByRole('tab', { name: FORMULA_TAB }))
+    fireEvent.change(formulaBox(), { target: { value: 'SUM([DE99.99.007])' } })
+    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+
+    const payload = onApply.mock.calls[0][0] as { definition?: TemplateDefinition }
+    expect(payload.definition?.formula).toBe('SUM([DE99.99.007])')
+    // 单选/复选的既有字段不受影响 (公式是加字段, 不是换语义)
+    expect(payload.definition?.controlType).toBe('radio')
+  })
+
+  it('清空公式 → payload 里没有 formula 键 (真删键, 不是写空串)', () => {
+    const { onApply } = renderFormula({ ...RADIO_DEF, formula: '1 + 1' })
+    fireEvent.click(screen.getByRole('tab', { name: FORMULA_TAB }))
+    fireEvent.change(formulaBox(), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+
+    const payload = onApply.mock.calls[0][0] as { definition?: TemplateDefinition }
+    expect(payload.definition && 'formula' in payload.definition).toBe(false)
+  })
+
+  it('触发式公式 (SHOW/HIDE) 在这里同样写得下 —— 它与取值式共用一条判据', () => {
+    renderFormula(RADIO_DEF, () => ({
+      ok: true, role: 'visibility', directive: { key: 'DE99.99.007', visible: true },
+    }))
+    fireEvent.click(screen.getByRole('tab', { name: FORMULA_TAB }))
+    fireEvent.change(formulaBox(), { target: { value: 'HIDE([DE99.99.007])' } })
+    expect(screen.getByText(/触发式/).textContent).toContain('显示')
+  })
+
+  it('公式算不出来也**不阻断应用** —— 作者可能正写到一半', () => {
+    const { onApply } = renderFormula(
+      RADIO_DEF,
+      () => ({ ok: false, error: { code: 'ambiguous_reference', message: 'x', candidateNodeIds: ['a', 'b'] } }),
+    )
+    fireEvent.click(screen.getByRole('tab', { name: FORMULA_TAB }))
+    fireEvent.change(formulaBox(), { target: { value: '[DE99.99.007] + 1' } })
+
+    expect(screen.getByText(/命中多个控件/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+    const payload = onApply.mock.calls[0][0] as { definition?: TemplateDefinition }
+    expect(payload.definition?.formula).toBe('[DE99.99.007] + 1')
   })
 })

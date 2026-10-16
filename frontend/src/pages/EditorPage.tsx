@@ -38,7 +38,7 @@ import { DocumentPropertiesDialog } from '@/components/dialogs/DocumentPropertie
 import { ControlInputDialog } from '@/components/dialogs/ControlInputDialog'
 import { ControlChoiceDialog } from '@/components/dialogs/ControlChoiceDialog'
 import { initialConfigForCreate, controlFamilyOf } from '@/components/dialogs/controlConfigShared'
-import type { ControlConfigData } from '@/components/dialogs/controlConfigShared'
+import type { ControlConfigData, ReferenceKey } from '@/components/dialogs/controlConfigShared'
 import { documentApi, templateApi } from '@/services/api'
 import { printHistory } from '@/services/PrintHistoryService'
 import { resolvePrintRange, selectPrintPages, buildPrintRecord, printDocKey } from '@emrde/document-engine/export'
@@ -60,6 +60,7 @@ import { buildOutlineItems } from '@/components/sidebar/outlineModel'
 import type { EditorMode, ScoreResult, WatermarkConfig, PerfSummary } from '@emrde/document-engine'
 import type { QCIssue, QCResult } from '@emrde/document-engine'
 import type { MissingField } from '@emrde/document-engine'
+import type { CalcResult } from '@emrde/document-engine'
 
 /**
  * 触发一次下载 (Blob → object URL → 隐藏 <a> 点击 → 释放)。
@@ -118,6 +119,19 @@ function openPrintWindow(pageImages: string[]): void {
   w.document.write('</body></html>')
   w.document.close()
   setTimeout(() => { w.print(); w.close() }, 300)
+}
+
+/**
+ * 控件配置弹框要的两件事 —— **同一次** `getBoundValues()` 快照得出的两个视图。
+ *
+ * 一份投影两处用 (撞键提示 + 公式的可引用键清单), 而不是各建一份: 两份清单必然
+ * 漂移, 而且会漂移成"UI 说能引用、求值说歧义"这种最难查的形态 (契约 §12.12.9)。
+ */
+interface KeyFacts {
+  /** 各键被**其他**控件占用的次数 (撞键提示用, 已按 excludeNodeId 排除自身) */
+  usage: Map<string, number>
+  /** 可引用的键去重清单 (公式「计算」tab 用) */
+  refs: ReferenceKey[]
 }
 
 export default function EditorPage() {
@@ -180,33 +194,64 @@ function EditorPageInner({
   const [controlWizard, setControlWizard] = useState<{ open: boolean; kind: WizardKind }>({ open: false, kind: 'textInput' })
   const [controlEdit, setControlEdit] = useState<{ open: boolean; nodeId: string }>({ open: false, nodeId: '' })
   /**
-   * 各绑定键被**其他**控件占用的次数 (契约 §12.10.1) — 供控件配置弹框的撞键提示。
+   * 各绑定键被**其他**控件占用的次数 (契约 §12.10.1) — 供控件配置弹框的撞键提示;
+   * 同一份快照再给出公式「计算」tab 的可引用键清单 (§12.12.9)。
    *
    * 排除 excludeNodeId 是有意的: 提示要回答的是「改完之后会跟谁撞」, 不是「现在
    * 跟谁撞」。既然自身被排除, 判定就只有一条规则 —— others >= 1 即撞 (弹框里
    * 展示的 n 再 +1 把自己算回去)。
    *
    * 空键 (无身份的控件) 不计入: 它们既不为绑定服务, 也不该在输入框里被"撞中"。
+   * 可引用键清单同样跳过空键 —— 它无法被引用, 正是 §12.12.3 的"未找到"。
    */
-  const keyUsageOf = useCallback((excludeNodeId?: string): Map<string, number> => {
-    const counts = new Map<string, number>()
+  const keyFactsOf = useCallback((excludeNodeId?: string): KeyFacts => {
+    const usage = new Map<string, number>()
     const ed = editorRef.current
-    if (!ed) return counts
-    for (const item of ed.getBoundValues().items) {
+    if (!ed) return { usage, refs: [] }
+    const projection = ed.getBoundValues()
+    for (const item of projection.items) {
       if (item.key === '') continue
       if (excludeNodeId !== undefined && item.nodeId === excludeNodeId) continue
-      counts.set(item.key, (counts.get(item.key) ?? 0) + 1)
+      usage.set(item.key, (usage.get(item.key) ?? 0) + 1)
     }
-    return counts
+    // 可引用键: 投影里有身份的键去重。撞键的标出来 —— 公式引用它必报歧义 (§12.12.3),
+    // 而"哪些键撞了"直接取投影自己的 duplicates, 不在这里再数一遍 (两份必然漂移)。
+    const dupKeys = new Set(projection.duplicates.map((d) => d.key))
+    const seen = new Set<string>()
+    const refs: ReferenceKey[] = []
+    for (const item of projection.items) {
+      if (item.key === '' || seen.has(item.key)) continue
+      seen.add(item.key)
+      refs.push({ key: item.key, name: item.name, ambiguous: dupKeys.has(item.key) })
+    }
+    return { usage, refs }
   }, [editorRef])
 
-  /** 撞键提示的文档快照 — 打开弹框时取一次 (见 keyUsageOf 与弹框的 otherKeyUsage) */
-  const [controlKeyUsage, setControlKeyUsage] = useState<ReadonlyMap<string, number>>(new Map())
+  /** 撞键提示 + 可引用键的文档快照 — 打开弹框时取一次 (见 keyFactsOf) */
+  const [controlKeyFacts, setControlKeyFacts] = useState<KeyFacts>({ usage: new Map(), refs: [] })
 
   const openControlEdit = useCallback((controlId: string) => {
-    setControlKeyUsage(keyUsageOf(controlId))
+    setControlKeyFacts(keyFactsOf(controlId))
     setControlEdit({ open: true, nodeId: controlId })
-  }, [keyUsageOf])
+  }, [keyFactsOf])
+
+  /**
+   * 公式试算 (§12.12.9) —— 弹框不碰 evaluation/ 内部, 唯一入口是 Editor.evaluateFormula。
+   *
+   * `forNodeId` 传正在编辑的控件: 试算它的新公式时, 引用它自己的键读的是**原始值**
+   * 而不是它当前算出来的结果 (否则像在照镜子)。
+   */
+  const previewFormula = useCallback((formula: string, forNodeId?: string): CalcResult => {
+    const ed = editorRef.current
+    // 兜底只为满足类型: 该 message 不会出现在界面上 (作者化面按**错误码**渲染文案)
+    if (!ed) return { ok: false, error: { code: 'syntax', message: 'editor not ready' } }
+    return ed.evaluateFormula(formula, forNodeId)
+  }, [editorRef])
+  const previewForCreate = useCallback((f: string) => previewFormula(f), [previewFormula])
+  const previewForEdit = useCallback(
+    (f: string) => previewFormula(f, controlEdit.nodeId),
+    [previewFormula, controlEdit.nodeId],
+  )
   // 通用菜单只发 'properties' id; 弹框映射在设计态业务层这里完成 (契约 §12.7)。
   // 节代码对话框 (单字段): 记录目标节 id, 打开时从引擎读当前值
   const [sectionCodeTarget, setSectionCodeTarget] = useState<{ open: boolean; sectionId: string }>(
@@ -1235,7 +1280,7 @@ function EditorPageInner({
         if (type === 'textInput' || type === 'radio' || type === 'checkbox') {
           // 撞键提示的文档快照, **在打开这一刻取一次** —— 不放在渲染里, 否则弹框里
           // 每敲一个字符都要把全文投影重算一遍 (契约 §12.10.2 的投影不便宜)。
-          setControlKeyUsage(keyUsageOf())
+          setControlKeyFacts(keyFactsOf())
           setControlWizard({ open: true, kind: type })
           return
         }
@@ -1310,7 +1355,9 @@ function EditorPageInner({
           open
           mode="create"
           initial={initialConfigForCreate('textInput')}
-          otherKeyUsage={controlKeyUsage}
+          otherKeyUsage={controlKeyFacts.usage}
+          referenceKeys={controlKeyFacts.refs}
+          onPreviewFormula={previewForCreate}
           onClose={() => setControlWizard({ open: false, kind: controlWizard.kind })}
           onApply={applyWizardResult}
         />
@@ -1319,7 +1366,9 @@ function EditorPageInner({
           open
           mode="create"
           initial={initialConfigForCreate(controlWizard.kind)}
-          otherKeyUsage={controlKeyUsage}
+          otherKeyUsage={controlKeyFacts.usage}
+          referenceKeys={controlKeyFacts.refs}
+          onPreviewFormula={previewForCreate}
           onClose={() => setControlWizard({ open: false, kind: controlWizard.kind })}
           onApply={applyWizardResult}
         />
@@ -1334,9 +1383,9 @@ function EditorPageInner({
         const family = controlFamilyOf(element, definition)
         const initial = { element, definition }
         return family === 'choice' ? (
-          <ControlChoiceDialog open mode="edit" initial={initial} otherKeyUsage={controlKeyUsage} onClose={closeControlEdit} onApply={applyControlEdit} />
+          <ControlChoiceDialog open mode="edit" initial={initial} otherKeyUsage={controlKeyFacts.usage} referenceKeys={controlKeyFacts.refs} onPreviewFormula={previewForEdit} onClose={closeControlEdit} onApply={applyControlEdit} />
         ) : (
-          <ControlInputDialog open mode="edit" initial={initial} otherKeyUsage={controlKeyUsage} onClose={closeControlEdit} onApply={applyControlEdit} />
+          <ControlInputDialog open mode="edit" initial={initial} otherKeyUsage={controlKeyFacts.usage} referenceKeys={controlKeyFacts.refs} onPreviewFormula={previewForEdit} onClose={closeControlEdit} onApply={applyControlEdit} />
         )
       })()}
       <DocumentPropertiesDialog

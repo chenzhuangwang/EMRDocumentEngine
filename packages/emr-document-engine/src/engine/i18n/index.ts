@@ -894,6 +894,30 @@ export interface LocaleMessages {
   'choice.removeByValue': string                // '删除 {value}'
   // 数据绑定 tab label — 复用 dialog.label.dictionary (它就是字典绑定的设置面板)
   'controlConfig.dataBindingTab': string
+  // 计算式撰写 (契约 §12.12.9) —— 两个配置弹框的「计算」tab 共用
+  'controlConfig.tab.formula': string           // '计算'
+  'controlConfig.formula.label': string         // '计算式'
+  'controlConfig.formula.placeholder': string   // '例如: [收缩压] + [舒张压]'
+  'controlConfig.formula.hint': string          // 写法说明 (引用按绑定键)
+  'controlConfig.formula.keysLabel': string     // '可引用的键'
+  'controlConfig.formula.keysEmpty': string     // 文档里还没有带身份键的控件
+  'controlConfig.formula.ambiguous': string     // '撞键'
+  'controlConfig.formula.ambiguousHint': string
+  'controlConfig.formula.previewValue': string  // '试算结果: {value}'
+  'controlConfig.formula.previewVisibility': string // '{state} {key}'
+  'controlConfig.formula.visible': string       // '显示'
+  'controlConfig.formula.hidden': string        // '隐藏'
+  // 错误分类 (契约 §12.12.9: 不许塌成一句"公式有误")
+  'controlConfig.formula.err.syntax': string
+  'controlConfig.formula.err.unresolved': string
+  'controlConfig.formula.err.ambiguous': string
+  'controlConfig.formula.err.unknownFunction': string
+  'controlConfig.formula.err.badArguments': string
+  'controlConfig.formula.err.empty': string
+  'controlConfig.formula.err.notANumber': string
+  'controlConfig.formula.err.cycle': string
+  'controlConfig.formula.err.conflictingVisibility': string
+  'controlConfig.formula.err.notDisplayable': string
   // ============================================================
   // BookmarkDialog
   // ============================================================
@@ -1786,6 +1810,28 @@ const zhCN: LocaleMessages = {
   'choice.removeOption': '删除选项 {n}',
   'choice.removeByValue': '删除 {value}',
   'controlConfig.dataBindingTab': '数据绑定',
+  'controlConfig.tab.formula': '计算',
+  'controlConfig.formula.label': '计算式',
+  'controlConfig.formula.placeholder': '例如: [收缩压] + [舒张压]',
+  'controlConfig.formula.hint': '引用写 [键]，键就是控件的绑定键（数据元码优先，空则用标识）。可用 + - * / % 、比较与逻辑、IF / GETAGE / DIFF_DATE_DAYS / SUM / ROUND 等内置函数；SHOW([键]) 与 HIDE([键]) 控制别的控件是否出现。算出的值只用于显示，不会写进字段值。',
+  'controlConfig.formula.keysLabel': '可引用的键（点击插入）',
+  'controlConfig.formula.keysEmpty': '本文档里还没有带身份键的控件。',
+  'controlConfig.formula.ambiguous': '撞键',
+  'controlConfig.formula.ambiguousHint': '该键命中多个控件，引用它会报歧义（引擎不会替你挑一个）。先改键，再引用。',
+  'controlConfig.formula.previewValue': '试算结果：{value}',
+  'controlConfig.formula.previewVisibility': '触发式：{state} {key}',
+  'controlConfig.formula.visible': '显示',
+  'controlConfig.formula.hidden': '隐藏',
+  'controlConfig.formula.err.syntax': '语法错误：表达式没写完或写法不对。',
+  'controlConfig.formula.err.unresolved': '引用的键在文档里找不到。',
+  'controlConfig.formula.err.ambiguous': '该键命中多个控件，无法求值（引擎不会替你挑一个）。',
+  'controlConfig.formula.err.unknownFunction': '函数未注册。',
+  'controlConfig.formula.err.badArguments': '函数的实参个数或类型不符。',
+  'controlConfig.formula.err.empty': '参与运算的字段还没填。',
+  'controlConfig.formula.err.notANumber': '文本字段不能参与算术，请先确认该字段是数字型。',
+  'controlConfig.formula.err.cycle': '公式之间互相引用，成了环。',
+  'controlConfig.formula.err.conflictingVisibility': '两条公式对同一个控件的显示/隐藏给出了相反的要求，引擎不会替你挑一条。',
+  'controlConfig.formula.err.notDisplayable': '算出来的结果不是可显示的值（需要数字或文本）。',
   // ===== BookmarkDialog =====
   'bookmark.insertBookmark': '插入书签',
   'bookmark.insertCrossRef': '插入交叉引用',
@@ -2660,6 +2706,28 @@ const enUS: LocaleMessages = {
   'choice.removeOption': 'Remove option {n}',
   'choice.removeByValue': 'Remove {value}',
   'controlConfig.dataBindingTab': 'Data Binding',
+  'controlConfig.tab.formula': 'Formula',
+  'controlConfig.formula.label': 'Formula',
+  'controlConfig.formula.placeholder': 'e.g. [SBP] + [DBP]',
+  'controlConfig.formula.hint': 'Write a reference as [key] — the key is the control binding key (data element code first, identifier when empty). Operators + - * / % , comparisons and logic, and the builtins IF / GETAGE / DIFF_DATE_DAYS / SUM / ROUND are available; SHOW([key]) and HIDE([key]) control whether another control appears. A computed value is for display only — it is never written into the field value.',
+  'controlConfig.formula.keysLabel': 'Referenceable keys (click to insert)',
+  'controlConfig.formula.keysEmpty': 'This document has no control with an identity key yet.',
+  'controlConfig.formula.ambiguous': 'ambiguous',
+  'controlConfig.formula.ambiguousHint': 'This key matches several controls, so referencing it reports an ambiguity (the engine never picks one). Rename the key first.',
+  'controlConfig.formula.previewValue': 'Preview: {value}',
+  'controlConfig.formula.previewVisibility': 'Trigger: {state} {key}',
+  'controlConfig.formula.visible': 'show',
+  'controlConfig.formula.hidden': 'hide',
+  'controlConfig.formula.err.syntax': 'Syntax error: the expression is incomplete or malformed.',
+  'controlConfig.formula.err.unresolved': 'The referenced key matches no control in this document.',
+  'controlConfig.formula.err.ambiguous': 'This key matches several controls, so the formula cannot be evaluated (the engine never picks one).',
+  'controlConfig.formula.err.unknownFunction': 'Unknown function.',
+  'controlConfig.formula.err.badArguments': 'Wrong number or type of arguments for that function.',
+  'controlConfig.formula.err.empty': 'A referenced field is still empty.',
+  'controlConfig.formula.err.notANumber': 'A text field cannot take part in arithmetic — check that the field is numeric.',
+  'controlConfig.formula.err.cycle': 'These formulas reference each other in a cycle.',
+  'controlConfig.formula.err.conflictingVisibility': 'Two formulas disagree about whether this control is shown; the engine will not pick one.',
+  'controlConfig.formula.err.notDisplayable': 'The result is not a displayable value (a number or text is required).',
   // ===== BookmarkDialog =====
   'bookmark.insertBookmark': 'Insert Bookmark',
   'bookmark.insertCrossRef': 'Insert Cross-Reference',

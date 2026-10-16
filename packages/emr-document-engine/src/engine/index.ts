@@ -234,6 +234,15 @@ export type { QCRule, QCIssue, QCResult, QCSeverity, QCGrade } from './qc/QCEngi
 export { scoreControls } from './evaluation/ControlScorer'
 export type { ScorableControl, ControlScoreItem, ScoreResult } from './evaluation/ControlScorer'
 
+// 计算式 (契约 §12.12) —— **只出类型**, 不出函数。
+// 作者化面 (配置弹框) 要按分类渲染错误、按结果渲染试算值, 于是需要 CalcResult /
+// CalcErrorCode; 集成方实现自定义函数需要 CalcFunction。而 parseFormula /
+// evaluateAst 这类内部件不出 —— §12.12.9 明写「作者化 UI MUST NOT 伸进
+// evaluation/ 内部」, 唯一入口是 Editor.evaluateFormula / getComputedDisplay。
+export type {
+  CalcError, CalcErrorCode, CalcResult, CalcFunction, VisibilityDirective,
+} from './evaluation/ExpressionEngine'
+
 // ---- TemplateDefinition (契约 §12.1) ----
 export { TemplateDefinitionStore } from './template/TemplateDefinition'
 export type { TemplateDefinition, TemplateDefinitionMap, ControlType } from './template/TemplateDefinition'

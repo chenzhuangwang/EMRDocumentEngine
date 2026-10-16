@@ -17,12 +17,14 @@
 // (undefined / select 等不动), 杜绝「打开即迁移」(VR-15)。
 // ================================================================
 
+import { useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { controlWidgetById } from '@/platform/data/controlLibrary'
 import { DICTIONARY_CATALOG } from '@/platform/data/dictionaryCatalog'
+import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/useTranslation'
 import type {
-  ElementMeta, ElementEnumOption, TemplateDefinition,
+  CalcErrorCode, CalcResult, ElementMeta, ElementEnumOption, LocaleMessages, TemplateDefinition,
 } from '@emrde/document-engine'
 
 // ---- 家族 / 向导类型 ----
@@ -319,3 +321,152 @@ export function DictionaryField({
 }
 
 export type { ElementEnumOption }
+
+// ---- 计算式撰写 (契约 §12.12.9) ----
+
+/**
+ * 文档里**可引用的键** —— 来自 `Editor.getBoundValues()` 的同一份投影。
+ *
+ * 为什么不在这里现读 Editor: 弹框只持本地 draft (§12.7), 文档快照由调用方在打开
+ * 时给 (§12.12.9 的"同一份清单"要求: 与撞键提示同源, 否则必然漂移成"UI 说能引用、
+ * 求值说歧义"这种最难查的形态)。
+ */
+export interface ReferenceKey {
+  key: string
+  /** 控件名 —— 作者按名字认字段, 光看码认不出来 */
+  name: string
+  /** 该键命中 ≥2 个控件: 公式引用它**必报歧义** (§12.12.3), 只提示不拦 */
+  ambiguous: boolean
+}
+
+/** 错误码 → 文案键 (§12.12.9: 错误必须**分类**可判定, 不许塌成"公式有误") */
+const FORMULA_ERROR_KEYS: Record<CalcErrorCode, keyof LocaleMessages> = {
+  syntax: 'controlConfig.formula.err.syntax',
+  unresolved_reference: 'controlConfig.formula.err.unresolved',
+  ambiguous_reference: 'controlConfig.formula.err.ambiguous',
+  unknown_function: 'controlConfig.formula.err.unknownFunction',
+  bad_arguments: 'controlConfig.formula.err.badArguments',
+  empty_reference: 'controlConfig.formula.err.empty',
+  not_a_number: 'controlConfig.formula.err.notANumber',
+  cycle: 'controlConfig.formula.err.cycle',
+  conflicting_visibility: 'controlConfig.formula.err.conflictingVisibility',
+  not_displayable: 'controlConfig.formula.err.notDisplayable',
+}
+
+/**
+ * 公式撰写字段 + 试算 + 可引用键清单 (契约 §12.12.9)。
+ *
+ * **两个弹框共用这一个** —— 输入域与单选复选。批次一吃过"同一条契约条款只兑现一半
+ * 控件"的亏 (语义身份只给了输入域弹框), 这次一条款要从两个弹框同时进。
+ *
+ * 三条立场:
+ *   1. 错误**只提示不拦**: 作者可能正写到一半, 硬拦会把"存草稿"变成不可能 ——
+ *      与 §12.10.2 的撞键提示同一姿势。这个组件不碰 onApply, 也拦不住它。
+ *   2. 试算走调用方注入的 `preview` (实际就是 `Editor.evaluateFormula`), 本组件
+ *      **不认识求值器**。引擎侧的错误已是分类的, 这里只做码 → 文案。
+ *   3. 键是**绑定键** (§12.10.1), 点一下插到光标处 —— 手打 `[数据元码]` 是错字温床。
+ */
+export function FormulaField({
+  value, onChange, referenceKeys, preview,
+}: {
+  value: string
+  onChange: (v: string) => void
+  referenceKeys?: readonly ReferenceKey[]
+  /** 引擎侧试算; 缺省 = 不显示试算行 (单测/无引擎时) */
+  preview?: (formula: string) => CalcResult
+}) {
+  const { t } = useTranslation()
+  const areaRef = useRef<HTMLTextAreaElement>(null)
+  const trimmed = value.trim()
+
+  const result = useMemo(
+    () => (trimmed === '' || !preview ? null : preview(trimmed)),
+    [trimmed, preview],
+  )
+
+  const insert = (key: string) => {
+    const token = `[${key}]`
+    const el = areaRef.current
+    if (!el) { onChange(value + token); return }
+    const start = el.selectionStart ?? value.length
+    const end = el.selectionEnd ?? start
+    onChange(value.slice(0, start) + token + value.slice(end))
+    // 受控组件: 值要等重渲染才落, 故光标在下一帧设
+    requestAnimationFrame(() => {
+      el.focus()
+      const pos = start + token.length
+      el.setSelectionRange(pos, pos)
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <Field label={t('controlConfig.formula.label')}>
+        <textarea
+          ref={areaRef}
+          className={cn(inputCls, 'font-mono text-xs leading-relaxed resize-y min-h-[64px]')}
+          value={value}
+          placeholder={t('controlConfig.formula.placeholder')}
+          onChange={(e) => onChange(e.target.value)}
+          spellCheck={false}
+        />
+      </Field>
+
+      <p className="text-[11px] leading-relaxed text-chrome-ink-muted">{t('controlConfig.formula.hint')}</p>
+
+      {/* 试算结果 —— 值公式给值, 触发式给"谁可见/隐藏" */}
+      {result && (
+        result.ok ? (
+          result.role === 'value' ? (
+            <p className="text-[11px] leading-relaxed text-emerald-600">
+              {t('controlConfig.formula.previewValue', { value: String(result.value) })}
+            </p>
+          ) : (
+            <p className="text-[11px] leading-relaxed text-emerald-600">
+              {t('controlConfig.formula.previewVisibility', {
+                key: result.directive.key,
+                state: t(result.directive.visible ? 'controlConfig.formula.visible' : 'controlConfig.formula.hidden'),
+              })}
+            </p>
+          )
+        ) : (
+          <p className="text-[11px] leading-relaxed text-amber-600">
+            {t(FORMULA_ERROR_KEYS[result.error.code])}
+            {result.error.candidateNodeIds ? ` (${result.error.candidateNodeIds.length})` : ''}
+          </p>
+        )
+      )}
+
+      <div>
+        <span className={fieldLabelCls}>{t('controlConfig.formula.keysLabel')}</span>
+        {(referenceKeys ?? []).length === 0 ? (
+          <p className="text-[11px] leading-relaxed text-chrome-ink-muted">{t('controlConfig.formula.keysEmpty')}</p>
+        ) : (
+          <div className="max-h-32 overflow-y-auto rounded-md border border-line-subtle bg-chrome-subtle p-1.5">
+            <div className="flex flex-wrap gap-1">
+              {(referenceKeys ?? []).map((k) => (
+                <button
+                  key={k.key}
+                  type="button"
+                  onClick={() => insert(k.key)}
+                  title={k.ambiguous ? t('controlConfig.formula.ambiguousHint') : k.key}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-mono',
+                    'border hover:bg-chrome-hover',
+                    k.ambiguous
+                      ? 'border-amber-400 text-amber-700'
+                      : 'border-line-subtle text-chrome-ink-body',
+                  )}
+                >
+                  {k.name}
+                  <span className="text-chrome-ink-muted">[{k.key}]</span>
+                  {k.ambiguous && <span className="not-italic">{t('controlConfig.formula.ambiguous')}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

@@ -19,9 +19,9 @@ import * as Dialog from '@radix-ui/react-dialog'
 import * as Tabs from '@radix-ui/react-tabs'
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { ElementMeta, ElementEnumOption, TemplateDefinition } from '@emrde/document-engine'
-import { SemanticIdentityFields, TextField, ToggleField, cleanDefinition, cloneData, inputCls, semanticCodeOf } from './controlConfigShared'
-import type { ControlConfigData } from './controlConfigShared'
+import type { CalcResult, ElementMeta, ElementEnumOption, TemplateDefinition } from '@emrde/document-engine'
+import { FormulaField, SemanticIdentityFields, TextField, ToggleField, cleanDefinition, cloneData, inputCls, semanticCodeOf } from './controlConfigShared'
+import type { ControlConfigData, ReferenceKey } from './controlConfigShared'
 import { useTranslation } from '@/i18n/useTranslation'
 import type { LocaleMessages } from '@emrde/document-engine'
 
@@ -37,17 +37,26 @@ interface ControlChoiceDialogProps {
    * SemanticIdentityFields, 撞键判定只有一条规则。
    */
   otherKeyUsage?: ReadonlyMap<string, number>
+  /**
+   * 「计算」tab 的可引用键清单 (契约 §12.12.9) —— 与 `otherKeyUsage` 同一份
+   * `Editor.getBoundValues()` 投影, 形状与语义与 ControlInputDialog 的同名 prop
+   * 一致: 两个弹框共用 FormulaField, 键清单也就只能有一份。
+   */
+  referenceKeys?: readonly ReferenceKey[]
+  /** 引擎侧试算 —— 实际就是 `Editor.evaluateFormula(formula, nodeId)` (§12.12.9) */
+  onPreviewFormula?: (formula: string) => CalcResult
 }
 
-type TabId = 'type' | 'base' | 'options' | 'numeric' | 'list'
+type TabId = 'type' | 'base' | 'options' | 'numeric' | 'list' | 'formula'
 
-const TAB_ORDER: readonly TabId[] = ['type', 'base', 'options', 'numeric', 'list']
+const TAB_ORDER: readonly TabId[] = ['type', 'base', 'options', 'numeric', 'list', 'formula']
 const TAB_LABEL_KEYS: Record<TabId, keyof LocaleMessages> = {
   type: 'choice.tab.type',
   base: 'choice.tab.base',
   options: 'choice.tab.options',
   numeric: 'choice.tab.numeric',
   list: 'choice.tab.list',
+  formula: 'controlConfig.tab.formula',
 }
 
 interface OptionDraft extends ElementEnumOption { }
@@ -70,6 +79,8 @@ interface ChoiceDraft {
   /** 语义身份 (契约 §12.5: 本弹框内**可编辑**) —— 也是批量绑定的绑定键候选 */
   internal: string
   dataElement: string
+  /** 计算式 (契约 §12.12.1: 住在 TemplateDefinition 上) —— 空串 = 不写该字段 */
+  formula: string
 }
 
 function draftFrom(initial: ControlConfigData): ChoiceDraft {
@@ -94,6 +105,7 @@ function draftFrom(initial: ControlConfigData): ChoiceDraft {
     enumEditable: enums?.editable,
     internal: el.code.internal ?? '',
     dataElement: el.code.dataElement ?? '',
+    formula: def?.formula ?? '',
   }
 }
 
@@ -101,7 +113,7 @@ const THEAD = 'text-xs font-medium text-chrome-ink-tertiary border-b border-line
 const CELL = 'px-1.5 py-1 align-middle'
 
 export function ControlChoiceDialog({
-  open, mode, initial, onClose, onApply, otherKeyUsage,
+  open, mode, initial, onClose, onApply, otherKeyUsage, referenceKeys, onPreviewFormula,
 }: ControlChoiceDialogProps) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState<ChoiceDraft>(() => draftFrom(initial))
@@ -173,6 +185,8 @@ export function ControlChoiceDialog({
       deletable: draft.deletable ? true : undefined,
       editable: draft.editable === false ? false : undefined,
       single: draft.single ? true : undefined,
+      // 计算式 (契约 §12.12): 首尾去空; 空 = 真删键 (cleanDefinition 丢空串)
+      formula: draft.formula.trim() || undefined,
     })
     return { element: el, definition: def }
   }, [draft, mode, initial])
@@ -361,6 +375,21 @@ export function ControlChoiceDialog({
                     {draft.options.length === 0 && <tr><td colSpan={4} className={cn(CELL, 'text-center text-xs text-chrome-ink-disabled py-3')}>{t('choice.optionsEmpty')}</td></tr>}
                   </tbody>
                 </table>
+              </Tabs.Content>
+
+              {/*
+                计算 (契约 §12.12.9) — 与 ControlInputDialog 共用同一个 FormulaField。
+                **两个弹框都开是硬要求**: 批次一刚吃过"同一条契约条款只兑现一半控件"
+                的亏 (语义身份只给了输入域弹框, 单选复选绑不上键), 这次一条款要从
+                两个弹框同时进。
+              */}
+              <Tabs.Content forceMount value="formula" className="space-y-3">
+                <FormulaField
+                  value={draft.formula}
+                  onChange={(v) => patch({ formula: v })}
+                  referenceKeys={referenceKeys}
+                  preview={onPreviewFormula}
+                />
               </Tabs.Content>
             </div>
           </Tabs.Root>

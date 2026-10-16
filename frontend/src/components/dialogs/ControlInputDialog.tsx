@@ -24,10 +24,10 @@ import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { controlTypeForDataType } from '@emrde/document-engine'
 import type { ElementMeta, ElementEnumOption, TemplateDefinition } from '@emrde/document-engine'
-import { cleanDefinition, cloneData, DictionaryField, Field, NumField, SemanticIdentityFields, TextField, ToggleField, inputCls, semanticCodeOf } from './controlConfigShared'
-import type { ControlConfigData } from './controlConfigShared'
+import { cleanDefinition, cloneData, DictionaryField, Field, FormulaField, NumField, SemanticIdentityFields, TextField, ToggleField, inputCls, semanticCodeOf } from './controlConfigShared'
+import type { ControlConfigData, ReferenceKey } from './controlConfigShared'
 import { useTranslation } from '@/i18n/useTranslation'
-import type { LocaleMessages } from '@emrde/document-engine'
+import type { CalcResult, LocaleMessages } from '@emrde/document-engine'
 
 /** 输入域形态: 纯文本/数字/日期/日期时间/下拉 (下拉=select; 日期时间=DT) */
 export type InputKind = 'S1' | 'N' | 'D' | 'DT' | 'select'
@@ -48,9 +48,21 @@ interface ControlInputDialogProps {
    * 不在这里读 Editor: 弹框只持本地 draft (§12.7), 文档快照由调用方给。
    */
   otherKeyUsage?: ReadonlyMap<string, number>
+  /**
+   * 「计算」tab 的可引用键清单 (契约 §12.12.9) —— 与 `otherKeyUsage` **同一份**
+   * `Editor.getBoundValues()` 投影, 由调用方在打开弹框时一并快照。
+   *
+   * 不另建一份键清单: 两份必然漂移, 而且会漂移成"UI 说能引用、求值说歧义"。
+   */
+  referenceKeys?: readonly ReferenceKey[]
+  /**
+   * 引擎侧试算 (契约 §12.12.9) —— 实际就是 `Editor.evaluateFormula(formula, nodeId)`。
+   * 弹框不碰 evaluation/ 内部, 错误分类由引擎给。
+   */
+  onPreviewFormula?: (formula: string) => CalcResult
 }
 
-type TabId = 'general' | 'format' | 'validate' | 'binding' | 'other'
+type TabId = 'general' | 'format' | 'validate' | 'binding' | 'formula' | 'other'
 
 /** 形态按钮文案 → i18n 键 (与 dialog.controlType.* 一致) */
 const KIND_LABEL_KEYS: Record<InputKind, keyof LocaleMessages> = {
@@ -66,10 +78,11 @@ const TAB_LABEL_KEYS: Record<TabId, keyof LocaleMessages> = {
   format: 'controlConfig.tab.format',
   validate: 'controlConfig.tab.advanced',
   binding: 'controlConfig.dataBindingTab',
+  formula: 'controlConfig.tab.formula',
   other: 'controlConfig.internal',
 }
 
-const TAB_ORDER: readonly TabId[] = ['general', 'format', 'validate', 'binding', 'other']
+const TAB_ORDER: readonly TabId[] = ['general', 'format', 'validate', 'binding', 'formula', 'other']
 
 interface OptionDraft { name: string; value: string; numericValue?: number }
 
@@ -96,6 +109,8 @@ interface Draft {
   /** 语义身份 (契约 §12.5: 本弹框内**可编辑**) —— 也是批量绑定的绑定键候选 */
   internal: string
   dataElement: string
+  /** 计算式 (契约 §12.12.1: 住在 TemplateDefinition 上) —— 空串 = 不写该字段 */
+  formula: string
 }
 
 function kindFrom(el: ElementMeta | undefined, def: TemplateDefinition | undefined): InputKind {
@@ -135,11 +150,12 @@ function draftFrom(initial: ControlConfigData): Draft {
     dictionary: fmt?.dictionary ?? '',
     internal: el.code.internal ?? '',
     dataElement: el.code.dataElement ?? '',
+    formula: def?.formula ?? '',
   }
 }
 
 export function ControlInputDialog({
-  open, mode, initial, onClose, onApply, otherKeyUsage,
+  open, mode, initial, onClose, onApply, otherKeyUsage, referenceKeys, onPreviewFormula,
 }: ControlInputDialogProps) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState<Draft>(() => draftFrom(initial))
@@ -232,6 +248,8 @@ export function ControlInputDialog({
       deletable: draft.deletable ? true : undefined,
       editable: draft.editable === false ? false : undefined,
       single: draft.single ? true : undefined,
+      // 计算式 (契约 §12.12): 原文照写 (不 trim 内部空白), 仅去首尾; 空 = 真删键
+      formula: draft.formula.trim() || undefined,
     })
     return { element: el, definition: def }
   }, [draft, mode, initial])
@@ -371,6 +389,16 @@ export function ControlInputDialog({
                     {t('controlConfig.bindingHint', { kind: kindLabel })}
                   </p>
                 )}
+              </Tabs.Content>
+
+              {/* 计算 (契约 §12.12.9) — 与 ControlChoiceDialog 共用同一个 FormulaField */}
+              <Tabs.Content forceMount value="formula" className="space-y-3">
+                <FormulaField
+                  value={draft.formula}
+                  onChange={(v) => patch({ formula: v })}
+                  referenceKeys={referenceKeys}
+                  preview={onPreviewFormula}
+                />
               </Tabs.Content>
 
               {/* 其他 */}

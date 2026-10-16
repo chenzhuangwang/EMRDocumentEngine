@@ -21,7 +21,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ControlInputDialog } from '../ControlInputDialog'
-import type { ElementMeta, TemplateDefinition } from '@emrde/document-engine'
+import type { CalcResult, ElementMeta, TemplateDefinition } from '@emrde/document-engine'
 import { bootstrapLocale } from '@/i18n/bootstrap'
 import { locale } from '@emrde/document-engine'
 
@@ -358,5 +358,78 @@ describe('ControlInputDialog — 语义身份可编辑 (契约 §12.5)', () => {
     renderEdit(INPUT_EL, new Map([['CTL_INPUT', 3]]))
     fireEvent.click(screen.getByRole('tab', { name: OTHER_TAB }))
     expect(screen.queryByText(/已被 \d+ 个控件使用/)).toBeNull()
+  })
+})
+
+// ================================================================
+// 计算 (契约 §12.12.9)
+//
+// 与 ControlChoiceDialog 的同名用例组**成对存在** —— 两个弹框共用同一个
+// FormulaField, 但各自的 draft 组装 (draftFrom / result) 是独立的: 只在一边测,
+// 另一边漏接 draft.formula 也不会红。批次一在"语义身份"上正是这么栽的。
+// ================================================================
+
+describe('ControlInputDialog — 计算 (契约 §12.12.9)', () => {
+  const FORMULA_TAB = '计算'
+
+  function renderFormula(definition?: TemplateDefinition, onPreviewFormula?: (f: string) => CalcResult) {
+    const onApply = vi.fn()
+    const onClose = vi.fn()
+    render(
+      <ControlInputDialog
+        open mode="edit"
+        initial={{ element: INPUT_EL, definition }}
+        referenceKeys={[{ key: 'DE99.99.001', name: '旧名', ambiguous: false }]}
+        onPreviewFormula={onPreviewFormula}
+        onClose={onClose} onApply={onApply}
+      />,
+    )
+    return { onApply, onClose }
+  }
+
+  const formulaBox = () => screen.getByPlaceholderText(/收缩压/) as HTMLTextAreaElement
+
+  it('「计算」tab 打开时回填既有公式', () => {
+    renderFormula({ ...INPUT_DEF, formula: '[DE99.99.001] + 1' })
+    fireEvent.click(screen.getByRole('tab', { name: FORMULA_TAB }))
+    expect(formulaBox().value).toBe('[DE99.99.001] + 1')
+  })
+
+  it('写公式 → 应用 payload 的 definition.formula 随之更新', () => {
+    const { onApply } = renderFormula(INPUT_DEF)
+    fireEvent.click(screen.getByRole('tab', { name: FORMULA_TAB }))
+    fireEvent.change(formulaBox(), { target: { value: '[DE99.99.001] * 2' } })
+    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+
+    const payload = onApply.mock.calls[0][0] as { definition?: TemplateDefinition }
+    expect(payload.definition?.formula).toBe('[DE99.99.001] * 2')
+    // 其余定义字段不受影响
+    expect(payload.definition?.controlType).toBe('input')
+  })
+
+  it('清空公式 → payload 里没有 formula 键 (真删键, 不是写空串)', () => {
+    const { onApply } = renderFormula({ ...INPUT_DEF, formula: '[DE99.99.001] + 1' })
+    fireEvent.click(screen.getByRole('tab', { name: FORMULA_TAB }))
+    fireEvent.change(formulaBox(), { target: { value: '   ' } })
+    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+
+    const payload = onApply.mock.calls[0][0] as { definition?: TemplateDefinition }
+    expect(payload.definition && 'formula' in payload.definition).toBe(false)
+  })
+
+  it('公式算不出来也**不阻断应用** —— 作者可能正写到一半', () => {
+    const { onApply } = renderFormula(
+      INPUT_DEF,
+      () => ({ ok: false, error: { code: 'syntax', message: 'unexpected end' } }),
+    )
+    fireEvent.click(screen.getByRole('tab', { name: FORMULA_TAB }))
+    fireEvent.change(formulaBox(), { target: { value: '[DE99.99.001] +' } })
+
+    // 错误照实显示 (且是分类的) …
+    expect(screen.getByText(/语法错误/)).toBeTruthy()
+    // … 但「应用」照旧可点、照旧提交 —— 与 §12.10.2 撞键提示同一姿势
+    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+    const payload = onApply.mock.calls[0][0] as { definition?: TemplateDefinition }
+    expect(payload.definition?.formula).toBe('[DE99.99.001] +')
   })
 })
