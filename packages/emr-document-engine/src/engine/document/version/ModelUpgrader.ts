@@ -20,6 +20,7 @@
 //   v4.4.0 → v4.5.0  页眉页脚逐页变体 (firstPage/evenPage 段落数组, 契约 §7.9) — 显式 NO-OP
 //   v4.5.0 → v4.6.0  Table 新增可选字段 dynamicRows (填写时可增长, 契约 §12.9) — 显式 NO-OP
 //   v4.6.0 → v4.7.0  新增 Section 结构容器节点类型 (契约 §31) — 显式 NO-OP
+//   v4.7.0 → v4.8.0  TemplateDefinition 新增可选字段 formula (契约 §12.12) — 显式 NO-OP
 //
 // 不实现 downgrade(): EMR 场景下不需要"用旧引擎开新文档"。
 // 详见 knowledge/document-version-system-design.md §4 决策 4。
@@ -268,6 +269,28 @@ modelUpgrader.register({
 modelUpgrader.register({
   from: { major: 4, minor: 6, patch: 0 },
   to: { major: 4, minor: 7, patch: 0 },
+  breaking: false,
+  upgrade(doc: DocumentTree): DocumentTree {
+    return doc
+  },
+})
+
+// v4.7→v4.8: TemplateDefinition 新增可选字段 formula (契约 §12.12)
+// 纯向后兼容: 公式是**新增的可选字段**, 旧文档的 templateDefinitions 里没有它,
+// 每个控件读出来就是原样 (无公式 = 无派生值)。不重写、不回填。
+//
+// 为什么容器字段已存在仍要升版本 —— 这是本步存在的唯一理由, 写在这里免得下
+// 一个人以为这一档可以省:
+//   规则是「**新增可选字段**就升版本」, 不是「新增顶层字段才升版本」。
+//   controlType 就是这条规则的确证: 它同样是 TemplateDefinition 的字段、同样
+//   装在同一个 templateDefinitions 顶层字段里, 照样把版本从 4.3.x 推到 4.4.0。
+//   本文件的版本史 (ElementFormat 加字段 → 4.1 / SmartTextNode 加字段 → 4.2 /
+//   TemplateDefinition 加字段 → 4.4) 是**一条一致的规则**, 没有例外。
+//   容器已存在买到的是"**不需要任何数据搬运**" —— 那是这一档为什么是 NO-OP,
+//   不是为什么可以跳过。
+modelUpgrader.register({
+  from: { major: 4, minor: 7, patch: 0 },
+  to: { major: 4, minor: 8, patch: 0 },
   breaking: false,
   upgrade(doc: DocumentTree): DocumentTree {
     return doc

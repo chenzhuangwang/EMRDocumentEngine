@@ -19,6 +19,8 @@ import {
 import { MergeMatrix, buildMergeMatrix } from '../document/table/MergeMatrix'
 import { createDocument, createSimpleTable } from '../document/factory/ElementFormatter'
 import { loadDocumentFromObject } from '../document/io/DocumentLoader'
+import { serializeDocument } from '../document/io/DocumentSerializer'
+import { TemplateDefinitionStore } from '../template/TemplateDefinition'
 
 // ---- ModelUpgrader ----
 
@@ -156,10 +158,6 @@ describe('4.5.0 → 4.6.0 Table.dynamicRows (契约 §12.9)', () => {
 })
 
 describe('4.6.0 → 4.7.0 Section 结构容器 (契约 §31)', () => {
-  it('CURRENT_DOCUMENT_VERSION 为 4.7.0', () => {
-    expect(versionToString(CURRENT_DOCUMENT_VERSION)).toBe('4.7.0')
-  })
-
   it('CURRENT_SLIF_VERSION 未随之变动 (契约 §26.13/§26.14)', () => {
     const v = CURRENT_SLIF_VERSION as SLIFVersion
     expect([v.major, v.minor, v.patch]).toEqual([4, 2, 0])
@@ -171,7 +169,8 @@ describe('4.6.0 → 4.7.0 Section 结构容器 (契约 §31)', () => {
     doc.modelVersion = '4.6.0'
 
     const upgraded = modelUpgrader.upgrade(doc as never) as unknown as Record<string, unknown>
-    expect(upgraded.modelVersion).toBe('4.7.0')
+    // 升到**当前**版本 (不止 4.7.0 —— 后面还有 4.8.0 那一档)
+    expect(upgraded.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
     // Section 是新增节点类型: 旧文档里没有就不该有, 升级器不得凭空注入
     const raw = (doc as unknown as { nodes?: Record<string, { type?: string }> }).nodes
     for (const node of Object.values(raw ?? {})) {
@@ -185,12 +184,6 @@ describe('4.6.0 → 4.7.0 Section 结构容器 (契约 §31)', () => {
     expect(result.needsUpgrade).toBe(true)
   })
 
-  it('4.7.0 视为当前版本, 无需升级', () => {
-    const result = modelUpgrader.checkCompatibility('4.7.0')
-    expect(result.status).toBe('current')
-    expect(result.needsUpgrade).toBe(false)
-  })
-
   it('纯 NO-OP 升级步骤仍令 wasUpgraded 为真 (契约 §31.12)', () => {
     // "无数据重写" ≠ "wasUpgraded === false" —— 该标志的含义是 source ≠ final
     const r = loadDocumentFromObject({
@@ -201,7 +194,87 @@ describe('4.6.0 → 4.7.0 Section 结构容器 (契约 §31)', () => {
       nodes: {},
     })
     expect(r.wasUpgraded).toBe(true)
-    expect(r.upgradePath).toEqual(['4.6.0', '4.7.0'])
+    // upgradePath 记的是 **[源, 终]** 两档, 不是逐档 (recordUpgradePath 只 push 首末)
+    expect(r.upgradePath).toEqual(['4.6.0', '4.8.0'])
+  })
+})
+
+// ================================================================
+// 4.7.0 → 4.8.0 TemplateDefinition.formula (契约 §12.12)
+//
+// **这一档存在的理由就是本组用例的第一条**: 容器 templateDefinitions 早就存在,
+// 但仓库的规则是「新增可选字段即升版本」(controlType 是确证: 它装在同一个容器里,
+// 照样把 4.3.x 推到 4.4.0)。把版本钉在这里, 让以后每次升级都是一次有意识的动作。
+// ================================================================
+
+describe('4.7.0 → 4.8.0 TemplateDefinition.formula (契约 §12.12)', () => {
+  it('CURRENT_DOCUMENT_VERSION 为 4.8.0', () => {
+    expect(versionToString(CURRENT_DOCUMENT_VERSION)).toBe('4.8.0')
+  })
+
+  it('4.7.0 文档可升级且为 no-op (不凭空注入 formula)', () => {
+    const doc = createDocument('测试') as unknown as Record<string, unknown>
+    doc.modelVersion = '4.7.0'
+    const defs = { n1: { controlType: 'input', label: '姓名：' } }
+
+    const upgraded = modelUpgrader.upgrade({ ...doc, templateDefinitions: defs } as never) as unknown as {
+      modelVersion: string
+      templateDefinitions?: Record<string, Record<string, unknown>>
+    }
+    expect(upgraded.modelVersion).toBe('4.8.0')
+    // 无公式的旧定义读出来就是原样 —— 不得被回填成空串或默认值
+    expect(upgraded.templateDefinitions?.n1).toEqual(defs.n1)
+    expect('formula' in (upgraded.templateDefinitions?.n1 ?? {})).toBe(false)
+  })
+
+  it('4.7.0 视为 outdated; 4.8.0 视为 current', () => {
+    expect(modelUpgrader.checkCompatibility('4.7.0').status).toBe('outdated')
+    expect(modelUpgrader.checkCompatibility('4.7.0').needsUpgrade).toBe(true)
+    const cur = modelUpgrader.checkCompatibility('4.8.0')
+    expect(cur.status).toBe('current')
+    expect(cur.needsUpgrade).toBe(false)
+  })
+
+  it('纯 NO-OP 步骤仍令 wasUpgraded 为真 (source ≠ final)', () => {
+    const r = loadDocumentFromObject({
+      type: 'document', id: 'd1', title: 't',
+      pageSetup: { width: 794, height: 1123, marginTop: 72, marginBottom: 72, marginLeft: 90, marginRight: 90, orientation: 'portrait' },
+      body: { mode: 'flow', children: [] },
+      modelVersion: '4.7.0',
+      nodes: {},
+    })
+    expect(r.wasUpgraded).toBe(true)
+    expect(r.upgradePath).toEqual(['4.7.0', '4.8.0'])
+  })
+
+  it('formula 随 templateDefinitions 往返 (序列化 → 加载) 不丢', () => {
+    const raw = {
+      type: 'document', id: 'd1', title: '带公式',
+      pageSetup: {
+        width: 794, height: 1123, marginTop: 72, marginBottom: 72,
+        marginLeft: 90, marginRight: 90, orientation: 'portrait',
+      },
+      body: { mode: 'flow', children: ['p1'] },
+      modelVersion: versionToString(CURRENT_DOCUMENT_VERSION),
+      nodes: {
+        p1: { type: 'paragraph', id: 'p1', children: ['st1'] },
+        st1: {
+          type: 'smarttext', id: 'st1', text: '[年龄]',
+          element: {
+            code: { internal: 'CTL_AGE', dataElement: 'DE_AGE' }, name: '年龄',
+            format: { dataType: 'N' },
+          },
+        },
+      },
+    }
+    const first = loadDocumentFromObject(raw as never)
+    // templateDefinitions 是 per-editor store, 不随 nodes 走 —— 单独喂给序列化器
+    const store = first.templateDefinitions ?? new TemplateDefinitionStore()
+    store.set('st1', { controlType: 'number', formula: 'GETAGE([DE_BIRTH])' })
+
+    const json = serializeDocument(first.doc, first.pool, { templateDefinitions: store })
+    const back = loadDocumentFromObject(JSON.parse(json))
+    expect(back.templateDefinitions?.get('st1')?.formula).toBe('GETAGE([DE_BIRTH])')
   })
 })
 

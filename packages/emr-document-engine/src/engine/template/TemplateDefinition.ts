@@ -11,11 +11,12 @@
 //   SmartTextNode 的「语义定义」 (element: code/name/labels/format)
 //   与「运行时值」 (value) 已分离 (契约 §2.1)。但外部模板 JSON 还带
 //   一层「模板设计期属性」——deletable / editable / tips / label /
-//   prefix / suffix / single / controlType —— 它们描述的是模板作者在
-//   设计期如何配置控件, 既不是「这个字段是什么」(定义), 也不是「患者的
-//   记录写了什么」(值), 而是「控件在模板里长什么样 / 能不能动」。
+//   prefix / suffix / single / controlType / formula —— 它们描述的是模板
+//   作者在设计期如何配置控件, 既不是「这个字段是什么」(定义), 也不是
+//   「患者的记录写了什么」(值), 而是「控件在模板里长什么样 / 能不能动 /
+//   值怎么算出来」。
 //
-// 契约 §12.1 强制: 这 8 个字段属于 TemplateDefinition 特征层, 不得
+// 契约 §12.1 强制: 这 9 个字段属于 TemplateDefinition 特征层, 不得
 //   进入 DocumentModel / SmartTextNode / ElementMeta。本模块即该层的
 //   落地 —— 一个按节点 id 关联的独立对象, 与节点语义字段彻底解耦。
 //
@@ -62,6 +63,19 @@ export interface TemplateDefinition {
   /** 控件 widget 形态 (插入时由库条目或配置弹框写定, 契约 §12.5/§12.7;
    *  轻量属性面板 round-trip 保持; 旧文档缺失保持 undefined, 编辑提交时才显式写入) */
   controlType?: ControlType
+  /**
+   * 计算式 (契约 §12.12) —— 该控件的**显示值由这个表达式派生**。
+   *
+   * 住在这里而不是 `ElementFormat`: layer D 是表现/查找 (§12.6.2), 而公式
+   * 决定「这个值**是**什么」, 是值语义 —— 姿态同域代码 (§4), 只是恰好不落盘。
+   *
+   * **结果永不写入 `SmartTextNode.value`** (§12.12.1): 一旦写进去, 同一字段
+   * 就有两个事实源, 撤销栈会被看不见效果的步骤塞满, 而且计算值会让 §12.11
+   * 的必填闸门误判"已填"。
+   *
+   * 只在控件配置弹框里撰写, **没有控件库默认值** (与 controlType 不同)。
+   */
+  formula?: string
 }
 
 /** 节点 id → 设计期属性的只读映射 (外部只读, 变更走 store) */

@@ -9,7 +9,7 @@
 //
 // P1 的三块内容:
 //   1. 模型: Section / SectionChild / BodyChild / NodeType.SECTION
-//   2. 版本: CURRENT_DOCUMENT_VERSION → 4.7.0 + 4.6.0 → 4.7.0 显式 no-op
+//   2. 版本: 4.6.0 → 4.7.0 显式 no-op (版本号本身另有 ModelUpgrader.test.ts 钉)
 //   3. 校验: validateDocument 的节点类型白名单 / 单父归属 / 环 / 深度 /
 //      **modelVersion ↔ 节点类型一致性** (X12 的第二道防线)
 //
@@ -111,8 +111,8 @@ describe('Section 模型 (契约 §31.10)', () => {
     expect(named.sectionCode).toBe('vitals')
   })
 
-  it('CURRENT_DOCUMENT_VERSION 为 4.7.0', () => {
-    expect(versionToString(CURRENT_DOCUMENT_VERSION)).toBe('4.7.0')
+  it('CURRENT_DOCUMENT_VERSION 为 4.8.0', () => {
+    expect(versionToString(CURRENT_DOCUMENT_VERSION)).toBe('4.8.0')
   })
 })
 
@@ -181,7 +181,8 @@ describe('加载校验 — 版本 ↔ 节点类型一致性 (契约 §31.12 X12)
     const raw = JSON.parse(serializeDocument(doc, buildNodePool(nodes, { body: doc.id }))) as RawDoc
     raw.modelVersion = '4.6.0'
     const r = loadDocumentFromObject(raw)
-    expect(r.doc.modelVersion).toBe('4.7.0')
+    // 升到**当前**版本 —— 不写死数字, 免得多一次版本升级就多一处要改
+    expect(r.doc.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
     expect(r.wasUpgraded).toBe(true)
   })
 
@@ -244,7 +245,7 @@ describe('加载校验 — 结构语义 (契约 §31.12 X12)', () => {
 describe('加载校验 — 不误伤既有合法文档', () => {
   it('demo 病历文档 (4.5.0, 含嵌套表格) 照常加载', () => {
     const r = loadDocumentFromObject(JSON.parse(JSON.stringify(docJson)))
-    expect(r.doc.modelVersion).toBe('4.7.0')
+    expect(r.doc.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
     expect(r.pool.rootIds.body).toBe(r.doc.id)
   })
 })

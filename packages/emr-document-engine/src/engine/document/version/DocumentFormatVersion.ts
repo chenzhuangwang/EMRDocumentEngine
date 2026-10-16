@@ -38,7 +38,7 @@ export interface DocumentFormatVersion {
 }
 
 /** 当前引擎支持的最高文档格式版本 */
-export const CURRENT_DOCUMENT_VERSION: DocumentFormatVersion = { major: 4, minor: 7, patch: 0 }
+export const CURRENT_DOCUMENT_VERSION: DocumentFormatVersion = { major: 4, minor: 8, patch: 0 }
 
 /** 缺失 modelVersion 时视为的文档格式版本 (历史文档默认值) */
 export const LEGACY_DOCUMENT_VERSION = '1.0.0'
