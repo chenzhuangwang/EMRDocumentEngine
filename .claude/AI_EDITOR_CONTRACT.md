@@ -1288,6 +1288,14 @@ Concrete ownership anchors (God Object drift to reverse):
                                     because lib/export/fields.ts already
                                     imports the engine barrel, so the
                                     reverse edge would be a cycle.)
+    formula evaluation            → evaluation/ExpressionEngine.ts
+                                    (lexer + parser + evaluator for
+                                    §12.12; a pure function of
+                                    (expression, injected context).
+                                    It MUST NOT become a set of methods
+                                    on Editor, and it MUST NOT grow a
+                                    dependency on layout or render —
+                                    they call it, it calls nobody.)
 
 These are the specific drifts found in Editor.ts at the
 architecture freeze. They are the pattern to reverse, NOT to extend.
@@ -1423,7 +1431,8 @@ resolution MUST have exactly one implementation in the document domain.
 Template authoring metadata MUST NOT become document content.
 
 Template-design attributes of a smarttext control —
-    deletable, editable, tips, label, prefix, suffix, single, controlType
+    deletable, editable, tips, label, prefix, suffix, single, controlType,
+    formula
 — describe how a template AUTHOR configures the control at
 design time, not what the document content IS.
 
@@ -1459,11 +1468,19 @@ Concretely:
                               one another. It is a design-time property
                               (fixed at insertion from the library), not
                               document semantics.
+        formula    string  — the COMPUTED-VALUE expression this control
+                              derives its display from (§12.12). Written
+                              by the template author, so it belongs here
+                              and NOT in ElementFormat: layer D is
+                              presentation/lookup (§12.6.2), while a
+                              formula carries VALUE semantics. Its result
+                              is NOT persisted (never written to
+                              SmartTextNode.value) — see §12.12.
 
-    These eight fields live in a TemplateDefinition feature layer
+    These nine fields live in a TemplateDefinition feature layer
     (engine/template/, §12) as a SEPARATE object associated to a
     node by id. SmartTextNode and ElementMeta MUST NOT grow any of
-    these eight fields — the boundary is type-enforced.
+    these nine fields — the boundary is type-enforced.
 
     controlType versioning: controlType is OPTIONAL and typed (never a
     catch-all bag). Documents serialized before controlType existed
@@ -1758,11 +1775,13 @@ Editing goes through the command system (RULE 4):
     that key from the written definition. The command itself carries
     no merge/deletion semantics.
 
-    Seven of the eight §12.1 fields are editable (deletable / editable
+    Seven of the nine §12.1 fields are editable (deletable / editable
     / tips / label / prefix / suffix / single). controlType is written
     at insertion (§12.4) from the library entry OR by the Control
     Config Dialog (application wizard / Editor.applyControlConfig,
-    §12.7). The lightweight properties panel keeps the previous
+    §12.7); formula (§12.12) is authored through that same Control
+    Config Dialog only — it has no library default. The lightweight
+    properties panel keeps the previous
     behavior — it reads/writes the COMPLETE definition and MUST
     preserve controlType unchanged through its own
     read-getControlDefinition / write-setControlDefinition round trip.
@@ -2034,6 +2053,15 @@ Field participation (five layers — each field belongs to exactly one):
     checks (layer C), presentation concerns (layer D), or scoring /
     numericValue aggregation (layer E).
 
+    Layer D is presentation / lookup / advanced-display, and
+    TemplateDefinition.formula (§12.12) is NOT one of its members: a
+    formula decides WHAT the value IS, not how it is shown. It
+    therefore belongs to TemplateDefinition (§12.1) alongside
+    controlType, never to ElementFormat. Do not let "it is only used
+    for display" pull it into layer D — the computed value is a VALUE
+    fact that happens not to be persisted, which is the same posture as
+    a field code (§4), not the posture of showType/enums.
+
 ------------------------------------------------------------
 12.6.3 validateControlValue (design — LANDED)
 ------------------------------------------------------------
@@ -2187,7 +2215,7 @@ independent (§27–§29), and lives in the document domain
     reference is an ElementFormat field (§12.6.2 layer D), so it is
     written through the control-configuration path (§12.7,
     UpdateControlElementCommand) — NOT through TemplateDefinition
-    (§12.1's eight design-time fields do not include it).
+    (§12.1's nine design-time fields do not include it).
 
 ------------------------------------------------------------
 12.4 Watermark ownership boundary
@@ -2689,6 +2717,242 @@ document-level entry point. It is a READ-ONLY query.
     clinician's in-progress work, which is a worse failure than storing
     an incomplete document that the dialog has just made visible.
 
+------------------------------------------------------------
+12.12 Computed values (formulas)
+------------------------------------------------------------
+
+A template author must be able to say "this field is the sum of those
+two", "this field's value is the patient's age from the birth date",
+and "when sex is male, hide the obstetric history". None of that
+exists today.
+
+    THE ANTI-PATTERN THIS SECTION EXISTS TO FORBID: the reference
+    implementation lets authors write raw JavaScript and evaluates it.
+    That is `eval` with a template file as the attack surface. This
+    engine MUST evaluate a WHITELISTED expression grammar instead. The
+    prohibition is absolute:
+
+        evaluation/ MUST NOT contain `eval`, `new Function`,
+        `globalThis`, `window`, `document`, or any host global
+        reachable from a formula.
+
+    This is enforced by a static source gate (the same shape as
+    I18nGate / DocumentWalkGate), not by review.
+
+12.12.1 Where a formula lives — and where its RESULT does not
+------------------------------------------------------------
+
+    TemplateDefinition.formula?: string      (§12.1, the ninth field)
+
+NOT ElementFormat (§12.6.2 layer D), for the reason written there: a
+formula carries value semantics. NOT a new node type: that would drag
+in NodeType, ContainerChildTypes, three layout paths, the OFD switch
+and the hit-test atom table.
+
+    THE RESULT IS NEVER PERSISTED. It MUST NOT be written to
+    SmartTextNode.value, and it MUST NOT be materialised into the
+    document on any path.
+
+Three reasons, and they are not stylistic:
+
+    1. VR-1 makes SmartTextNode.value the canonical runtime value. If
+       the engine wrote a computed result there, one field would have
+       two sources of truth and no way to tell them apart afterwards.
+    2. Every recomputation would be a document change, so the undo
+       stack would fill with steps the user cannot see the effect of —
+       Ctrl+Z would appear to do nothing.
+    3. CLINICAL SAFETY: a computed value must never satisfy the §12.11
+       completeness gate. A required field whose value the doctor never
+       looked at, passing the gate because the engine computed
+       something, is the same class of harm as a field silently left
+       half-filled (§12.10.2).
+
+The existing precedent is the field code (§4): a field's text is
+resolved on every read and never stored. Computed values are the same
+shape, and §4's "exactly one implementation" rule applies to them too —
+layout measurement, rendering and export MUST resolve through the SAME
+pure function.
+
+12.12.2 The evaluator
+------------------------------------------------------------
+
+The evaluator lives in engine/evaluation/ (NOT in Editor.ts — §11), is
+a PURE function of (expression, context), and touches no host global.
+
+    - Lexer + Pratt parser + tree-walk evaluation over a whitelisted
+      subset: references, number/string literals, `+ - * / %`,
+      `== != < <= > >=`, `&& || !`, parentheses, ternary, a builtin
+      function table, and SHOW/HIDE for visibility.
+    - TIME AND DATE FACTS ARE INJECTED, never read. The evaluator's
+      context is the same shape already proven by
+      FieldFormatter.FieldTextContext (§4): a pure document-domain
+      function plus a caller-filled context object. `new Date()` MUST
+      NOT appear anywhere under evaluation/.
+    - Builtins are a CLOSED table (GETAGE, DIFF_DATE_DAYS,
+      DIFF_DATE_HOURS, SUM, ROUND, …). Adding one is a contract-visible
+      act, not a drive-by.
+    - Integrators may register their own pure functions
+      (Editor.registerCalcFunction(name, fn)). Their trust level is
+      the PLUGIN's, i.e. the integrator's own code — never end-user
+      data. The documentation MUST state plainly that the evaluator
+      reaches no host global and can call only registered pure
+      functions.
+
+12.12.3 References resolve by BINDING KEY, and ambiguity is reported
+------------------------------------------------------------
+
+A reference `[key]` names a control by its §12.10.1 binding key
+(dataElement, falling back to internal) — the same key the bulk
+binding API uses, resolved through the SAME projection.
+
+    A reference matching MORE THAN ONE control is AMBIGUOUS, and the
+    evaluator MUST NOT PICK A WINNER. The whole formula fails to
+    evaluate and reports the candidate nodeIds.
+
+This is §12.10.2's rule, applied to a second consumer, and it must say
+so rather than being re-derived: duplicate keys are the COMMON case for
+scaffold documents (hand-inserted generic controls carry one synthetic
+code), not a rare edge. "Take the first in reading order" is exactly
+the silent-winner behaviour §12.10.2 forbids.
+
+A reference matching NO control is a separate, also non-fatal error
+(unresolved reference), reported with the key.
+
+12.12.4 Types and coercion — READ path only
+------------------------------------------------------------
+
+ControlValue is `string | number | string[]`, and arithmetic needs
+numbers. The rule:
+
+    - An operand that is a string which parses COMPLETELY as a finite
+      number (`Number(s)` finite) participates as that number.
+    - Any other string in an arithmetic/comparison position is an
+      ERROR. It MUST NOT silently become NaN, and NaN MUST NOT be
+      treated as falsy so the expression "carries on".
+    - `string[]` in an arithmetic position is an ERROR, except for
+      builtins that explicitly accept multiple values (SUM and
+      friends).
+
+    THIS IS NOT A REPEAL OF §12.10.3, and the two MUST NOT be cited as
+    precedent for each other. §12.10.3 forbids coercion when writing an
+    EXTERNAL value INTO the document; this section allows it when
+    reading a DOCUMENT value OUT to compute with it. Same direction of
+    caution, opposite direction of data flow: never a second copy of
+    one another's reasoning.
+
+12.12.5 Visibility (SHOW / HIDE)
+------------------------------------------------------------
+
+    SHOW(#id) / HIDE(#id) affect whether a control is laid out at all.
+
+The seam already exists and MUST be reused rather than replaced:
+LayoutEngine.setControlInfoOf, whose injected callback Draw already
+fills from templateDefinitions. It gains a `visible?: boolean`.
+
+    LayoutEngine MUST NOT know what a formula IS. It asks "is this
+    control visible"; it never asks "what does this control compute".
+
+That is the smallest coupling available and it leaves §12.8 unchanged.
+
+    KNOWN EDGE, recorded rather than discovered: a hidden control
+    produces no SLIFItem, so it cannot be hit and the caret cannot
+    enter it. Character-offset arithmetic that CROSSES a hidden
+    control therefore needs care — paragraphTextLength counts a text
+    node by its text length and any other inline atom as 1. This is
+    the likeliest silent misalignment in the feature; it MUST have a
+    test.
+
+12.12.6 Dependencies, cycles and invalidation
+------------------------------------------------------------
+
+A formula referencing A and B must be recomputed when A or B changes.
+
+    - A DEPENDENCY INDEX is built (on setDocument /
+      setControlDefinition) and consulted when a value write completes.
+      Recomputing the whole document per keystroke is not acceptable.
+    - CYCLES MUST BE DETECTED WHEN THE GRAPH IS BUILT and reported as
+      an error. Detection is NOT allowed to be a runtime depth limit
+      or a stack-overflow catch: `= [A] + ([A] * 2)` must be rejected
+      as a cycle, not survive until it happens to terminate.
+
+12.12.7 The time basis is snapshotted per pass
+------------------------------------------------------------
+
+    `now` is captured ONCE at the start of each layout pass, render
+    pass and export pass, and threaded down to every evaluation in that
+    pass. The evaluator MUST NOT read a clock, and neither MUST any
+    per-item call site.
+
+Why this is written down at all: the EXISTING field-code implementation
+does the opposite — Draw.resolveFieldText fabricates `now: new Date()`
+inside the per-item render loop. Copying that shape would let layout
+compute a value with one clock reading and rendering draw the text with
+another, across a minute or day boundary. A control box measured with
+age 40 and drawn with age 41 is precisely the silent geometry
+divergence §12.8 exists to prevent, and it would also break the
+round-trip requirement that screen and print agree.
+
+    The field-code divergence is REGISTERED, NOT FIXED here: this
+    section constrains formulas only. Fixing field codes is a separate
+    change with its own blast radius.
+
+12.12.8 Where a computed value enters the pipeline
+------------------------------------------------------------
+
+    The value MUST be resolved BEFORE layout, and passed in as the
+    `display` argument of smarttextLayoutHint — the same argument
+    LayoutEngine already fills today. Layout must never re-derive a
+    wrap (§12.8) and must never re-evaluate a formula.
+
+On the render side it follows the field-code pattern exactly: spread-
+clone the SLIF item and substitute the resolved text at dispatch. The
+computed value MUST NOT be written into SLIF as a value; SLIF carries
+layout products (§7.4).
+
+Page-dependent formulas reuse the existing two-pass fullLayout; they
+need no new mechanism.
+
+12.12.9 The authoring surface is part of this feature
+------------------------------------------------------------
+
+    The consumer of a formula is the TEMPLATE AUTHOR, who is this
+    application's user — not an external integrator. Shipping the
+    evaluator without an authoring surface would ship a dead seam.
+
+    - BOTH Control Config Dialogs MUST expose formula authoring (the
+      input-family dialog and the choice-family dialog). Exposing it in
+      one only would repeat the §12.5 mistake, where one contract
+      clause was honoured for half the controls. They MUST share one
+      implementation.
+    - The surface MUST offer the set of referenceable keys, derived
+      from Editor.getBoundValues() — the SAME projection, never a
+      second key listing. Two listings drift, and they drift into the
+      worst shape available: the UI says a key is referenceable while
+      the evaluator reports it ambiguous.
+    - Syntax and evaluation errors are REPORTED TO THE AUTHOR AND DO
+      NOT BLOCK apply, the same posture as the duplicate-key hint of
+      §12.10.2. An author can be mid-edit; blocking would make "save a
+      draft" impossible. Errors MUST be CLASSIFIED (unresolved
+      reference / ambiguous reference / syntax / unknown function /
+      cycle), not collapsed into "the formula is invalid".
+    - The engine exposes a read entry point for that surface (validate
+      / preview a candidate formula against the current document) —
+      the authoring UI MUST NOT reach into evaluation/ internals.
+
+12.12.10 Format version
+------------------------------------------------------------
+
+    4.7.0 → 4.8.0, an explicit NO-OP step (breaking: false, upgrade
+    returns the document unchanged). A pre-4.8 document has no
+    formula, so every control reads exactly as before.
+
+Why a bump is required even though templateDefinitions already exists
+as a top-level serialized field is argued in §14: the rule is "a new
+optional field advances the format", and controlType settled it by
+living inside the very same container and still advancing 4.3.x →
+4.4.0. The existing container buys the absence of any data rewrite —
+which is why the step is a NO-OP, not why it can be skipped.
+
 ============================================================
 13. DOCUMENT SERIALIZATION
 ============================================================
@@ -2760,6 +3024,28 @@ Section (§31) advances the format from 4.6.0 to 4.7.0, again an
 explicit NO-OP step (4.6.0 → 4.7.0, breaking: false, upgrade returns
 the document unchanged). A pre-4.7 document has no Section nodes, so
 every document reads exactly as before.
+
+Computed values (§12.12) advance the format from 4.7.0 to 4.8.0, again
+an explicit NO-OP step (4.7.0 → 4.8.0, breaking: false, upgrade returns
+the document unchanged). TemplateDefinition.formula is additive and
+optional; a pre-4.8 document has no formulas, so every control reads
+exactly as before.
+
+    WHY A BUMP IS REQUIRED even though the container already exists:
+    the rule this contract applies is "a new optional field advances
+    the format", not "a new top-level field advances the format".
+    controlType (§12.1) is the precedent and it decided the question:
+    it is a TemplateDefinition field living INSIDE the very same
+    templateDefinitions top-level field, and it still advanced the
+    format from 4.3.x to 4.4.0. The version history in ModelUpgrader
+    is one consistent rule (ElementFormat / SmartTextNode /
+    TemplateDefinition each gained optional fields and each advanced
+    the version). What the existing container DOES buy is that no data
+    rewrite or backfill is needed — that is why the step is a NO-OP,
+    not why it can be skipped.
+
+    A future revision (§14 is §14) adds 4.8.0 → 4.9.0 for revision
+    marks, which touch TextNode itself rather than TemplateDefinition.
 
 Two caveats about the version mechanism itself (see §31.12):
 
