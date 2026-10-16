@@ -9,7 +9,7 @@
 // ================================================================
 
 import { describe, it, expect } from 'vitest'
-import { controlFamilyOf, initialConfigForCreate, cleanDefinition } from '../controlConfigShared'
+import { controlFamilyOf, initialConfigForCreate, cleanDefinition, semanticCodeOf, effectiveBindingKeyOf } from '../controlConfigShared'
 import type { ElementFormat, ElementMeta, TemplateDefinition } from '@emrde/document-engine'
 
 function baseEl(dataType: ElementFormat['dataType']): ElementMeta {
@@ -78,5 +78,39 @@ describe('cleanDefinition', () => {
   it('全空/undefined → undefined', () => {
     expect(cleanDefinition({ label: '', tips: undefined })).toBeUndefined()
     expect(cleanDefinition(undefined)).toBeUndefined()
+  })
+})
+
+// ================================================================
+// 语义身份 (契约 §12.5 / §12.10.1) —— 两个配置弹框共用的那两条规则
+// ================================================================
+
+describe('semanticCodeOf (契约 §12.5)', () => {
+  it('两键都 trim —— 留着首尾空格会让"看着一样的键"算成不同键', () => {
+    expect(semanticCodeOf('  CTL_X ', '  DE_X  ')).toEqual({ internal: 'CTL_X', dataElement: 'DE_X' })
+  })
+
+  it('清空 → 空串 (ElementCode 两项都是必填 string, 不是缺字段)', () => {
+    expect(semanticCodeOf('', '')).toEqual({ internal: '', dataElement: '' })
+  })
+
+  it('只 trim 首尾: 中间的空格是键的一部分, 不动', () => {
+    expect(semanticCodeOf('CTL A', 'DE A')).toEqual({ internal: 'CTL A', dataElement: 'DE A' })
+  })
+})
+
+describe('effectiveBindingKeyOf (契约 §12.10.1)', () => {
+  it('dataElement 优先; 为空才回退 internal —— 与 elementIdentity 同顺序', () => {
+    expect(effectiveBindingKeyOf('CTL_X', 'DE_X')).toBe('DE_X')
+    expect(effectiveBindingKeyOf('CTL_X', '')).toBe('CTL_X')
+  })
+
+  it('判定前先 trim (否则"  " 会被当成有身份)', () => {
+    expect(effectiveBindingKeyOf('CTL_X', '   ')).toBe('CTL_X')
+    expect(effectiveBindingKeyOf('  ', '  ')).toBe('')
+  })
+
+  it('两键皆空 → 空串 = 无规范身份', () => {
+    expect(effectiveBindingKeyOf('', '')).toBe('')
   })
 })

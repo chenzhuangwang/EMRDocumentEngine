@@ -20,7 +20,7 @@ import * as Tabs from '@radix-ui/react-tabs'
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ElementMeta, ElementEnumOption, TemplateDefinition } from '@emrde/document-engine'
-import { CodeBadge, TextField, ToggleField, cleanDefinition, cloneData, inputCls } from './controlConfigShared'
+import { SemanticIdentityFields, TextField, ToggleField, cleanDefinition, cloneData, inputCls, semanticCodeOf } from './controlConfigShared'
 import type { ControlConfigData } from './controlConfigShared'
 import { useTranslation } from '@/i18n/useTranslation'
 import type { LocaleMessages } from '@emrde/document-engine'
@@ -31,6 +31,12 @@ interface ControlChoiceDialogProps {
   initial: ControlConfigData
   onClose: () => void
   onApply: (result: ControlConfigData) => void
+  /**
+   * **其他**控件占用各绑定键的次数 (契约 §12.10.1), 由调用方在打开弹框时快照。
+   * 语义与形状与 ControlInputDialog 的同名 prop 一致 —— 两个弹框共用
+   * SemanticIdentityFields, 撞键判定只有一条规则。
+   */
+  otherKeyUsage?: ReadonlyMap<string, number>
 }
 
 type TabId = 'type' | 'base' | 'options' | 'numeric' | 'list'
@@ -61,6 +67,9 @@ interface ChoiceDraft {
   options: OptionDraft[]
   /** 枚举是否允许手输 (保留既有值, 默认 undefined=严格成员) */
   enumEditable: boolean | undefined
+  /** 语义身份 (契约 §12.5: 本弹框内**可编辑**) —— 也是批量绑定的绑定键候选 */
+  internal: string
+  dataElement: string
 }
 
 function draftFrom(initial: ControlConfigData): ChoiceDraft {
@@ -83,6 +92,8 @@ function draftFrom(initial: ControlConfigData): ChoiceDraft {
     multiple: multiple === true,
     options: (enums?.data ?? []).map((o) => ({ ...o })),
     enumEditable: enums?.editable,
+    internal: el.code.internal ?? '',
+    dataElement: el.code.dataElement ?? '',
   }
 }
 
@@ -90,7 +101,7 @@ const THEAD = 'text-xs font-medium text-chrome-ink-tertiary border-b border-line
 const CELL = 'px-1.5 py-1 align-middle'
 
 export function ControlChoiceDialog({
-  open, mode, initial, onClose, onApply,
+  open, mode, initial, onClose, onApply, otherKeyUsage,
 }: ControlChoiceDialogProps) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState<ChoiceDraft>(() => draftFrom(initial))
@@ -120,6 +131,9 @@ export function ControlChoiceDialog({
     el.name = draft.name
     el.required = draft.required ? true : undefined
     el.readonly = draft.readonly ? true : undefined
+    // 语义身份 (契约 §12.5: 在本弹框内可编辑)。与输入域弹框共用同一条 trim 规则
+    // 与同一条"不新增命令"的理由 —— 见 controlConfigShared.semanticCodeOf。
+    el.code = semanticCodeOf(draft.internal, draft.dataElement)
 
     const fmt: NonNullable<ElementMeta['format']> = el.format ? cloneData(el.format) : {} as NonNullable<ElementMeta['format']>
     // 候选项只保留有效行 (name 或 value 非空)
@@ -215,7 +229,22 @@ export function ControlChoiceDialog({
               {/* 基础属性 */}
               <Tabs.Content forceMount value="base" className="space-y-3">
                 <TextField label={t('dialog.label.dataElementName')} value={draft.name} onChange={(v) => patch({ name: v })} placeholder={t('choice.namePlaceholder')} />
-                <CodeBadge element={initial.element} />
+                {/*
+                  这里原先是一个只读的 CodeBadge (与本 tab 其余属性并列的语义身份展示)。
+                  语义身份变成可编辑后, 只读徽章就成了**第二份显示**且会实时变旧, 故由
+                  两个输入框取代它 —— 与输入域弹框共用同一组件。
+                  注: 本注释续行里别写 ASCII 双引号包着中文 —— I18nGate 的注释剥离是
+                  **逐行**的 (/\{\/\*...\*\/\}/ 只能匹配同一行), 多行 JSX 注释的续行
+                  不会被剥掉, 那种串会被判成硬编码文案。
+                */}
+                <div className="space-y-3">
+                  <SemanticIdentityFields
+                    internal={draft.internal}
+                    dataElement={draft.dataElement}
+                    onChange={(p) => patch(p)}
+                    otherKeyUsage={otherKeyUsage}
+                  />
+                </div>
                 <TextField label={t('controlConfig.labelField')} value={draft.label} onChange={(v) => patch({ label: v })} placeholder={t('choice.labelPlaceholder')} />
                 <div className="grid grid-cols-2 gap-x-6 gap-y-1 pt-1">
                   <ToggleField label={t('dialog.label.required')} checked={draft.required} onChange={(v) => patch({ required: v })} />

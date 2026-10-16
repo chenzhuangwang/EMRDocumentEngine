@@ -159,6 +159,76 @@ export function CodeBadge({ element }: { element: ElementMeta }) {
   )
 }
 
+// ---- 语义身份可编辑 (契约 §12.5 / §12.10.1) ----
+
+/**
+ * 把 draft 里的两个身份键写回 element.code。
+ *
+ * 两键**都 trim**: `elementIdentity` 判身份时也 trim, 留着首尾空格会让"看着一样的
+ * 两个键"算成不同键 —— 于是绑定撞不上、single 守卫也认不出重复。
+ *
+ * 不新增命令: `applyControlConfig` 的 elementEquals 走 stableStringify 全字段比较,
+ * `code` 本就在 payload 里, 改它天然触发 UpdateControlElementCommand (契约 §12.5)。
+ */
+export function semanticCodeOf(internal: string, dataElement: string): ElementMeta['code'] {
+  return { internal: internal.trim(), dataElement: dataElement.trim() }
+}
+
+/**
+ * 生效的绑定键 (契约 §12.10.1): dataElement 优先, 空回退 internal —— 与
+ * `elementIdentity` 同一顺序, 不另立一套。空串 = 该控件无规范身份。
+ */
+export function effectiveBindingKeyOf(internal: string, dataElement: string): string {
+  return dataElement.trim() || internal.trim()
+}
+
+/**
+ * 语义身份的两个输入框 + 撞键提示 (契约 §12.5)。
+ *
+ * 抽出来是因为**两个**控件配置弹框都要它 (输入域 / 单选复选), 而它带着一条真规则:
+ * 绑定的生效键是"数据元码优先", 撞键计数要**排除被编辑的控件自身** —— 提示回答的是
+ * "改完之后会跟谁撞", 不是"现在跟谁撞"。排除自身后, create/edit 两种模式共用同一条
+ * 判定 (others ≥ 1 即撞), 展示的 n 再把自己算回去。§11: 第二次实现即须抽取。
+ *
+ * 数据元码排在标识之前 —— 它是默认绑定键。
+ */
+export function SemanticIdentityFields({
+  internal, dataElement, onChange, otherKeyUsage,
+}: {
+  internal: string
+  dataElement: string
+  onChange: (patch: { internal?: string; dataElement?: string }) => void
+  /** **其他**控件占用各键的次数 (不含被编辑控件); 缺省 = 不提示 */
+  otherKeyUsage?: ReadonlyMap<string, number>
+}) {
+  const { t } = useTranslation()
+  const key = effectiveBindingKeyOf(internal, dataElement)
+  const others = key === '' ? 0 : (otherKeyUsage?.get(key) ?? 0)
+  return (
+    <>
+      <TextField
+        label={t('controlConfig.code.dataElementLabel')}
+        value={dataElement}
+        onChange={(v) => onChange({ dataElement: v })}
+        placeholder={t('controlConfig.code.dataElementPlaceholder')}
+      />
+      <TextField
+        label={t('controlConfig.code.internalLabel')}
+        value={internal}
+        onChange={(v) => onChange({ internal: v })}
+        placeholder={t('controlConfig.code.internalPlaceholder')}
+      />
+      <p className="text-[11px] leading-relaxed text-chrome-ink-muted">{t('controlConfig.code.hint')}</p>
+      {/* 撞键不阻断应用 —— 重复身份是**合法**文档状态, 只是绑定会报歧义 (§12.10.2) */}
+      {others >= 1 && (
+        <p className="text-[11px] leading-relaxed text-amber-600">
+          {t('controlConfig.code.dupHint', { n: others + 1 })}
+        </p>
+      )}
+    </>
+  )
+}
+
 // 类型守卫 (用于选择控件是否显示某字段)
 // ---- 数据绑定 (码表) ----
 

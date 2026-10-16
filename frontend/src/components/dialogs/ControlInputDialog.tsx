@@ -24,7 +24,7 @@ import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { controlTypeForDataType } from '@emrde/document-engine'
 import type { ElementMeta, ElementEnumOption, TemplateDefinition } from '@emrde/document-engine'
-import { cleanDefinition, cloneData, DictionaryField, Field, NumField, TextField, ToggleField, inputCls } from './controlConfigShared'
+import { cleanDefinition, cloneData, DictionaryField, Field, NumField, SemanticIdentityFields, TextField, ToggleField, inputCls, semanticCodeOf } from './controlConfigShared'
 import type { ControlConfigData } from './controlConfigShared'
 import { useTranslation } from '@/i18n/useTranslation'
 import type { LocaleMessages } from '@emrde/document-engine'
@@ -163,15 +163,9 @@ export function ControlInputDialog({
     el.name = draft.name
     el.required = draft.required ? true : undefined
     el.readonly = draft.readonly ? true : undefined
-    // 语义身份 (契约 §12.5: 在本弹框内可编辑)。
-    // 不新增命令: applyControlConfig 的 elementEquals 走 stableStringify 全字段
-    // 比较, code 本就在 payload 里 —— 改它天然会触发 UpdateControlElementCommand。
-    // 两键都 trim: elementIdentity 判身份时也 trim, 留着首尾空格会让"看着一样的
-    // 两个键"算成不同键 (绑定就会撞不上)。
-    el.code = {
-      internal: draft.internal.trim(),
-      dataElement: draft.dataElement.trim(),
-    }
+    // 语义身份 (契约 §12.5: 在本弹框内可编辑)。trim 与"不新增命令"的理由见
+    // controlConfigShared.semanticCodeOf。
+    el.code = semanticCodeOf(draft.internal, draft.dataElement)
 
     const fmt: NonNullable<ElementMeta['format']> = el.format ? cloneData(el.format) : {} as NonNullable<ElementMeta['format']>
 
@@ -243,11 +237,6 @@ export function ControlInputDialog({
   }, [draft, mode, initial])
 
   const kindLabel = t(KIND_LABEL_KEYS[draft.kind])
-
-  // 生效的绑定键 (契约 §12.10.1): dataElement 优先, 空回退 internal ——
-  // 与 elementIdentity 同一顺序, 不另立一套。空键 = 该控件无规范身份。
-  const effectiveKey = draft.dataElement.trim() || draft.internal.trim()
-  const othersUsingKey = effectiveKey === '' ? 0 : (otherKeyUsage?.get(effectiveKey) ?? 0)
 
   return (
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose() }}>
@@ -397,19 +386,16 @@ export function ControlInputDialog({
 
                 {/*
                   语义身份 (契约 §12.5)。**本弹框内可编辑, 轻量属性面板仍只读** ——
-                  这条作用域划分是契约明文, 不是随手加的开关。
-                  数据元码排在标识之前: 它是默认绑定键 (§12.10.1)。
+                  这一作用域划分是契约明文, 不是随手加的开关。
+                  与 ControlChoiceDialog 共用同一个组件, 免得两个弹框各写一份规则。
                 */}
                 <div className="border-t border-line-subtle pt-3 space-y-3">
-                  <TextField label={t('controlConfig.code.dataElementLabel')} value={draft.dataElement} onChange={(v) => patch({ dataElement: v })} placeholder={t('controlConfig.code.dataElementPlaceholder')} />
-                  <TextField label={t('controlConfig.code.internalLabel')} value={draft.internal} onChange={(v) => patch({ internal: v })} placeholder={t('controlConfig.code.internalPlaceholder')} />
-                  <p className="text-[11px] leading-relaxed text-chrome-ink-muted">{t('controlConfig.code.hint')}</p>
-                  {/* 撞键提示: 不阻断应用 —— 重复身份是**合法**文档状态, 只是绑定会报歧义 (§12.10.2) */}
-                  {othersUsingKey >= 1 && (
-                    <p className="text-[11px] leading-relaxed text-amber-600">
-                      {t('controlConfig.code.dupHint', { n: othersUsingKey + 1 })}
-                    </p>
-                  )}
+                  <SemanticIdentityFields
+                    internal={draft.internal}
+                    dataElement={draft.dataElement}
+                    onChange={(p) => patch(p)}
+                    otherKeyUsage={otherKeyUsage}
+                  />
                 </div>
               </Tabs.Content>
             </div>

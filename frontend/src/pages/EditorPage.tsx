@@ -1319,6 +1319,7 @@ function EditorPageInner({
           open
           mode="create"
           initial={initialConfigForCreate(controlWizard.kind)}
+          otherKeyUsage={controlKeyUsage}
           onClose={() => setControlWizard({ open: false, kind: controlWizard.kind })}
           onApply={applyWizardResult}
         />
@@ -1333,7 +1334,7 @@ function EditorPageInner({
         const family = controlFamilyOf(element, definition)
         const initial = { element, definition }
         return family === 'choice' ? (
-          <ControlChoiceDialog open mode="edit" initial={initial} onClose={closeControlEdit} onApply={applyControlEdit} />
+          <ControlChoiceDialog open mode="edit" initial={initial} otherKeyUsage={controlKeyUsage} onClose={closeControlEdit} onApply={applyControlEdit} />
         ) : (
           <ControlInputDialog open mode="edit" initial={initial} otherKeyUsage={controlKeyUsage} onClose={closeControlEdit} onApply={applyControlEdit} />
         )
