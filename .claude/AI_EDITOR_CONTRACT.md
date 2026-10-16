@@ -2862,39 +2862,58 @@ That is the smallest coupling available and it leaves §12.8 unchanged.
     the likeliest silent misalignment in the feature; it MUST have a
     test.
 
-12.12.6 Dependencies, cycles and invalidation
+12.12.6 Dependencies, cycles, and the computed-value SET
 ------------------------------------------------------------
 
-A formula referencing A and B must be recomputed when A or B changes.
+    The engine maintains ONE computed-value set per document state:
+    control → its resolved display and its visibility (or a reported
+    error, §12.12.3).
 
-    - A DEPENDENCY INDEX is built (on setDocument /
-      setControlDefinition) and consulted when a value write completes.
+    - A DEPENDENCY INDEX records which binding keys each formula
+      references. It is built when a definition is set, and consulted
+      when a value write completes.
+    - THE SET IS MEMOISED, and recomputed when — and only when — a
+      dependency (or a definition, or the document) changes.
       Recomputing the whole document per keystroke is not acceptable.
     - CYCLES MUST BE DETECTED WHEN THE GRAPH IS BUILT and reported as
-      an error. Detection is NOT allowed to be a runtime depth limit
-      or a stack-overflow catch: `= [A] + ([A] * 2)` must be rejected
-      as a cycle, not survive until it happens to terminate.
+      an error. Detection MUST NOT be a runtime depth limit or a
+      stack-overflow catch: `= [A] + ([A] * 2)` must be rejected as a
+      cycle, not survive until it happens to terminate.
+    - The clock is read when the set is (re)computed — §12.12.7.
 
-12.12.7 The time basis is snapshotted per pass
+12.12.7 The time basis is read once per recomputation
 ------------------------------------------------------------
 
-    `now` is captured ONCE at the start of each layout pass, render
-    pass and export pass, and threaded down to every evaluation in that
-    pass. The evaluator MUST NOT read a clock, and neither MUST any
-    per-item call site.
+    `now` is captured when the computed-value set is (re)computed, and
+    every evaluation in that recomputation shares it.
 
-Why this is written down at all: the EXISTING field-code implementation
-does the opposite — Draw.resolveFieldText fabricates `now: new Date()`
-inside the per-item render loop. Copying that shape would let layout
-compute a value with one clock reading and rendering draw the text with
-another, across a minute or day boundary. A control box measured with
-age 40 and drawn with age 41 is precisely the silent geometry
-divergence §12.8 exists to prevent, and it would also break the
-round-trip requirement that screen and print agree.
+    WHY NOT ONCE PER PASS — the obvious answer, and wrong here: layout
+    and rendering are SEPARATE passes that can be far apart in time.
+    render() does NOT re-lay-out; it draws from the SLIF a previous
+    layout produced, and it runs on every scroll and resize. So a
+    per-pass snapshot would let a control box be MEASURED with age 40
+    during layout and DRAWN with age 41 during a render — precisely the
+    silent geometry divergence §12.8 exists to prevent — and it would
+    let the screen and the printout disagree. Memoising the set is what
+    makes layout, rendering and export read the SAME value by
+    construction, and it is also what makes §4's round-trip requirement
+    (screen and print agree) achievable at all.
 
-    The field-code divergence is REGISTERED, NOT FIXED here: this
-    section constrains formulas only. Fixing field codes is a separate
-    change with its own blast radius.
+    CONSEQUENCE, STATED PLAINLY: a time-dependent value does NOT tick
+    while the document sits idle. An age derived from a birth date
+    stays put until something invalidates it — a dependency change, or
+    a document load. That is the INTENDED behaviour for a medical
+    record: a value the doctor has read must not silently change
+    between reading it and signing it. Refreshing on a timer, or on
+    open, is a HOST concern and is NOT part of this section.
+
+    `new Date()` MUST NOT appear anywhere under evaluation/. The clock
+    is read by whatever owns the computed-value set, outside it.
+
+    The EXISTING field-code implementation does the opposite —
+    Draw.resolveFieldText fabricates `now: new Date()` inside the
+    per-item render loop. That divergence is REGISTERED, NOT FIXED
+    here; this section constrains formulas only.
 
 12.12.8 Where a computed value enters the pipeline
 ------------------------------------------------------------
