@@ -1790,6 +1790,18 @@ Editing goes through the command system (RULE 4):
         panel                     identity display. It MUST NOT grow
                                   a code editor.
 
+        "Control Config Dialog" is BOTH of them, and this is not a
+        detail: the input-family dialog (ControlInputDialog) and the
+        choice-family dialog (ControlChoiceDialog) are reached from the
+        same right-click "properties" and route by family
+        (controlFamilyOf). Implementing one and not the other leaves
+        radio/checkbox controls unaddressable by the binding API (§12.10)
+        while text controls are addressable — the same clause honoured
+        for half the controls. Both dialogs read the SAME two rules
+        (trim both keys; the effective binding key is dataElement, falling
+        back to internal) from controlConfigShared, so the pair cannot
+        drift apart.
+
     Uniqueness is NOT enforced on either key, and this section does
     NOT add one. The only identity guard in the engine remains
     TemplateDefinition.single (§12.1), applied at insert/paste time.
