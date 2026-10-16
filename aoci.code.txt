@@ -16,7 +16,7 @@ pre-push[XV3T]: F:git 客户端 hook 样本: push 后台等待后 POST 请求通
 .dockerignore[OV4T]: F:声明仓库根构建上下文下必须排除的内容(依赖树/构建产物/版本库/后端/知识库), 供 frontend/Dockerfile 使用 | R:code:frontend/Dockerfile | A:- | S:只在上下文放宽到仓库根后才生效; 不排除则宿主机 node_modules 与 .git 一并进上下文
 
 ===D:/czw/EMRDocumentEngine/.claude/===
-AI_EDITOR_CONTRACT.md[SG8L]: F:定义引擎分包与前端应用的 32 条强制架构不变量与禁止状态, 是 AI 实现/重构/评审的硬约束 | R:code:.claude/CLAUDE.md,code:README.md | A:- | S:四级严格度 MUST NOT/MUST/SHOULD/TARGET, TARGET 不得仅为它做大重构; §32 分包边界违规是静默失效(应用会加载两份引擎实例); 遍历口径闸门有意双根扫描 app:+pkg:, 不得随包搬进 packages/; §12.10.4 的判据是「遍历可重复、语义规则必须下沉」
+AI_EDITOR_CONTRACT.md[SG8L]: F:定义引擎分包与前端应用的 32 条强制架构不变量与禁止状态, 是 AI 实现/重构/评审的硬约束 | R:code:.claude/CLAUDE.md,code:README.md | A:- | S:四级严格度 MUST NOT/MUST/SHOULD/TARGET, TARGET 不得仅为它做大重构; §32 分包边界违规是静默失效(应用会加载两份引擎实例); §12.10.4 的判据是「遍历可重复、语义规则必须下沉」; §12.5 的 Control Config Dialog 是两个弹框(输入域+单选复选), 只做一个等于契约只兑现一半控件
 CLAUDE.md[SG6T]: F:AI 入口提示, 要求修改 packages/emr-document-engine(引擎源码)前先阅读并遵守 AI_EDITOR_CONTRACT.md | R:code:.claude/AI_EDITOR_CONTRACT.md | A:- | S:仅在改动引擎源码前触发; 不改引擎时无需读取契约
 
 ===D:/czw/EMRDocumentEngine/.super-dev/===
@@ -120,8 +120,8 @@ ThemeMenu.tsx[CU5T]: F:界面外壳主题切换下拉(standard/eyeCare/print/dar
 
 ===D:/czw/EMRDocumentEngine/frontend/src/components/dialogs/===
 BookmarkDialog.tsx[ZU5M]: F:书签/交叉引用对话框: 插入命名书签, 或选类型+目标插入引用 | R:- | A:BookmarkDialog | S:交叉引用格式 label/page/labelPage 决定 displayText 是否带 {page}/{number} 占位符, 由 LayoutEngine 排版期展开(契约 §12.2)
-ControlChoiceDialog.tsx[ZU6M]: F:单选/复选控件配置弹框(契约 §12.7): 5 tab, 单份 options 数组为单一事实源 | R:code:frontend/src/components/dialogs/controlConfigShared.tsx | A:ControlChoiceDialog,draftFrom | S:legacy(select/undefined)且未切多选语义时保持原 controlType 不做打开即迁移; 仅单选↔复选切换才显式落 controlType
-ControlInputDialog.tsx[ZU6M]: F:输入域控件配置弹框(契约 §12.7): 5 tab, 形态 kind 联动 controlType; 语义身份两键在「其他」tab 可编辑(§12.5) | R:code:frontend/src/components/dialogs/controlConfigShared.tsx | A:ControlInputDialog,kindFrom | S:未填 inline 候选且已绑码表时须不写 enums, 否则码表永不可达; 仅显式改形态才清 dictionary; 身份两键 trim 后写回 code; 撞键计数排除被编辑控件(问的是改完后跟谁撞)
+ControlChoiceDialog.tsx[ZU6M]: F:单选/复选控件配置弹框(契约 §12.7): 5 tab, 单份 options 数组为单一事实源; 语义身份两键在「基础属性」tab 可编辑(§12.5) | R:code:frontend/src/components/dialogs/controlConfigShared.tsx | A:ControlChoiceDialog,draftFrom | S:legacy(select/undefined)且未切多选语义时保持原 controlType 不做打开即迁移; 仅单选↔复选切换才显式落 controlType; 语义身份与输入域弹框共用同一组件
+ControlInputDialog.tsx[ZU6L]: F:输入域控件配置弹框(契约 §12.7): 5 tab, 形态 kind 联动 controlType; 语义身份两键在「其他」tab 可编辑(§12.5), 与单选/复选弹框共用同一组件 | R:code:frontend/src/components/dialogs/controlConfigShared.tsx | A:ControlInputDialog,kindFrom | S:未填 inline 候选且已绑码表时须不写 enums, 否则码表永不可达; 仅显式改形态才清 dictionary; 身份两键 trim 后写回 code; 撞键计数排除被编辑控件(问的是改完后跟谁撞)
 DocumentPropertiesDialog.tsx[ZU6M]: F:文档属性对话框(契约 §7.7/§7.8): 编辑 title + 元数据, 只产出规范化值交父层经命令写入 | R:code:packages/emr-document-engine/src/engine/document/core/DocumentModel.ts | A:DocumentPropertiesDialog | S:绝不直改 DocumentModel; 脏态关闭需二次确认; keywords 逗号串↔string[] 交 normalizeDocumentMetadata 去重
 ExportDialog.tsx[ZU5S]: F:导出格式选择弹框: pdf/word/ofd/cda/elements/html/txt/json | R:code:packages/emr-document-engine/src/lib/documentExport.ts | A:ExportDialog,FORMATS | S:仅 available=true 可选; pdf/word 当前 false(标「即将推出」)
 FindReplaceDialog.tsx[ZU5M]: F:查找替换对话框(Ctrl+F/H): 实时搜索/结果计数/大小写/全词/正则 | R:code:packages/emr-document-engine/src/engine/FindReplaceEngine.ts | A:FindReplaceDialog | S:切换选项时即时重搜(经 setTimeout); 匹配数/替换词决定替换按钮可用性
@@ -131,7 +131,7 @@ PrintDialog.tsx[ZU5M]: F:打印对话框: 页码范围/份数/双面/续打断�
 PrintPreviewDialog.tsx[ZU5S]: F:打印预览对话框: 页导航 + 打印按钮, 内嵌 A4 预览 | R:code:frontend/src/components/dialogs/PrintDialog.tsx | A:PrintPreviewDialog | S:预览纸面硬编码 bg-white 非 token —— 打印须 WYSIWYG, 深色外壳下纸仍是白的
 SectionCodeDialog.tsx[ZU5S]: F:设置/清除节的 sectionCode(契约 §31.14) | R:code:packages/emr-document-engine/src/engine/document/core/DocumentModel.ts | A:SectionCodeDialog | S:空串 = 真删键(非写空值), 由 Editor.setSectionCode 归一化; 每次打开同步 current
 WatermarkDialog.tsx[ZU5S]: F:水印设置对话框: 文字/字号/颜色/透明度/旋转/间距 | R:code:packages/emr-document-engine/src/engine/render/Draw.ts | A:WatermarkDialog | S:onRemove 仅当文档已有水印时传入 —— 水印是文档内容(契约 §12.4), 设/删入口须同在; 默认文字按语言 seed
-controlConfigShared.tsx[CU5M]: F:控件配置弹框共享层(契约 §12.7): 家族路由/创建种子/深克隆/共享表单控件/码表绑定字段 | R:code:frontend/src/platform/data/controlLibrary.ts,code:frontend/src/platform/data/dictionaryCatalog.ts | A:controlFamilyOf,initialConfigForCreate,cleanDefinition,DictionaryField | S:码表绑定只对下拉(select)开放: radio/checkbox 的 inline enums 恒优先, 绑码表等于发布可证明不生效的控件
+controlConfigShared.tsx[CU5M]: F:控件配置弹框共享层(契约 §12.7): 家族路由/创建种子/深克隆/共享表单控件/码表绑定字段/语义身份三件 | R:code:frontend/src/platform/data/controlLibrary.ts,code:frontend/src/platform/data/dictionaryCatalog.ts | A:controlFamilyOf,initialConfigForCreate,cleanDefinition,DictionaryField,SemanticIdentityFields,semanticCodeOf | S:码表绑定只对下拉(select)开放: radio/checkbox 的 inline enums 恒优先, 绑码表等于发布不生效的控件; 语义身份三件是两个弹框的唯一实现(§11), 其中撞键计数须排除被编辑控件
 CompletenessDialog.tsx[ZU6S]: F:保存前的必填未填确认框(契约 §12.11): 列出缺项 + 可点击跳转 + 允许继续保存, **不硬拦** | R:code:frontend/src/pages/EditorPage.tsx | A:CompletenessDialog | S:硬拦会在医生中途存草稿时丢工作, 比「存了一份不全的病历」更糟, 而后者的缺失已被弹框明说; 缺项与跳转一律由调用方给(validateRequired / revealLocation), 本组件不自己算也不自己定位
 
 ===D:/czw/EMRDocumentEngine/frontend/src/components/editor/===
@@ -186,7 +186,7 @@ documents.ts[IB3T]: F:Mock 文档兜底源(后端不可用): HomePage 列表与 
 
 ===D:/czw/EMRDocumentEngine/frontend/src/pages/===
 ComparePage.tsx[AU4T]: F:文档版本比较页(路由 /compare/:oldId/:newId): 经 loadComparePair 装载两份文档后交给 DocumentCompareView | R:code:frontend/src/services/api.ts,code:frontend/src/lib/compareDocuments.ts,code:frontend/src/components/views/DocumentCompareView.tsx | A:- | S:装载须经 lib/compareDocuments; 不得内联 buildNodePool
-EditorPage.tsx[AU8L]: F:编辑器主页面(ModelD): 装配 Provider/叠加层/二十余对话框, 承载导出(JSON/TXT/HTML/CDA/OFD/元素)、打印、质控与保存闸门 | R:code:frontend/src/components/editor/EditorProvider.tsx,code:packages/emr-document-engine/src/lib/documentExport.ts,code:packages/emr-document-engine/src/lib/export/fields.ts,code:packages/emr-document-engine/src/lib/export/ofd/buildOfd.ts,code:packages/emr-document-engine/src/lib/printJob.ts,code:frontend/src/components/dialogs/CompletenessDialog.tsx | A:- | S:新增导出分支走 downloadBlob, 既有 json/txt/html 分支保持原内联写法不动(已在浏览器跑通); OFD 的 zipTime 必须落在 1980-2099, 传 epoch 0 会让 fflate 在写字节前抛错; 保存拆成「闸门」与「落盘」两步, 落盘收口在 performSave 供 Ctrl+S/工具栏/仍然保存共用
+EditorPage.tsx[AU8L]: F:编辑器主页面(ModelD): 装配 Provider/叠加层/二十余对话框, 承载导出(JSON/TXT/HTML/CDA/OFD/元素)、打印、质控与保存闸门 | R:code:frontend/src/components/editor/EditorProvider.tsx,code:packages/emr-document-engine/src/lib/documentExport.ts,code:packages/emr-document-engine/src/lib/export/fields.ts,code:packages/emr-document-engine/src/lib/export/ofd/buildOfd.ts,code:packages/emr-document-engine/src/lib/printJob.ts,code:frontend/src/components/dialogs/CompletenessDialog.tsx | A:- | S:新增导出分支走 downloadBlob, 既有 json/txt/html 分支保持原写法不动; OFD 的 zipTime 须落在 1980-2099(传 epoch 0 会让 fflate 抛错); 保存拆成「闸门」+「落盘」, 落盘收口 performSave; 弹框撞键快照在打开时取一次, 不放渲染里
 HomePage.tsx[AU5M]: F:首页文档列表: 搜索过滤 + 状态徽章 + 删除 + 最近文档入口(RecentDocuments 唯一挂载点) | R:code:frontend/src/mocks/documents.ts,code:frontend/src/components/sidebar/RecentDocuments.tsx,code:frontend/src/lib/utils.ts | A:- | S:列表恒取 MOCK_DOCUMENT_LIST(真实 documentApi.list 调用被注释), 后端恢复后须改回, 否则一直显示演示数据
 
 ===D:/czw/EMRDocumentEngine/frontend/src/platform/data/===
@@ -210,7 +210,7 @@ layout-refactor-regression-test-checklist.md[SQ3S]: F:layout/ 分层重构回归
 startup-guide.md[SG4T]: F:项目启动指南: 前端 Vite 与后端启动命令 | R:code:frontend/vite.config.ts | A:- | S:前端启动在 frontend/ 目录执行; 端口与代理以 vite.config.ts 为准
 state-cleanup-regression-test-checklist.md[SQ3S]: F:state/ 清理回归测试清单(2026-08-27): 删死代码 RangeManager + 抽出 HistoryState | R:code:packages/emr-document-engine/src/engine/state/HistoryState.ts,code:packages/emr-document-engine/src/engine/state/EditorStore.ts | A:- | S:RangeManager 已删不得复活: 其 API 与当前选区模型不兼容
 编辑器功能清单.md[SG5L]: F:编辑器功能清单(基于代码盘点, 2026-09-01): 按编号逐条列已实现功能与边界 | R:code:packages/emr-document-engine/src/engine/Editor.ts | A:- | S:条目编号被他文交叉引用, 只可校正指向不可重排编号
-引擎能力补齐-设计方案.md[SG6L]: F:引擎能力补齐三批定序与定型(一·批量数据绑定+保存闸门 / 二·计算式引擎 / 三·修订留痕), 含缺口盘点·契约修订清单·风险登记·验收口径·不做区·§2.6 落地记录 | R:code:.claude/AI_EDITOR_CONTRACT.md,code:knowledge/编辑器功能清单.md | A:- | S:批次一定稿可开工; 重复键报 ambiguous 且一个都不写; 公式落 TemplateDefinition.formula 而结果不落盘; 留痕挂 TextNode 非范围; 图表不并入; 首次性断言必附 file:line
+引擎能力补齐-设计方案.md[SG6L]: F:引擎能力补齐三批定序与定型(一·批量数据绑定+保存闸门 / 二·计算式引擎 / 三·修订留痕), 含缺口盘点·契约修订清单·风险登记·验收口径·不做区·§2.6 落地记录 | R:code:.claude/AI_EDITOR_CONTRACT.md,code:knowledge/编辑器功能清单.md | A:- | S:批次一定稿可开工; 重复键报 ambiguous 且一个都不写; 公式落 TemplateDefinition.formula 而结果不落盘; 留痕挂 TextNode 非范围; 图表不并入; 首次性断言必附 file:line; 落地后须回填 §2.6 偏差表
 
 ===D:/czw/EMRDocumentEngine/knowledge/每日推文/===
 AI推广契约.md[SZ5L]: F:「旺de碎碎念」公众号 AI 推广契约 v2.4(EMR-PROMO-AI-001): 90 天路径、日更节奏与事实合规红线 | R:code:knowledge/每日推文/选题蓄水池.md | A:- | S:契约明示不构成结果保证且含事实合规约束 —— 引用项目数字前必须对代码核对, 不得为增长编造事实

@@ -1,13 +1,13 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-16T06:52:47Z",
+  "updated_at": "2026-10-16T09:00:14Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
-      "sha256": "6daf4140584924efe7ee69772779b5d6bc13ddc6d68242335fb5d08ea47668a4",
-      "size": 185571,
-      "normalized_sha256": "6daf4140584924efe7ee69772779b5d6bc13ddc6d68242335fb5d08ea47668a4"
+      "sha256": "9371086f6ee472b129b9f50954bda7a817b64eddf92f72edf8b1e2229481e7eb",
+      "size": 186290,
+      "normalized_sha256": "9371086f6ee472b129b9f50954bda7a817b64eddf92f72edf8b1e2229481e7eb"
     },
     ".claude/CLAUDE.md": {
       "role": "index",
@@ -95,9 +95,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "44e5ae63f64559f7960c26d52d1fc8ba3fdbbf46c0dd0e74d16f4780e1686e1c",
-      "size": 129530,
-      "normalized_sha256": "44e5ae63f64559f7960c26d52d1fc8ba3fdbbf46c0dd0e74d16f4780e1686e1c"
+      "sha256": "3ed9101d1be91738505e9e08a58fbf9ea1d8f9824bf7665cb968685d8c58b576",
+      "size": 129871,
+      "normalized_sha256": "3ed9101d1be91738505e9e08a58fbf9ea1d8f9824bf7665cb968685d8c58b576"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -520,15 +520,15 @@
     },
     "frontend/src/components/dialogs/ControlChoiceDialog.tsx": {
       "role": "index",
-      "sha256": "a6ffbdac888cf131c1445a82a7c498afbf12c0ff965e3dbba64cca7ef4118488",
-      "size": 19466,
-      "normalized_sha256": "4dd94eb0bf75f64acc630b83b81ed32c7158a7c4e606beee84b7780c74150f88"
+      "sha256": "f15edb162e170b7b17f844c0995b43f905d47cef753811ea6c9685c4d93db142",
+      "size": 21280,
+      "normalized_sha256": "eff4528d53edbf5cd78847f4f06ff1bd6f0626ec299ca6d31417b49b3dbdea33"
     },
     "frontend/src/components/dialogs/ControlInputDialog.tsx": {
       "role": "index",
-      "sha256": "64fa7377c87b19b5dc24840dc147232abcf93cb1e90b879aee53e7bc099ddd19",
-      "size": 22602,
-      "normalized_sha256": "64fa7377c87b19b5dc24840dc147232abcf93cb1e90b879aee53e7bc099ddd19"
+      "sha256": "1cf15fbe740930775c3d846b4ef69ed5ed4766f35b375ddd8b27552908afa722",
+      "size": 21333,
+      "normalized_sha256": "1cf15fbe740930775c3d846b4ef69ed5ed4766f35b375ddd8b27552908afa722"
     },
     "frontend/src/components/dialogs/DocumentPropertiesDialog.tsx": {
       "role": "index",
@@ -592,9 +592,9 @@
     },
     "frontend/src/components/dialogs/__tests__/ControlChoiceDialog.test.tsx": {
       "role": "observe",
-      "sha256": "2a144a40aea03632936ce07165fbfabd8131ae27884c85192b36b0f363730a16",
-      "size": 3840,
-      "normalized_sha256": "2a144a40aea03632936ce07165fbfabd8131ae27884c85192b36b0f363730a16"
+      "sha256": "d4d9c45ee0025ec0aa9ca4ce720fc0e481a350422a420548ca2a3abed2df783d",
+      "size": 8122,
+      "normalized_sha256": "d4d9c45ee0025ec0aa9ca4ce720fc0e481a350422a420548ca2a3abed2df783d"
     },
     "frontend/src/components/dialogs/__tests__/ControlInputDialog.test.tsx": {
       "role": "observe",
@@ -628,15 +628,15 @@
     },
     "frontend/src/components/dialogs/__tests__/controlConfigShared.test.ts": {
       "role": "observe",
-      "sha256": "ab71208313a8ed8f48d700149e5730413724fcf2c25385136b92f6de7f4bc2b3",
-      "size": 3895,
-      "normalized_sha256": "ab71208313a8ed8f48d700149e5730413724fcf2c25385136b92f6de7f4bc2b3"
+      "sha256": "bce49a8b74bd380fe103af3629f099f4487d5617cf482c98551a1dee679d6104",
+      "size": 5380,
+      "normalized_sha256": "bce49a8b74bd380fe103af3629f099f4487d5617cf482c98551a1dee679d6104"
     },
     "frontend/src/components/dialogs/controlConfigShared.tsx": {
       "role": "index",
-      "sha256": "0135a13d478ce453feff4d6556da00be3ca3c747e31d596a1975c28cf92eaa93",
-      "size": 10499,
-      "normalized_sha256": "3a46e9f79472c16c32d5e54aecee907dd01ee16ea2b29d6996eaf3ec0f47ba29"
+      "sha256": "424b6bedb486d6b099afd8493894d1f2f8f06220914bfff94ec4a5b0c731b214",
+      "size": 13600,
+      "normalized_sha256": "60d98f8ee0b4ec5ffac8b4e31fef6941181e8ca0fbd844912d72ef8687cc1c2f"
     },
     "frontend/src/components/editor/ContextMenu.tsx": {
       "role": "index",
@@ -1786,9 +1786,9 @@
     },
     "frontend/src/pages/EditorPage.tsx": {
       "role": "index",
-      "sha256": "7024365949973f9065ac0fbd52d85ef6d35187820c1cc5460950e96202e153eb",
-      "size": 75859,
-      "normalized_sha256": "1f66cbf1eec149b73a23a325e86a0d5bffc998049fcc69b97fa9b1280867d09d"
+      "sha256": "f2a06ea53e1a8db15f2bb417deebfce7ade75d8269dd414889c3c5c41200b2eb",
+      "size": 75934,
+      "normalized_sha256": "2814ef3a89f95b618d2fb9c0ecae2843bbfde87e720136852548f1867752bb91"
     },
     "frontend/src/pages/HomePage.tsx": {
       "role": "index",
@@ -1990,9 +1990,9 @@
     },
     "knowledge/引擎能力补齐-设计方案.md": {
       "role": "index",
-      "sha256": "dd02b95fc424127333895c348a4b7f2c52829b95b5532f31e77bb8347eb59c26",
-      "size": 57486,
-      "normalized_sha256": "dd02b95fc424127333895c348a4b7f2c52829b95b5532f31e77bb8347eb59c26"
+      "sha256": "6483fb05bd7c8bd52811e0e3325c537f8909d3c327cbd12c36f9ca8ea5869fec",
+      "size": 58511,
+      "normalized_sha256": "6483fb05bd7c8bd52811e0e3325c537f8909d3c327cbd12c36f9ca8ea5869fec"
     },
     "knowledge/引擎集成指南/README.md": {
       "role": "index",
