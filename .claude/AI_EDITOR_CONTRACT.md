@@ -3395,16 +3395,26 @@ Rules:
 
 INCREMENTAL LAYOUT STATUS (2026-10-19)
 
-`IncrementalLayout`, `LayoutCache` and `PageStartTable` are NOT wired
-into the render pipeline, and `LayoutEngine.incrementalLayout()` still
-calls `fullLayout()` internally. They MUST NOT be cited as evidence
-that layout is incremental. `DirtyTracker` collects marks and ships
-`dirtyNodeIds` in `document:changed`, but no consumer acts on them.
+M2a IS wired: `LayoutEngine` caches paragraph LINE layout for a provably
+safe subset — paragraphs whose children are all plain `text` and that
+are not list items — keyed by `IncrementalLayout.paragraphKey`
+(structure version + paragraph version + per-child versions) plus the
+available width and the revision-marks flag. The cache holds at most one
+entry per paragraph id and MUST be cleared when the document is swapped.
 
-Real paragraph-level incremental layout is a separate designed change
-(see knowledge/增量排版-设计方案.md). Until it lands, every
-`document:changed` performs a full layout; that is the accepted cost,
-not an optimisation claim.
+Still NOT wired: page breaking and hit-test indexing are full passes on
+every `document:changed`. `LayoutEngine.incrementalLayout()`,
+`LayoutCache`, `PageStartTable` and the `DirtyTracker` marks have no
+consumer. They MUST NOT be cited as evidence that layout is incremental.
+
+Unknown or unprovable cases MUST fall back to recomputing the paragraph
+(list numbering, controls, fields, cross-references, images, footnotes
+are deliberately excluded from the cache). The cache is correct only if
+the key covers every input that can change line layout; when adding a
+new input, extend the key or add the paragraph to the excluded set.
+
+The page-level design (dirty-page repagination, `PageStartTable`) is
+`knowledge/增量排版-设计方案.md`, M2b.
 
 
 ============================================================
