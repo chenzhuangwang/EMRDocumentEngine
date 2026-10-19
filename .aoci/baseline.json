@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-19T08:15:31Z",
+  "updated_at": "2026-10-19T08:16:55Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
@@ -3148,9 +3148,9 @@
     },
     "packages/emr-document-engine/src/engine/__tests__/VirtualViewport.test.ts": {
       "role": "observe",
-      "sha256": "c42cfb00ce03075016bba3fac5830a9227e5a9595ceb7459f834b5cfce369283",
-      "size": 4412,
-      "normalized_sha256": "c42cfb00ce03075016bba3fac5830a9227e5a9595ceb7459f834b5cfce369283"
+      "sha256": "462f307070aa5db04060c2804345ef91dad187bedf5d14575cfe961aa1307ee0",
+      "size": 5982,
+      "normalized_sha256": "462f307070aa5db04060c2804345ef91dad187bedf5d14575cfe961aa1307ee0"
     },
     "packages/emr-document-engine/src/engine/__tests__/helpers.ts": {
       "role": "index",
