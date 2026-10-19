@@ -212,7 +212,7 @@ startup-guide.md[SG4T]: F:项目启动指南: 前端 Vite 与后端启动命令 
 state-cleanup-regression-test-checklist.md[SQ3S]: F:state/ 清理回归测试清单(2026-08-27): 删死代码 RangeManager + 抽出 HistoryState | R:code:packages/emr-document-engine/src/engine/state/HistoryState.ts,code:packages/emr-document-engine/src/engine/state/EditorStore.ts | A:- | S:RangeManager 已删不得复活: 其 API 与当前选区模型不兼容
 编辑器功能清单.md[SG5L]: F:编辑器功能清单(基于代码盘点, 2026-10-19 状态逐节复核): 按编号列已实现功能与边界; §4.3 覆盖 43/43 命令类; §11 记引擎能力三批; 未接线模块与不存在分支逐条标注 | R:code:packages/emr-document-engine/src/engine/Editor.ts,code:knowledge/引擎能力补齐-设计方案.md | A:- | S:条目编号被他文交叉引用, 只可校正指向不可重排编号; 链接以仓库根为基准; 状态须回代码核实, 旧结论会过期; VirtualViewport 已接线, 增量四件仍未接线
 引擎能力补齐-设计方案.md[SG6L]: F:引擎能力补齐三批定序与定型(一·批量数据绑定+保存闸门 / 二·计算式引擎 / 三·修订留痕), 含缺口盘点·契约修订清单·风险登记·验收口径·不做区与 §2.6/§3.7/§3.8/§4.5/§4.6/§4.7 落地记录; 保存接线已抽 useDocumentSave | R:code:.claude/AI_EDITOR_CONTRACT.md,code:knowledge/编辑器功能清单.md | A:- | S:批次一定稿可开工; 重复键报 ambiguous 且一个都不写; 公式落 TemplateDefinition.formula 而结果不落盘; 留痕挂 TextNode 非范围; 落地记录记的是与计划的真实分歧; 首次性断言必附 file:line
-增量排版-设计方案.md[SG6S]: F:增量排版立项设计(2026-10-19, 未开工): 现状证据、段落缓存键、失效规则表、从脏页重分页、SLIF 字节等价验收与 M1-M4 | R:code:packages/emr-document-engine/src/engine/layout/core/LayoutEngine.ts,code:packages/emr-document-engine/src/engine/layout/incremental/IncrementalLayout.ts,code:packages/emr-document-engine/src/engine/render/Draw.ts | A:- | S:未落地前增量四件不得引用; 缓存键须聚合子节点版本(NodePool 版本不冒泡); 等价判据是 SLIF 逐字节相同而非视觉一致; 无法证明安全的场景一律全量
+增量排版-设计方案.md[SG6S]: F:增量排版设计(2026-10-19): M1 已完成(段落缓存键+等价骨架), M2 未开工; 现状证据、失效规则表、从脏页重分页、SLIF 字节等价验收与 M3-M4 | R:code:packages/emr-document-engine/src/engine/layout/core/LayoutEngine.ts,code:packages/emr-document-engine/src/engine/layout/incremental/IncrementalLayout.ts,code:packages/emr-document-engine/src/engine/render/Draw.ts | A:- | S:未落地前增量四件不得引用; 键须逐子聚合版本(版本不冒泡); 等价判据是 SLIF 逐字节相同; M1 已交付键与等价骨架, M2 只换一侧不放宽比较; 无法证明安全一律全量
 
 ===D:/czw/EMRDocumentEngine/knowledge/每日推文/===
 AI推广契约.md[SZ5L]: F:「旺de碎碎念」公众号 AI 推广契约 v2.4(EMR-PROMO-AI-001): 90 天路径、日更节奏与事实合规红线 | R:code:knowledge/每日推文/选题蓄水池.md | A:- | S:契约明示不构成结果保证且含事实合规约束 —— 引用项目数字前必须对代码核对, 不得为增长编造事实
@@ -408,7 +408,7 @@ FootnoteLayout.ts[DB5M]: F:脚注布局引擎(TASK-460): 收集 FootnoteRef 编�
 
 ===D:/czw/EMRDocumentEngine/packages/emr-document-engine/src/engine/layout/incremental/===
 DirtyTracker.ts[DB6S]: F:脏区追踪器(架构 §7.5): 段落/页面/节点级脏标记供增量布局 | R:- | A:DirtyTracker,DirtyScope | S:markFullDocument 清空其他脏集; version 递增供订阅
-IncrementalLayout.ts[DB5T]: F:增量布局引擎(TASK-482): 仅重算脏段落, 干净段复用缓存 | R:code:packages/emr-document-engine/src/engine/layout/incremental/DirtyTracker.ts | A:IncrementalLayout,CachedParagraphLayout | S:isValid = 有缓存且非脏; computeStats 复用/重算计数
+IncrementalLayout.ts[DB5T]: F:增量布局引擎(TASK-482): 段落级缓存与脏段统计; M1 新增缓存键 paragraphKey(段落身份+结构版本+段落版本+逐子节点版本) | R:code:packages/emr-document-engine/src/engine/layout/incremental/DirtyTracker.ts | A:IncrementalLayout,CachedParagraphLayout | S:键必须逐子聚合: NodePool 版本只 bump 被更新节点, 不向父节点冒泡; 结构编辑靠 structureVersion 保守全失效; 本类缓存方法仍未接入渲染管线
 LayoutCache.ts[DP5T]: F:三级布局缓存(架构 §7.4): inline/block/page, 键=节点 ID 经 getNodeVersion 失效 | R:- | A:LayoutCache | S:失效判据是 version 相等而非存在
 
 ===D:/czw/EMRDocumentEngine/packages/emr-document-engine/src/engine/layout/line/===
