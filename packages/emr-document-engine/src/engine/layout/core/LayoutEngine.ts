@@ -49,6 +49,35 @@ export type { LayoutConfig } from './LayoutContext'
 export type { LayoutResult } from './LayoutResult'
 
 /**
+ * 修订标记的布局投影 (契约 §12.13)。
+ *
+ * SLIF 只承载**布局产物**, 但修订的 type 决定渲染颜色 —— 它必须像
+ * underlineStyle/highlight 一样透传, 否则 TextParticle 里那条现成的 revision
+ * 分支永远是死代码 (本批开工前的实测结论)。作者/时间不进 SLIF: 那是旁注。
+ */
+/**
+ * 布局期的**渲染视图**标签 (契约 §12.13)。
+ *
+ * 视图开关不是"渲染期才读"的设置: 关掉标记必须把**删除线**也一起关掉, 而删除线
+ * 在布局期就由变体反推了出来 (`delete` → 变体 strikeout || underline)。若不在
+ * 这里按开关剥掉变体, 用户关掉标记后删除线仍在 —— 那正是"视图开关改不动它"的
+ * 老毛病 (本仓已有先例: fields.ts 的显示值与渲染口径漂移)。
+ *
+ * 代价是关开关要**重排一次**。这与 §12.12.5 的 HIDE 同一量级: 视图开关改变的是
+ * 布局产物, 不是文档。
+ */
+function revisionVariantOf(
+  node: { revision?: { type: string }; strikeout?: boolean },
+  showMarks: boolean,
+): { revision?: { type: string }; strikeout?: boolean } {
+  if (!showMarks || !node.revision) return { revision: undefined, strikeout: node.strikeout }
+  return {
+    revision: { type: node.revision.type },
+    strikeout: node.revision.type === 'delete' ? true : node.strikeout,
+  }
+}
+
+/**
  * 运行时控件内联渲染预留宽所需的最小信息 (契约 §12.6 表单模式内联渲染)。
  * 正交读取: controlType 直接来自 TemplateDefinition, options 直接来自 element.format.enums,
  * 布局只消费、不推导 (绝不从 dataType/enums 反向推断 controlType)。
@@ -103,6 +132,25 @@ export class LayoutEngine {
   // templateDefinitions.controlType + element.format.enums)。布局不直接持有
   // templateDefinitions, 只消费回调, 保持布局与设计期层的解耦。
   private controlInfoOf: ((nodeId: string) => InlineControlInfo | undefined) | null = null
+
+  /**
+   * 修订留痕显示开关 (契约 §12.13) — 由 Draw 在每次重排前同步。
+   *
+   * 布局**不持有**这个开关的拥有权 (它是 Editor 的视图状态): 这里只消费。
+   * 读它的理由见 revisionVariantOf: 删除线是布局期产物, 关标记必须连它一起关。
+   */
+  private showRevisionMarks = true
+
+  /** 同步修订留痕显示开关 (契约 §12.13) — 由 Draw 调用, 改变后需重排 */
+  setShowRevisionMarks(v: boolean): void { this.showRevisionMarks = v }
+
+  /** 元素的修订渲染视图 (标记 + 由 delete 派生的删除线) */
+  private revisionViewOf(node: { revision?: { type: string }; strikeout?: boolean }): {
+    revision?: { type: string }
+    strikeout?: boolean
+  } {
+    return revisionVariantOf(node, this.showRevisionMarks)
+  }
 
   /**
    * 域代码预留宽上下文 — 每次 fullLayout 开头刷新。
@@ -356,6 +404,7 @@ export class LayoutEngine {
               underlineStyle: (tn as { underlineStyle?: string }).underlineStyle,
               strikeout: tn.strikeout, superscript: tn.superscript, subscript: tn.subscript,
               highlight: tn.highlight,
+              ...this.revisionViewOf(tn),
               control,
             })
           } else if (childType === 'image') {
@@ -550,8 +599,8 @@ export class LayoutEngine {
             underlineStyle: (el as { underlineStyle?: string }).underlineStyle,
             strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,
             highlight: (el as { highlight?: string }).highlight,
-            listMarker: itemListMarker,
-            listMarkerX: itemListMarker ? markerX : undefined,
+            revision: (el as LineElement).revision,
+            listMarker: itemListMarker,            listMarkerX: itemListMarker ? markerX : undefined,
             markerWidth: itemMarkerWidth,
             controlLines: isSmart ? elControl?.lines : undefined,
             wrapWidth: isSmart ? elControl?.wrapWidth : undefined,
@@ -909,6 +958,7 @@ export class LayoutEngine {
               font: child.font, size: child.size, bold: child.bold, italic: child.italic,
               color: child.color, underline: child.underline, strikeout: child.strikeout,
               superscript: child.superscript, subscript: child.subscript,
+              ...this.revisionViewOf(child as { revision?: { type: string }; strikeout?: boolean }),
             })
           } else if (child.type === 'smarttext') {
             // 表格 cell 内控件 — 与正文/页眉共用 smarttextLayoutHint (契约 §12.8):
@@ -1008,6 +1058,7 @@ export class LayoutEngine {
             bold: el.bold, italic: el.italic,
             color: el.color, underline: el.underline, strikeout: el.strikeout,
             superscript: el.superscript, subscript: el.subscript,
+            revision: el.revision,
             text: el.value || '',
           })
           elX += elWidth
@@ -1197,6 +1248,7 @@ export class LayoutEngine {
             size: childType === 'smarttext' ? smartSize : tn.size, bold: tn.bold, italic: tn.italic,
             color: tn.color, underline: tn.underline,
             strikeout: tn.strikeout, superscript: tn.superscript, subscript: tn.subscript,
+            ...(childType === 'text' ? this.revisionViewOf(tn) : {}),
           })
         } else if (childType === 'field') {
           const fn = child as unknown as Record<string, unknown>
@@ -1344,6 +1396,7 @@ export class LayoutEngine {
           bold: el.bold, italic: el.italic,
           color: el.color, underline: el.underline,
           strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,
+          revision: el.revision,
           fieldType: (el as { fieldType?: string }).fieldType,
           // 超宽折行的物理行 (契约 §12.8) — 与正文同源
           controlLines: el.type === 'smarttext' ? elControl?.lines : undefined,

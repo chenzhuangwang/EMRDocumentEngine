@@ -21,6 +21,7 @@
 //   v4.5.0 → v4.6.0  Table 新增可选字段 dynamicRows (填写时可增长, 契约 §12.9) — 显式 NO-OP
 //   v4.6.0 → v4.7.0  新增 Section 结构容器节点类型 (契约 §31) — 显式 NO-OP
 //   v4.7.0 → v4.8.0  TemplateDefinition 新增可选字段 formula (契约 §12.12) — 显式 NO-OP
+//   v4.8.0 → v4.9.0  TextNode 新增可选字段 revision (契约 §12.13) — 显式 NO-OP
 //
 // 不实现 downgrade(): EMR 场景下不需要"用旧引擎开新文档"。
 // 详见 knowledge/document-version-system-design.md §4 决策 4。
@@ -291,6 +292,22 @@ modelUpgrader.register({
 modelUpgrader.register({
   from: { major: 4, minor: 7, patch: 0 },
   to: { major: 4, minor: 8, patch: 0 },
+  breaking: false,
+  upgrade(doc: DocumentTree): DocumentTree {
+    return doc
+  },
+})
+
+// v4.8→v4.9: TextNode 新增可选字段 revision (契约 §12.13)
+// 纯向后兼容: revision 可选, 旧文档每个 TextNode 都没有标记 = 没有修订。
+//
+// 与上一档的区别: formula 住在 templateDefinitions 这个**已存在**的顶层容器里,
+// revision 则直接加在 TextNode 上 —— 版本规则相同 ("新增可选字段就升版本"),
+// 但"容器已存在"那层论证不适用。它仍然是 NO-OP, 因为不需要任何数据搬运:
+// 缺失的字段按 undefined 读, 语义就是"无修订"。
+modelUpgrader.register({
+  from: { major: 4, minor: 8, patch: 0 },
+  to: { major: 4, minor: 9, patch: 0 },
   breaking: false,
   upgrade(doc: DocumentTree): DocumentTree {
     return doc

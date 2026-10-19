@@ -169,7 +169,7 @@ describe('4.6.0 → 4.7.0 Section 结构容器 (契约 §31)', () => {
     doc.modelVersion = '4.6.0'
 
     const upgraded = modelUpgrader.upgrade(doc as never) as unknown as Record<string, unknown>
-    // 升到**当前**版本 (不止 4.7.0 —— 后面还有 4.8.0 那一档)
+    // 升到**当前**版本 (不止 4.7.0 —— 后面还有 4.8.0 / 4.9.0 那两档)
     expect(upgraded.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
     // Section 是新增节点类型: 旧文档里没有就不该有, 升级器不得凭空注入
     const raw = (doc as unknown as { nodes?: Record<string, { type?: string }> }).nodes
@@ -195,7 +195,7 @@ describe('4.6.0 → 4.7.0 Section 结构容器 (契约 §31)', () => {
     })
     expect(r.wasUpgraded).toBe(true)
     // upgradePath 记的是 **[源, 终]** 两档, 不是逐档 (recordUpgradePath 只 push 首末)
-    expect(r.upgradePath).toEqual(['4.6.0', '4.8.0'])
+    expect(r.upgradePath).toEqual(['4.6.0', '4.9.0'])
   })
 })
 
@@ -208,8 +208,9 @@ describe('4.6.0 → 4.7.0 Section 结构容器 (契约 §31)', () => {
 // ================================================================
 
 describe('4.7.0 → 4.8.0 TemplateDefinition.formula (契约 §12.12)', () => {
-  it('CURRENT_DOCUMENT_VERSION 为 4.8.0', () => {
-    expect(versionToString(CURRENT_DOCUMENT_VERSION)).toBe('4.8.0')
+  it('CURRENT_DOCUMENT_VERSION 至少 4.8.0 (本档引入 formula)', () => {
+    // 4.9.0 起是留痕那一档 (契约 §12.13); 本条只断言本档**不倒退**
+    expect(compareVersions(CURRENT_DOCUMENT_VERSION, '4.8.0')).toBeGreaterThanOrEqual(0)
   })
 
   it('4.7.0 文档可升级且为 no-op (不凭空注入 formula)', () => {
@@ -221,16 +222,16 @@ describe('4.7.0 → 4.8.0 TemplateDefinition.formula (契约 §12.12)', () => {
       modelVersion: string
       templateDefinitions?: Record<string, Record<string, unknown>>
     }
-    expect(upgraded.modelVersion).toBe('4.8.0')
+    expect(upgraded.modelVersion).toBe('4.9.0')
     // 无公式的旧定义读出来就是原样 —— 不得被回填成空串或默认值
     expect(upgraded.templateDefinitions?.n1).toEqual(defs.n1)
     expect('formula' in (upgraded.templateDefinitions?.n1 ?? {})).toBe(false)
   })
 
-  it('4.7.0 视为 outdated; 4.8.0 视为 current', () => {
-    expect(modelUpgrader.checkCompatibility('4.7.0').status).toBe('outdated')
-    expect(modelUpgrader.checkCompatibility('4.7.0').needsUpgrade).toBe(true)
-    const cur = modelUpgrader.checkCompatibility('4.8.0')
+  it('4.8.0 视为 outdated; 4.9.0 视为 current', () => {
+    expect(modelUpgrader.checkCompatibility('4.8.0').status).toBe('outdated')
+    expect(modelUpgrader.checkCompatibility('4.8.0').needsUpgrade).toBe(true)
+    const cur = modelUpgrader.checkCompatibility('4.9.0')
     expect(cur.status).toBe('current')
     expect(cur.needsUpgrade).toBe(false)
   })
@@ -244,7 +245,7 @@ describe('4.7.0 → 4.8.0 TemplateDefinition.formula (契约 §12.12)', () => {
       nodes: {},
     })
     expect(r.wasUpgraded).toBe(true)
-    expect(r.upgradePath).toEqual(['4.7.0', '4.8.0'])
+    expect(r.upgradePath).toEqual(['4.7.0', '4.9.0'])
   })
 
   it('formula 随 templateDefinitions 往返 (序列化 → 加载) 不丢', () => {
@@ -275,6 +276,68 @@ describe('4.7.0 → 4.8.0 TemplateDefinition.formula (契约 §12.12)', () => {
     const json = serializeDocument(first.doc, first.pool, { templateDefinitions: store })
     const back = loadDocumentFromObject(JSON.parse(json))
     expect(back.templateDefinitions?.get('st1')?.formula).toBe('GETAGE([DE_BIRTH])')
+  })
+})
+
+// ================================================================
+// 4.8.0 → 4.9.0 TextNode.revision (契约 §12.13)
+//
+// 这一档与上一档的**唯一区别**是字段落点: formula 住在已存在的顶层容器
+// templateDefinitions 里, revision 直接加在 TextNode 上 —— "容器已存在"那层
+// 论证不适用, 但"新增可选字段即升版本"这条规则完全一样。仍为 NO-OP:
+// 缺失的 revision 读出来就是 undefined, 语义正是"无修订"。
+// ================================================================
+
+describe('4.8.0 → 4.9.0 TextNode.revision (契约 §12.13)', () => {
+  it('CURRENT_DOCUMENT_VERSION 至少 4.9.0', () => {
+    expect(compareVersions(CURRENT_DOCUMENT_VERSION, '4.9.0')).toBeGreaterThanOrEqual(0)
+  })
+
+  it('4.8.0 文档可升级且为 no-op (不凭空注入 revision)', () => {
+    const doc = createDocument('测试') as unknown as Record<string, unknown>
+    doc.modelVersion = '4.8.0'
+    const nodes = { t1: { type: 'text', id: 't1', text: '正文，无修订' } }
+    const upgraded = modelUpgrader.upgrade({ ...doc, nodes } as never) as unknown as {
+      modelVersion: string
+      nodes: Record<string, Record<string, unknown>>
+    }
+    expect(upgraded.modelVersion).toBe(versionToString(CURRENT_DOCUMENT_VERSION))
+    // 无标记的旧文档读出来就是无标记 —— 不得被回填成空对象或默认 type
+    expect('revision' in (upgraded.nodes.t1 ?? {})).toBe(false)
+  })
+
+  it('4.8.0 视为 outdated; 当前版本视为 current', () => {
+    expect(modelUpgrader.checkCompatibility('4.8.0').status).toBe('outdated')
+    expect(modelUpgrader.checkCompatibility('4.8.0').needsUpgrade).toBe(true)
+    const cur = modelUpgrader.checkCompatibility(versionToString(CURRENT_DOCUMENT_VERSION))
+    expect(cur.status).toBe('current')
+    expect(cur.needsUpgrade).toBe(false)
+  })
+
+  it('revision 随 nodes 往返 (序列化 → 加载) 不丢', () => {
+    const raw = {
+      type: 'document', id: 'd1', title: '带留痕',
+      pageSetup: {
+        width: 794, height: 1123, marginTop: 72, marginBottom: 72,
+        marginLeft: 90, marginRight: 90, orientation: 'portrait',
+      },
+      body: { mode: 'flow', children: ['p1'] },
+      modelVersion: versionToString(CURRENT_DOCUMENT_VERSION),
+      nodes: {
+        p1: { type: 'paragraph', id: 'p1', children: ['t1'] },
+        t1: {
+          type: 'text', id: 't1', text: '待删除',
+          revision: { type: 'delete', author: '姜波', authorId: 'jiangbo', at: 1679904930000 },
+        },
+      },
+    }
+    const first = loadDocumentFromObject(raw as never)
+    const json = serializeDocument(first.doc, first.pool)
+    const back = loadDocumentFromObject(JSON.parse(json))
+    const t1 = back.pool.nodes.get('t1') as { revision?: Record<string, unknown> }
+    expect(t1.revision).toEqual({
+      type: 'delete', author: '姜波', authorId: 'jiangbo', at: 1679904930000,
+    })
   })
 })
 

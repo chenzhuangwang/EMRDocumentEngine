@@ -262,13 +262,20 @@ describe('TemplateImporter 节点映射', () => {
     expect(lbl2.text).toBe('抢救')
   })
 
-  it('checkfield → TextNode(prefix), insert/delete 标记丢弃', () => {
+  it('checkfield → TextNode(prefix); insert 标记节点本身不产出, 但作用于后续文本', () => {
     const r = importFixture()
     const cb = r.nodes.get('cb-1') as TextNode
     expect(cb.type).toBe('text')
     expect(cb.text).toBe('1.治愈')
-    expect(r.nodes.has('ins-1')).toBe(false)  // 修订标记被丢弃
-    expect((r.nodes.get('txt-2') as TextNode).text).toBe('（已插入内容）')
+    // 独立标记节点没有内容, 不产出节点 (契约 §12.2/§12.13)
+    expect(r.nodes.has('ins-1')).toBe(false)
+    // 但它作用于后续行内兄弟: txt-2 被标记为待接受的插入
+    const inserted = r.nodes.get('txt-2') as TextNode
+    expect(inserted.text).toBe('（已插入内容）')
+    expect(inserted.revision?.type).toBe('insert')
+    expect(inserted.revision?.author).toBe('姜波')
+    expect(inserted.revision?.authorId).toBe('jiangbo')
+    expect(inserted.revision?.at).toBe(new Date(2023, 2, 27, 16, 15, 30).getTime())
   })
 
   it('table → Table + 列宽百分比 + 表头 + 合并', () => {
@@ -399,5 +406,98 @@ describe('TemplateImporter — DT 日期时间 (契约 §12.6.1)', () => {
     expect((r1.nodes.get('st-dt') as SmartTextNode).value).toBe('2026-09-11 08:30:00')
     const r2 = new TemplateImporter().import(tpl('2026-09-11T08:30:05'))
     expect((r2.nodes.get('st-dt') as SmartTextNode).value).toBe('2026-09-11 08:30:05')
+  })
+})
+
+// ============================================================
+// 修订留痕导入 (契约 §12.13)
+//
+// 载体是宿主节点上的 `rtype`, **不是**独立的兄弟标记节点 —— 这一条来自
+// 真实导出样本的核验 (46 份 DCWriter JSON 里 6 处, 宿主 text×5 / checkfield×1;
+// 独立的 insert/delete 节点 0 处)。夹具形态仍按"标记作用于后续兄弟"处理。
+// ============================================================
+
+describe('修订留痕导入 (§12.13)', () => {
+  function revTpl(children: unknown[]): unknown {
+    return {
+      _id: 'tpl_rev',
+      categoryId: 'rev',
+      styles: { text: { 'st-normal': { fontFamily: 'SimSun', fontSize: '9pt' } }, paragraph: {}, table: {} },
+      layout: {
+        margins: { left: 10, right: 10, top: 10, bottom: 10 },
+        paper: { type: 'A4', orientation: 'portrait' },
+      },
+      document: {
+        body: { id: 'root-body', type: '$root', children: [
+          { id: 'p1', type: 'paragraph', children },
+        ] },
+      },
+    }
+  }
+
+  it('宿主节点上的 rtype (真实格式) → TextNode.revision, 作者/时间齐全', () => {
+    const r = new TemplateImporter().import(revTpl([
+      {
+        id: 't1', type: 'text', data: '阿斯蒂芬', style: { id: 'st-normal' },
+        rtype: {
+          type: 'insert', author: '姜波', authorId: 'jiangbo',
+          accessLevel: 1, deptId: null, deptName: null, date: '2023-03-27 16:15:30',
+        },
+      },
+    ]) as never)
+    const t = r.nodes.get('t1') as TextNode
+    expect(t.text).toBe('阿斯蒂芬')
+    expect(t.revision).toEqual({
+      type: 'insert', author: '姜波', authorId: 'jiangbo',
+      at: new Date(2023, 2, 27, 16, 15, 30).getTime(),
+    })
+  })
+
+  it('checkfield 上的 rtype 同样保留 (它映射成 TextNode)', () => {
+    const r = new TemplateImporter().import(revTpl([
+      {
+        id: 'cb1', type: 'checkfield', prefix: '3.未愈',
+        rtype: { type: 'delete', author: '姜波', authorId: 'jiangbo', date: '2023-03-27 16:15:36' },
+      },
+    ]) as never)
+    const t = r.nodes.get('cb1') as TextNode
+    expect(t.text).toBe('3.未愈')
+    expect(t.revision?.type).toBe('delete')
+    expect(t.revision?.author).toBe('姜波')
+  })
+
+  it('date 解析失败只丢 at, 作者保留 ("谁改的"比"哪一秒"更重要)', () => {
+    const r = new TemplateImporter().import(revTpl([
+      {
+        id: 't1', type: 'text', data: 'x',
+        rtype: { type: 'insert', author: '姜波', authorId: 'jiangbo', date: '不是日期' },
+      },
+    ]) as never)
+    const t = r.nodes.get('t1') as TextNode
+    expect(t.revision?.author).toBe('姜波')
+    expect(t.revision?.at).toBeUndefined()
+  })
+
+  it('未知 rtype.type 整条丢弃 (不猜)', () => {
+    const r = new TemplateImporter().import(revTpl([
+      { id: 't1', type: 'text', data: 'x', rtype: { type: 'whatever', author: '甲' } },
+    ]) as never)
+    expect((r.nodes.get('t1') as TextNode).revision).toBeUndefined()
+  })
+
+  it('inline insert 标记节点 → 作用于后续行内兄弟, 直到下一个标记', () => {
+    const r = new TemplateImporter().import(revTpl([
+      { id: 'a', type: 'text', data: '前' },
+      { id: 'm', type: 'insert', author: '姜波', authorId: 'jiangbo', date: '2023-03-27 16:15:30' },
+      { id: 'b', type: 'text', data: '后' },
+      { id: 'm2', type: 'delete', author: '姜波', authorId: 'jiangbo', date: '2023-03-27 16:15:36' },
+      { id: 'c', type: 'text', data: '再后' },
+    ]) as never)
+    expect((r.nodes.get('a') as TextNode).revision).toBeUndefined()
+    expect((r.nodes.get('b') as TextNode).revision?.type).toBe('insert')
+    expect((r.nodes.get('c') as TextNode).revision?.type).toBe('delete')
+    // 标记节点本身没有内容 → 不产出节点
+    expect(r.nodes.has('m')).toBe(false)
+    expect(r.nodes.has('m2')).toBe(false)
   })
 })

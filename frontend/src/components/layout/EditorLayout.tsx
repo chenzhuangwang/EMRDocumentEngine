@@ -47,6 +47,15 @@ interface EditorLayoutProps {
   /** 节结构显示切换回调 */
   onToggleSectionStructure?: () => void
   onToggleInvisible?: () => void
+  /** 修订留痕显示 (契约 §12.13) */
+  showRevisionMarks?: boolean
+  onToggleRevisionMarks?: () => void
+  /** 修订追踪开关 (契约 §12.13) */
+  trackChanges?: boolean
+  onToggleTrackChanges?: () => void
+  /** 接受 / 拒绝全部修订 (契约 §12.13) */
+  onAcceptAllRevisions?: () => void
+  onRejectAllRevisions?: () => void
   /** 大纲条目 (TASK-456) */
   outlineItems?: OutlineItem[]
   /** 当前激活的标题 ID */
@@ -101,6 +110,12 @@ export function EditorLayout({
   showSectionStructure = true,
   onToggleInvisible,
   onToggleSectionStructure,
+  showRevisionMarks = true,
+  onToggleRevisionMarks,
+  trackChanges = false,
+  onToggleTrackChanges,
+  onAcceptAllRevisions,
+  onRejectAllRevisions,
   outlineItems = [],
   activeOutlineId,
   onOutlineClick,
@@ -188,6 +203,12 @@ export function EditorLayout({
             showSectionStructure={showSectionStructure}
             onToggleInvisible={onToggleInvisible}
             onToggleSectionStructure={onToggleSectionStructure}
+            showRevisionMarks={showRevisionMarks}
+            onToggleRevisionMarks={onToggleRevisionMarks}
+            trackChanges={trackChanges}
+            onToggleTrackChanges={onToggleTrackChanges}
+            onAcceptAllRevisions={onAcceptAllRevisions}
+            onRejectAllRevisions={onRejectAllRevisions}
             mode={mode}
             onModeChange={onModeChange}
             scaleScore={scaleScore}

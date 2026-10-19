@@ -19,7 +19,7 @@
 //     重建非文本节点, 且跨非文本节点删除时 deletedText 拼接会丢失位置)。
 // ================================================================
 
-import type { BaseNode, Paragraph, TextNode } from '../../document/core/DocumentModel'
+import type { BaseNode, Paragraph, TextNode, RevisionMark } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
 import { generateCommandId } from '../ICommand'
 import type { ICommand } from '../ICommand'
@@ -27,17 +27,12 @@ import { CommandContext, StatePatch, SerializedCommand, PositionalCommand } from
 import { InsertTextCommand } from './InsertTextCommand'
 import { normalizeParagraph } from './ParagraphUtils'
 import { MintedOnce } from './MintedNodes'
-import { createTextNode } from '../../document/factory/ElementFormatter'
-
-/** 段落删除前的完整子节点快照 (供 invert 精确还原) */
-interface ParagraphSnapshot {
-  childIds: string[]
-  nodes: BaseNode[]
-}
-
-function cloneNode(node: BaseNode): BaseNode {
-  return JSON.parse(JSON.stringify(node)) as BaseNode
-}
+import { createTextNode, extractStyle } from '../../document/factory/ElementFormatter'
+import { RevisionStamp, NO_REVISION } from '../../revision/Revision'
+import {
+  captureParagraphSnapshot, RestoreParagraphsCommand,
+  type ParagraphSnapshot,
+} from './ParagraphSnapshot'
 
 /** 段落显示长度 (文本按字符数, 非文本原子节点按 1) */
 function paragraphCharLength(pool: NodePool, para: Paragraph): number {
@@ -61,6 +56,14 @@ export class DeleteRangeCommand extends PositionalCommand {
   private _paragraphSnapshot: ParagraphSnapshot | null = null
   /** 铸造一次台账 (契约 §8.3): 空段落补的空文本节点在 redo 时复用同一 id */
   private mint = new MintedOnce()
+  /**
+   * 追踪删除时拆分出来的 before/after 文本节点 (契约 §12.13)。
+   * 与 `mint` 分开: 一个 MintedOnce 只能承载一组根 id。
+   */
+  private splitMint = new MintedOnce()
+  /** 本次盖戳 (契约 §12.13) — 首次 forward 解析, 重放复用 */
+  private stamp = new RevisionStamp()
+  private tracked = false
 
   get deletedText(): string { return this._deletedText }
 
@@ -89,18 +92,27 @@ export class DeleteRangeCommand extends PositionalCommand {
     //   a) 范围触及非文本节点 —— 文本反转重建不出非文本节点 (既有);
     //   b) 整段被删空 —— Step 4 会补一个空文本节点, 纯文本反转 (InsertTextCommand)
     //      无法把它撤掉, 会留下一个多余的空文本节点。
-    // 两种都走 RestoreDeleteRangeCommand 精确还原, 否则 undo 不是精确逆 (契约 §8.3)。
+    // 两种都走整段快照精确还原 (RestoreParagraphsCommand), 否则 undo 不是精确逆 (§8.3)。
+    //
+    // 追踪开启时**一律**快照 (契约 §12.13): 本命令此时会把文字留在原地加删除线、
+    // 或把待删的空格从待插 run 里摘走, 这些改动纯文本反转还原不出。
+    const tracked = (() => {
+      if (this.stamp.isResolved) return this.tracked
+      this.stamp.resolve(ctx.revision ?? NO_REVISION, 'delete')
+      this.tracked = this.stamp.value !== null
+      return this.tracked
+    })()
     const emptiesParagraph =
       this.startOffset === 0 && this.endOffset >= paragraphCharLength(pool, para)
-    if (this.rangeTouchesNonText(pool, para, this.startOffset, this.endOffset) || emptiesParagraph) {
-      this._paragraphSnapshot = {
-        childIds: [...para.children],
-        nodes: para.children.map(id => cloneNode(pool.nodes.get(id)!)),
-      }
+    if (tracked || this.rangeTouchesNonText(pool, para, this.startOffset, this.endOffset) || emptiesParagraph) {
+      this._paragraphSnapshot = captureParagraphSnapshot(pool, para)
     }
+    const mark = this.stamp.value
 
-    // Step 2: 提取被删文本 + 执行删除
-    if (start.textNodeId === end.textNodeId) {
+    // Step 2: 提取被删文本 + 执行删除 (追踪开启时改为"留文加痕", 见 applyTracked)
+    if (tracked && mark) {
+      this.applyTracked(pool, para, mark)
+    } else if (start.textNodeId === end.textNodeId) {
       const node = pool.nodes.get(start.textNodeId)
       if (!node) return null
       if ((node as unknown as Record<string, unknown>).type === 'text') {
@@ -155,6 +167,7 @@ export class DeleteRangeCommand extends PositionalCommand {
     }
 
     // Step 3: 删除后合并相邻同样式 TextNode
+    // (契约 §12.13: 标记不同的节点不合并 —— 判据在 normalizeParagraph 里)
     normalizeParagraph(para, pool)
 
     // Step 4: 防止空段落僵尸 — 删除全部内容后至少保留一个空文本节点
@@ -180,8 +193,8 @@ export class DeleteRangeCommand extends PositionalCommand {
   invert(ctx: CommandContext): ICommand | null {
     if (ctx.mode !== 'local') return null
     if (this._paragraphSnapshot) {
-      return new RestoreDeleteRangeCommand(
-        generateCommandId(), Date.now(), this.author, this.path, this._paragraphSnapshot,
+      return new RestoreParagraphsCommand(
+        generateCommandId(), Date.now(), this.author, [this._paragraphSnapshot],
       )
     }
     return new InsertTextCommand(
@@ -199,9 +212,121 @@ export class DeleteRangeCommand extends PositionalCommand {
     }
   }
 
-  /** 判断 [startOffset, endOffset) 是否触及任何非文本节点 (决定是否快照整段) */
-  private rangeTouchesNonText(pool: NodePool, para: Paragraph, startOffset: number, endOffset: number): boolean {
+  /**
+   * 追踪删除 (契约 §12.13): 文字**留在文档里**, 改为打 `delete` 标记。
+   *
+   * 三条规则, 都来自"留痕是文字自身的属性"这一个前提:
+   *
+   *   1. **删掉待接受的插入 = 取消它** —— 带 `insert` 标记的文字被删时直接移除,
+   *      绝不叠加 `delete`。一次没被接受的插入被撤销, 不该变成一条删除记录
+   *      (否则接受后那份文字会**复活**)。
+   *   2. **已经是待删的就直接去掉该片段** —— 同一段文字被删两次不该有两层痕迹。
+   *   3. **非文本节点不可挂标记** —— image / smarttext 落到范围内仍是真删
+   *      (结构性改动不追踪, 契约 §12.13 的显式边界)。
+   *
+   * 部分覆盖必然要把一个 TextNode 切成 before | 覆盖段 | after。切开后**每个片段
+   * 各自保留自己的标记**: 未覆盖的片段继承原节点的标记 (拆段不是"取消修订"),
+   * 覆盖段拿新的 delete 标记。
+   */
+  private applyTracked(
+    pool: NodePool,
+    para: Paragraph,
+    mark: RevisionMark,
+  ): void {
+    this._deletedText = ''
+    // ---- 第一趟 (只读): 把每个子节点拆成片段, 算出最终样子 ----
+    /** keep = 原样不动; edit = 复用原 id 但改 text/revision; fresh = 新节点 */
+    type Piece =
+      | { kind: 'keep'; id: string }
+      | { kind: 'edit'; source: TextNode; id: string; text: string; mark?: RevisionMark }
+      | { kind: 'fresh'; source: TextNode; text: string; mark?: RevisionMark }
+    const pieces: Piece[] = []
+    const dropped: string[] = []
     let offset = 0
+    for (const childId of para.children) {
+      const node = pool.nodes.get(childId)
+      if (!node) continue
+      const nodeType = (node as unknown as Record<string, unknown>).type
+      const isText = nodeType === 'text'
+      const len = isText ? ((node as TextNode).text ?? '').length : 1
+      const nodeStart = offset
+      const nodeEnd = offset + len
+      offset = nodeEnd
+
+      if (nodeEnd <= this.startOffset || nodeStart >= this.endOffset) {
+        pieces.push({ kind: 'keep', id: childId })
+        continue
+      }
+      if (!isText) {
+        // 规则 3: 非文本节点不可挂标记 → 真删 (不产出片段)
+        dropped.push(childId)
+        continue
+      }
+
+      const tn = node as TextNode
+      const ls = Math.max(0, this.startOffset - nodeStart)
+      const le = Math.min(len, this.endOffset - nodeStart)
+      const head = tn.text.slice(0, ls)
+      const covered = tn.text.slice(ls, le)
+      const tail = tn.text.slice(le)
+      this._deletedText += covered
+      const existing = tn.revision
+      // 规则 1/2: 待接受的插入被删 = 取消 (整段去掉); 已是待删的片段也不重复加痕
+      const cancel = existing?.type === 'insert'
+      const alreadyDeleted = existing?.type === 'delete'
+
+      let reuseId: string | null = tn.id
+      const emit = (text: string, pieceMark: RevisionMark | undefined): void => {
+        if (text === '') return
+        if (reuseId !== null) {
+          pieces.push({ kind: 'edit', source: tn, id: reuseId, text, ...(pieceMark ? { mark: pieceMark } : {}) })
+          reuseId = null
+        } else {
+          pieces.push({ kind: 'fresh', source: tn, text, ...(pieceMark ? { mark: pieceMark } : {}) })
+        }
+      }
+      emit(head, existing ? { ...existing } : undefined)
+      if (!cancel && !alreadyDeleted) emit(covered, { ...mark })
+      emit(tail, existing ? { ...existing } : undefined)
+      // 三段全空 (整节点被取消) → 原节点注销
+      if (reuseId !== null) dropped.push(tn.id)
+    }
+
+    // ---- 铸造新片段节点 (契约 §8.3: redo 复用同一批 id) ----
+    const fresh = pieces.filter((p): p is Extract<Piece, { kind: 'fresh' }> => p.kind === 'fresh')
+    const mintedIds = this.splitMint.run(pool, () => fresh.map((p) => {
+      const n = createTextNode(p.text, extractStyle(p.source))
+      if (p.mark) n.revision = { ...p.mark }
+      pool.addNode(n)
+      return n.id
+    }))
+    let next = 0
+
+    // ---- 第二趟: 落到池上 ----
+    const ids: string[] = []
+    for (const p of pieces) {
+      if (p.kind === 'keep') { ids.push(p.id); continue }
+      if (p.kind === 'fresh') {
+        const id = mintedIds[next++]
+        ids.push(id)
+        continue
+      }
+      pool.updateNode(p.id, { text: p.text } as Partial<TextNode>)
+      // updateNode 写 revision: undefined 会留下"键在值空"; 无标记时真正删键
+      if (p.mark) pool.updateNode(p.id, { revision: p.mark } as Partial<TextNode>)
+      else pool.deleteNodeField(p.id, 'revision')
+      ids.push(p.id)
+    }
+    para.children = ids
+
+    // 被丢弃的原节点注销, 不留孤儿
+    for (const id of dropped) {
+      if (!ids.includes(id)) pool.removeNode(id)
+    }
+  }
+
+  /** 判断 [startOffset, endOffset) 是否触及任何非文本节点 (决定是否快照整段) */
+  private rangeTouchesNonText(pool: NodePool, para: Paragraph, startOffset: number, endOffset: number): boolean {    let offset = 0
     for (const childId of para.children) {
       const node = pool.nodes.get(childId)
       if (!node) continue
@@ -214,52 +339,5 @@ export class DeleteRangeCommand extends PositionalCommand {
       offset = nodeEnd
     }
     return false
-  }
-}
-
-/**
- * RestoreDeleteRangeCommand — DeleteRangeCommand 的逆操作 (仅非文本删除路径)。
- * 仅在 undo 时被临时 forward(), 不入栈, 故无需 invert。
- */
-class RestoreDeleteRangeCommand implements ICommand {
-  readonly type = 'restore-delete-range'
-  readonly id: string
-  readonly timestamp: number
-  readonly author: string
-  private path: string[]
-  private snapshot: ParagraphSnapshot
-
-  constructor(id: string, timestamp: number, author: string, path: string[], snapshot: ParagraphSnapshot) {
-    this.id = id; this.timestamp = timestamp; this.author = author
-    this.path = path; this.snapshot = snapshot
-  }
-
-  forward(ctx: CommandContext): StatePatch | null {
-    if (ctx.mode !== 'local') return null
-    const { pool } = ctx
-    const paraId = this.path[this.path.length - 1]
-    const para = pool.nodes.get(paraId) as Paragraph | undefined
-    if (!para) return null
-
-    // 1. 摘除并删除当前全部子节点 (释放 id 供快照节点重新注册)
-    for (let i = para.children.length - 1; i >= 0; i--) {
-      pool.removeChild(paraId, i)
-    }
-    // 2. 重新注册快照节点 (再深拷贝, 避免与快照共享引用)
-    for (const n of this.snapshot.nodes) {
-      pool.addNode(cloneNode(n))
-    }
-    // 3. 恢复原始子节点顺序
-    para.children = [...this.snapshot.childIds]
-
-    return { invalidation: 'paragraph' }
-  }
-
-  invert(_ctx: CommandContext): ICommand | null {
-    return null
-  }
-
-  serialize(): SerializedCommand {
-    return { type: 'restore-delete-range', id: this.id, timestamp: this.timestamp, author: this.author, path: this.path }
   }
 }

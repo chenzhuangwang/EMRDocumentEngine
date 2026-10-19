@@ -21,7 +21,7 @@
 
 /** 布局内部类型 — 换行后的单行 (PageBreaker 视角) */
 export interface ILine {
-  elements: { id: string; type: string; value?: string; size?: number; font?: string; bold?: boolean; italic?: boolean; color?: string; underline?: boolean; strikeout?: boolean; superscript?: boolean; subscript?: boolean }[]
+  elements: { id: string; type: string; value?: string; size?: number; font?: string; bold?: boolean; italic?: boolean; color?: string; underline?: boolean; strikeout?: boolean; superscript?: boolean; subscript?: boolean; revision?: { type: string } }[]
   width: number
   height: number
   maxAscent: number

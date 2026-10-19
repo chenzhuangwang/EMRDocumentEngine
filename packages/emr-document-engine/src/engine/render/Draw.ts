@@ -125,6 +125,11 @@ export class Draw {
 
   // 不可见字符显示 (TASK-475)
   private _showInvisible = false
+  /**
+   * 修订留痕显示开关 (契约 §12.13) — 纯视图开关, 默认开。
+   * 与 showInvisible 不同, 打印**不**强制关闭: 留痕是内容标注而非编辑辅助标记。
+   */
+  private _showRevisionMarks = true
 
   // 图片缓存: URL → CanvasImageSource (容量 50, LRU 淘汰)
   private imageCache = new MemoryManager<string>(50)
@@ -263,6 +268,9 @@ export class Draw {
   recomputeLayout(pool: NodePool, _invalidation?: string): SLIFPage[] {
     if (!this.document) return []
     this.pool = pool
+    // 修订留痕显示开关同步给布局 (契约 §12.13): 删除线是布局期产物,
+    // 关标记必须连它一起关 —— 否则用户关掉标记后删除线还在。
+    this.layoutEngine.setShowRevisionMarks(this._showRevisionMarks)
     // 计算值: 布局趟开头 ensure() 一次 (契约 §12.12.7)。脏了才真算, 时钟在那时读
     // 一次; 不脏则连钟都不读 —— 于是同一份文档的布局与渲染必然读到同一个值。
     this.computedValues?.ensure()
@@ -1284,7 +1292,7 @@ export class Draw {
       })
     } else {
       // 文本/域代码/控件 — 通过 ParticleRegistry 调度 (含列表标记)
-      const textRenderer = particleRegistry.get(item.nodeType || item.type) || particleRegistry.get('text')
+        const textRenderer = particleRegistry.get(item.nodeType || item.type) || particleRegistry.get('text')
       if (textRenderer) {
         textRenderer.render(ctx, { ...item, text: this.resolveFieldText(item, pageIndex) }, item.x, pageY + item.y, {
           showInvisible,
@@ -1849,6 +1857,8 @@ export class Draw {
   /** 不可见字符显示 (TASK-475) */
   get showInvisible(): boolean { return this._showInvisible }
   set showInvisible(v: boolean) { this._showInvisible = v }
+  get showRevisionMarks(): boolean { return this._showRevisionMarks }
+  set showRevisionMarks(v: boolean) { this._showRevisionMarks = v }
 
   /** 从 pool 中解析图片 URL */
   private resolveImageUrl(item: { nodeId: string }): string | null {

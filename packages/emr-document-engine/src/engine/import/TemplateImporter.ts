@@ -27,8 +27,12 @@
 //   - 共享样式字典 (styles.paragraph/table + globalStyles) —— 仅解析
 //     styles.text → TextStyle 的 font/size/bold。
 //   - checkfield 复选框语义 (P0 只取 prefix 文本)。
-//   - insert/delete 修订痕迹 (P0 丢弃标记, 保留兄弟内容)。
 //   - scripts / valid (非四层模型)。
+//
+// 修订留痕 (§12.13) 已**不再**是推迟项: 宿主节点的 `rtype` 导入为
+// TextNode.revision (text / checkfield 两类宿主都保留); 独立的 insert/delete
+// 标记节点按「作用于后续行内兄弟」处理。块级独立标记仍显式跳过 (无已验证的
+// 范围语义)。
 // ================================================================
 
 import type {
@@ -36,7 +40,7 @@ import type {
   TextStyle, Paragraph, TextNode, SmartTextNode,
   Table, TableRow, TableCell, ColumnDefinition, PageSetup,
   DocumentMetadata, ControlValue, ElementEnums, ElementEnumOption,
-  Section,
+  Section, RevisionMark,
 } from '../document/core/DocumentModel'
 import { NodeType, generateId, normalizeDocumentMetadata } from '../document/core/DocumentModel'
 import {
@@ -74,11 +78,31 @@ interface ExtFormat {
   minRows?: number
   enums?: ExtEnums
 }
+/** 宿主节点上的修订属性 (真实导出格式, 契约 §12.13) */
+interface ExtRevision {
+  type?: string
+  author?: string
+  authorId?: string
+  date?: string
+  accessLevel?: unknown
+  deptId?: unknown
+  deptName?: unknown
+}
+
 interface ExtNode {
   type?: string
   id?: string
   code?: string
   data?: string
+  /**
+   * 修订留痕 (契约 §12.13) — **真实线上格式的载体**。
+   *
+   * 核验用户本机 46 份 DCWriter 导出后确认: 修订不是独立的兄弟节点, 而是挂在
+   * 宿主节点上的属性:
+   *   { type:'text', data:'阿斯蒂芬', rtype:{ type:'insert', author:'姜波', … } }
+   * 宿主可以是 text / checkfield (两者都映射成 TextNode, 故标记天然保留)。
+   */
+  rtype?: ExtRevision
   label?: string
   prefix?: string
   suffix?: string
@@ -144,6 +168,47 @@ function lengthToPx(v: unknown): number | undefined {
   m = s.match(/^([\d.]+)\s*pt$/i); if (m) return Math.round(parseFloat(m[1]) * PT_PER_PX)
   m = s.match(/^([\d.]+)/); if (m) return Math.round(parseFloat(m[1]))
   return undefined
+}
+
+/**
+ * 外部修订属性 → RevisionMark (契约 §12.13)。
+ *
+ * 只认三个已知 type; 未知值整条丢弃 (不猜)。`date` 解析失败时**只丢 at**,
+ * 作者信息仍保留 —— "谁改的"比"哪一秒改的"更重要。
+ *
+ * 独立标记节点 (夹具形态 `{ type:'insert', author, authorId, date }`) 与宿主
+ * 节点上的 `rtype` **同构**, 故共用这一个解析器: 标记节点的 `type` 就是修订
+ * 类型, rtype 的 `type` 也在同一字段上。
+ */
+function parseRevisionMark(raw: ExtRevision | undefined): RevisionMark | undefined {
+  if (!raw) return undefined
+  const t = raw.type
+  if (t !== 'insert' && t !== 'delete' && t !== 'modify') return undefined
+  const mark: RevisionMark = { type: t }
+  if (typeof raw.author === 'string' && raw.author !== '') mark.author = raw.author
+  if (typeof raw.authorId === 'string' && raw.authorId !== '') mark.authorId = raw.authorId
+  const at = parseRevisionDate(raw.date)
+  if (at !== undefined) mark.at = at
+  return mark
+}
+
+/**
+ * `'YYYY-MM-DD HH:mm:ss'` → epoch ms (本地时区, 与导出格式一致)。
+ *
+ * 不用 `new Date(string)`: 那台机器上对无时区串的解析未必稳定;
+ * 显式构造既确定又可测。无法解析 → undefined。
+ */
+function parseRevisionDate(v: unknown): number | undefined {
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v !== 'string') return undefined
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(v.trim())
+  if (!m) return undefined
+  const d = new Date(
+    Number(m[1]), Number(m[2]) - 1, Number(m[3]),
+    Number(m[4] ?? 0), Number(m[5] ?? 0), Number(m[6] ?? 0),
+  )
+  const t = d.getTime()
+  return Number.isFinite(t) ? t : undefined
 }
 
 // ================================================================
@@ -252,8 +317,11 @@ export class TemplateImporter {
    * 模板作者的修法完全不同。
    *
    * 显式跳过 (白名单, 不抛错):
-   *   - `insert` / `delete` —— 修订痕迹标记, 无 children, 兄弟内容照常导入
-   *     (契约 §12.2 已声明推迟项)。它们在块级位置出现时同样是"无内容标记"。
+   *   - `insert` / `delete` —— 独立的修订标记节点 (夹具形态; 真实导出把修订放在
+   *     宿主节点的 rtype 上, 见 §12.13)。块级位置**没有已验证的范围语义**
+   *     (它不携带内容, 也无法确定作用到哪些后续块), 故保持跳过并登记为显式
+   *     边界 —— 不声称已导入。行内位置由 parseParagraph 按「作用于后续兄弟」
+   *     处理。
    */
   private parseBlock(
     node: ExtNode,
@@ -302,13 +370,48 @@ export class TemplateImporter {
     const id = node.id
     if (!id) return null
     const childIds: string[] = []
+    // 独立的内联标记节点 (夹具形态, 真实导出里没有) —— 按 §12.13: 作用于**后续**
+    // 行内兄弟, 直到下一个标记或段落结束。这里先解析出「节点 id → 待盖标记」,
+    // 段落 children 定下来之后再统一挂上 (标记节点本身无内容, 不产出节点)。
+    const pending: Array<{ mark: RevisionMark; at: number }> = []
     for (const child of node.children ?? []) {
+      if (child.type === 'insert' || child.type === 'delete') {
+        const mark = parseRevisionMark(child as unknown as ExtRevision)
+        if (mark) pending.push({ mark, at: childIds.length })
+        continue
+      }
       const cid = this.parseInline(child)
       if (cid) childIds.push(cid)
     }
+    this.applyInlineMarkers(childIds, pending)
     const para: Paragraph = { type: NodeType.PARAGRAPH, id, children: childIds }
     this.nodeMap.set(id, para)
     return id
+  }
+
+  /**
+   * 把「在此位置起生效」的标记盖到其后的行内文本节点上 (契约 §12.13 / §12.2)。
+   *
+   * 只盖 TextNode 且**已有标记不覆盖** (节点自带的 rtype 更精确)。遇非文本节点
+   * 不阻断 —— 标记描述的是"这段文字是新写的/待删的", 与相邻的控件无关。
+   */
+  private applyInlineMarkers(
+    childIds: readonly string[],
+    pending: ReadonlyArray<{ mark: RevisionMark; at: number }>,
+  ): void {
+    if (pending.length === 0) return
+    for (let i = 0; i < childIds.length; i++) {
+      // 该下标生效的标记 = 最后一个 at <= i
+      let active: RevisionMark | undefined
+      for (const p of pending) {
+        if (p.at <= i) active = p.mark
+        else break
+      }
+      if (!active) continue
+      const node = this.nodeMap.get(childIds[i]) as TextNode | undefined
+      if (node?.type !== NodeType.TEXT || node.revision) continue
+      node.revision = { ...active }
+    }
   }
 
   private parseInline(node: ExtNode): string | null {
@@ -318,7 +421,7 @@ export class TemplateImporter {
       case 'checkfield': return this.parseCheckfield(node)
       case 'insert':
       case 'delete':
-        // 修订痕迹标记 (无 children), 兄弟内容照常导入 —— 契约 §12.2
+        // 独立标记节点本身不产出节点 (无内容); 其范围语义在 parseParagraph 处理
         return null
       default: return null
     }
@@ -333,6 +436,8 @@ export class TemplateImporter {
     if (!id) return null
     const text = typeof node.data === 'string' ? node.data : ''
     const tn: TextNode = { type: NodeType.TEXT, id, text, ...this.resolveTextStyle(node) }
+    const revision = parseRevisionMark(node.rtype)
+    if (revision) tn.revision = revision
     this.nodeMap.set(id, tn)
     return id
   }
@@ -397,6 +502,9 @@ export class TemplateImporter {
     if (!id) return null
     const text = typeof node.prefix === 'string' ? node.prefix : ''
     const tn: TextNode = { type: NodeType.TEXT, id, text, ...this.resolveTextStyle(node) }
+    // checkfield 也映射成 TextNode, 故它身上的修订标记同样保留 (真实样本里有这类宿主)
+    const revision = parseRevisionMark(node.rtype)
+    if (revision) tn.revision = revision
     this.nodeMap.set(id, tn)
     this.setPresentationStyle(id, node)
     return id

@@ -40,6 +40,7 @@ import { ControlChoiceDialog } from '@/components/dialogs/ControlChoiceDialog'
 import { initialConfigForCreate, controlFamilyOf } from '@/components/dialogs/controlConfigShared'
 import type { ControlConfigData, ReferenceKey } from '@/components/dialogs/controlConfigShared'
 import { documentApi, templateApi } from '@/services/api'
+import { useUserStore } from '@/store'
 import { printHistory } from '@/services/PrintHistoryService'
 import { resolvePrintRange, selectPrintPages, buildPrintRecord, printDocKey } from '@emrde/document-engine/export'
 import { getMockDocumentDetail } from '@/mocks/documents'
@@ -345,6 +346,12 @@ function EditorPageInner({
   const zoom = useEditorStoreSnapshot((s) => s.runtime.view.scale)
   const showInvisible = useEditorStoreSnapshot((s) => s.runtime.view.showInvisible)
   const showSectionStructure = useEditorStoreSnapshot((s) => s.runtime.view.showSectionStructure)
+  /** 修订留痕视图开关 (契约 §12.13) — 纯视图, 关掉不改文档 */
+  const showRevisionMarks = useEditorStoreSnapshot((s) => s.runtime.view.showRevisionMarks)
+  /** 修订追踪开关 (契约 §12.13) — 运行时状态, 不在 store 里 (不随文档走) */
+  const [tracking, setTracking] = useState(false)
+  /** 当前登录用户 → 留痕作者 (契约 §12.13) */
+  const user = useUserStore((s) => s.user)
   const editorMode = useEditorStoreSnapshot((s) => s.runtime.view.mode)
   const readingMode = editorMode === 'readonly'
   const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([])
@@ -458,6 +465,30 @@ function EditorPageInner({
     }
   }, [editorRef])
 
+  // ---- 修订留痕 (契约 §12.13) ----
+  // Editor.setShowRevisionMarks 自己会重排 + 重绘 (删除线是布局期派生产物),
+  // 所以这里只同步 React 的选中态。误在按钮里再补一次 render 会白跑一趟布局。
+  const handleToggleRevisionMarks = useCallback(() => {
+    const ed = editorRef.current
+    if (ed) ed.setShowRevisionMarks(!ed.getShowRevisionMarks())
+  }, [editorRef])
+
+  const handleToggleTrackChanges = useCallback(() => {
+    const ed = editorRef.current
+    if (!ed) return
+    const next = !ed.isTrackingChanges()
+    ed.setTrackChanges(next)
+    setTracking(next)
+  }, [editorRef])
+
+  const handleAcceptAllRevisions = useCallback(() => {
+    editorRef.current?.acceptAllRevisions()
+  }, [editorRef])
+
+  const handleRejectAllRevisions = useCallback(() => {
+    editorRef.current?.rejectAllRevisions()
+  }, [editorRef])
+
   // 编辑器模式切换 (EditorStore.runtime.view.mode 为 canonical owner, 经 useEditorStoreSnapshot 回读)
   const handleEditorModeChange = useCallback((newMode: EditorMode) => {
     const editor = editorRef.current
@@ -528,6 +559,20 @@ function EditorPageInner({
     update() // 初始计算
     return () => { editor.off('contentChange', update) }
   }, [ready, editorRef])
+
+  /**
+   * 修订者身份 (契约 §12.13): 当前用户 → Editor.setCurrentUser。
+   *
+   * 与上面两个 effect 同坑: 必须等 ready。未登录时 user 为 null —— Editor 会
+   * 记"有人改过"但不带作者, 不是丢标记 (见 §12.13)。
+   */
+  useEffect(() => {
+    if (!ready || !editorRef.current) return
+    // realName 是给人看的 (留痕显示的作者), username 是登录名, id 是稳定标识
+    editorRef.current.setCurrentUser(
+      user ? { name: user.realName || user.username, id: user.id } : null,
+    )
+  }, [ready, editorRef, user])
 
   /**
    * 质控: contentChange 后**防抖**重算 (契约 §12.2)。
@@ -1324,6 +1369,12 @@ function EditorPageInner({
       showSectionStructure={showSectionStructure}
       onToggleSectionStructure={handleToggleSectionStructure}
       onToggleInvisible={handleToggleInvisible}
+      showRevisionMarks={showRevisionMarks}
+      onToggleRevisionMarks={handleToggleRevisionMarks}
+      trackChanges={tracking}
+      onToggleTrackChanges={handleToggleTrackChanges}
+      onAcceptAllRevisions={handleAcceptAllRevisions}
+      onRejectAllRevisions={handleRejectAllRevisions}
       outlineItems={outlineItems}
       activeOutlineId={activeOutlineId}
       onOutlineClick={handleOutlineClick}

@@ -31,6 +31,8 @@ export interface LineElement {
   highlight?: string
   superscript?: boolean
   subscript?: boolean
+  /** 修订留痕 (契约 §12.13) — 从 TextNode.revision 透传到 SLIFItem 与粒子 */
+  revision?: { type: string }
   imageData?: { width?: number; height?: number; wrapType?: string }
   /** 控件布局提示: width 固定宽 / minRows 多行文本域最小行数 /
    *  lines·rows 文本域折行后的物理行 (供 SLIFItem.controlLines 与粒子绘制) /

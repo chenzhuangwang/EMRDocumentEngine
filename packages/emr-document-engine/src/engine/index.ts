@@ -68,6 +68,9 @@ export { MacroCommand } from './command/commands/MacroCommand'
 export { InsertImageCommand } from './command/commands/InsertImageCommand'
 export { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
 export type { ReplaceEdit, ReplaceRejection } from './command/commands/ReplaceTextCommand'
+export { RevisionDecisionCommand } from './command/commands/RevisionDecisionCommand'
+export type { RevisionDecision, RevisionTarget } from './command/commands/RevisionDecisionCommand'
+export type { RevisionContext, RevisionUser } from './revision/Revision'
 export {
   RemoveNodesCommand,
   InsertInlineNodeCommand,
@@ -124,6 +127,7 @@ export type {
   CommentEntry, CommentThread,
   PageSetup, DocumentTree, HeaderFooterConfig, WatermarkConfig,
   DocumentMetadata,
+  RevisionMark,
 } from './document/core/DocumentModel'
 
 // ModelD — 工具

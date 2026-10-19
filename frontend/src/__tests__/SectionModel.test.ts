@@ -111,8 +111,8 @@ describe('Section 模型 (契约 §31.10)', () => {
     expect(named.sectionCode).toBe('vitals')
   })
 
-  it('CURRENT_DOCUMENT_VERSION 为 4.8.0', () => {
-    expect(versionToString(CURRENT_DOCUMENT_VERSION)).toBe('4.8.0')
+  it('CURRENT_DOCUMENT_VERSION 为 4.9.0', () => {
+    expect(versionToString(CURRENT_DOCUMENT_VERSION)).toBe('4.9.0')
   })
 })
 

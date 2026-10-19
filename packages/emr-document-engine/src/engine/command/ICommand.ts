@@ -16,11 +16,18 @@ import type { NodePool } from '../document/core/NodePool'
 import type { CursorState, SelectionState } from '../state/EditorRuntimeState'
 import type { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import type { DictionaryProvider } from '../document/control/Dictionary'
+import type { RevisionContext } from '../revision/Revision'
 
 // ---- CommandContext ----
 
 export type CommandContext =
-  | { mode: 'local'; doc: DocumentTree; pool: NodePool; templateDefinitions?: TemplateDefinitionStore; dictionaries?: DictionaryProvider }
+  | {
+      mode: 'local'; doc: DocumentTree; pool: NodePool
+      templateDefinitions?: TemplateDefinitionStore
+      dictionaries?: DictionaryProvider
+      /** 修订留痕上下文 (契约 §12.13) — 由 CommandManager.buildContext 注入 */
+      revision?: RevisionContext
+    }
   | { mode: 'collab'; ydoc: unknown; origin: string }
 
 // ---- StatePatch ----

@@ -381,6 +381,11 @@ export interface LocaleMessages {
   'sectionOverlay.anonymous': string
   'sectionOverlay.ruleTitle': string
   'statusBar.hideInvisible': string
+  'statusBar.showRevision': string           // 修订留痕显示切换 title
+  'statusBar.hideRevision': string
+  'statusBar.trackChanges': string           // 修订追踪开关 title
+  'statusBar.acceptAllRevisions': string
+  'statusBar.rejectAllRevisions': string
   'statusBar.online': string                  // '{n} 人在线'
   'statusBar.offline': string
   'statusBar.errorChipTitle': string          // '{code}: {msg}（点击关闭）'
@@ -1357,6 +1362,11 @@ const zhCN: LocaleMessages = {
   'sectionOverlay.anonymous': '匿名节',
   'sectionOverlay.ruleTitle': '节: {code} (点击选中)',
   'statusBar.hideInvisible': '隐藏格式标记',
+  'statusBar.showRevision': '显示修订标记',
+  'statusBar.hideRevision': '隐藏修订标记',
+  'statusBar.trackChanges': '修订 (记录本次改动)',
+  'statusBar.acceptAllRevisions': '接受全部修订',
+  'statusBar.rejectAllRevisions': '拒绝全部修订',
   'statusBar.online': '{n} 人在线',
   'statusBar.offline': '离线',
   'statusBar.errorChipTitle': '{code}: {msg}（点击关闭）',
@@ -2253,6 +2263,11 @@ const enUS: LocaleMessages = {
   'sectionOverlay.anonymous': 'Untitled section',
   'sectionOverlay.ruleTitle': 'Section: {code} (click to select)',
   'statusBar.hideInvisible': 'Hide Whitespace',
+  'statusBar.showRevision': 'Show revision marks',
+  'statusBar.hideRevision': 'Hide revision marks',
+  'statusBar.trackChanges': 'Track changes',
+  'statusBar.acceptAllRevisions': 'Accept all revisions',
+  'statusBar.rejectAllRevisions': 'Reject all revisions',
   'statusBar.online': '{n} online',
   'statusBar.offline': 'Offline',
   'statusBar.errorChipTitle': '{code}: {msg} (click to dismiss)',

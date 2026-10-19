@@ -25,6 +25,8 @@ import type { DocumentTree } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import type { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import type { DictionaryProvider } from '../document/control/Dictionary'
+import type { RevisionContext } from '../revision/Revision'
+import { NO_REVISION } from '../revision/Revision'
 import { DirtyTracker } from '../layout/incremental/DirtyTracker'
 
 /**
@@ -45,6 +47,11 @@ export class CommandManager {
   private getTemplateDefinitions: () => TemplateDefinitionStore | undefined
   private getDictionaries: () => DictionaryProvider | undefined
   private getPluginHooks: () => CommandHooks | undefined
+  /**
+   * 修订上下文工厂 (契约 §12.13) — 每次执行取一次, `at` 因此是"这次执行的时刻"。
+   * 命令不得直接读 Editor 状态 (§12.13 的单一盖戳点)。
+   */
+  private getRevisionContext: () => RevisionContext
   /** 事务栈 — beginMacro/endMacro 间收集的子命令 (RULE 11) */
   private macroStack: ICommand[][] = []
 
@@ -55,6 +62,7 @@ export class CommandManager {
     getTemplateDefinitions: () => TemplateDefinitionStore | undefined = () => undefined,
     getDictionaries: () => DictionaryProvider | undefined = () => undefined,
     getPluginHooks: () => CommandHooks | undefined = () => undefined,
+    getRevisionContext: () => RevisionContext = () => NO_REVISION,
   ) {
     this.eventBus = eventBus
     this.getDocument = getDocument
@@ -62,6 +70,7 @@ export class CommandManager {
     this.getTemplateDefinitions = getTemplateDefinitions
     this.getDictionaries = getDictionaries
     this.getPluginHooks = getPluginHooks
+    this.getRevisionContext = getRevisionContext
     this.undoStack = new CommandUndoRedoStack(100)
     this.dirtyTracker = new DirtyTracker()
   }
@@ -73,6 +82,7 @@ export class CommandManager {
       pool: this.getPool(),
       templateDefinitions: this.getTemplateDefinitions(),
       dictionaries: this.getDictionaries(),
+      revision: this.getRevisionContext(),
     }
   }
 

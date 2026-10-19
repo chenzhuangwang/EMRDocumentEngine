@@ -27,6 +27,11 @@ export interface SLIFItem {
   underline?: boolean; underlineStyle?: string; strikeout?: boolean
   color?: string; highlight?: string
   superscript?: boolean; subscript?: boolean
+  /**
+   * 修订留痕 (契约 §12.13) — 从 TextNode.revision 透传, 供 TextParticle 的
+   * 既有 revision 分支上色。**只透传 type**: 作者/时间的显示是旁注, 不属布局产物。
+   */
+  revision?: { type: string }
   // table extension
   rows?: SLIFRow[]
   /** 跨页重复的表头行 (仅视觉渲染, 不参与逻辑行号/命中) */

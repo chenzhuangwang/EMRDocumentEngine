@@ -12,7 +12,7 @@
 // 严禁将 offset 直接用作 para.children 数组下标
 // ================================================================
 
-import type { Paragraph, TextNode, TextStyle } from '../../document/core/DocumentModel'
+import type { Paragraph, TextNode, TextStyle, RevisionMark } from '../../document/core/DocumentModel'
 import { extractStyle, sameStyle, createTextNode } from '../../document/factory/ElementFormatter'
 import {
   ICommand, CommandContext, StatePatch,
@@ -21,6 +21,25 @@ import {
 import { DeleteRangeCommand } from './DeleteRangeCommand'
 import { normalizeParagraph } from './ParagraphUtils'
 import { MintedOnce } from './MintedNodes'
+import { RevisionStamp, NO_REVISION } from '../../revision/Revision'
+
+/** 两个标记是否同一作者 (撤销/续写时用于判断能否并入既有插入 run) */
+function sameAuthor(a: RevisionMark, b: RevisionMark): boolean {
+  return a.author === b.author && a.authorId === b.authorId
+}
+
+/**
+ * 能否在既有 TextNode 里**原地追加**而不拆分 (契约 §12.13)。
+ *
+ * - 不追踪: 只在目标节点没有标记时可原地追加 —— 否则新敲的字会"继承"别人的
+ *   修订标记, 而文本节点内没有第二份样式/标记可挂。
+ * - 追踪: 只在目标节点本身就是**同一作者的待接受插入**时可原地追加
+ *   (连续输入合成一条 run, 与 Word 同形); 其余一律拆成 before | new | after。
+ */
+function sameRevisionKindForInsert(existing: RevisionMark | undefined, next: RevisionMark | null): boolean {
+  if (!next) return existing === undefined
+  return existing?.type === 'insert' && sameAuthor(existing, next)
+}
 
 export class InsertTextCommand extends PositionalCommand {
   readonly type = 'insert-text'
@@ -28,6 +47,11 @@ export class InsertTextCommand extends PositionalCommand {
   readonly style?: TextStyle
   /** 铸造一次台账 (契约 §8.3): redo 复用首次的文本节点 id */
   private mint = new MintedOnce()
+  /**
+   * 铸造时给新节点挂的标记 (契约 §12.13) — 只在首次 forward 解析, 重放复用。
+   * 见 RevisionStamp: 重放若重新读时钟, redo 出的文档与首次不逐字节相同。
+   */
+  private stamp = new RevisionStamp()
 
   constructor(
     id: string, timestamp: number, author: string,
@@ -46,6 +70,10 @@ export class InsertTextCommand extends PositionalCommand {
     const { pool } = ctx
     const para = pool.nodes.get(this.path[this.path.length - 1]) as Paragraph | undefined
     if (!para) return null
+
+    // 本次要盖的标记 (追踪关闭 → null, 全文路径与旧行为逐字一致)
+    const rctx = ctx.revision ?? NO_REVISION
+    const newMark = this.stamp.resolve(rctx, 'insert')
 
     // Step 1: 字符偏移 → (textNodeId, localOffset)
     const resolved = pool.resolveCharOffset(para.id, this.offset)
@@ -67,6 +95,7 @@ export class InsertTextCommand extends PositionalCommand {
       // 里的身份每次重放都变, 与「带 id 的序列化」判据不符。
       const [newNodeId] = this.mint.run(pool, () => {
         const n = createTextNode(this.text, style)
+        if (newMark) n.revision = { ...newMark }
         pool.addNode(n)
         return [n.id]
       })
@@ -92,7 +121,7 @@ export class InsertTextCommand extends PositionalCommand {
 
     // Step 3: 目标为 text 节点 → 在文本层面插入/拆分
     const textNode = targetNode as TextNode
-    if (sameStyle(textNode, style)) {
+    if (sameStyle(textNode, style) && sameRevisionKindForInsert(textNode.revision, newMark)) {
       // 样式一致 → 在 localOffset 处直接插入字符串
       const newText = textNode.text.slice(0, localOffset) + this.text + textNode.text.slice(localOffset)
       pool.updateNode(textNode.id, { text: newText } as Partial<TextNode>)
@@ -109,10 +138,14 @@ export class InsertTextCommand extends PositionalCommand {
     // 铸造一次 (契约 §8.3): 新文本节点与拆出的后半段在 redo 时复用同一批 id
     const roots = this.mint.run(pool, () => {
       const n = createTextNode(this.text, style)
+      if (newMark) n.revision = { ...newMark }
       pool.addNode(n)
       const ids = [n.id]
       if (after) {
+        // 拆出的后半段继承原节点的标记 (契约 §12.13): 拆段不是"取消修订",
+        // 原封不动跟着文字走 —— 丢标记等于把待删文字悄悄变成正常文字。
         const a = createTextNode(after, extractStyle(textNode))
+        if (textNode.revision) a.revision = { ...textNode.revision }
         pool.addNode(a)
         ids.push(a.id)
       }

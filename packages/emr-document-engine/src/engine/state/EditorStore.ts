@@ -271,6 +271,12 @@ export class EditorStore {
     this.notify()
   }
 
+  /** 修订留痕显示开关 (契约 §12.13) — 唯一受控写入入口; 纯视图, 不改文档 */
+  setShowRevisionMarks(showRevisionMarks: boolean): void {
+    this._state.runtime.view.showRevisionMarks = showRevisionMarks
+    this.notify()
+  }
+
   /** Section 结构显示开关 — 唯一受控写入入口 (纯 UI 叠加层, 见 ViewState 注释) */
   setShowSectionStructure(show: boolean): void {
     this._state.runtime.view.showSectionStructure = show

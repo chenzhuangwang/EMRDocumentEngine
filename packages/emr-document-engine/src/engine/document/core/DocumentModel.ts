@@ -149,9 +149,36 @@ export interface BaseNode {
 
 // ---- 内联节点 ----
 
+/**
+ * 修订留痕标记 (契约 §12.13)。
+ *
+ * **唯一家是 `TextNode.revision`** —— 它刻意**不在 `TextStyle` 里**: 格式刷
+ * 复制的是 TextStyle (§12.5), 把"这段文字是谁改的"复制到无关文字上是语义错误。
+ * 它也**不是范围模型** (批注才是): 留痕是文字自身的属性, 必须跟着文字经过
+ * 复制 / 拆段 / 合段。
+ *
+ * `modify` 是保留值, 本批**没有生产者**; 渲染层已有对应色板
+ * (`revisionModify`)。真正被盖戳的只有 `insert` / `delete`。
+ */
+export interface RevisionMark {
+  type: 'insert' | 'delete' | 'modify'
+  author?: string
+  authorId?: string
+  /** epoch ms; 来源没有可解析日期时缺省 (author 仍保留) */
+  at?: number
+  /** 预留给 `delete`: 被删原文的独立留档 (缺省时以节点自身 text 为准) */
+  original?: string
+}
+
 export interface TextNode extends BaseNode, TextStyle {
   type: typeof NodeType.TEXT
   text: string
+  /**
+   * 修订留痕 (契约 §12.13) — 可选的文档状态。
+   * `delete` 的文字**留在文档里** (Word 模型): 渲染为删除线 + 修订色,
+   * 由接受/拒绝决定最终去留。
+   */
+  revision?: RevisionMark
 }
 
 /**

@@ -67,6 +67,13 @@ export interface ViewState {
   scale: number
   showInvisible: boolean
   /**
+   * 画布上是否显示修订留痕 (修订色 + 删除线; 契约 §12.13)。
+   *
+   * 纯**视图**开关: 关掉只改绘制, 文档内容 / 布局 / 序列化字节全部不变。
+   * 与 `EditorMode.clean` 无关 —— clean 是只读模式, 不是"留痕模式"。
+   */
+  showRevisionMarks: boolean
+  /**
    * 画布上是否显示 Section 结构 (左侧细线 + sectionCode 标签)。
    *
    * 纯 UI 层开关: 只影响 DOM 叠加层 (SectionStructureOverlay), **不参与排版、
@@ -106,6 +113,7 @@ export function createDefaultRuntimeState(): EditorRuntimeState {
     },
     view: {
       mode: 'edit', scale: 1, showInvisible: false, showSectionStructure: true,
+      showRevisionMarks: true,
     },
     ime: { composing: false, compositionText: '' },
     history: {

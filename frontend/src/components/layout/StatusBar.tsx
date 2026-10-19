@@ -8,7 +8,7 @@
 // 状态栏
 // ============================================================
 
-import { FileText, Type, Wifi, WifiOff, Minus, Plus, Pilcrow, Activity, AlertTriangle, ListTree } from 'lucide-react'
+import { FileText, Type, Wifi, WifiOff, Minus, Plus, Pilcrow, Activity, AlertTriangle, ListTree, History, CheckCheck, X } from 'lucide-react'
 import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { useEditorStore } from '@/store'
 import { cn, formatWordCount } from '@/lib/utils'
@@ -33,6 +33,15 @@ interface StatusBarProps {
   showSectionStructure?: boolean
   /** 节结构显示切换回调 */
   onToggleSectionStructure?: () => void
+  /** 修订留痕显示 (契约 §12.13) — 纯视图开关 */
+  showRevisionMarks?: boolean
+  onToggleRevisionMarks?: () => void
+  /** 修订追踪开关 (契约 §12.13) */
+  trackChanges?: boolean
+  onToggleTrackChanges?: () => void
+  /** 接受 / 拒绝全部修订 (契约 §12.13) — 无修订时是空操作 */
+  onAcceptAllRevisions?: () => void
+  onRejectAllRevisions?: () => void
   /** 当前编辑模式 */
   mode?: EditorMode
   /** 模式切换回调 */
@@ -55,6 +64,12 @@ export function StatusBar({
   onToggleInvisible,
   showSectionStructure = true,
   onToggleSectionStructure,
+  showRevisionMarks = true,
+  onToggleRevisionMarks,
+  trackChanges = false,
+  onToggleTrackChanges,
+  onAcceptAllRevisions,
+  onRejectAllRevisions,
   mode,
   onModeChange,
   scaleScore,
@@ -92,6 +107,51 @@ export function StatusBar({
           title={showSectionStructure ? t('statusBar.hideStructure') : t('statusBar.showStructure')}
         >
           <ListTree size={14} />
+        </button>
+
+        {/* 修订留痕 (契约 §12.13):
+            - History 图标 = 视图开关 (显示/隐藏标记, 与不可见字符开关同形);
+            - 录制态按钮 = 修订追踪 (关闭时是描边, 打开时高亮 + 左侧红点);
+            - ✓/✕ = 接受/拒绝全部 (有修订时才渲染 —— 无修订时点了也没事, 但
+              两个永远置灰的按钮只会让人以为坏了)。 */}
+        <button
+          className={cn(
+            'p-0.5 rounded transition-colors',
+            showRevisionMarks
+              ? 'text-blue-600 bg-blue-50 hover:bg-blue-100'
+              : 'text-chrome-ink-muted hover:text-chrome-ink-secondary hover:bg-chrome-muted',
+          )}
+          onClick={onToggleRevisionMarks}
+          title={showRevisionMarks ? t('statusBar.hideRevision') : t('statusBar.showRevision')}
+        >
+          <History size={14} />
+        </button>
+        <button
+          className={cn(
+            'p-0.5 rounded transition-colors flex items-center gap-1',
+            trackChanges
+              ? 'text-red-600 bg-red-50 hover:bg-red-100'
+              : 'text-chrome-ink-muted hover:text-chrome-ink-secondary hover:bg-chrome-muted',
+          )}
+          onClick={onToggleTrackChanges}
+          title={t('statusBar.trackChanges')}
+        >
+          <span className={cn('w-1.5 h-1.5 rounded-full', trackChanges ? 'bg-red-600' : 'bg-transparent')} />
+          <Type size={14} />
+        </button>
+        <button
+          className="p-0.5 rounded transition-colors text-chrome-ink-muted hover:text-green-700 hover:bg-chrome-muted"
+          onClick={onAcceptAllRevisions}
+          title={t('statusBar.acceptAllRevisions')}
+        >
+          <CheckCheck size={14} />
+        </button>
+        <button
+          className="p-0.5 rounded transition-colors text-chrome-ink-muted hover:text-red-700 hover:bg-chrome-muted"
+          onClick={onRejectAllRevisions}
+          title={t('statusBar.rejectAllRevisions')}
+        >
+          <X size={14} />
         </button>
 
         <div className="flex items-center gap-1.5">

@@ -22,7 +22,7 @@
 //     string[] (checkbox) 拒绝并记录理由, 由 Editor.replaceAll 回传 (非静默失败)。
 // ================================================================
 
-import type { TextNode, ControlValue, ElementMeta, ElementEnumOption, SmartTextNode } from '../../document/core/DocumentModel'
+import type { Paragraph, TextNode, ControlValue, ElementMeta, ElementEnumOption, SmartTextNode, RevisionMark, TextStyle } from '../../document/core/DocumentModel'
 import { smartTextFindReplaceText } from '../../document/factory/ElementFormatter'
 import { SetControlValueCommand } from './SetControlValueCommand'
 import { validateControlValue } from '../../document/control/ControlValue'
@@ -31,6 +31,14 @@ import type { NodePool } from '../../document/core/NodePool'
 import type { CursorState } from '../../state/EditorRuntimeState'
 import type { CommandContext, ICommand, SerializedCommand, StatePatch } from '../ICommand'
 import { generateCommandId } from '../ICommand'
+import { RevisionStamp } from '../../revision/Revision'
+import { MintedOnce } from './MintedNodes'
+import { createTextNode, extractStyle } from '../../document/factory/ElementFormatter'
+import { normalizeParagraph } from './ParagraphUtils'
+import {
+  captureParagraphSnapshot, RestoreParagraphsCommand,
+  type ParagraphSnapshot,
+} from './ParagraphSnapshot'
 
 /** 一次替换操作 (段落级字符偏移, 与 MatchResult 对齐) */
 export interface ReplaceEdit {
@@ -143,6 +151,17 @@ export class ReplaceTextCommand implements ICommand {
   private _restoreCursor: Partial<CursorState> = {}
   /** forward 时记录的拒绝明细 (契约 §26 非静默失败), 供 Editor.replaceAll 回传 */
   private _rejected: ReplaceRejection[] = []
+  /** 追踪留痕时的整段快照 (契约 §12.13): 拆分节点 + 打标记, 纯文本反转还原不出 */
+  private _snapshots: ParagraphSnapshot[] = []
+  private delStamp = new RevisionStamp()
+  private insertStamp = new RevisionStamp()
+  /**
+   * 首次 forward 决定的模式 (契约 §12.13 / §8.3): 重放必须走与首次相同的路,
+   * 否则"先关追踪执行、再开追踪 redo"会产出一份带标记的文档。
+   */
+  private _trackedMode: boolean | null = null
+  /** 铸造一次台账 (契约 §8.3): 追踪替换拆出的片段在 redo 时复用同一批 id */
+  private mint = new MintedOnce()
 
   constructor(id: string, timestamp: number, author: string, edits: ReplaceEdit[]) {
     this.id = id
@@ -174,6 +193,12 @@ export class ReplaceTextCommand implements ICommand {
     }
     if (resolved.length === 0) return null
 
+    // 追踪开启: 旧文本留下并标记 delete, 新文本标记 insert (契约 §12.13)。
+    // 两种模式互斥, 因为它们的逆操作不同: 追踪路径拆分节点, 只能整段还原。
+    // 模式在**首次** forward 定下, 重放沿用 (§8.3: 重放不得因当下开关不同而变样)。
+    if (this._trackedMode === null) this._trackedMode = ctx.revision?.tracking === true
+    if (this._trackedMode) return this.forwardTracked(ctx, resolved)
+
     // Step 2: 按节点分组, 快照旧文本, 组内按 localStart 降序应用 (避免偏移失效)
     const byNode = new Map<string, ResolvedEdit[]>()
     for (const r of resolved) {
@@ -199,27 +224,12 @@ export class ReplaceTextCommand implements ICommand {
         cur = cur.slice(0, r.localStart) + r.newText + cur.slice(r.localEnd)
       }
       if (isSmart) {
-        const element = (node as unknown as SmartTextNode).element
-        // B 写权限 (VR-8) 与字典候选 (VR-7), 与 SetControlValueCommand 同源
-        const permissions: ControlValuePermissions = {
-          editable: ctx.templateDefinitions?.get(nodeId)?.editable,
-        }
-        const dictionaryId = element.format?.dictionary
-        const dictionaryCandidates = dictionaryId ? ctx.dictionaries?.resolve(dictionaryId) : undefined
-
-        const coerced = coerceSmartReplacement(element, cur, permissions, dictionaryCandidates)
-        if (!coerced.ok) {
-          this._rejected.push({ paragraphPath: rs[0].paragraphPath, matchedText: oldText, reason: coerced.reason })
+        const reason = this.replaceSmartValue(ctx, nodeId, node as SmartTextNode, cur)
+        if (reason) {
+          this._rejected.push({ paragraphPath: rs[0].paragraphPath, matchedText: oldText, reason })
           continue
         }
-        // VR-3: 运行时值写入唯一路径 → SetControlValueCommand (层 A 值型 + 层 B 写权限)
-        const oldValue = node.value
-        const valueCmd = new SetControlValueCommand(generateCommandId(), Date.now(), this.author, nodeId, coerced.value)
-        if (valueCmd.forward(ctx) === null) {
-          this._rejected.push({ paragraphPath: rs[0].paragraphPath, matchedText: oldText, reason: 'write_locked' })
-          continue
-        }
-        this._restore.push({ nodeId, oldText, isSmart, oldValue })
+        this._restore.push({ nodeId, oldText, isSmart, oldValue: node.value })
       } else {
         this._restore.push({ nodeId, oldText, isSmart, oldValue: undefined })
         pool.updateNode(nodeId, { text: cur } as Partial<TextNode>)
@@ -239,8 +249,163 @@ export class ReplaceTextCommand implements ICommand {
     return { cursor, invalidation: 'flowbody' }
   }
 
+  /**
+   * 控件替换的唯一实现 (值型 + 写权限 + 字典候选, 契约 §26)。
+   * 返回 null = 成功; 否则是机器可读的拒绝理由。
+   */
+  private replaceSmartValue(
+    ctx: CommandContext,
+    nodeId: string,
+    node: SmartTextNode,
+    nextText: string,
+  ): string | null {
+    if (ctx.mode !== 'local') return 'not_local'
+    const element = node.element
+    // B 写权限 (VR-8) 与字典候选 (VR-7), 与 SetControlValueCommand 同源
+    const permissions: ControlValuePermissions = {
+      editable: ctx.templateDefinitions?.get(nodeId)?.editable,
+    }
+    const dictionaryId = element.format?.dictionary
+    const dictionaryCandidates = dictionaryId ? ctx.dictionaries?.resolve(dictionaryId) : undefined
+    const coerced = coerceSmartReplacement(element, nextText, permissions, dictionaryCandidates)
+    if (!coerced.ok) return coerced.reason
+    // VR-3: 运行时值写入唯一路径 → SetControlValueCommand (层 A 值型 + 层 B 写权限)
+    const valueCmd = new SetControlValueCommand(generateCommandId(), Date.now(), this.author, nodeId, coerced.value)
+    if (valueCmd.forward(ctx) === null) return 'write_locked'
+    return null
+  }
+
+  /**
+   * 追踪模式 (契约 §12.13): 被替换的旧文字**留下并标记 delete**, 新文字标记 insert。
+   *
+   * 与普通路径的关键差别: 普通路径在一个 TextNode 内改字符串, 反转只需记旧文本;
+   * 这里必须把节点切成 [原文 | 待删 | 新增 | 原文] 多段, 所以逆操作只能整段快照还原
+   * (RestoreParagraphsCommand)。片段 id 经 MintedOnce 固定, redo 逐字节相同 (§8.3)。
+   */
+  private forwardTracked(ctx: CommandContext, resolved: ResolvedEdit[]): StatePatch | null {
+    if (ctx.mode !== 'local') return null
+    const { pool } = ctx
+    const delMark = this.delStamp.resolve(ctx.revision!, 'delete')
+    const insMark = this.insertStamp.resolve(ctx.revision!, 'insert')
+    if (!delMark || !insMark) return null
+    // 重放 (redo) 重新拍一张: 撤销已把段落恢复成动手之前的样子 (§8.3)
+    this._snapshots = []
+
+    const byNode = new Map<string, ResolvedEdit[]>()
+    for (const r of resolved) {
+      const arr = byNode.get(r.nodeId)
+      if (arr) arr.push(r)
+      else byNode.set(r.nodeId, [r])
+    }
+
+    interface Frag { text: string; mark?: RevisionMark }
+    interface Plan { nodeId: string; paraId: string; style: TextStyle; frags: Frag[] }
+    const plans: Plan[] = []
+    this._restore = []
+    this._rejected = []
+
+    for (const [nodeId, rs] of byNode) {
+      const node = pool.nodes.get(nodeId) as
+        { type?: string; text?: string; value?: ControlValue; element?: ElementMeta; revision?: RevisionMark } | undefined
+      if (!node) continue
+      const oldText = node.type === 'smarttext'
+        ? (smartTextFindReplaceText(node as unknown as { text: string; value?: ControlValue }) ?? '')
+        : (node.text || '')
+
+      if (node.type === 'smarttext') {
+        // 控件值是数据不是文字内容 —— 不产生留痕 (契约 §12.13)
+        const sorted = rs.slice().sort((a, b) => b.localStart - a.localStart)
+        let cur = oldText
+        for (const r of sorted) cur = cur.slice(0, r.localStart) + r.newText + cur.slice(r.localEnd)
+        const reason = this.replaceSmartValue(ctx, nodeId, node as unknown as SmartTextNode, cur)
+        if (reason) this._rejected.push({ paragraphPath: rs[0].paragraphPath, matchedText: oldText, reason })
+        else this._restore.push({ nodeId, oldText, isSmart: true, oldValue: node.value })
+        continue
+      }
+
+      const baseMark = node.revision
+      const sorted = rs.slice().sort((a, b) => a.localStart - b.localStart)
+      const frags: Frag[] = []
+      let cursor = 0
+      for (const r of sorted) {
+        if (r.localStart > cursor) {
+          frags.push({ text: oldText.slice(cursor, r.localStart), ...(baseMark ? { mark: { ...baseMark } } : {}) })
+        }
+        const covered = oldText.slice(r.localStart, r.localEnd)
+        // 规则: 待接受的插入被替换 = 取消它, 不叠 delete (契约 §12.13)
+        if (covered !== '' && baseMark?.type !== 'insert') frags.push({ text: covered, mark: { ...delMark } })
+        if (r.newText !== '') frags.push({ text: r.newText, mark: { ...insMark } })
+        cursor = Math.max(cursor, r.localEnd)
+      }
+      if (cursor < oldText.length) {
+        frags.push({ text: oldText.slice(cursor), ...(baseMark ? { mark: { ...baseMark } } : {}) })
+      }
+      if (frags.length === 0) continue
+
+      plans.push({
+        nodeId,
+        paraId: rs[0].paragraphPath[rs[0].paragraphPath.length - 1],
+        style: extractStyle(node as unknown as TextNode),
+        frags,
+      })
+      this._restore.push({ nodeId, oldText, isSmart: false, oldValue: undefined })
+    }
+
+    if (this._restore.length === 0) return null
+
+    // ---- 铸造片段节点 (契约 §8.3: redo 复用同一批 id) ----
+    const freshSpecs = plans.flatMap(p => p.frags.slice(1).map(f => ({ f, style: p.style })))
+    const freshIds = this.mint.run(pool, () => freshSpecs.map(({ f, style }) => {
+      const n = createTextNode(f.text, style)
+      if (f.mark) n.revision = { ...f.mark }
+      pool.addNode(n)
+      return n.id
+    }))
+
+    // ---- 落盘 ----
+    let next = 0
+    const touched = new Set<string>()
+    for (const plan of plans) {
+      const para = pool.nodes.get(plan.paraId) as Paragraph | undefined
+      if (!para) { next += plan.frags.length - 1; continue }
+      if (!touched.has(plan.paraId)) {
+        touched.add(plan.paraId)
+        this._snapshots.push(captureParagraphSnapshot(pool, para))
+      }
+      const first = plan.frags[0]
+      pool.updateNode(plan.nodeId, { text: first.text } as Partial<TextNode>)
+      if (first.mark) pool.updateNode(plan.nodeId, { revision: first.mark } as Partial<TextNode>)
+      else pool.deleteNodeField(plan.nodeId, 'revision')
+
+      const extraIds = plan.frags.slice(1).map(() => freshIds[next++])
+      const idx = para.children.indexOf(plan.nodeId)
+      if (extraIds.length > 0 && idx >= 0) {
+        pool.detachChild(plan.paraId, idx)
+        pool.insertChildren(plan.paraId, [plan.nodeId, ...extraIds], idx)
+      }
+    }
+    for (const pid of touched) {
+      const para = pool.nodes.get(pid)
+      if (para) normalizeParagraph(para as Paragraph, pool)
+    }
+
+    const last = this.edits[this.edits.length - 1]
+    const cursor = {
+      paragraphPath: last.paragraphPath,
+      offset: last.startOffset + last.newText.length,
+      visible: true,
+    }
+    this._restoreCursor = cursor
+    return { cursor, invalidation: 'flowbody' }
+  }
+
   invert(ctx: CommandContext): ICommand | null {
     if (ctx.mode !== 'local') return null
+    if (this._snapshots.length > 0) {
+      return new RestoreParagraphsCommand(
+        generateCommandId(), Date.now(), this.author, this._snapshots,
+      )
+    }
     if (this._restore.length === 0) return null
     return new RestoreTextCommand(
       generateCommandId(), Date.now(), this.author,

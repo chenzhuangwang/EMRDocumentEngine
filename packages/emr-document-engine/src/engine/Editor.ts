@@ -67,7 +67,7 @@ import {
 import type { SectionTreeEntry } from './document/selection/SelectionCollector'
 import type { FormatRange } from './document/selection/SelectionCollector'
 import {
-  ensureHfArray, hfParagraphsForPage, resolveHfParagraphLocation, resolveVariantForPage,
+  ensureHfArray, hfParagraphsForPage, hfContainers, resolveHfParagraphLocation, resolveVariantForPage,
 } from './document/core/HeaderFooterRegions'
 import {
   InsertInlineNodeCommand, InsertBlockCommand, InsertFootnoteCommand,
@@ -92,6 +92,9 @@ import { TemplateDefinitionStore } from './template/TemplateDefinition'
 import type { TemplateDefinition, ControlType } from './template/TemplateDefinition'
 import type { PresentationStyleStore } from './render/presentation/PresentationStyle'
 import type { DictionaryProvider } from './document/control/Dictionary'
+import type { RevisionContext, RevisionUser } from './revision/Revision'
+import { RevisionDecisionCommand } from './command/commands/RevisionDecisionCommand'
+import type { RevisionDecision, RevisionTarget } from './command/commands/RevisionDecisionCommand'
 import { locale } from './i18n/index'
 import { NodeType } from './document/core/DocumentModel'
 import type { ControlValue, ElementEnumOption, SmartTextNode } from './document/core/DocumentModel'
@@ -210,6 +213,15 @@ export class Editor {
   private presentationStyles: PresentationStyleStore | null = null
   private dictionaries: DictionaryProvider | null = null
 
+  // ---- 修订留痕 (契约 §12.13) ----
+  /**
+   * 修订追踪开关 — **运行时状态**, 不随文档序列化。
+   * 关闭时文本命令的行为与旧版本逐字一致 (不产生任何标记)。
+   */
+  private trackChanges = false
+  /** 当前修订者 — 运行时状态; 未设置时留痕仍记录但无作者 */
+  private currentUser: RevisionUser | null = null
+
   // ---- 计算式引擎 (契约 §12.12) ----
   /**
    * 计算值集合 —— **per-editor 派生状态**, 不随文档序列化。本类即 §12.12.7 说的
@@ -320,6 +332,8 @@ export class Editor {
       () => this.dictionaries ?? undefined,
       // 插件命令钩子 (契约 §12) — 惰性解析: pluginManager 在构造后段才建立
       () => this.pluginManager?.getHook(),
+      // 修订上下文 (契约 §12.13) — 每次执行取一次, 故 at 是"这次执行的时刻"
+      () => this.revisionContext(),
     )
 
     // 状态变更 → 仅更新 Store, 不渲染
@@ -3413,6 +3427,105 @@ export class Editor {
     this.store.setShowInvisible(v)
   }
   getShowInvisible(): boolean { return this.draw.showInvisible }
+
+  /**
+   * 修订留痕显示切换 (契约 §12.13) — **纯视图开关**。
+   *
+   * 只影响绘制 (修订色 + 删除线), 不改文档、不改布局、不改序列化字节。
+   * 与 `EditorMode.clean` 解耦: clean 是只读模式, 不是"留痕模式"。
+   *
+   * 与 setShowInvisible **不同**: 那个开关由调用方自己补一次 render (它只改绘制),
+   * 而本开关改的是**布局产物** (删除线由布局期按开关派生, 见 LayoutEngine
+   * .revisionViewOf), 所以这里必须自己走一趟重排 + 重绘。让调用方去补重排
+   * 等于把"关标记后删除线还在"这个 bug 留给下一个人。
+   */
+  setShowRevisionMarks(v: boolean): void {
+    if (this.draw.showRevisionMarks === v) return
+    this.draw.showRevisionMarks = v
+    this.store.setShowRevisionMarks(v)
+    const state = this.store.state.runtime
+    this.recomputeLayout()
+    this.draw.render(this.pool, state)
+  }
+  getShowRevisionMarks(): boolean { return this.draw.showRevisionMarks }
+
+  /** 修订追踪开关 (契约 §12.13) — 运行时状态, 不序列化 */
+  setTrackChanges(on: boolean): void { this.trackChanges = on }
+  isTrackingChanges(): boolean { return this.trackChanges }
+
+  /** 当前修订者 (契约 §12.13) — 运行时状态, 不序列化; null 表示未设置 */
+  setCurrentUser(user: RevisionUser | null): void {
+    this.currentUser = user ? { name: user.name, ...(user.id ? { id: user.id } : {}) } : null
+  }
+  getCurrentUser(): RevisionUser | null {
+    return this.currentUser ? { ...this.currentUser } : null
+  }
+
+  /** 本次命令执行唯一的修订上下文 (契约 §12.13) — 时钟只读这一次 */
+  private revisionContext(): RevisionContext {
+    return {
+      tracking: this.trackChanges,
+      ...(this.currentUser ? { user: this.currentUser } : {}),
+      at: Date.now(),
+    }
+  }
+
+  /**
+   * 接受全部修订 (契约 §12.13) — 经命令, 可撤销。
+   * @returns 实际处理的修订处数 (0 = 文档里没有修订)
+   */
+  acceptAllRevisions(): number { return this.decideRevisions('accept', { kind: 'all' }) }
+
+  /** 拒绝全部修订 (契约 §12.13) — 待删文字恢复原状, 待插文字消失 */
+  rejectAllRevisions(): number { return this.decideRevisions('reject', { kind: 'all' }) }
+
+  /** 逐处接受 (PRD F14.2) — 只处理给定文字节点上的修订 */
+  acceptRevisions(nodeIds: readonly string[]): number {
+    return this.decideRevisions('accept', { kind: 'nodes', nodeIds })
+  }
+  /** 逐处拒绝 (PRD F14.2) */
+  rejectRevisions(nodeIds: readonly string[]): number {
+    return this.decideRevisions('reject', { kind: 'nodes', nodeIds })
+  }
+
+  private decideRevisions(
+    decision: RevisionDecision, target: RevisionTarget,
+  ): number {
+    const cmd = new RevisionDecisionCommand(
+      generateCommandId(), Date.now(), 'user', decision, target,
+    )
+    // 经 execute 而非 execCommand: 需要读回 decided (与 replaceAll 同一手法)
+    this.commandManager.execute(cmd)
+    return cmd.decided
+  }
+
+  /** 列出文档中当前的修订处 (契约 §12.13) — 逐处接受/拒绝的入参来源 */
+  listRevisions(): Array<{ nodeId: string; paraId: string; type: string; author?: string; at?: number }> {
+    const out: Array<{ nodeId: string; paraId: string; type: string; author?: string; at?: number }> = []
+    for (const paraId of this.paragraphSpineIds()) {
+      const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
+      for (const childId of para?.children ?? []) {
+        const node = this.pool.nodes.get(childId) as
+          { type?: string; revision?: { type: string; author?: string; at?: number } } | undefined
+        if (node?.type !== 'text' || !node.revision) continue
+        out.push({
+          nodeId: childId, paraId, type: node.revision.type,
+          ...(node.revision.author !== undefined ? { author: node.revision.author } : {}),
+          ...(node.revision.at !== undefined ? { at: node.revision.at } : {}),
+        })
+      }
+    }
+    return out
+  }
+
+  /** 全文档段落 (契约 §31 的受认可脊柱; 含全部页眉页脚变体) — 修订处理与列出的共同入口 */
+  private paragraphSpineIds(): readonly string[] {
+    const ids = new Set<string>(bodyParagraphSpine(this.doc, this.pool as never))
+    for (const arr of hfContainers(this.doc)) {
+      for (const id of arr) ids.add(id)
+    }
+    return [...ids]
+  }
 
   /** 聚焦编辑器 */
   focus(): void { this.inputComposer.focus() }

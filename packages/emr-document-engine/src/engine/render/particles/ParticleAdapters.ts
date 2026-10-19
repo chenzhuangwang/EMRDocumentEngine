@@ -17,7 +17,14 @@ import { TextParticle } from './TextParticle'
 import { SeparatorParticle } from './SeparatorParticle'
 import { ListParticle } from './ListParticle'
 
-/** 文本粒子适配器 — 将 TextParticle.render 桥接到 IParticle (含列表标记) */
+/**
+ * 文本粒子适配器 — 将 TextParticle.render 桥接到 IParticle (含列表标记)
+ *
+ * 修订留痕 (契约 §12.13): `revision` 直接透传给 TextParticle 的既有分支 ——
+ * 屏幕与打印共用这一条路。`showRevisionMarks` 的开关**不在这里**做: 它由布局期
+ * 剥掉标记与派生删除线 (LayoutEngine.revisionViewOf), 关掉后这些字段根本没有
+ * 传下来。若在这里再判一次, 就会出现两处判据 (且删除线已经画上了)。
+ */
 export const textParticle: IParticle = {
   type: 'text',
   render(ctx: CanvasRenderingContext2D, item: SLIFItem, x: number, y: number, options?: RenderOptions): void {
@@ -43,6 +50,7 @@ export const textParticle: IParticle = {
       superscript: item.superscript,
       subscript: item.subscript,
       highlight: item.highlight,
+      revision: item.revision,
     }, x, y, {
       defaultColor: options?.defaultColor,
       defaultFont: options?.defaultFont,
