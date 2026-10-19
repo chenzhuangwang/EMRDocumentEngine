@@ -3086,8 +3086,26 @@ Accept / reject
         modify        → both accept and reject drop the mark
                         (nothing to restore; reserved type)
     Whole-document accept/reject walks paragraphs through the
-    sanctioned spines (bodyParagraphSpine / hfParagraphsForExport),
-    never doc.body.children directly (§31).
+    sanctioned spines (bodyParagraphSpine / hfContainers), never
+    doc.body.children directly (§31).
+
+    The header/footer half MUST use hfContainers, NOT
+    hfParagraphsForExport. The latter is an EXPORT projection: it
+    returns one variant per band, so revisions living in the
+    first-page / even-page variants (§7.9) would never be decided.
+    Revision decisions operate on the whole document, not on what
+    an export would render.
+
+    Per-node accept/reject acts on exactly ONE TextNode. The UI
+    learns which node is under the pointer from the RULE 10 context
+    snapshot: TextContext / CellContext carry an ADDITIONAL FACT
+    `revisionFact` (nodeId + type + author + at), collected at the
+    boundary exactly like sectionFact / tableGrowable. The engine
+    MUST NOT return menu items or accept pixel coordinates for
+    revision queries; the UI MUST NOT walk the model to find
+    revisions. Revisions are NOT range-selectable for decisions:
+    there is no "revision range" concept, and this batch does not
+    introduce one.
 
 Import
     The carrier in real exports is `rtype` ON the host node. The
