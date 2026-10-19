@@ -4,7 +4,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // SPDX-License-Identifier: MPL-2.0
 
-import type { DocumentTree, BaseNode, Paragraph, ImageNode, HeaderFooterConfig, ElementMeta, WatermarkConfig, DocumentMetadata } from './document/core/DocumentModel'
+import type { DocumentTree, BaseNode, Paragraph, ImageNode, HeaderFooterConfig, ElementMeta, WatermarkConfig, DocumentMetadata, RevisionMark } from './document/core/DocumentModel'
 import { DEFAULT_HEADER_FOOTER_CONFIG } from './document/core/DocumentModel'
 import { safeLoadDocument } from './ErrorRecovery'
 import { createDocument, createParagraph, createTextNode, extractStyle, uniformTextStyle, createFieldNode, createSeparatorNode, createFootnoteRef, createFootnoteContent } from './document/factory/ElementFormatter'
@@ -92,7 +92,7 @@ import { TemplateDefinitionStore } from './template/TemplateDefinition'
 import type { TemplateDefinition, ControlType } from './template/TemplateDefinition'
 import type { PresentationStyleStore } from './render/presentation/PresentationStyle'
 import type { DictionaryProvider } from './document/control/Dictionary'
-import type { RevisionContext, RevisionUser } from './revision/Revision'
+import type { RevisionContext, RevisionUser, RevisionListEntry } from './revision/Revision'
 import { RevisionDecisionCommand } from './command/commands/RevisionDecisionCommand'
 import type { RevisionDecision, RevisionTarget } from './command/commands/RevisionDecisionCommand'
 import { locale } from './i18n/index'
@@ -3521,17 +3521,22 @@ export class Editor {
     return cmd.decided
   }
 
-  /** 列出文档中当前的修订处 (契约 §12.13) — 逐处接受/拒绝的入参来源 */
-  listRevisions(): Array<{ nodeId: string; paraId: string; type: string; author?: string; at?: number }> {
-    const out: Array<{ nodeId: string; paraId: string; type: string; author?: string; at?: number }> = []
+  /**
+   * 列出文档中当前的修订处 (契约 §12.13) —— 审阅面板与逐处决定的共同入口。
+   *
+   * 带 `text`: 面板要显示"改的是哪段字", 否则 UI 会为了拿文字再造一个查询入口。
+   */
+  listRevisions(): RevisionListEntry[] {
+    const out: RevisionListEntry[] = []
     for (const paraId of this.paragraphSpineIds()) {
       const para = this.pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
       for (const childId of para?.children ?? []) {
         const node = this.pool.nodes.get(childId) as
-          { type?: string; revision?: { type: string; author?: string; at?: number } } | undefined
+          { type?: string; text?: string; revision?: RevisionMark } | undefined
         if (node?.type !== 'text' || !node.revision) continue
         out.push({
-          nodeId: childId, paraId, type: node.revision.type,
+          nodeId: childId, paraId, paragraphPath: [this.doc.id, paraId],
+          type: node.revision.type, text: node.text ?? '',
           ...(node.revision.author !== undefined ? { author: node.revision.author } : {}),
           ...(node.revision.at !== undefined ? { at: node.revision.at } : {}),
         })

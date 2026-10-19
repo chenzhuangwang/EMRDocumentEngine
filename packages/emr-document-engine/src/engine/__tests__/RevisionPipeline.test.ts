@@ -287,6 +287,22 @@ describe('接受 / 拒绝', () => {
     expect(marks(f.editor, f.paraId).every((m) => m === null)).toBe(true)
   })
 
+  it('listRevisions 带文字与定位路径 —— 审阅面板的数据源', () => {
+    const f = mixed()
+    const list = f.editor.listRevisions()
+
+    expect(list.map((e) => [e.type, e.text])).toEqual([
+      ['insert', 'X'],
+      ['delete', '丙'],
+    ])
+    for (const e of list) {
+      // 光标定位路径与全仓一致: [documentRootId, paragraphId]
+      expect(e.paragraphPath).toEqual([f.doc.id, f.paraId])
+      expect(e.paraId).toBe(f.paraId)
+      expect(e.author).toBe('姜波')
+    }
+  })
+
   it('逐处接受 (PRD F14.2) —— 只动点名的那一处', () => {
     const f = mixed()
     const insertedId = childIds(f)[1]
@@ -312,6 +328,29 @@ describe('接受 / 拒绝', () => {
     expect(marks(f.editor, f.paraId)).toEqual([null, 'insert', null, 'delete'])
     // 撤销是精确逆: 带 id 的序列化逐字节相同 (§8.3)
     expect(serialized(f)).toBe(before)
+  })
+
+  it('编辑 + 逐处决定, 一路撤销回原文 (带 id 序列化逐字节相同)', () => {
+    const f = makeFixture('甲乙丙')
+    const original = serialized(f)
+
+    f.editor.setTrackChanges(true)
+    typeText(f, 1, 'X')          // 甲 X 乙丙
+    deleteRange(f, 3, 4)         // 甲 X 乙 [丙]
+
+    const insertId = f.editor.listRevisions().find((e) => e.type === 'insert')!.nodeId
+    const deleteId = f.editor.listRevisions().find((e) => e.type === 'delete')!.nodeId
+    f.editor.acceptRevisions([deleteId])
+    f.editor.rejectRevisions([insertId])
+    expect(sentence(f.editor, f.paraId)).toBe('甲乙')
+
+    // 四条命令 (打字 / 删除 / 接受 / 拒绝) 逐条撤销 —— 任何一条的逆不精确都会在此露馅
+    let guard = 0
+    while (f.editor.canUndo() && guard++ < 20) f.editor.undo()
+
+    expect(sentence(f.editor, f.paraId)).toBe('甲乙丙')
+    expect(marks(f.editor, f.paraId).every((m) => m === null)).toBe(true)
+    expect(serialized(f)).toBe(original)
   })
 
   it('没有修订时接受/拒绝是空操作 (返回 0, 不推一条空撤销)', () => {

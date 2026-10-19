@@ -59,7 +59,7 @@ import {
 import type { OutlineItem, SectionOutlineAction } from '@/components/sidebar/OutlineNav'
 import { buildOutlineItems } from '@/components/sidebar/outlineModel'
 import type { EditorMode, ScoreResult, WatermarkConfig, PerfSummary } from '@emrde/document-engine'
-import type { QCIssue, QCResult } from '@emrde/document-engine'
+import type { QCIssue, QCResult, RevisionListEntry } from '@emrde/document-engine'
 import type { CalcResult } from '@emrde/document-engine'
 import { useDocumentSave } from '@/hooks/useDocumentSave'
 
@@ -297,6 +297,8 @@ function EditorPageInner({
   const [pageSetupOpen, setPageSetupOpen] = useState(false)
   /** 质控结果 (契约 §12.2) — 只读派生, null = 尚未检查 */
   const [qcResult, setQcResult] = useState<QCResult | null>(null)
+  /** 修订列表 (契约 §12.13) — 引擎只读读模型, contentChange 后刷新 */
+  const [revisions, setRevisions] = useState<RevisionListEntry[]>([])
   /**
    * 保存前的必填未填确认框 (契约 §12.11) 与保存流程本身都住在
    * `useDocumentSave` 里 —— 那里有用例锁, 这段接线不再只靠人读代码。
@@ -571,7 +573,22 @@ function EditorPageInner({
   }, [ready, editorRef, user])
 
   /**
-   * 质控: contentChange 后**防抖**重算 (契约 §12.2)。
+   * 修订列表 (契约 §12.13): contentChange 后立即重取。
+   *
+   * 不防抖 —— `listRevisions` 只遍历段落子节点, 比质控便宜几个数量级;
+   * 而审阅面板的列表必须跟得上每一次改动 (接受/拒绝本身也是命令, 同样触发
+   * contentChange), 防抖会让面板短暂显示已处理掉的条目。
+   */
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!ready || !editor) return
+    const refresh = () => setRevisions(editor.listRevisions())
+    editor.on('contentChange', refresh)
+    refresh()
+    return () => { editor.off('contentChange', refresh) }
+  }, [ready, editorRef])
+
+  /** 质控: contentChange 后**防抖**重算 (契约 §12.2)。
    *
    * 单独一个 effect 承载自己的防抖与清理 —— 与字数/大纲虽同频但语义独立,
    * 且质控比字数贵得多, 不该跟着每次按键跑。首次挂载立即算一次, 避免面板
@@ -1298,6 +1315,10 @@ function EditorPageInner({
       qcResult={qcResult}
       onQcIssueClick={handleQcIssueClick}
       onQcRecheck={() => setQcResult(editorRef.current?.runQC() ?? null)}
+      revisions={revisions}
+      onSelectRevision={(entry) => revealLocation(entry.paragraphPath, 0)}
+      onAcceptRevision={(entry) => { editorRef.current?.acceptRevisions([entry.nodeId]) }}
+      onRejectRevision={(entry) => { editorRef.current?.rejectRevisions([entry.nodeId]) }}
       // 批注创建: 锚点取文档当前选区/光标, 返回 false 时面板显示提示
       onNewComment={(content) => editorRef.current?.createComment(content) ?? false}
       getCommentExcerpt={(threadId) => editorRef.current?.getCommentExcerpt(threadId) ?? ''}

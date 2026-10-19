@@ -439,6 +439,13 @@ export interface LocaleMessages {
   'sidebar.tab.pages': string
   'sidebar.tab.comments': string
   'sidebar.tab.qc': string
+  'sidebar.tab.revisions': string
+  'revisions.empty': string
+  'revisions.accept': string
+  'revisions.reject': string
+  'revisions.insert': string
+  'revisions.delete': string
+  'revisions.modify': string
   'sidebar.templatesEmpty': string
   'sidebar.elementsEmpty': string
   'sidebar.searchPlaceholder': string
@@ -1419,6 +1426,13 @@ const zhCN: LocaleMessages = {
   'sidebar.tab.pages': '页面',
   'sidebar.tab.comments': '批注',
   'sidebar.tab.qc': '质控',
+  'sidebar.tab.revisions': '修订',
+  'revisions.empty': '没有修订',
+  'revisions.accept': '接受',
+  'revisions.reject': '拒绝',
+  'revisions.insert': '插入',
+  'revisions.delete': '删除',
+  'revisions.modify': '修改',
   'sidebar.templatesEmpty': '暂无模板',
   'sidebar.elementsEmpty': '暂无元素',
   'sidebar.searchPlaceholder': '搜索...',
@@ -2326,6 +2340,13 @@ const enUS: LocaleMessages = {
   'sidebar.tab.pages': 'Pages',
   'sidebar.tab.comments': 'Comments',
   'sidebar.tab.qc': 'QC',
+  'sidebar.tab.revisions': 'Revisions',
+  'revisions.empty': 'No revisions',
+  'revisions.accept': 'Accept',
+  'revisions.reject': 'Reject',
+  'revisions.insert': 'Insertion',
+  'revisions.delete': 'Deletion',
+  'revisions.modify': 'Change',
   'sidebar.templatesEmpty': 'No templates',
   'sidebar.elementsEmpty': 'No elements',
   'sidebar.searchPlaceholder': 'Search...',

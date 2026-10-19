@@ -70,7 +70,7 @@ export { ReplaceTextCommand } from './command/commands/ReplaceTextCommand'
 export type { ReplaceEdit, ReplaceRejection } from './command/commands/ReplaceTextCommand'
 export { RevisionDecisionCommand } from './command/commands/RevisionDecisionCommand'
 export type { RevisionDecision, RevisionTarget } from './command/commands/RevisionDecisionCommand'
-export type { RevisionContext, RevisionUser } from './revision/Revision'
+export type { RevisionContext, RevisionUser, RevisionListEntry } from './revision/Revision'
 export {
   RemoveNodesCommand,
   InsertInlineNodeCommand,

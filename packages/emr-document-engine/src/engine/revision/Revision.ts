@@ -9,7 +9,7 @@
 //
 // 留痕要回答三件事: 现在追不追踪、是谁改的、什么时候改的。三件事都**不在命令里**:
 // 命令只该知道"我这次改动的这段文字属于谁、什么时候"。所以事实由
-// CommandManager.buildContext() 一次性注入, 命令调这里的 stampRevision 落章。
+// CommandManager.buildContext() 一次性注入, 命令用 RevisionStamp 落章。
 //
 // 为什么必须集中 (而不是每个命令各写一遍):
 //   - 时钟只读一次。若各命令自己 `new Date()`, 同一次用户操作里跨两个命令的
@@ -100,4 +100,23 @@ export function sameRevisionKind(
 ): boolean {
   if (!a || !b) return !a && !b
   return a.type === b.type && a.authorId === b.authorId && a.author === b.author
+}
+
+/**
+ * 文档里一处修订的只读条目 (契约 §12.13) —— `Editor.listRevisions()` 的返回元素。
+ *
+ * 带 `text` 是有意的: 审阅面板要显示"改的是哪段字"。不给的话 UI 只能拿着
+ * nodeId 再向引擎要一次文字, 那就成了第二个查询入口。
+ * 这是**读**模型, 不参与持久化 —— 与 RevisionMark 本身无关。
+ */
+export interface RevisionListEntry {
+  nodeId: string
+  paraId: string
+  /** 光标定位路径 —— 与全仓一致的 2 元素 [documentRootId, paragraphId] (§31.4) */
+  paragraphPath: string[]
+  type: RevisionMark['type']
+  /** 该文字节点的当前文字 (面板展示片段用) */
+  text: string
+  author?: string
+  at?: number
 }

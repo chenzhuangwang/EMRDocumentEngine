@@ -19,7 +19,7 @@ import type { OutlineItem, SectionOutlineAction } from '@/components/sidebar/Out
 import type { CommentThread } from '@emrde/document-engine'
 import type { EditorMode, ScoreResult, LocaleMessages } from '@emrde/document-engine'
 import type { ToolbarAction } from '@emrde/document-engine'
-import type { QCIssue, QCResult } from '@emrde/document-engine'
+import type { QCIssue, QCResult, RevisionListEntry } from '@emrde/document-engine'
 import { useTranslation } from '@/i18n/useTranslation'
 
 interface EditorLayoutProps {
@@ -79,6 +79,11 @@ interface EditorLayoutProps {
   qcResult?: QCResult | null
   onQcIssueClick?: (issue: QCIssue) => void
   onQcRecheck?: () => void
+  /** 修订列表 (契约 §12.13) */
+  revisions?: RevisionListEntry[]
+  onSelectRevision?: (entry: RevisionListEntry) => void
+  onAcceptRevision?: (entry: RevisionListEntry) => void
+  onRejectRevision?: (entry: RevisionListEntry) => void
   /** 阅读模式 (R40) */
   readingMode?: boolean
   /** 当前编辑模式 */
@@ -131,6 +136,10 @@ export function EditorLayout({
   qcResult,
   onQcIssueClick,
   onQcRecheck,
+  revisions = [],
+  onSelectRevision,
+  onAcceptRevision,
+  onRejectRevision,
   readingMode = false,
   mode,
   onModeChange,
@@ -185,6 +194,10 @@ export function EditorLayout({
             qcResult={qcResult}
             onQcIssueClick={onQcIssueClick}
             onQcRecheck={onQcRecheck}
+            revisions={revisions}
+            onSelectRevision={onSelectRevision}
+            onAcceptRevision={onAcceptRevision}
+            onRejectRevision={onRejectRevision}
           />
         )}
 

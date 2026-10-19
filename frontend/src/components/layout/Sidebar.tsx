@@ -21,13 +21,15 @@ import {
   ListTree,
   MessageSquare,
   ShieldCheck,
+  History,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store'
 import { OutlineNav, type OutlineItem, type SectionOutlineAction } from '@/components/sidebar/OutlineNav'
 import { CommentPanel } from '@/components/panels/CommentPanel'
 import { QCResultPanel } from '@/components/panels/QCResultPanel'
-import type { CommentThread } from '@emrde/document-engine'
+import { RevisionsPanel } from '@/components/panels/RevisionsPanel'
+import type { CommentThread, RevisionListEntry } from '@emrde/document-engine'
 import type { QCIssue, QCResult } from '@emrde/document-engine'
 import { useTranslation } from '@/i18n/useTranslation'
 
@@ -60,6 +62,12 @@ interface SidebarProps {
   onQcIssueClick?: (issue: QCIssue) => void
   /** 重新运行质控 */
   onQcRecheck?: () => void
+  /** 文档中的修订 (契约 §12.13; 来自 Editor.listRevisions) */
+  revisions?: RevisionListEntry[]
+  /** 点击修订条目 → 定位 */
+  onSelectRevision?: (entry: RevisionListEntry) => void
+  onAcceptRevision?: (entry: RevisionListEntry) => void
+  onRejectRevision?: (entry: RevisionListEntry) => void
 }
 
 interface TemplateCategory {
@@ -73,6 +81,7 @@ export function Sidebar({
   commentThreads = [], onSelectCommentThread, onResolveCommentThread, onAddCommentReply,
   onNewComment, getCommentExcerpt,
   qcResult = null, onQcIssueClick, onQcRecheck,
+  revisions = [], onSelectRevision, onAcceptRevision, onRejectRevision,
 }: SidebarProps) {
   const { t } = useTranslation()
   const sidebarTab = useUIStore((s) => s.sidebarTab)
@@ -111,6 +120,12 @@ export function Sidebar({
           onClick={() => setSidebarTab('qc')}
           icon={<ShieldCheck size={14} />}
           label={t('sidebar.tab.qc')}
+        />
+        <SidebarTab
+          active={sidebarTab === 'revisions'}
+          onClick={() => setSidebarTab('revisions')}
+          icon={<History size={14} />}
+          label={t('sidebar.tab.revisions')}
         />
       </div>
 
@@ -161,6 +176,14 @@ export function Sidebar({
             result={qcResult}
             onIssueClick={onQcIssueClick}
             onRecheck={onQcRecheck}
+          />
+        )}
+        {sidebarTab === 'revisions' && (
+          <RevisionsPanel
+            revisions={revisions}
+            onSelect={onSelectRevision}
+            onAccept={onAcceptRevision}
+            onReject={onRejectRevision}
           />
         )}
       </div>

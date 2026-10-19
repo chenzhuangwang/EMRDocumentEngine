@@ -100,7 +100,7 @@ export const useUserStore = create<UserState>((set) => ({
 // ---- UI 状态 ----
 
 /** 侧栏标签页 —— 单一定义, 避免状态字段与 setter 各写一份联合而漏改其一 */
-export type SidebarTab = 'templates' | 'elements' | 'pages' | 'comments' | 'qc'
+export type SidebarTab = 'templates' | 'elements' | 'pages' | 'comments' | 'qc' | 'revisions'
 
 interface UIState {
   sidebarOpen: boolean
