@@ -3410,8 +3410,12 @@ first recomputed paragraph (widow control can pull a line back from the
 next page). If no paragraph line changed, the whole page array is
 reused. The page-start line table (`PageStartTable`) backs this lookup.
 
-Still NOT wired: `HitTestIndex` is rebuilt in full on every pass;
-`LayoutEngine.incrementalLayout()` and `LayoutCache` have no consumer.
+`HitTestIndex` follows pagination: on a resume it rebuilds only from the
+first non-reused page, and when nothing changed it is not rebuilt at all.
+
+Still NOT wired: `LayoutEngine.incrementalLayout()` and `LayoutCache`
+have no consumer, and `DirtyTracker` marks are not consulted when
+deciding what to recompute (cache misses are the source of truth).
 They MUST NOT be cited as evidence that layout is incremental.
 
 Unknown or unprovable cases MUST fall back to a full pass (list
