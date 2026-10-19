@@ -258,9 +258,10 @@ export class Draw {
     if (pool) this.pool = pool
     this.presentationStyles = presentationStyles ?? null
     this.templateDefinitions = templateDefinitions ?? null
-    // 换文档 → 段落行缓存必须清空: 新文档的节点版本可能从 0 重新开始,
-    // 键会撞上上一份文档的同名段落 (M2a)
+    // 换文档 → 段落行缓存与分页状态都必须清空: 新文档的节点版本可能从 0
+    // 重新开始, 键会撞上上一份文档的同名段落 (M2a/M2b)
     this.layoutEngine.clearParagraphLineCache()
+    this.layoutEngine.clearPaginationState()
   }
 
   setRuntimeState(state: EditorRuntimeState): void { this._state = state }
@@ -268,7 +269,7 @@ export class Draw {
   getPool(): NodePool | null { return this.pool }
   getState(): EditorRuntimeState | null { return this._state }
 
-  recomputeLayout(pool: NodePool, _invalidation?: string): SLIFPage[] {
+  recomputeLayout(pool: NodePool, invalidation?: string): SLIFPage[] {
     if (!this.document) return []
     this.pool = pool
     // 修订留痕显示开关同步给布局 (契约 §12.13): 删除线是布局期产物,
@@ -277,8 +278,8 @@ export class Draw {
     // 计算值: 布局趟开头 ensure() 一次 (契约 §12.12.7)。脏了才真算, 时钟在那时读
     // 一次; 不脏则连钟都不读 —— 于是同一份文档的布局与渲染必然读到同一个值。
     this.computedValues?.ensure()
-    // 当前统一全量布局; invalidation scope 预留用于未来增量优化
-    this.pages = this.layoutEngine.fullLayout(this.document, pool)
+    // invalidation 交给布局: 只有段落级失效才允许增量分页 (M2b, 契约 §16.1)
+    this.pages = this.layoutEngine.fullLayout(this.document, pool, invalidation)
     this.hitTestIndex.rebuild(this.pages)
     return this.pages
   }

@@ -35,6 +35,13 @@ export class PageBreaker {
     reserveHeight = 0,
     /** 实际正文可用高 (页眉/页脚超高时正文让位后) — 缺省按 margin 推算 */
     pageContentHeightOverride?: number,
+    /**
+     * 起始页号 (M2b) — 增量分页从某一页续排时使用。
+     *
+     * 调用方保证 `lines` 的第一行就是该页的首行 (页首从空白页状态开始),
+     * 因此孤行/寡行与表格游标的行为与全量从 0 排到该页时一致。
+     */
+    startPageIndex = 0,
   ): IPage[] {
     const pages: IPage[] = []
 
@@ -55,7 +62,7 @@ export class PageBreaker {
       return last?.value === '\n'
     })
 
-    let pageIndex = 0
+    let pageIndex = startPageIndex
     let currentPageLines: ILine[] = []
     let currentPageHeight = 0
 

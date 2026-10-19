@@ -44,6 +44,7 @@ import { BookmarkRenderer } from '../../render/BookmarkRenderer'
 import { getFlatPageItems, tableRowUnitHeight } from './SLIF'
 import { createTablePaginator } from '../table/TablePaginator'
 import type { TableFragment } from '../table/TablePaginator'
+import { PageStartTable } from '../page/PageStartTable'
 import { VirtualViewport } from '../viewport/VirtualViewport'
 import { IncrementalLayout } from '../incremental/IncrementalLayout'
 
@@ -201,6 +202,67 @@ export class LayoutEngine {
     return `${base}#w${contentWidth}#r${this.showRevisionMarks ? 1 : 0}`
   }
 
+  // ================================================================
+  // 增量分页 (M2b)
+  //
+  // 只对**纯文本正文**启用: 没有表格 (分页游标有状态)、分节 (页面设置会变)、
+  // 脚注 (页底预留)、域/控件/交叉引用 (预留宽依赖总页数)、列表 (编号跨段)、
+  // 页眉页脚 (正文可用区依赖带高)。这些场景一律全量分页 —— 可证明安全比省一点
+  // 分页更重要 (契约 §16.1)。
+  //
+  // 续排从「首个脏段落所在页的**前一页**」开始: 寡行控制会从下一页拉一行回来,
+  // 所以脏段落所在页的上一页也可能变。
+  // ================================================================
+  private pageStartLineIndex: number[] = []
+  private paraPageTable = new PageStartTable()
+  private lastPaginationMode: 'full' | 'reuse-all' | 'resume' = 'full'
+  private lastReusedPages = 0
+
+  /** 分页模式统计 (诊断与测试用; 不参与布局决策) */
+  getPaginationStats(): { mode: 'full' | 'reuse-all' | 'resume'; reusedPages: number; totalPages: number } {
+    return { mode: this.lastPaginationMode, reusedPages: this.lastReusedPages, totalPages: this.pages.length }
+  }
+
+  /** 换文档时必须调用: 旧页与新文档无关 (Draw.setDocument) */
+  clearPaginationState(): void {
+    this.pageStartLineIndex = []
+    this.paraPageTable = new PageStartTable()
+    this.lastPaginationMode = 'full'
+    this.lastReusedPages = 0
+    this.pages = []
+  }
+
+  /** 是否允许增量分页 — 只放行可证明安全的文档子集 */
+  private canIncrementalPagination(
+    doc: DocumentTree,
+    pool: NodePool,
+    invalidation?: string,
+  ): boolean {
+    if (this.pageStartLineIndex.length === 0 || this.pages.length === 0) return false
+    // 只有段落级失效才可能保留前序页; 其余一律全量
+    if (invalidation !== undefined && invalidation !== 'node'
+      && invalidation !== 'paragraph' && invalidation !== 'paragraph_and_downstream') return false
+
+    // 页眉页脚会改变正文可用区与逐页带内容
+    const hf = doc as unknown as Record<string, readonly string[] | undefined>
+    for (const key of ['header', 'footer', 'firstPageHeader', 'firstPageFooter', 'evenPageHeader', 'evenPageFooter']) {
+      if ((hf[key]?.length ?? 0) > 0) return false
+    }
+    if (doc.headerFooterConfig?.differentFirstPage || doc.headerFooterConfig?.differentOddEven) return false
+
+    for (const blockId of bodyBlockSpine(doc, pool)) {
+      const block = pool.nodes.get(blockId) as unknown as
+        { type?: string; list?: unknown; children?: readonly string[] } | undefined
+      if (block?.type !== 'paragraph' || block.list) return false
+      for (const childId of block.children ?? []) {
+        const child = pool.nodes.get(childId) as { type?: string } | undefined
+        if (child?.type !== 'text') return false
+      }
+    }
+    return true
+  }
+
+
   /** 元素的修订渲染视图 (标记 + 由 delete 派生的删除线) */
   private revisionViewOf(node: { revision?: { type: string }; strikeout?: boolean }): {
     revision?: { type: string }
@@ -244,24 +306,59 @@ export class LayoutEngine {
    * 因此先用上一轮页数做估计排一次, 若位数与实际不符 (跨越 10/100 页) 再用
    * 新页数重排一次。至多两轮, 使 '第[1]页' 的预留宽与绘制宽一致且不重叠。
    */
-  fullLayout(doc: DocumentTree, pool: NodePool): LayoutResult {
+  fullLayout(doc: DocumentTree, pool: NodePool, invalidation?: string): LayoutResult {
     const hint = Math.max(1, this.pages.length)
-    let pages = this.layoutOnce(doc, pool, hint)
+    const allowIncremental = this.canIncrementalPagination(doc, pool, invalidation)
+    let result = this.layoutOnce(doc, pool, hint, allowIncremental)
+    let pages = result.pages
     const pageDigitsChanged = String(hint).length !== String(Math.max(1, pages.length)).length
     // 交叉引用的 {page} 取自**上一轮**布局 (与 totalPagesHint 同思路: 页码依赖
     // 分页, 分页又依赖文本长度)。含占位符时必须再排一轮, 否则首轮只能填 '?'。
     const needsXrefPass = hasCrossRefPlaceholder(pool)
     if (pageDigitsChanged || needsXrefPass) {
       if (needsXrefPass) this.lastParaPageMap = buildParaPageMap(pages, pool)
-      pages = this.layoutOnce(doc, pool, Math.max(1, pages.length))
+      result = this.layoutOnce(doc, pool, Math.max(1, pages.length), false)
+      pages = result.pages
     }
     this.pages = pages
+    this.commitPaginationState(result.state, result.mode, result.reusedPages)
     // 段落→页映射总是刷新: O(N) 只读派生, 不参与布局输出 (无行为变化), 但书签
     // 对话框与交叉引用都按它显示"第几页"。上面 needsXrefPass 时已建过一次, 这里
     // 用最终 pages 再建一次 —— 多一次 O(N) 换取"永不过期"的简单性。
     this.lastParaPageMap = buildParaPageMap(pages, pool)
     this.eventBus.emit('layout:changed', pages)
     return pages
+  }
+
+  /** 提交本轮分页状态 (只有最后一轮布局的状态才算数) */
+  private commitPaginationState(
+    state: { pageStartLineIndex: number[]; paraFirstLine: Map<string, number> },
+    mode: 'full' | 'reuse-all' | 'resume',
+    reusedPages: number,
+  ): void {
+    this.pageStartLineIndex = state.pageStartLineIndex
+    this.lastPaginationMode = mode
+    this.lastReusedPages = reusedPages
+
+    const paras = [...state.paraFirstLine.entries()].sort((a, b) => a[1] - b[1])
+    const entries: { id: string; pageIndex: number }[] = []
+    for (const [paraId, lineIndex] of paras) {
+      entries.push({ id: paraId, pageIndex: this.pageOfLine(lineIndex) })
+    }
+    this.paraPageTable.rebuild(entries)
+  }
+
+  /** 行下标 → 页下标 (页起始行表上二分; 空表返回 0) */
+  private pageOfLine(lineIndex: number): number {
+    let lo = 0
+    let hi = this.pageStartLineIndex.length - 1
+    let result = 0
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1
+      if (this.pageStartLineIndex[mid] <= lineIndex) { result = mid; lo = mid + 1 }
+      else hi = mid - 1
+    }
+    return result
   }
 
   /**
@@ -272,8 +369,18 @@ export class LayoutEngine {
     return this.lastParaPageMap
   }
 
-  /** 单轮布局 (无副作用: 不写 this.pages / 不发事件) */
-  private layoutOnce(doc: DocumentTree, pool: NodePool, pageNumberHint: number): SLIFPage[] {
+  /** 单轮布局 (不改 this.pages / 不发事件; 分页状态由调用方提交) */
+  private layoutOnce(
+    doc: DocumentTree,
+    pool: NodePool,
+    pageNumberHint: number,
+    allowIncremental: boolean,
+  ): {
+    pages: SLIFPage[]
+    state: { pageStartLineIndex: number[]; paraFirstLine: Map<string, number> }
+    mode: 'full' | 'reuse-all' | 'resume'
+    reusedPages: number
+  } {
     // locale 必须与渲染期 (Draw.resolveFieldText) 同源 —— 否则域的量宽与
     // 绘制宽会漂移 (en-US 的 '9/22/2026' 比 zh-CN 的 '2026/9/22' 窄)。
     this.fieldReserveCtx = { totalPagesHint: pageNumberHint, documentTitle: doc.title, locale: locale.getLocale() }
@@ -315,6 +422,9 @@ export class LayoutEngine {
     const bodyTop = Math.max(this.config.marginTop, maxHeaderH)
     const bodyBottom = this.config.pageHeight - Math.max(this.config.marginBottom, maxFooterH)
     const bodyArea = Math.max(0, bodyBottom - bodyTop - footnoteReserve)
+
+    const paraFirstLine = new Map<string, number>()
+    const recomputed: { paraId: string; lineIndex: number }[] = []
 
     for (const blockId of bodyBlockSpine(doc, pool)) {
       const block = pool.nodes.get(blockId)
@@ -366,6 +476,7 @@ export class LayoutEngine {
 
       if (blockType === 'paragraph') {
         const para = block as unknown as Paragraph
+        paraFirstLine.set(para.id, allLines.length)
         const elements: LineElement[] = []
 
         // 列表标记: 拼到第一个文本节点前面, 避免与内容重叠
@@ -399,6 +510,8 @@ export class LayoutEngine {
           }
           this.paragraphCacheMisses++
         }
+        // 未命中 (或不可缓存) → 本段行要重算; 它所在页及其后页需要重排
+        recomputed.push({ paraId: para.id, lineIndex: allLines.length })
 
         // 标题样式: outlineLevel > 0 时缩放字体 + 加粗
         const outlineLevel = para.outlineLevel ?? 0
@@ -545,11 +658,50 @@ export class LayoutEngine {
       }
     }
 
+    // ---- 增量分页 (M2b): 只在可证明安全的文档子集上启用 ----
+    let mode: 'full' | 'reuse-all' | 'resume' = 'full'
+    let resumePage = 0
+    let breakStartLine = 0
+    let presetPages: SLIFPage[] = []
+    let linesToBreak: ILine[] = allLines
+
+    if (allowIncremental && this.pageStartLineIndex.length === this.pages.length && this.pages.length > 0) {
+      if (recomputed.length === 0) {
+        // 没有任何段落行变化 → 分页结果必然不变, 整份重用
+        mode = 'reuse-all'
+      } else {
+        const first = recomputed[0]
+        const page = this.paraPageTable.getPage(first.paraId)
+        // 寡行控制会从下一页拉行回来, 所以从脏段落所在页的**前一页**续排
+        const candidate = Math.max(0, page - 1)
+        const startLine = page > 0 ? this.pageStartLineIndex[candidate] : -1
+        if (page > 0 && startLine >= 0 && startLine <= first.lineIndex) {
+          mode = 'resume'
+          resumePage = candidate
+          breakStartLine = startLine
+          presetPages = this.pages.slice(0, candidate)
+          linesToBreak = allLines.slice(startLine)
+        }
+      }
+    }
+
+    if (mode === 'reuse-all') {
+      return {
+        pages: this.pages,
+        state: { pageStartLineIndex: this.pageStartLineIndex.slice(), paraFirstLine },
+        mode,
+        reusedPages: this.pages.length,
+      }
+    }
+
     // Step 2: PageBreaker 分页 (正文可用高 = bodyArea)
-    const iPages = pageBreaker.breakPages(allLines, [], [], pageSetup, footnoteReserve, bodyArea)
+    const iPages = pageBreaker.breakPages(
+      linesToBreak, [], [], pageSetup, footnoteReserve, bodyArea,
+      mode === 'resume' ? resumePage : 0,
+    )
 
     // Step 3: IPage[] → SLIFPage[]
-    const slifPages: SLIFPage[] = iPages.map((ip: IPage) => {
+    const convertedPages: SLIFPage[] = iPages.map((ip: IPage) => {
       let y = bodyTop
       const items: SLIFItem[] = []
       for (const line of ip.lines) {
@@ -697,6 +849,11 @@ export class LayoutEngine {
       }
     })
 
+    // 复用前序页 + 新排的页 (续排时 PageBreaker 已从 resumePage 开始编号)
+    const slifPages: SLIFPage[] = mode === 'resume'
+      ? [...presetPages, ...convertedPages]
+      : convertedPages
+
     // Step 4: 脚注收集与布局 — 每页独立收集 footnote_ref, 生成脚注区 SLIF items
     const footnoteEngine = new FootnoteLayout()
     for (const page of slifPages) {
@@ -720,7 +877,22 @@ export class LayoutEngine {
       }
     }
 
-    return slifPages
+    // 页起始行索引: 前序页沿用旧表, 新页从续排起点按行数累加
+    const pageStartLineIndex: number[] = mode === 'resume'
+      ? this.pageStartLineIndex.slice(0, resumePage)
+      : []
+    let cumulativeLine = mode === 'resume' ? breakStartLine : 0
+    for (const ip of iPages) {
+      pageStartLineIndex.push(cumulativeLine)
+      cumulativeLine += ip.lines.length
+    }
+
+    return {
+      pages: slifPages,
+      state: { pageStartLineIndex, paraFirstLine },
+      mode,
+      reusedPages: presetPages.length,
+    }
   }
 
   /** 增量布局 (仅重排脏区, TASK-446 incrementalRepaginate)
