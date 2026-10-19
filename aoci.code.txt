@@ -210,7 +210,7 @@ integration-test-report-2026-08-03.md[SQ3S]: F:集成测试报告(2026-08-03, Ro
 layout-refactor-regression-test-checklist.md[SQ3S]: F:layout/ 分层重构回归测试清单(2026-08-27): 8 子目录职责对照与零行为变化验证 | R:code:packages/emr-document-engine/src/engine/layout/core/LayoutEngine.ts,code:packages/emr-document-engine/src/engine/layout/line/LineBreaker.ts | A:- | S:该重构已完成, 清单路径即当前布局, 新增 layout 文件须归入对应子目录
 startup-guide.md[SG4T]: F:项目启动指南: 前端 Vite 与后端启动命令 | R:code:frontend/vite.config.ts | A:- | S:前端启动在 frontend/ 目录执行; 端口与代理以 vite.config.ts 为准
 state-cleanup-regression-test-checklist.md[SQ3S]: F:state/ 清理回归测试清单(2026-08-27): 删死代码 RangeManager + 抽出 HistoryState | R:code:packages/emr-document-engine/src/engine/state/HistoryState.ts,code:packages/emr-document-engine/src/engine/state/EditorStore.ts | A:- | S:RangeManager 已删不得复活: 其 API 与当前选区模型不兼容
-编辑器功能清单.md[SG5L]: F:编辑器功能清单(基于代码盘点, 2026-10-19 全量校正): 按编号逐条列已实现功能与边界, 含 §11 引擎能力补齐三批 | R:code:packages/emr-document-engine/src/engine/Editor.ts,code:knowledge/引擎能力补齐-设计方案.md | A:- | S:条目编号被他文交叉引用, 只可校正指向不可重排编号; 链接一律以仓库根为基准(引擎在 packages/ 下); 状态必须回代码核实, 旧版本的"零接线"结论会过期
+编辑器功能清单.md[SG5L]: F:编辑器功能清单(基于代码盘点, 2026-10-19 全量校正): 按编号逐条列已实现功能与边界; §4.3 覆盖 43/43 命令类; 含 §11 引擎能力补齐三批 | R:code:packages/emr-document-engine/src/engine/Editor.ts,code:knowledge/引擎能力补齐-设计方案.md | A:- | S:条目编号被他文交叉引用, 只可校正指向不可重排编号; 链接以仓库根为基准; 状态必须回代码核实, 旧版本的“零接线”结论会过期
 引擎能力补齐-设计方案.md[SG6L]: F:引擎能力补齐三批定序与定型(一·批量数据绑定+保存闸门 / 二·计算式引擎 / 三·修订留痕), 含缺口盘点·契约修订清单·风险登记·验收口径·不做区与 §2.6/§3.7/§3.8/§4.5/§4.6/§4.7 落地记录; 保存接线已抽 useDocumentSave | R:code:.claude/AI_EDITOR_CONTRACT.md,code:knowledge/编辑器功能清单.md | A:- | S:批次一定稿可开工; 重复键报 ambiguous 且一个都不写; 公式落 TemplateDefinition.formula 而结果不落盘; 留痕挂 TextNode 非范围; 落地记录记的是与计划的真实分歧; 首次性断言必附 file:line
 
 ===D:/czw/EMRDocumentEngine/knowledge/每日推文/===
