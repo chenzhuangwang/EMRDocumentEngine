@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-19T07:02:04Z",
+  "updated_at": "2026-10-19T07:13:40Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
@@ -95,9 +95,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "e3a368f59e636567bea4bd2107762ee5e14cc50968d45c772cb1a06901b17a39",
-      "size": 138210,
-      "normalized_sha256": "e3a368f59e636567bea4bd2107762ee5e14cc50968d45c772cb1a06901b17a39"
+      "sha256": "b0f1499510b7e672aa3f67c58d8ab8d2188eb8fe28ed0f40cd0e80b222eea7f4",
+      "size": 138437,
+      "normalized_sha256": "b0f1499510b7e672aa3f67c58d8ab8d2188eb8fe28ed0f40cd0e80b222eea7f4"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2248,9 +2248,9 @@
     },
     "knowledge/编辑器功能清单.md": {
       "role": "index",
-      "sha256": "892c578ec8289694b1b4fee10affa8aa06331f2170e7b369ffb8da7a44a2f587",
-      "size": 56001,
-      "normalized_sha256": "892c578ec8289694b1b4fee10affa8aa06331f2170e7b369ffb8da7a44a2f587"
+      "sha256": "92417f1c43625c2d91677e4975514f50eb72fa19829c721eaba830bcbb99f40c",
+      "size": 64303,
+      "normalized_sha256": "92417f1c43625c2d91677e4975514f50eb72fa19829c721eaba830bcbb99f40c"
     },
     "nginx.conf": {
       "role": "index",
