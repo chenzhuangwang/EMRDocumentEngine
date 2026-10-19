@@ -68,6 +68,43 @@ describe('computeVisibleRange', () => {
     const withGap = computeVisibleRange(pages(1000, 1000), 950, 100, { pageVerticalGap: 200 })
     expect(withGap).toEqual({ start: 0, end: 0 })
   })
+
+  it('overscan=0 时与旧 LayoutEngine 实现逐值一致 (500 组随机输入)', () => {
+    // 旧实现 (迁移前 LayoutEngine.getVisiblePages), 原样保留作对照:
+    // 判定口径必须逐字一致, 否则这次"只换实现不改行为"的接线条目不成立。
+    const legacy = (
+      heights: readonly number[], scrollY: number, viewportHeight: number, pageVerticalGap: number,
+    ): { start: number; end: number } => {
+      let cumulativeY = 0
+      let start = 0
+      let end = heights.length - 1
+      for (let i = 0; i < heights.length; i++) {
+        const pageHeight = heights[i]
+        const slot = pageHeight + pageVerticalGap
+        if (cumulativeY + pageHeight < scrollY) start = i + 1
+        if (cumulativeY > scrollY + viewportHeight) { end = i - 1; break }
+        cumulativeY += slot
+      }
+      return { start: Math.max(0, start), end: Math.min(heights.length - 1, end) }
+    }
+
+    let seed = 42
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) % 4294967296
+      return seed / 4294967296
+    }
+
+    for (let n = 0; n < 500; n++) {
+      const count = 1 + Math.floor(rand() * 8)
+      const heights = Array.from({ length: count }, () => 200 + Math.floor(rand() * 2000))
+      const scrollY = rand() * 12000
+      const viewportHeight = 100 + rand() * 1500
+      const gap = Math.floor(rand() * 40)
+      expect(
+        computeVisibleRange(heights.map((height) => ({ height })), scrollY, viewportHeight, { pageVerticalGap: gap }),
+      ).toEqual(legacy(heights, scrollY, viewportHeight, gap))
+    }
+  })
 })
 
 describe('VirtualViewport', () => {
