@@ -1,13 +1,13 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-19T09:05:30Z",
+  "updated_at": "2026-10-19T10:47:19Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
-      "sha256": "cdd9acadaad04c413f97faa6879d2350cc67780c09e44d710501873fefad412c",
-      "size": 212351,
-      "normalized_sha256": "cdd9acadaad04c413f97faa6879d2350cc67780c09e44d710501873fefad412c"
+      "sha256": "07147ae9d4cabd29d05c6bf3bf7aff99e07a2753a749fbed16a597d303d7bf75",
+      "size": 212565,
+      "normalized_sha256": "07147ae9d4cabd29d05c6bf3bf7aff99e07a2753a749fbed16a597d303d7bf75"
     },
     ".claude/CLAUDE.md": {
       "role": "index",
@@ -95,9 +95,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "1f4aa9acc8187c408b1190fa5ce0bc9123b52a240bec809b8a7499cc9d6e628c",
-      "size": 140055,
-      "normalized_sha256": "1f4aa9acc8187c408b1190fa5ce0bc9123b52a240bec809b8a7499cc9d6e628c"
+      "sha256": "869afd3db8516e55e47d3bd670098708d1b886396de18b0f810a3d7bac27e3e1",
+      "size": 140099,
+      "normalized_sha256": "869afd3db8516e55e47d3bd670098708d1b886396de18b0f810a3d7bac27e3e1"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2032,9 +2032,9 @@
     },
     "knowledge/增量排版-设计方案.md": {
       "role": "index",
-      "sha256": "68dc504d669e962b2c4c86c68ad2c577ff99c57ed086bbbce77ab1743d69d003",
-      "size": 10352,
-      "normalized_sha256": "68dc504d669e962b2c4c86c68ad2c577ff99c57ed086bbbce77ab1743d69d003"
+      "sha256": "458ac6deeb08e78adee6cd3876997ac77a53f840cbd66285037c06f579d173f3",
+      "size": 10926,
+      "normalized_sha256": "458ac6deeb08e78adee6cd3876997ac77a53f840cbd66285037c06f579d173f3"
     },
     "knowledge/引擎能力补齐-设计方案.md": {
       "role": "index",
@@ -2254,9 +2254,9 @@
     },
     "knowledge/编辑器功能清单.md": {
       "role": "index",
-      "sha256": "33833d15dc1e207f25facf1e74e7d9fb3d9477ed4b63bcbc2160f21cab49ee30",
-      "size": 81606,
-      "normalized_sha256": "7d7de0e277aaedfcfc7b274c4dfdf508425c2ac7c5b5e8b0b3a66875c605cf3a"
+      "sha256": "cf3fe8f21eeb5f9101057f65ed1d55405aa9e9e9ed93eb464baa2c9d8dd062fb",
+      "size": 81568,
+      "normalized_sha256": "22e963e848266e46aab4d4f34c6762aa9244f54556e74c7c6a22af5cbdb00b98"
     },
     "nginx.conf": {
       "role": "index",
@@ -2749,6 +2749,12 @@
       "sha256": "fe3fe42007a2bc014d5ae954864a91847b2f330c15097172e1d47020c4e02cfe",
       "size": 8502,
       "normalized_sha256": "fe3fe42007a2bc014d5ae954864a91847b2f330c15097172e1d47020c4e02cfe"
+    },
+    "packages/emr-document-engine/src/engine/__tests__/HitTestIndexIncremental.test.ts": {
+      "role": "observe",
+      "sha256": "26ee740083435287a7e8e33f00ad2bf1c6ca93f24b2e679d88634a4a8fe68f3c",
+      "size": 4883,
+      "normalized_sha256": "26ee740083435287a7e8e33f00ad2bf1c6ca93f24b2e679d88634a4a8fe68f3c"
     },
     "packages/emr-document-engine/src/engine/__tests__/HitTestTable.test.ts": {
       "role": "observe",
@@ -3772,15 +3778,15 @@
     },
     "packages/emr-document-engine/src/engine/render/Draw.ts": {
       "role": "index",
-      "sha256": "87d062f9f19b20262d12478988bf0e5708a4e2e413adae91795590421748d8a9",
-      "size": 92675,
-      "normalized_sha256": "146dd10f28b314dc900e3a91b46761ca430aa74c09dba93ead80fe2bc1c25101"
+      "sha256": "3ed40dd0cf5afc6ad99b3421773e16a74dc15cb3ddd53bf8ee323354e9e13005",
+      "size": 93746,
+      "normalized_sha256": "92f811090dd6ae7d85ac93c95252b48d574560830ccc7cafbf7bac247f449af6"
     },
     "packages/emr-document-engine/src/engine/render/HitTestIndex.ts": {
       "role": "index",
-      "sha256": "2af05fe667d50ededce2b0ba5648925daf1961f782c1b24c7e3eb60685555ae3",
-      "size": 18445,
-      "normalized_sha256": "2af05fe667d50ededce2b0ba5648925daf1961f782c1b24c7e3eb60685555ae3"
+      "sha256": "1e31813d897575a5bb9d50928be1fda9f5c5728e3cec096691eaaacdab9ace8c",
+      "size": 19065,
+      "normalized_sha256": "1e31813d897575a5bb9d50928be1fda9f5c5728e3cec096691eaaacdab9ace8c"
     },
     "packages/emr-document-engine/src/engine/render/LayeredRenderer.ts": {
       "role": "index",
