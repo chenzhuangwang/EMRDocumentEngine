@@ -258,6 +258,9 @@ export class Draw {
     if (pool) this.pool = pool
     this.presentationStyles = presentationStyles ?? null
     this.templateDefinitions = templateDefinitions ?? null
+    // 换文档 → 段落行缓存必须清空: 新文档的节点版本可能从 0 重新开始,
+    // 键会撞上上一份文档的同名段落 (M2a)
+    this.layoutEngine.clearParagraphLineCache()
   }
 
   setRuntimeState(state: EditorRuntimeState): void { this._state = state }

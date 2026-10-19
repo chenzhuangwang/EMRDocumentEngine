@@ -45,6 +45,7 @@ import { getFlatPageItems, tableRowUnitHeight } from './SLIF'
 import { createTablePaginator } from '../table/TablePaginator'
 import type { TableFragment } from '../table/TablePaginator'
 import { VirtualViewport } from '../viewport/VirtualViewport'
+import { IncrementalLayout } from '../incremental/IncrementalLayout'
 
 export type { LayoutConfig } from './LayoutContext'
 export type { LayoutResult } from './LayoutResult'
@@ -143,7 +144,62 @@ export class LayoutEngine {
   private showRevisionMarks = true
 
   /** 同步修订留痕显示开关 (契约 §12.13) — 由 Draw 调用, 改变后需重排 */
-  setShowRevisionMarks(v: boolean): void { this.showRevisionMarks = v }
+  setShowRevisionMarks(v: boolean): void {
+    if (this.showRevisionMarks === v) return
+    this.showRevisionMarks = v
+    // 修订样式是布局期产物, 旧缓存里存的是切换前的行: 直接清空 (数量=段落数)
+    this.clearParagraphLineCache()
+  }
+
+  // ================================================================
+  // 段落行缓存 (M2a)
+  //
+  // 只缓存"纯文本、非列表"段落 —— 这是可证明安全的子集:
+  //   - 列表编号依赖前序段落 (跨段状态), 不进段落键 → 不缓存;
+  //   - 控件/域/交叉引用/图片/脚注的显示值来自段落之外 (计算值、页码、
+  //     域预留宽) → 不缓存。
+  // 缓存条目按段落 ID 存**最新一份** (key 不匹配即重算并覆盖), 因此不会
+  // 随每次按键无限增长; 换文档时由 Draw 调用 clearParagraphLineCache()。
+  // ================================================================
+  private paragraphLineCache = new Map<string, { key: string; lines: ILine[] }>()
+  private paragraphCacheEnabled = true
+  private paragraphCacheHits = 0
+  private paragraphCacheMisses = 0
+
+  /** 关闭段落行缓存 (等价性测试用: 关闭侧必须是"纯全量") */
+  setParagraphCacheEnabled(v: boolean): void {
+    this.paragraphCacheEnabled = v
+    if (!v) this.clearParagraphLineCache()
+  }
+
+  /** 清空段落行缓存 (换文档 / 全量失效时调用) */
+  clearParagraphLineCache(): void {
+    this.paragraphLineCache.clear()
+  }
+
+  /** 缓存命中统计 (诊断与测试用; 不参与布局决策) */
+  getParagraphCacheStats(): { hits: number; misses: number; size: number } {
+    return { hits: this.paragraphCacheHits, misses: this.paragraphCacheMisses, size: this.paragraphLineCache.size }
+  }
+
+  /**
+   * 段落行缓存键; null = 该段落不可缓存。
+   *
+   * 键 = 段落布局键 (结构版本 + 段落版本 + 逐子节点版本) + 两个段落之外但
+   * 影响行断的输入: 可用宽 (页面设置/分节) 与修订标记显隐 (布局期样式)。
+   */
+  private paragraphLineCacheKey(pool: NodePool, para: Paragraph, contentWidth: number): string | null {
+    if (para.list) return null
+    const children = (para as unknown as { children?: readonly string[] }).children
+    if (!children) return null
+    for (const childId of children) {
+      const child = pool.nodes.get(childId) as { type?: string } | undefined
+      if (child?.type !== 'text') return null
+    }
+    const base = IncrementalLayout.paragraphKey(pool, para.id)
+    if (!base) return null
+    return `${base}#w${contentWidth}#r${this.showRevisionMarks ? 1 : 0}`
+  }
 
   /** 元素的修订渲染视图 (标记 + 由 delete 派生的删除线) */
   private revisionViewOf(node: { revision?: { type: string }; strikeout?: boolean }): {
@@ -330,6 +386,20 @@ export class LayoutEngine {
           savedListMarker = listMarker
         }
 
+        // 段落行缓存 (M2a): 命中则整段跳过元素构建与断行
+        const cacheKey = this.paragraphCacheEnabled
+          ? this.paragraphLineCacheKey(pool, para, contentWidth)
+          : null
+        if (cacheKey) {
+          const cached = this.paragraphLineCache.get(para.id)
+          if (cached && cached.key === cacheKey) {
+            this.paragraphCacheHits++
+            allLines.push(...cached.lines)
+            continue
+          }
+          this.paragraphCacheMisses++
+        }
+
         // 标题样式: outlineLevel > 0 时缩放字体 + 加粗
         const outlineLevel = para.outlineLevel ?? 0
         const headingScale = outlineLevel > 0 ? (HEADING_SCALE[outlineLevel] ?? 1) : 1
@@ -436,10 +506,11 @@ export class LayoutEngine {
           }
         }
 
+        let paraLines: ILine[]
         if (elements.length === 0) {
           // 空段落占位行 — 确保每个段落都有布局位置, 光标可定位
           const emptySize = isHeading ? Math.round(BASE_FONT_SIZE * headingScale) : BASE_FONT_SIZE
-          allLines.push({
+          paraLines = [{
             elements: [{ id: para.id, type: 'text', value: '' }],
             width: 0,
             height: emptySize,
@@ -449,7 +520,7 @@ export class LayoutEngine {
             indent: para.indent,
             firstLineIndent: para.firstLineIndent,
             listMarker: savedListMarker || undefined,
-          })
+          }]
         } else {
           const lines = lineBreaker.breakLines(elements, {
             maxWidth: contentWidth, wordBreak: 'break-all',
@@ -467,8 +538,10 @@ export class LayoutEngine {
               isFirstLine = false
             }
           }
-          allLines.push(...lines)
+          paraLines = lines
         }
+        allLines.push(...paraLines)
+        if (cacheKey) this.paragraphLineCache.set(para.id, { key: cacheKey, lines: paraLines })
       }
     }
 

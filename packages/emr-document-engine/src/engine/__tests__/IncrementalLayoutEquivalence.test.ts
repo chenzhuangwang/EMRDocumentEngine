@@ -149,9 +149,55 @@ describe('增量排版等价性骨架 (M1)', () => {
     }
   })
 
-  it('页眉页脚与表格存在时同样可重复', () => {
+  it('M2a 硬门: 持久引擎 (段落缓存) 与全新引擎全量结果逐字节相同 (40 步)', () => {
+    // 与上一条的区别: 上面每次 new 引擎 (缓存永远为空), 这里同一个引擎连跑 40 步,
+    // 未改动段落会命中缓存 —— 这正是 M2a 要证的东西。
+    const { doc, pool, p1, p2, t1, t2 } = makeFixture()
+    const paragraphs = [p1, p2]
+    const texts = [t1, t2]
+    const alignments = ['left', 'center', 'right', 'justify'] as const
+
+    const persistent = new LayoutEngine(new EventBus(), testMeasurer)
+    persistent.fullLayout(doc, pool)
+
+    let seed = 7
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) % 4294967296
+      return seed / 4294967296
+    }
+
+    for (let step = 0; step < 40; step++) {
+      const action = Math.floor(rand() * 4)
+      const para = paragraphs[Math.floor(rand() * paragraphs.length)]
+
+      if (action === 0) {
+        const text = texts[Math.floor(rand() * texts.length)]
+        const current = (pool.nodes.get(text.id) as { text?: string } | undefined)?.text ?? ''
+        const next = rand() < 0.5 ? current + '随访。' : current.slice(0, Math.max(0, current.length - 2))
+        pool.updateNode(text.id, { text: next } as Partial<BaseNode>)
+      } else if (action === 1) {
+        const alignment = alignments[Math.floor(rand() * alignments.length)]
+        pool.updateNode(para.id, { alignment } as Partial<BaseNode>)
+      } else if (action === 2) {
+        const extra = createTextNode('补充')
+        pool.addNode(extra as unknown as BaseNode)
+        pool.insertChild(para.id, extra.id, para.children.length)
+      } else if (para.children.length > 1) {
+        pool.removeChild(para.id, para.children.length - 1)
+      }
+
+      const withCache = canonical(persistent.fullLayout(doc, pool))
+      const reference = canonical(new LayoutEngine(new EventBus(), testMeasurer).fullLayout(doc, pool))
+      expect(withCache, `step ${step} (action ${action})`).toBe(reference)
+    }
+
+    // 至少要证明这条路径真的命过缓存, 否则本用例会退化成"M1 的重复"
+    expect(persistent.getParagraphCacheStats().hits).toBeGreaterThan(0)
+  })
+
+
+  it('页眉存在时同样可重复', () => {
     const { doc, pool } = makeFixture()
-    // 页眉段落通过文档级 header 数组挂载, 与正文共用同一次布局
     const hText = createTextNode('页眉')
     const hPara = createParagraph([hText.id]) as Paragraph
     doc.header = [hPara.id]
