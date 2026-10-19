@@ -85,6 +85,8 @@ export class Draw {
   private layoutEngine: LayoutEngine
   renderer: LayeredRenderer
   private hitTestIndex: HitTestIndex
+  /** 上一次命中索引重建的起始页 (诊断: 等于总页数表示整份复用, 未重建) */
+  private lastHitRebuildStart = 0
   private eventBus: EventBus
   private document: DocumentTree | null = null
   private pool: NodePool | null = null
@@ -217,8 +219,9 @@ export class Draw {
 
     this.eventBus.on('render:request', () => this.render())
     this.eventBus.on('layout:changed', (pages: SLIFPage[]) => {
+      // 只同步页数组。命中索引的重建在 recomputeLayout 里按分页模式做:
+      // 这里若无条件全量重建, 增量分页省下的工作会被立刻还回去 (M2b)。
       this.pages = pages
-      this.hitTestIndex.rebuild(pages)
     })
 
     // 图片粒子渲染器 — 绑定到本 Draw 实例 (见字段声明注释, 不进单例 registry)
@@ -280,8 +283,24 @@ export class Draw {
     this.computedValues?.ensure()
     // invalidation 交给布局: 只有段落级失效才允许增量分页 (M2b, 契约 §16.1)
     this.pages = this.layoutEngine.fullLayout(this.document, pool, invalidation)
-    this.hitTestIndex.rebuild(this.pages)
+
+    // 命中索引跟随分页结果: 整份复用时不重建; 续排时只重建受影响页起
+    const pagination = this.layoutEngine.getPaginationStats()
+    if (pagination.mode === 'reuse-all') {
+      this.lastHitRebuildStart = this.pages.length
+    } else if (pagination.mode === 'resume' && pagination.reusedPages > 0) {
+      this.lastHitRebuildStart = pagination.reusedPages
+      this.hitTestIndex.rebuildFrom(this.pages, pagination.reusedPages)
+    } else {
+      this.lastHitRebuildStart = 0
+      this.hitTestIndex.rebuild(this.pages)
+    }
     return this.pages
+  }
+
+  /** 命中索引重建统计 (诊断/测试用; 不参与渲染决策) */
+  getHitIndexStats(): { rebuildStartPage: number; totalPages: number } {
+    return { rebuildStartPage: this.lastHitRebuildStart, totalPages: this.pages.length }
   }
 
   // ================================================================
