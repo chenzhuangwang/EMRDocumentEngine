@@ -39,7 +39,7 @@ import { ControlInputDialog } from '@/components/dialogs/ControlInputDialog'
 import { ControlChoiceDialog } from '@/components/dialogs/ControlChoiceDialog'
 import { initialConfigForCreate, controlFamilyOf } from '@/components/dialogs/controlConfigShared'
 import type { ControlConfigData, ReferenceKey } from '@/components/dialogs/controlConfigShared'
-import { documentApi, templateApi } from '@/services/api'
+import { templateApi } from '@/services/api'
 import { useUserStore } from '@/store'
 import { printHistory } from '@/services/PrintHistoryService'
 import { resolvePrintRange, selectPrintPages, buildPrintRecord, printDocKey } from '@emrde/document-engine/export'
@@ -60,8 +60,8 @@ import type { OutlineItem, SectionOutlineAction } from '@/components/sidebar/Out
 import { buildOutlineItems } from '@/components/sidebar/outlineModel'
 import type { EditorMode, ScoreResult, WatermarkConfig, PerfSummary } from '@emrde/document-engine'
 import type { QCIssue, QCResult } from '@emrde/document-engine'
-import type { MissingField } from '@emrde/document-engine'
 import type { CalcResult } from '@emrde/document-engine'
+import { useDocumentSave } from '@/hooks/useDocumentSave'
 
 /**
  * 触发一次下载 (Blob → object URL → 隐藏 <a> 点击 → 释放)。
@@ -298,13 +298,9 @@ function EditorPageInner({
   /** 质控结果 (契约 §12.2) — 只读派生, null = 尚未检查 */
   const [qcResult, setQcResult] = useState<QCResult | null>(null)
   /**
-   * 保存前的必填未填确认框 (契约 §12.11)。missing 是**弹框打开那一刻**的快照:
-   * 弹框期间用户可能已经填了几个, 但"缺哪些"以本次保存的判定为准 —— 用户选
-   * "仍然保存"后不再重新判定 (避免"越填越弹")。
+   * 保存前的必填未填确认框 (契约 §12.11) 与保存流程本身都住在
+   * `useDocumentSave` 里 —— 那里有用例锁, 这段接线不再只靠人读代码。
    */
-  const [completeness, setCompleteness] = useState<{ open: boolean; missing: MissingField[] }>(
-    { open: false, missing: [] },
-  )
 
   /** 打印预览的页面图 (null = 未打开预览) */
   const [printPages, setPrintPages] = useState<string[] | null>(null)
@@ -625,6 +621,17 @@ function EditorPageInner({
     if (issue.paragraphPath) revealLocation(issue.paragraphPath, 0)
   }, [revealLocation])
 
+  /**
+   * 保存流程 (契约 §12.11): 闸门 → 确认框 → 落盘。
+   * 逻辑在 `useDocumentSave` 里 (可单测), 这里只把它接到页面与各个入口上。
+   */
+  const {
+    completeOpen, completeMissing,
+    handleSave, handleSaveAnyway, handleMissingJump, dismissComplete,
+  } = useDocumentSave({
+    editorRef, isNew, docId, navigate, revealMissing: revealLocation,
+  })
+
   /** 批注条目跳转 (此前该回调未接线, 点批注无反应) */
   const handleSelectCommentThread = useCallback((threadId: string) => {
     const thread = (editorRef.current?.getComments() ?? []).find((t) => t.id === threadId)
@@ -852,64 +859,6 @@ function EditorPageInner({
     }
   }, [editorRef])
 
-  /** 真正落盘 (不带闸门) —— Ctrl+S / 工具栏 / 确认框的"仍然保存"共用同一条路径 */
-  const performSave = useCallback(async () => {
-    const editor = editorRef.current
-    if (!editor) return
-    const store = editor.getStore()
-    store.setSaveStatus('saving')
-    try {
-      // 序列化含节点 payload 的完整 JSON 字符串 (后端 content 为 String 字段)
-      const content = editor.getSerializedDocument()
-      if (isNew) {
-        const res = await documentApi.create({ title: editor.getDocumentTitle(), content })
-        const newId = res.data.data?.id
-        if (newId) navigate(`/editor/${newId}`, { replace: true })
-        console.debug('[EditorPage] created:', newId)
-      } else if (docId) {
-        await documentApi.update(docId, { title: editor.getDocumentTitle(), content })
-        console.debug('[EditorPage] updated:', docId)
-      }
-      store.setSaveStatus('saved')
-      store.setDirty(false)
-    } catch (err) {
-      console.error('保存失败:', err)
-      store.setSaveStatus('error')
-    }
-  }, [isNew, docId, editorRef, navigate])
-
-  /**
-   * 保存入口 (契约 §12.11): 先过完整性闸门, **再**落盘。
-   *
-   * 闸门**不硬拦** —— 缺必填项时弹确认框列出未填项 (可点击跳转), 三个出口:
-   * 跳到第一处 / 仍然保存 / 取消。理由是临床工作流: 医生要中途存草稿时硬拦会
-   * 丢工作, 而"存了一份不全的病历"至少是**可见**的 (确认框明说了缺什么)。
-   *
-   * 引擎只判定 (Editor.validateRequired), 拦不拦是本组件的事 —— 保存的所有权
-   * 在应用侧, 引擎不拥有保存 (§12.11)。
-   */
-  const handleSave = useCallback(async () => {
-    const editor = editorRef.current
-    if (!editor) return
-    const { ok, missing } = editor.validateRequired()
-    if (!ok) {
-      setCompleteness({ open: true, missing })
-      return
-    }
-    await performSave()
-  }, [editorRef, performSave])
-
-  /** 确认框"仍然保存" — 用户已看过缺项并明确选择继续 */
-  const handleSaveAnyway = useCallback(async () => {
-    setCompleteness({ open: false, missing: [] })
-    await performSave()
-  }, [performSave])
-
-  /** 确认框条目跳转 — 与质控问题/批注共用 revealLocation, 不另写一套定位 */
-  const handleMissingJump = useCallback((field: MissingField) => {
-    revealLocation(field.paragraphPath, 0)
-    setCompleteness({ open: false, missing: [] })
-  }, [revealLocation])
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -1572,11 +1521,11 @@ function EditorPageInner({
       />
       {/* 保存前完整性闸门 (契约 §12.11) — 只列缺项, 不硬拦 */}
       <CompletenessDialog
-        open={completeness.open}
-        missing={completeness.missing}
+        open={completeOpen}
+        missing={completeMissing}
         onJump={handleMissingJump}
         onSaveAnyway={handleSaveAnyway}
-        onClose={() => setCompleteness({ open: false, missing: [] })}
+        onClose={dismissComplete}
       />
       <BookmarkDialog
         open={bookmarkOpen}
