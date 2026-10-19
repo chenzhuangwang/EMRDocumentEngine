@@ -53,7 +53,7 @@ import { resolveCellPosition, getCaretScope, resolveParagraphRegion, resolveSibl
 import type { CellPosition } from './state/CaretScope'
 import { screenToDoc, findPageByDocY, pageCenteringOffset, getTotalDocHeight as docHeightOf } from './layout/table/TableCoordUtil'
 import { findControlItemAt } from './interaction/ControlHitTest'
-import { buildContextSnapshot } from './context/EditorContext'
+import { buildContextSnapshot, resolveRevisionFact } from './context/EditorContext'
 import type { EditorContextSnapshot } from './context/EditorContext'
 import { insertRow, deleteRow, insertColumn, deleteColumn, resizeColumn, getCellGridPosition, mergeAdjacentCells, mergeRange, splitCell } from './document/table/TableOps'
 import type { CellRange } from './document/table/TableOps'
@@ -858,6 +858,10 @@ export class Editor {
       ?? nodeId
     const sectionFact = this.buildSectionFact(hitBlockId)
 
+    // 命中文字上的修订事实 (契约 §12.13) —— 与 sectionFact 同旨: 纯函数
+    // buildContextSnapshot 不能查池, 事实必须由边界采集后传入。
+    const revisionFact = textHit ? this.revisionFactAt(textHit.paragraphId, textHit.offset) : null
+
     return buildContextSnapshot({
       nodeId,
       entryType,
@@ -872,7 +876,25 @@ export class Editor {
       siblings: this.resolveHitSiblings(textHit),
       selection: this.store.state.runtime.selection,
       sectionFact,
+      revisionFact,
     })
+  }
+
+  /**
+   * 采集命中字符所在的文字节点上的修订 (契约 §12.13)。
+   *
+   * 偏移解析与"光标下是哪个字符"的边界偏置都在 `resolveRevisionFact` 里
+   * (纯函数, 可单测) —— 这里只提供池访问。
+   */
+  private revisionFactAt(
+    paragraphId: string, offset: number,
+  ): import('./context/EditorContext').ContextRevisionFact | null {
+    const para = this.pool.nodes.get(paragraphId) as { children?: readonly string[] } | undefined
+    return resolveRevisionFact(
+      para,
+      this.pool.resolveCharOffset(paragraphId, offset),
+      (id) => this.pool.nodes.get(id) as import('./context/EditorContext').RevisionNodeView | undefined,
+    )
   }
 
   /**

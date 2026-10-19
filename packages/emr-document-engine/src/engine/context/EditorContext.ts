@@ -66,6 +66,25 @@ export interface ContextSectionFact {
   insertable: boolean
 }
 
+/**
+ * 命中文字上的修订事实 (契约 §12.13)。
+ *
+ * 与 `sectionFact` / `tableGrowable` 同形: **附加事实, 不是 kind** —— 纯函数
+ * `buildContextSnapshot` 不能查池, 所以"光标下这段文字是不是修订、谁改的"
+ * 必须由边界 (`Editor.resolveContextAt`) 采集后传入。
+ *
+ * 只带一个节点的身份: 逐处接受/拒绝的作用单位就是一个 `TextNode`, 本引擎
+ * 没有"修订范围"这个概念 (契约 §12.13), 不要在这里加范围数组。
+ */
+export interface ContextRevisionFact {
+  /** 命中点所在的文字节点 */
+  nodeId: string
+  type: 'insert' | 'delete' | 'modify'
+  author?: string
+  /** epoch ms; 源数据没有可解析日期时缺省 */
+  at?: number
+}
+
 /** 正文文本命中 */
 export interface TextContext extends ContextBase {
   kind: 'text'
@@ -74,6 +93,8 @@ export interface TextContext extends ContextBase {
   offset: number
   scope: CaretScope
   coversSelection: boolean
+  /** 命中点文字上的修订 (契约 §12.13); 无修订为 null */
+  revisionFact: ContextRevisionFact | null
 }
 
 /** 表格单元格内文本命中 */
@@ -88,6 +109,8 @@ export interface CellContext extends ContextBase {
   coversSelection: boolean
   /** 所在表是否声明「填写时可增长」(契约 §12.9) */
   tableGrowable: boolean
+  /** 命中点文字上的修订 (契约 §12.13); 无修订为 null */
+  revisionFact: ContextRevisionFact | null
 }
 
 /** 表格命中 (未定位到单元格文本, 如空单元格/单元格边距) */
@@ -185,6 +208,11 @@ export interface ContextFacts {
   selection: SelectionState
   /** 命中点所属节事实 (契约 §31.2 R1); 无则 null。与 tableGrowable 同类, 由边界采集 */
   sectionFact: ContextSectionFact | null
+  /**
+   * 命中点文字上的修订事实 (契约 §12.13); 无修订或非文字命中为 null。
+   * 与 sectionFact 同旨: 纯函数不能查池, 事实由边界采集。
+   */
+  revisionFact: ContextRevisionFact | null
 }
 
 // ---- 纯函数 ----
@@ -255,6 +283,60 @@ export function isCoversPoint(
 }
 
 /**
+ * 修订节点的最小读视图 —— 本模块是纯函数, 不依赖 DocumentModel 的完整类型。
+ */
+export interface RevisionNodeView {
+  type?: string
+  text?: string
+  revision?: { type: 'insert' | 'delete' | 'modify'; author?: string; at?: number }
+}
+
+/**
+ * 命中结果 → 修订事实 (契约 §12.13)。
+ *
+ * 输入是 `NodePool.resolveCharOffset` 的结果 —— 与光标定位同一口径 (文本计
+ * `text.length`, 非文本内联计 1), 不另造偏移语义。
+ *
+ * **边界偏置**: `resolveCharOffset` 在"两节点之间"返回**前一个节点的末尾**
+ * (`remaining <= len`)。对一字符长的修订节点而言, 点它左半边会得到前一个
+ * 节点, 于是红色文字上右键点不中 (实测如此)。命中要的是"光标下那个字符",
+ * 不是"把光标放在哪里", 所以这里补一步: 解析结果停在无标记节点末尾、而紧随
+ * 其后的兄弟带标记时, 取后者。节点内部不触发该偏置, 不会误伤相邻节点。
+ */
+export function resolveRevisionFact(
+  para: { children?: readonly string[] } | undefined,
+  resolved: { textNodeId: string; localOffset: number } | null,
+  nodeAt: (id: string) => RevisionNodeView | undefined,
+): ContextRevisionFact | null {
+  if (!resolved) return null
+  const direct = factOfNode(resolved.textNodeId, nodeAt)
+  if (direct) return direct
+
+  const node = nodeAt(resolved.textNodeId)
+  if (node?.type !== 'text' || resolved.localOffset !== (node.text ?? '').length) return null
+
+  const children = para?.children ?? []
+  const idx = children.indexOf(resolved.textNodeId)
+  if (idx < 0) return null
+  const nextId = children[idx + 1]
+  return nextId ? factOfNode(nextId, nodeAt) : null
+}
+
+function factOfNode(
+  nodeId: string,
+  nodeAt: (id: string) => RevisionNodeView | undefined,
+): ContextRevisionFact | null {
+  const node = nodeAt(nodeId)
+  if (node?.type !== 'text' || !node.revision) return null
+  return {
+    nodeId,
+    type: node.revision.type,
+    ...(node.revision.author !== undefined ? { author: node.revision.author } : {}),
+    ...(node.revision.at !== undefined ? { at: node.revision.at } : {}),
+  }
+}
+
+/**
  * 依据采集到的事实构建上下文快照 (纯函数, 无副作用)。
  *
  * 判别顺序 (设计 v2):
@@ -291,6 +373,7 @@ export function buildContextSnapshot(facts: ContextFacts): EditorContextSnapshot
       offset: facts.textHit.offset,
       coversSelection: isCoversPoint(facts.selection, facts.textHit, facts.siblings),
       tableGrowable: facts.tableGrowable,
+      revisionFact: facts.revisionFact,
     }
   }
 
@@ -316,6 +399,7 @@ export function buildContextSnapshot(facts: ContextFacts): EditorContextSnapshot
       offset: facts.textHit.offset,
       scope: facts.textHit.scope,
       coversSelection: isCoversPoint(facts.selection, facts.textHit, facts.siblings),
+      revisionFact: facts.revisionFact,
     }
   }
 

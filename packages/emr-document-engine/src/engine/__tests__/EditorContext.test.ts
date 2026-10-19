@@ -12,7 +12,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
-import { buildContextSnapshot, isCoversPoint } from '../context/EditorContext'
+import { buildContextSnapshot, isCoversPoint, resolveRevisionFact } from '../context/EditorContext'
 import type { ContextFacts } from '../context/EditorContext'
 import type { SelectionState } from '../state/EditorRuntimeState'
 import { createDefaultRuntimeState } from '../state/EditorRuntimeState'
@@ -42,6 +42,7 @@ function baseFacts(overrides: Partial<ContextFacts> = {}): ContextFacts {
     tableGrowable: false,
     selection: makeSelection(false, 0, 0),
     sectionFact: null,
+    revisionFact: null,
     ...overrides,
   }
 }
@@ -114,6 +115,38 @@ describe('buildContextSnapshot 种类判别', () => {
     expect(snap).toMatchObject({
       kind: 'text', paragraphId: 'p1', offset: 3, scope: { type: 'body' },
     })
+  })
+
+  it('修订事实随文字命中透传 (契约 §12.13) —— text 与 cell 都带', () => {
+    const fact = { nodeId: 't-rev', type: 'delete' as const, author: '姜波', at: 1679904930000 }
+    const textSnap = buildContextSnapshot(baseFacts({
+      entryType: 'text',
+      nodeId: 't-rev',
+      textHit: { paragraphId: 'p1', paragraphPath: ['doc', 'p1'], offset: 3, scope: { type: 'body' } },
+      revisionFact: fact,
+    }))
+    expect(textSnap).toMatchObject({ kind: 'text', revisionFact: fact })
+
+    const cellSnap = buildContextSnapshot(baseFacts({
+      entryType: 'table',
+      nodeId: 'table-1',
+      cellPosition: { tableId: 'table-1', row: 0, col: 0 },
+      textHit: {
+        paragraphId: 'p-in-cell', paragraphPath: ['doc', 'p-in-cell'], offset: 1,
+        scope: { type: 'cell', tableId: 'table-1', row: 0, col: 0 },
+      },
+      revisionFact: fact,
+    }))
+    expect(cellSnap).toMatchObject({ kind: 'cell', revisionFact: fact })
+  })
+
+  it('无修订时 revisionFact 为 null (不得凭空造事实)', () => {
+    const snap = buildContextSnapshot(baseFacts({
+      entryType: 'text',
+      nodeId: 'text-1',
+      textHit: { paragraphId: 'p1', paragraphPath: ['doc', 'p1'], offset: 0, scope: { type: 'body' } },
+    }))
+    expect(snap).toMatchObject({ kind: 'text', revisionFact: null })
   })
 
   it('优先级: 控件命中 > 页眉区域 > 单元格 > 表格 > 文本', () => {
@@ -228,5 +261,56 @@ describe('isCoversPoint 选区覆盖判定', () => {
       // 命中其他段落 → 不在同段选区
       expect(isCoversPoint(sel, { paragraphPath: ['doc', 'p2'], offset: 5 }, [...siblings])).toBe(false)
     })
+  })
+})
+
+// ============================================================
+// resolveRevisionFact — 命中点 → 修订事实 (契约 §12.13)
+//
+// 重点是**边界偏置**: NodePool.resolveCharOffset 在两节点之间返回前一个
+// 节点的末尾, 而右键要的是"光标下那个字符"。少了这一步, 一字符长的红色
+// 修订文字左半边点不中 (浏览器实测发现)。
+// ============================================================
+
+describe('resolveRevisionFact', () => {
+  const nodes: Record<string, { type?: string; text?: string; revision?: { type: 'insert' | 'delete' | 'modify'; author?: string; at?: number } }> = {
+    a: { type: 'text', text: 'ABCD' },
+    del: { type: 'text', text: 'X', revision: { type: 'delete', author: '姜波', at: 1679904930000 } },
+    b: { type: 'text', text: 'EF' },
+    img: { type: 'image' },
+  }
+  const nodeAt = (id: string) => nodes[id]
+  const para = { children: ['a', 'del', 'b'] }
+
+  it('命中在修订节点内 → 取该节点, 作者/时间齐全', () => {
+    const fact = resolveRevisionFact(para, { textNodeId: 'del', localOffset: 0 }, nodeAt)
+    expect(fact).toEqual({ nodeId: 'del', type: 'delete', author: '姜波', at: 1679904930000 })
+  })
+
+  it('边界: 停在前一无标记节点末尾、后一个带标记 → 取后一个 (左半边可点)', () => {
+    // resolveCharOffset 对 offset=4 返回 { a, localOffset: 4 } —— 正是红色字符的左边沿
+    expect(resolveRevisionFact(para, { textNodeId: 'a', localOffset: 4 }, nodeAt)?.nodeId).toBe('del')
+  })
+
+  it('边界但后一个也无标记 → null (不误伤普通文字)', () => {
+    expect(resolveRevisionFact(para, { textNodeId: 'b', localOffset: 2 }, nodeAt)).toBeNull()
+  })
+
+  it('停在节点内部 (不贴右沿) 不做偏置', () => {
+    expect(resolveRevisionFact(para, { textNodeId: 'a', localOffset: 2 }, nodeAt)).toBeNull()
+  })
+
+  it('修订字段不完整时不产生空字段', () => {
+    const only = { x: { type: 'text', text: 'Q', revision: { type: 'insert' } } }
+    expect(resolveRevisionFact({ children: ['x'] }, { textNodeId: 'x', localOffset: 0 }, (id) => only[id]))
+      .toEqual({ nodeId: 'x', type: 'insert' })
+  })
+
+  it('非 TextNode (图片等) 永远无修订事实', () => {
+    expect(resolveRevisionFact({ children: ['img'] }, { textNodeId: 'img', localOffset: 0 }, nodeAt)).toBeNull()
+  })
+
+  it('解析失败 (resolved 为 null) → null', () => {
+    expect(resolveRevisionFact(para, null, nodeAt)).toBeNull()
   })
 })

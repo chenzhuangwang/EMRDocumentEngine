@@ -183,6 +183,12 @@ export interface LocaleMessages {
   'editor.contextMenu.delete': string
   'editor.contextMenu.deleteRow': string
   'editor.contextMenu.deleteColumn': string
+  'editor.contextMenu.acceptInsertRevision': string
+  'editor.contextMenu.rejectInsertRevision': string
+  'editor.contextMenu.acceptDeleteRevision': string
+  'editor.contextMenu.rejectDeleteRevision': string
+  'editor.contextMenu.acceptModifyRevision': string
+  'editor.contextMenu.rejectModifyRevision': string
   'editor.contextMenu.toggleTableGrowable': string
   'editor.contextMenu.bold': string
   'editor.contextMenu.italic': string
@@ -1188,6 +1194,12 @@ const zhCN: LocaleMessages = {
   'editor.contextMenu.delete': '删除',
   'editor.contextMenu.deleteRow': '删除行',
   'editor.contextMenu.deleteColumn': '删除列',
+  'editor.contextMenu.acceptInsertRevision': '接受插入',
+  'editor.contextMenu.rejectInsertRevision': '拒绝插入',
+  'editor.contextMenu.acceptDeleteRevision': '接受删除',
+  'editor.contextMenu.rejectDeleteRevision': '拒绝删除',
+  'editor.contextMenu.acceptModifyRevision': '接受修改',
+  'editor.contextMenu.rejectModifyRevision': '拒绝修改',
   'editor.contextMenu.toggleTableGrowable': '填写时可增长',
   'editor.contextMenu.bold': '加粗',
   'editor.contextMenu.italic': '斜体',
@@ -2089,6 +2101,12 @@ const enUS: LocaleMessages = {
   'editor.contextMenu.delete': 'Delete',
   'editor.contextMenu.deleteRow': 'Delete Row',
   'editor.contextMenu.deleteColumn': 'Delete Column',
+  'editor.contextMenu.acceptInsertRevision': 'Accept Insertion',
+  'editor.contextMenu.rejectInsertRevision': 'Reject Insertion',
+  'editor.contextMenu.acceptDeleteRevision': 'Accept Deletion',
+  'editor.contextMenu.rejectDeleteRevision': 'Reject Deletion',
+  'editor.contextMenu.acceptModifyRevision': 'Accept Change',
+  'editor.contextMenu.rejectModifyRevision': 'Reject Change',
   'editor.contextMenu.toggleTableGrowable': 'Growable on Fill',
   'editor.contextMenu.bold': 'Bold',
   'editor.contextMenu.italic': 'Italic',

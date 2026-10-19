@@ -31,7 +31,7 @@
 // (useEditorContextMenu) 注入; 未注入时回退 zh-CN 字面量。
 // ============================================================
 
-import type { EditorContextSnapshot } from '@emrde/document-engine'
+import type { EditorContextSnapshot, ContextRevisionFact } from '@emrde/document-engine'
 import type { LocaleMessages, LocaleParams } from '@emrde/document-engine'
 
 /** 翻译函数形态 (由调用方注入 useTranslation().t) */
@@ -64,6 +64,12 @@ const LABEL_KEYS: Record<ContextMenuActionId, keyof LocaleMessages> = {
   moveSectionUp: 'editor.contextMenu.moveSectionUp',
   moveSectionDown: 'editor.contextMenu.moveSectionDown',
   editSectionCode: 'editor.contextMenu.editSectionCode',
+  acceptInsertRevision: 'editor.contextMenu.acceptInsertRevision',
+  rejectInsertRevision: 'editor.contextMenu.rejectInsertRevision',
+  acceptDeleteRevision: 'editor.contextMenu.acceptDeleteRevision',
+  rejectDeleteRevision: 'editor.contextMenu.rejectDeleteRevision',
+  acceptModifyRevision: 'editor.contextMenu.acceptModifyRevision',
+  rejectModifyRevision: 'editor.contextMenu.rejectModifyRevision',
 }
 
 /** zh-CN 兜底 (t 未注入时) —— 与 editor.contextMenu.* 的 zh-CN 值保持一致 */
@@ -77,6 +83,12 @@ const FALLBACK: Record<ContextMenuActionId, string> = {
   insertSection: '插入节', selectSection: '选中本节', deleteSection: '删除本节',
   moveSectionUp: '本节上移', moveSectionDown: '本节下移',
   editSectionCode: '设置节代码…',
+  acceptInsertRevision: '接受插入',
+  rejectInsertRevision: '拒绝插入',
+  acceptDeleteRevision: '接受删除',
+  rejectDeleteRevision: '拒绝删除',
+  acceptModifyRevision: '接受修改',
+  rejectModifyRevision: '拒绝修改',
 }
 
 /** id → 显示文案 (t 注入时走 i18n, 否则回退 zh-CN 字面量) */
@@ -95,6 +107,9 @@ export type ContextMenuActionId =
   | 'properties'
   | 'insertSection' | 'selectSection' | 'deleteSection'
   | 'moveSectionUp' | 'moveSectionDown' | 'editSectionCode'
+  | 'acceptInsertRevision' | 'rejectInsertRevision'
+  | 'acceptDeleteRevision' | 'rejectDeleteRevision'
+  | 'acceptModifyRevision' | 'rejectModifyRevision'
 
 /** 可点击的菜单项 */
 export interface ContextMenuEntryItem {
@@ -104,6 +119,11 @@ export interface ContextMenuEntryItem {
   enabled: boolean
   /** 选中态 (格式/对齐项); 无状态动作 (复制/粘贴/删除/清除格式/缩进) 不设置 */
   checked?: boolean
+  /**
+   * 右侧灰色旁注 (只用于「这是谁改的」这类文档事实, 不是第二个标签)。
+   * 目前只有修订项用它: 作者 + 时间本来就存在 RevisionMark 上, 但没有别的出口。
+   */
+  hint?: string
 }
 
 /** 分组分隔符 */
@@ -204,6 +224,53 @@ function sectionEntries(fact: EditorContextSnapshot['sectionFact'], t?: T): Cont
   return entries.some((e) => e.kind === 'item' && e.enabled) ? [SEP, ...entries] : []
 }
 
+/** 修订类型 → 接受/拒绝的动作 id (标签按类型区分: 接受删除会真删掉这段文字) */
+const REVISION_IDS: Record<ContextRevisionFact['type'], { accept: ContextMenuActionId; reject: ContextMenuActionId }> = {
+  insert: { accept: 'acceptInsertRevision', reject: 'rejectInsertRevision' },
+  delete: { accept: 'acceptDeleteRevision', reject: 'rejectDeleteRevision' },
+  modify: { accept: 'acceptModifyRevision', reject: 'rejectModifyRevision' },
+}
+
+/** 作者 + 时间 → 旁注。纯数字格式化, 不依赖 locale (日期已经是 epoch ms) */
+function revisionHint(fact: ContextRevisionFact): string | undefined {
+  const parts: string[] = []
+  if (fact.author) parts.push(fact.author)
+  if (fact.at !== undefined) {
+    const d = new Date(fact.at)
+    if (!Number.isNaN(d.getTime())) {
+      const p = (n: number) => String(n).padStart(2, '0')
+      parts.push(
+        `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`,
+      )
+    }
+  }
+  return parts.length > 0 ? parts.join(' · ') : undefined
+}
+
+/**
+ * 修订操作组 (契约 §12.13) —— 命中文字带修订时追加在菜单末尾。
+ *
+ * 事实来自快照的 `revisionFact` (边界采集, 与 sectionFact 同形): UI **不查模型**,
+ * 引擎也不返回菜单项 (RULE 10)。作用单位是一个 TextNode —— 引擎没有"修订范围"。
+ *
+ * 标签按类型区分而不是笼统的「接受/拒绝修订」: 接受删除 = 这段文字真的没了,
+ * 拒绝插入 = 这段文字真的没了。先看完按钮再按下去。
+ */
+function revisionEntries(fact: ContextRevisionFact | null | undefined, t?: T): ContextMenuEntry[] {
+  if (!fact) return []
+  const ids = REVISION_IDS[fact.type]
+  if (!ids) return []
+  const hint = revisionHint(fact)
+  return [
+    SEP,
+    {
+      kind: 'item', id: ids.accept, label: labelOf(ids.accept, t), enabled: true,
+      ...(hint !== undefined ? { hint } : {}),
+    },
+    { kind: 'item', id: ids.reject, label: labelOf(ids.reject, t), enabled: true },
+  ]
+}
+
 /**
  * 由上下文快照 + 样式投影派生菜单条目 (纯函数)。
  *
@@ -231,7 +298,13 @@ export function buildContextMenuModel(
 ): ContextMenuModel {
   switch (snapshot.kind) {
     case 'text':
-      return { entries: [...textBodyEntries(snapshot.coversSelection, style, t), ...sectionEntries(snapshot.sectionFact, t)] }
+      return {
+        entries: [
+          ...textBodyEntries(snapshot.coversSelection, style, t),
+          ...sectionEntries(snapshot.sectionFact, t),
+          ...revisionEntries(snapshot.revisionFact, t),
+        ],
+      }
     case 'cell':
       return {
         entries: [
@@ -256,6 +329,7 @@ export function buildContextMenuModel(
           SEP,
           ...listLevelEntries(t),
           ...sectionEntries(snapshot.sectionFact, t),
+          ...revisionEntries(snapshot.revisionFact, t),
         ],
       }
     case 'image':

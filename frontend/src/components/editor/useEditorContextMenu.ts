@@ -30,6 +30,14 @@ interface ContextMenuState {
 
 const CLOSED_STATE: ContextMenuState = { open: false, x: 0, y: 0, snapshot: null }
 
+/**
+ * 取快照上的修订事实 (契约 §12.13) —— 只有文字类命中才可能带修订。
+ * 事实由引擎边界采集 (与 sectionFact 同形), 这里只读, 不去查模型。
+ */
+function revisionFactOf(snap: EditorContextSnapshot | null) {
+  return snap && (snap.kind === 'text' || snap.kind === 'cell') ? snap.revisionFact : null
+}
+
 export interface UseEditorContextMenuOptions {
   /** 设计模式控件「属性」业务回调 (菜单只发 id, 由业务层映射到 Control Config Dialog) */
   onProperty?: (controlId: string) => void
@@ -177,6 +185,23 @@ export function useEditorContextMenu(options?: UseEditorContextMenuOptions) {
       case 'editSectionCode': {
         const sec = state.snapshot?.sectionFact
         if (sec) onEditSectionCode?.(sec.id)
+        break
+      }
+      // ---- 逐处接受/拒绝修订 (契约 §12.13) ----
+      // 作用单位是**一个 TextNode**, 由快照的 revisionFact 给出;
+      // 与状态栏的"接受/拒绝全部"走同一个命令 (可撤销、可 redo)。
+      case 'acceptInsertRevision':
+      case 'acceptDeleteRevision':
+      case 'acceptModifyRevision': {
+        const fact = revisionFactOf(state.snapshot)
+        if (fact) editor.acceptRevisions([fact.nodeId])
+        break
+      }
+      case 'rejectInsertRevision':
+      case 'rejectDeleteRevision':
+      case 'rejectModifyRevision': {
+        const fact = revisionFactOf(state.snapshot)
+        if (fact) editor.rejectRevisions([fact.nodeId])
         break
       }
     }

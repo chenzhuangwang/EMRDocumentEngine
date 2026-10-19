@@ -332,6 +332,7 @@ export {
 } from './context/EditorContext'
 export type {
   EditorContextSnapshot, ContextFacts, TextHit,
+  ContextRevisionFact, ContextSectionFact,
   TextContext, CellContext, TableContext, ImageContext,
   SeparatorContext, SectionBreakContext, SmartTextContext,
   HeaderFooterContext, BlankContext,

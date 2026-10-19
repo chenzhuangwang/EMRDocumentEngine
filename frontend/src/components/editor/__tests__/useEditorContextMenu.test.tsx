@@ -25,13 +25,17 @@ function makeEditor(resolve: (e: MouseEvent) => EditorContextSnapshot) {
   const selectControl = vi.fn()
   const collapseSelectionToPoint = vi.fn()
   const focus = vi.fn()
+  const acceptRevisions = vi.fn()
+  const rejectRevisions = vi.fn()
   const editor = {
     resolveContextAt: (e: MouseEvent) => resolve(e),
     selectControl,
     collapseSelectionToPoint,
     focus,
+    acceptRevisions,
+    rejectRevisions,
   } as unknown as Editor
-  return { editor, selectControl, collapseSelectionToPoint, focus }
+  return { editor, selectControl, collapseSelectionToPoint, focus, acceptRevisions, rejectRevisions }
 }
 
 function Harness({ onProperty }: { onProperty?: (id: string) => void }) {
@@ -40,13 +44,15 @@ function Harness({ onProperty }: { onProperty?: (id: string) => void }) {
     <div>
       <div data-testid="target" onContextMenu={cm.onContextMenu}>画布</div>
       <button onClick={() => cm.runAction('properties')}>属性</button>
+      <button onClick={() => cm.runAction('acceptDeleteRevision')}>接受删除</button>
+      <button onClick={() => cm.runAction('rejectInsertRevision')}>拒绝插入</button>
       <button onClick={() => cm.close()}>关闭</button>
     </div>
   )
 }
 
 function renderHarness(resolve: (e: MouseEvent) => EditorContextSnapshot, onProperty?: (id: string) => void) {
-  const { editor, selectControl, collapseSelectionToPoint, focus } = makeEditor(resolve)
+  const { editor, selectControl, collapseSelectionToPoint, focus, acceptRevisions, rejectRevisions } = makeEditor(resolve)
   const store = new EditorStore()
   store.setMode('design')
   const value: EditorContextValue = { editorRef: { current: editor }, ready: true, store }
@@ -55,7 +61,7 @@ function renderHarness(resolve: (e: MouseEvent) => EditorContextSnapshot, onProp
       <Harness onProperty={onProperty} />
     </EditorContext.Provider>,
   )
-  return { editor, selectControl, collapseSelectionToPoint, focus }
+  return { editor, selectControl, collapseSelectionToPoint, focus, acceptRevisions, rejectRevisions }
 }
 
 const smartText = (controlId: string): EditorContextSnapshot => ({
@@ -92,7 +98,7 @@ describe('useEditorContextMenu — 设计模式控件属性 (契约 §12.7)', ()
     const { selectControl, collapseSelectionToPoint } = renderHarness(() => ({
       kind: 'text', paragraphId: 'p1', paragraphPath: ['doc', 'p1'], offset: 3,
       scope: { type: 'body' }, coversSelection: false, pageIndex: 0, localX: 5, localY: 5,
-      sectionFact: null,
+      sectionFact: null, revisionFact: null,
     }), onProperty)
     fireEvent.contextMenu(screen.getByTestId('target'))
     expect(collapseSelectionToPoint).toHaveBeenCalledWith(['doc', 'p1'], 3)
@@ -100,5 +106,69 @@ describe('useEditorContextMenu — 设计模式控件属性 (契约 §12.7)', ()
     // text 上下文点「属性」不触发 onProperty
     fireEvent.click(screen.getByRole('button', { name: '属性' }))
     expect(onProperty).not.toHaveBeenCalled()
+  })
+})
+
+// ================================================================
+// 逐处接受/拒绝修订 (契约 §12.13)
+//
+// 分派只做一件事: 把快照 revisionFact 里的 nodeId 交给 Engine 的
+// acceptRevisions / rejectRevisions (它们走 RevisionDecisionCommand)。
+// ================================================================
+
+function revisionTextSnapshot(revisionFact: {
+  nodeId: string; type: 'insert' | 'delete' | 'modify'; author?: string; at?: number
+} | null): EditorContextSnapshot {
+  return {
+    kind: 'text', paragraphId: 'p1', paragraphPath: ['doc', 'p1'], offset: 3,
+    scope: { type: 'body' }, coversSelection: false, pageIndex: 0, localX: 5, localY: 5,
+    sectionFact: null, revisionFact,
+  }
+}
+
+describe('useEditorContextMenu — 逐处接受/拒绝修订 (§12.13)', () => {
+  it('接受删除 → acceptRevisions([命中节点]), 并把焦点交还编辑器', () => {
+    const { acceptRevisions, rejectRevisions, focus } = renderHarness(
+      () => revisionTextSnapshot({ nodeId: 't-del', type: 'delete' }),
+    )
+    fireEvent.contextMenu(screen.getByTestId('target'))
+    fireEvent.click(screen.getByRole('button', { name: '接受删除' }))
+    expect(acceptRevisions).toHaveBeenCalledWith(['t-del'])
+    expect(rejectRevisions).not.toHaveBeenCalled()
+    // 菜单关闭后必须恢复焦点, 否则容器级快捷键 (Ctrl+Z) 失效
+    expect(focus).toHaveBeenCalled()
+  })
+
+  it('拒绝插入 → rejectRevisions([命中节点])', () => {
+    const { acceptRevisions, rejectRevisions } = renderHarness(
+      () => revisionTextSnapshot({ nodeId: 't-ins', type: 'insert' }),
+    )
+    fireEvent.contextMenu(screen.getByTestId('target'))
+    fireEvent.click(screen.getByRole('button', { name: '拒绝插入' }))
+    expect(rejectRevisions).toHaveBeenCalledWith(['t-ins'])
+    expect(acceptRevisions).not.toHaveBeenCalled()
+  })
+
+  it('cell 命中带修订 → 同样按 revisionFact 派发', () => {
+    const { acceptRevisions } = renderHarness(() => ({
+      kind: 'cell', tableId: 'tbl', row: 0, col: 0,
+      paragraphId: 'p1', paragraphPath: ['doc', 'p1'], offset: 3,
+      coversSelection: false, tableGrowable: false, pageIndex: 0, localX: 5, localY: 5,
+      sectionFact: null, revisionFact: { nodeId: 't-cell', type: 'delete' },
+    }))
+    fireEvent.contextMenu(screen.getByTestId('target'))
+    fireEvent.click(screen.getByRole('button', { name: '接受删除' }))
+    expect(acceptRevisions).toHaveBeenCalledWith(['t-cell'])
+  })
+
+  it('快照没有修订事实 → 动作不发任何命令 (防误伤普通文字)', () => {
+    const { acceptRevisions, rejectRevisions } = renderHarness(
+      () => revisionTextSnapshot(null),
+    )
+    fireEvent.contextMenu(screen.getByTestId('target'))
+    fireEvent.click(screen.getByRole('button', { name: '接受删除' }))
+    fireEvent.click(screen.getByRole('button', { name: '拒绝插入' }))
+    expect(acceptRevisions).not.toHaveBeenCalled()
+    expect(rejectRevisions).not.toHaveBeenCalled()
   })
 })

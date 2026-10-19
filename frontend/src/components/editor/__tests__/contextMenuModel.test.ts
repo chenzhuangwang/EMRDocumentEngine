@@ -18,7 +18,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { buildContextMenuModel, type ContextMenuActionId, type ContextMenuEntryItem, type ContextMenuStyleInfo } from '../contextMenuModel'
-import type { EditorContextSnapshot } from '@emrde/document-engine'
+import type { EditorContextSnapshot, ContextRevisionFact } from '@emrde/document-engine'
 
 /** 提取可点击条目 (过滤分隔符) */
 function items(snapshot: EditorContextSnapshot): { id: ContextMenuActionId; enabled: boolean }[] {
@@ -41,7 +41,7 @@ function entryChecked(
     .find((e) => e.id === id)?.checked
 }
 
-const base = { pageIndex: 0, localX: 10, localY: 10, sectionFact: null }
+const base = { pageIndex: 0, localX: 10, localY: 10, sectionFact: null, revisionFact: null }
 
 function textSnapshot(coversSelection: boolean): EditorContextSnapshot {
   return {
@@ -282,5 +282,88 @@ describe('buildContextMenuModel — Section 操作组', () => {
       .filter((e) => ['insertSection', 'selectSection', 'deleteSection', 'moveSectionUp', 'moveSectionDown', 'editSectionCode'].includes(e.id))
     expect(entries.length).toBeGreaterThan(0)
     for (const e of entries) expect(e.label.length).toBeGreaterThan(0)
+  })
+})
+
+// ============================================================
+// 逐处接受/拒绝修订 (契约 §12.13)
+//
+// 事实来自快照的 revisionFact (边界采集), UI 不查模型 —— 所以这里只验证
+// "事实 → 菜单条目" 这一段。动作分派见 useEditorContextMenu.test.tsx。
+// ============================================================
+
+/** 带修订事实的 text 快照 */
+function revisionSnapshot(
+  revisionFact: ContextRevisionFact,
+  kind: 'text' | 'cell' = 'text',
+): EditorContextSnapshot {
+  const common = {
+    ...base,
+    paragraphId: 'p1', paragraphPath: ['doc', 'p1'], offset: 3,
+    coversSelection: false, revisionFact,
+  }
+  return kind === 'text'
+    ? { ...common, kind: 'text', scope: { type: 'body' } } as EditorContextSnapshot
+    : { ...common, kind: 'cell', tableId: 't1', row: 0, col: 0, tableGrowable: false } as EditorContextSnapshot
+}
+
+describe('buildContextMenuModel — 逐处接受/拒绝修订 (§12.13)', () => {
+  it('无修订事实 → 不出现任何修订条目', () => {
+    const ids = items(textSnapshot(false)).map((i) => i.id)
+    for (const id of [
+      'acceptInsertRevision', 'rejectInsertRevision',
+      'acceptDeleteRevision', 'rejectDeleteRevision',
+      'acceptModifyRevision', 'rejectModifyRevision',
+    ] as const) {
+      expect(ids, id).not.toContain(id)
+    }
+  })
+
+  it('插入 → 接受插入 / 拒绝插入', () => {
+    const ids = items(revisionSnapshot({ nodeId: 't1', type: 'insert' })).map((i) => i.id)
+    expect(ids).toContain('acceptInsertRevision')
+    expect(ids).toContain('rejectInsertRevision')
+    expect(ids).not.toContain('acceptDeleteRevision')
+  })
+
+  it('删除 → 接受删除 / 拒绝删除', () => {
+    const ids = items(revisionSnapshot({ nodeId: 't1', type: 'delete' })).map((i) => i.id)
+    expect(ids).toContain('acceptDeleteRevision')
+    expect(ids).toContain('rejectDeleteRevision')
+    expect(ids).not.toContain('acceptInsertRevision')
+  })
+
+  it('修改 (预留类型, 导入可产生) → 接受修改 / 拒绝修改', () => {
+    const ids = items(revisionSnapshot({ nodeId: 't1', type: 'modify' })).map((i) => i.id)
+    expect(ids).toContain('acceptModifyRevision')
+    expect(ids).toContain('rejectModifyRevision')
+  })
+
+  it('cell 命中也带修订条目 (表格里的修订一样能逐处处理)', () => {
+    const ids = items(revisionSnapshot({ nodeId: 't1', type: 'delete' }, 'cell')).map((i) => i.id)
+    expect(ids).toContain('acceptDeleteRevision')
+  })
+
+  it('旁注 = 作者 · 时间; 只有作者或只有时间时不拼空段', () => {
+    const hintOf = (fact: Parameters<typeof revisionSnapshot>[0]) =>
+      buildContextMenuModel(revisionSnapshot(fact)).entries
+        .filter((e): e is ContextMenuEntryItem => e.kind === 'item')
+        .find((e) => e.id === 'acceptInsertRevision')?.hint
+
+    const at = new Date(2023, 2, 27, 16, 15, 30).getTime()
+    expect(hintOf({ nodeId: 't1', type: 'insert', author: '姜波', at })).toBe('姜波 · 2023-03-27 16:15')
+    expect(hintOf({ nodeId: 't1', type: 'insert', author: '姜波' })).toBe('姜波')
+    expect(hintOf({ nodeId: 't1', type: 'insert', at })).toBe('2023-03-27 16:15')
+    expect(hintOf({ nodeId: 't1', type: 'insert' })).toBeUndefined()
+  })
+
+  it('修订条目跟在菜单末尾, 且带非空 label', () => {
+    const entries = buildContextMenuModel(revisionSnapshot({ nodeId: 't1', type: 'insert' })).entries
+    const last = entries[entries.length - 1]
+    expect(last.kind).toBe('item')
+    expect((last as ContextMenuEntryItem).id).toBe('rejectInsertRevision')
+    for (const e of entries) {
+      if (e.kind === 'item' && e.id.endsWith('Revision')) expect(e.label.length).toBeGreaterThan(0)
+    }
   })
 })

@@ -67,7 +67,12 @@ export function ContextMenu({ open, x, y, entries, onClose, onAction }: ContextM
                 <span className="w-4 flex-shrink-0 text-center text-blue-600">
                   {entry.checked ? '✓' : ''}
                 </span>
-                <span>{entry.label}</span>
+                <span className="flex-1">{entry.label}</span>
+                {entry.hint && (
+                  <span className="ml-3 flex-shrink-0 text-[10px] text-chrome-ink-tertiary">
+                    {entry.hint}
+                  </span>
+                )}
               </DropdownMenu.Item>
             ),
           )}
