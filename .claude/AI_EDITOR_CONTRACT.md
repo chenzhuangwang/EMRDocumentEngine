@@ -3373,6 +3373,39 @@ derived from the worst case over the ENABLED variants so pagination
 stays uniform and deterministic (per-page body height is a later
 concern, not a licence to re-run the paginator per page).
 
+16.1 VISIBLE-PAGE RANGE
+
+The set of pages painted by `Draw.render` is DERIVED data computed from
+the ACTUAL SLIF page heights (pages can differ within one document:
+page setup, orientation, section breaks) and the page vertical gap.
+
+Rules:
+
+- The computation MUST be a pure function of
+  `(pages, scrollTop, viewportHeight, pageVerticalGap, overscanPages)`.
+- It MUST NOT assume a uniform page height. Any implementation that
+  multiplies `pageIndex * pageHeight` is wrong for this engine.
+- `VirtualViewport` owns that function; `LayoutEngine.getVisiblePages`
+  delegates to it. There is exactly one implementation.
+- Inputs are in DOCUMENT coordinates. The caller converts screen pixels
+  by dividing by scale (§17: no reading of viewport globals here).
+- Canvas overscan (`LayeredRenderer.OVERSCAN_PAGES`) and range overscan
+  are different concerns: the former sizes the backing canvas, the
+  latter widens the painted page set. Do not conflate them.
+
+INCREMENTAL LAYOUT STATUS (2026-10-19)
+
+`IncrementalLayout`, `LayoutCache` and `PageStartTable` are NOT wired
+into the render pipeline, and `LayoutEngine.incrementalLayout()` still
+calls `fullLayout()` internally. They MUST NOT be cited as evidence
+that layout is incremental. `DirtyTracker` collects marks and ships
+`dirtyNodeIds` in `document:changed`, but no consumer acts on them.
+
+Real paragraph-level incremental layout is a separate designed change
+(see knowledge/增量排版-设计方案.md). Until it lands, every
+`document:changed` performs a full layout; that is the accepted cost,
+not an optimisation claim.
+
 
 ============================================================
 17. PERFORMANCE RULE
