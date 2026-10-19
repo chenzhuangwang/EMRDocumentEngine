@@ -3536,6 +3536,7 @@ export class Editor {
         if (node?.type !== 'text' || !node.revision) continue
         out.push({
           nodeId: childId, paraId, paragraphPath: [this.doc.id, paraId],
+          offset: this.pool.getCharOffset(paraId, childId, 0),
           type: node.revision.type, text: node.text ?? '',
           ...(node.revision.author !== undefined ? { author: node.revision.author } : {}),
           ...(node.revision.at !== undefined ? { at: node.revision.at } : {}),

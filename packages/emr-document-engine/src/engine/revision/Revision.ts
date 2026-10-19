@@ -114,6 +114,11 @@ export interface RevisionListEntry {
   paraId: string
   /** 光标定位路径 —— 与全仓一致的 2 元素 [documentRootId, paragraphId] (§31.4) */
   paragraphPath: string[]
+  /**
+   * 该修订在**段落内**的字符偏移 (与光标同一口径: 文本计 length, 原子内联计 1)。
+   * 面板点击定位用它 —— 只给段落 id 的话会跳到段首, 不是"这一处修订"。
+   */
+  offset: number
   type: RevisionMark['type']
   /** 该文字节点的当前文字 (面板展示片段用) */
   text: string

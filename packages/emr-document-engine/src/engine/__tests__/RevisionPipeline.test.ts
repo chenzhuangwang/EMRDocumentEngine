@@ -291,9 +291,9 @@ describe('接受 / 拒绝', () => {
     const f = mixed()
     const list = f.editor.listRevisions()
 
-    expect(list.map((e) => [e.type, e.text])).toEqual([
-      ['insert', 'X'],
-      ['delete', '丙'],
+    expect(list.map((e) => [e.type, e.text, e.offset])).toEqual([
+      ['insert', 'X', 1],
+      ['delete', '丙', 3],
     ])
     for (const e of list) {
       // 光标定位路径与全仓一致: [documentRootId, paragraphId]

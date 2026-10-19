@@ -20,7 +20,7 @@ const AT = new Date(2023, 2, 27, 16, 15, 30).getTime()
 
 function entry(over: Partial<RevisionListEntry> = {}): RevisionListEntry {
   return {
-    nodeId: 't1', paraId: 'p1', paragraphPath: ['doc', 'p1'],
+    nodeId: 't1', paraId: 'p1', paragraphPath: ['doc', 'p1'], offset: 2,
     type: 'insert', text: '新增的字', author: '姜波', at: AT,
     ...over,
   }

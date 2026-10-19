@@ -1316,7 +1316,7 @@ function EditorPageInner({
       onQcIssueClick={handleQcIssueClick}
       onQcRecheck={() => setQcResult(editorRef.current?.runQC() ?? null)}
       revisions={revisions}
-      onSelectRevision={(entry) => revealLocation(entry.paragraphPath, 0)}
+      onSelectRevision={(entry) => revealLocation(entry.paragraphPath, entry.offset)}
       onAcceptRevision={(entry) => { editorRef.current?.acceptRevisions([entry.nodeId]) }}
       onRejectRevision={(entry) => { editorRef.current?.rejectRevisions([entry.nodeId]) }}
       // 批注创建: 锚点取文档当前选区/光标, 返回 false 时面板显示提示
