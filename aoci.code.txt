@@ -186,7 +186,7 @@ documents.ts[IB3T]: F:Mock 文档兜底源(后端不可用): HomePage 列表与 
 
 ===D:/czw/EMRDocumentEngine/frontend/src/pages/===
 ComparePage.tsx[AU4T]: F:文档版本比较页(路由 /compare/:oldId/:newId): 经 loadComparePair 装载两份文档后交给 DocumentCompareView | R:code:frontend/src/services/api.ts,code:frontend/src/lib/compareDocuments.ts,code:frontend/src/components/views/DocumentCompareView.tsx | A:- | S:装载须经 lib/compareDocuments; 不得内联 buildNodePool
-EditorPage.tsx[AU8L]: F:编辑器主页面(ModelD): 装配 Provider/叠加层/二十余对话框, 承载导出(JSON/TXT/HTML/CDA/OFD/元素)、打印、质控、保存闸门、公式作者化面与修订留痕的接线 | R:code:frontend/src/components/editor/EditorProvider.tsx,code:packages/emr-document-engine/src/lib/documentExport.ts,code:packages/emr-document-engine/src/lib/export/fields.ts,code:packages/emr-document-engine/src/lib/export/ofd/buildOfd.ts,code:packages/emr-document-engine/src/lib/printJob.ts,code:frontend/src/components/dialogs/CompletenessDialog.tsx | A:- | S:导出分支走 downloadBlob, json/txt/html 保持原写法; OFD zipTime 须在 1980-2099(epoch 0 会让 fflate 抛错); 保存拆成闸门+落盘, 落盘收口 performSave; 撞键快照与可引用键清单同出一次 getBoundValues(); TXT/HTML 导出须传 displayOf; 四处弹框都传 referenceKeys 与 onPreviewFormula; 修订开关是页面 useState, 当前用户经 useEffect 喂给 setCurrentUser
+EditorPage.tsx[AU8L]: F:编辑器主页面(ModelD): 装配 Provider/叠加层/二十余对话框, 承载导出(JSON/TXT/HTML/CDA/OFD/元素)、打印、质控、保存闸门、公式作者化面与修订留痕的接线 | R:code:frontend/src/components/editor/EditorProvider.tsx,code:packages/emr-document-engine/src/lib/documentExport.ts,code:packages/emr-document-engine/src/lib/export/fields.ts,code:packages/emr-document-engine/src/lib/export/ofd/buildOfd.ts,code:packages/emr-document-engine/src/lib/printJob.ts,code:frontend/src/components/dialogs/CompletenessDialog.tsx | A:- | S:导出分支走 downloadBlob, json/txt/html 保持原写法; OFD zipTime 须在 1980-2099(epoch 0 会让 fflate 抛错); 保存流程在 useDocumentSave(可单测), 本页只接入口; 撞键快照与可引用键清单同出一次 getBoundValues(); TXT/HTML 导出须传 displayOf; 四处弹框都传 referenceKeys 与 onPreviewFormula; 修订开关是页面 useState, 当前用户经 useEffect 喂给 setCurrentUser
 HomePage.tsx[AU5M]: F:首页文档列表: 搜索过滤 + 状态徽章 + 删除 + 最近文档入口(RecentDocuments 唯一挂载点) | R:code:frontend/src/mocks/documents.ts,code:frontend/src/components/sidebar/RecentDocuments.tsx,code:frontend/src/lib/utils.ts | A:- | S:列表恒取 MOCK_DOCUMENT_LIST(真实 documentApi.list 调用被注释), 后端恢复后须改回, 否则一直显示演示数据
 
 ===D:/czw/EMRDocumentEngine/frontend/src/platform/data/===
@@ -210,7 +210,7 @@ layout-refactor-regression-test-checklist.md[SQ3S]: F:layout/ 分层重构回归
 startup-guide.md[SG4T]: F:项目启动指南: 前端 Vite 与后端启动命令 | R:code:frontend/vite.config.ts | A:- | S:前端启动在 frontend/ 目录执行; 端口与代理以 vite.config.ts 为准
 state-cleanup-regression-test-checklist.md[SQ3S]: F:state/ 清理回归测试清单(2026-08-27): 删死代码 RangeManager + 抽出 HistoryState | R:code:packages/emr-document-engine/src/engine/state/HistoryState.ts,code:packages/emr-document-engine/src/engine/state/EditorStore.ts | A:- | S:RangeManager 已删不得复活: 其 API 与当前选区模型不兼容
 编辑器功能清单.md[SG5L]: F:编辑器功能清单(基于代码盘点, 2026-09-01): 按编号逐条列已实现功能与边界 | R:code:packages/emr-document-engine/src/engine/Editor.ts | A:- | S:条目编号被他文交叉引用, 只可校正指向不可重排编号
-引擎能力补齐-设计方案.md[SG6L]: F:引擎能力补齐三批定序与定型(一·批量数据绑定+保存闸门 / 二·计算式引擎 / 三·修订留痕), 含缺口盘点·契约修订清单·风险登记·验收口径·不做区与 §2.6/§3.7/§3.8/§4.5/§4.6 落地记录 | R:code:.claude/AI_EDITOR_CONTRACT.md,code:knowledge/编辑器功能清单.md | A:- | S:批次一定稿可开工; 重复键报 ambiguous 且一个都不写; 公式落 TemplateDefinition.formula 而结果不落盘; 留痕挂 TextNode 非范围; 落地记录记的是与计划的真实分歧; 首次性断言必附 file:line
+引擎能力补齐-设计方案.md[SG6L]: F:引擎能力补齐三批定序与定型(一·批量数据绑定+保存闸门 / 二·计算式引擎 / 三·修订留痕), 含缺口盘点·契约修订清单·风险登记·验收口径·不做区与 §2.6/§3.7/§3.8/§4.5/§4.6 落地记录; 保存接线已抽 useDocumentSave | R:code:.claude/AI_EDITOR_CONTRACT.md,code:knowledge/编辑器功能清单.md | A:- | S:批次一定稿可开工; 重复键报 ambiguous 且一个都不写; 公式落 TemplateDefinition.formula 而结果不落盘; 留痕挂 TextNode 非范围; 落地记录记的是与计划的真实分歧; 首次性断言必附 file:line
 
 ===D:/czw/EMRDocumentEngine/knowledge/每日推文/===
 AI推广契约.md[SZ5L]: F:「旺de碎碎念」公众号 AI 推广契约 v2.4(EMR-PROMO-AI-001): 90 天路径、日更节奏与事实合规红线 | R:code:knowledge/每日推文/选题蓄水池.md | A:- | S:契约明示不构成结果保证且含事实合规约束 —— 引用项目数字前必须对代码核对, 不得为增长编造事实
@@ -530,4 +530,7 @@ integration-into-external-project.md[SG6L]: F:zh-CN 版集成指南的英文版:
 
 ===D:/czw/EMRDocumentEngine/packages/emr-document-engine/src/engine/revision/===
 Revision.ts[DB7T]: F:修订盖戳唯一原语(契约 §12.13): RevisionContext/RevisionStamp/makeMark/sameRevisionKind | R:code:packages/emr-document-engine/src/engine/command/CommandManager.ts,code:packages/emr-document-engine/src/engine/Editor.ts | A:RevisionStamp,makeMark,sameRevisionKind,RevisionContext,RevisionUser,NO_REVISION | S:RevisionStamp.resolve 只解析一次并缓存 —— redo 复用同一标记, 否则重放会读到新时钟; NO_REVISION 表示关闭追踪; sameRevisionKind 只比 type 与作者, 不比 at
+
+===D:/czw/EMRDocumentEngine/frontend/src/hooks/===
+useDocumentSave.ts[AU6S]: F:保存流程接线(契约 §12.11): 闸门 → 确认框 → 落盘; 后端接口注入以便单测 | R:code:frontend/src/pages/EditorPage.tsx,code:frontend/src/services/api.ts | A:useDocumentSave,DocumentSaveApi | S:闸门不硬拦: 缺必填只弹框, 三个出口(跳转/仍然保存/取消); 落盘状态 saving→saved/error 由本 hook 写, 脏标记只在成功后清除
 

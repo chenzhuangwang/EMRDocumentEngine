@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-19T05:56:55Z",
+  "updated_at": "2026-10-19T06:07:14Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
@@ -95,9 +95,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "339d426f17602ee6c7c5490575828575f465d2db7a9e6ffe912614d479148e9b",
-      "size": 137009,
-      "normalized_sha256": "339d426f17602ee6c7c5490575828575f465d2db7a9e6ffe912614d479148e9b"
+      "sha256": "1a2df6dd794e62043fbfd4db2d1b622bb7f30c76b5eec5e02a3166f186840e82",
+      "size": 137514,
+      "normalized_sha256": "1a2df6dd794e62043fbfd4db2d1b622bb7f30c76b5eec5e02a3166f186840e82"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1658,6 +1658,18 @@
       "size": 1476,
       "normalized_sha256": "62f0a6ae1b8af1ef82dccd11504a53e92d3ad30c9d0ba8a2ac9908e563415c6c"
     },
+    "frontend/src/hooks/__tests__/useDocumentSave.test.tsx": {
+      "role": "observe",
+      "sha256": "c8340e78d7d9642e8221aab6dce454d3d268320be1a0c167683831b88be818aa",
+      "size": 6510,
+      "normalized_sha256": "c8340e78d7d9642e8221aab6dce454d3d268320be1a0c167683831b88be818aa"
+    },
+    "frontend/src/hooks/useDocumentSave.ts": {
+      "role": "index",
+      "sha256": "6b17f4c3e4c836ae685a127de7f1c526d6891cb9f47449aa33d8d8db98f86d62",
+      "size": 5060,
+      "normalized_sha256": "6b17f4c3e4c836ae685a127de7f1c526d6891cb9f47449aa33d8d8db98f86d62"
+    },
     "frontend/src/i18n/__tests__/i18nBinding.test.tsx": {
       "role": "observe",
       "sha256": "89d051b4101ea511df02cb09b5fa8c6134745083155bf1ed2a9e454db75c064a",
@@ -1804,9 +1816,9 @@
     },
     "frontend/src/pages/EditorPage.tsx": {
       "role": "index",
-      "sha256": "972f6f572e529a29212007a3e21b6e968192146ecd413c6c9e53fdbdede3c211",
-      "size": 79802,
-      "normalized_sha256": "972f6f572e529a29212007a3e21b6e968192146ecd413c6c9e53fdbdede3c211"
+      "sha256": "8c12487602b86cccad7373c62b883a0a35ba386504e9a47d3a01c6000f2bd720",
+      "size": 77408,
+      "normalized_sha256": "8c12487602b86cccad7373c62b883a0a35ba386504e9a47d3a01c6000f2bd720"
     },
     "frontend/src/pages/HomePage.tsx": {
       "role": "index",
@@ -2008,9 +2020,9 @@
     },
     "knowledge/引擎能力补齐-设计方案.md": {
       "role": "index",
-      "sha256": "b4f6fa9400d646fd88e6af4778bf1d26ae34153f0a68190e4720aace1e227f3a",
-      "size": 98121,
-      "normalized_sha256": "b4f6fa9400d646fd88e6af4778bf1d26ae34153f0a68190e4720aace1e227f3a"
+      "sha256": "0178ed077600c6ef63d490435f071745dceba503898e880dbc1924bc65829a2c",
+      "size": 98639,
+      "normalized_sha256": "0178ed077600c6ef63d490435f071745dceba503898e880dbc1924bc65829a2c"
     },
     "knowledge/引擎集成指南/README.md": {
       "role": "index",
