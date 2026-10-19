@@ -13,6 +13,7 @@
 
 import type { DirtyTracker } from './DirtyTracker'
 import type { LineElement } from '../line/LineLayout'
+import type { NodePool } from '../../document/core/NodePool'
 
 export interface CachedParagraphLayout {
   paragraphId: string
@@ -22,6 +23,36 @@ export interface CachedParagraphLayout {
 }
 
 export class IncrementalLayout {
+  /**
+   * 段落布局缓存键 (M1, 见 knowledge/增量排版-设计方案.md §3.1)。
+   *
+   * 覆盖「段落自身 + 子节点内容 + 结构位置」三类输入:
+   * - `structureVersion`: 任何 children 增删/移动都会变 —— 结构编辑让全部
+   *   段落缓存失效, 这是刻意的保守失效;
+   * - 段落节点版本: 段落样式 (缩进/对齐/列表/行距) 变化;
+   * - 子节点 id + 各自版本: **版本号只落在被更新节点自身**(NodePool.updateNode
+   *   不会向父节点冒泡), 所以必须逐子聚合, 不能只读段落版本。
+   *
+   * 不覆盖的输入: 页边距/纸张、页眉页脚变体、主题 token、locale、模板定义、
+   * 计算值 —— 它们由调用方的全量失效规则兜底 (§3.2), 不进入本键。
+   *
+   * @returns 段落不存在或无 children 时返回 null
+   */
+  static paragraphKey(pool: NodePool, paraId: string): string | null {
+    const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
+    if (!para?.children) return null
+
+    const parts: string[] = [
+      paraId,
+      String(pool.structureVersion),
+      String(pool.getNodeVersion(paraId)),
+    ]
+    for (const childId of para.children) {
+      parts.push(`${childId}:${pool.getNodeVersion(childId)}`)
+    }
+    return parts.join('|')
+  }
+
   private cache = new Map<string, CachedParagraphLayout>()
 
   /** 检查段落布局是否已缓存且未变脏 */
