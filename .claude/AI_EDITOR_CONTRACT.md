@@ -359,6 +359,14 @@ keeps per-node presentation / template-design fields (§2.2 /
 §12.1) applied uniformly: a smarttext inside a table cell renders
 the same control box + presentation styles as one in the body.
 
+Revision marks (§12.13) MUST reuse the existing particle pipeline.
+The revision colour and the delete strikeout are drawn by
+TextParticle's existing revision branch, reached through
+SLIFItem.revision and ParticleAdapters. Screen and print therefore
+share one implementation (§4's projection rule). A separate
+revision renderer, or a direct ctx.fillText path that bypasses the
+particle registry, is forbidden.
+
 ============================================================
 5. COMMAND MUTATION GATE
 ============================================================
@@ -641,6 +649,15 @@ Examples:
 Header/footer content includes the page variants (§7.9) — first-page
 and even-page arrays are document state of the same kind, owned by
 DocumentTree, not layout or render state.
+
+Revision marks (§12.13) are document state of the same kind and have
+exactly ONE home: the optional `revision` field on TextNode. They are
+NOT a TextStyle field. TextStyle is what the format painter copies
+(§12.5); copying a change record onto unrelated text is semantically
+wrong, and putting revision there would make that happen the moment
+anyone uses the painter. They are also NOT range-based (the comment
+model): a revision is a property of the text itself and must follow
+it through copy, split and merge.
 
 ------------------------------------------------------------
 7.4 Layout Derived State
@@ -1617,9 +1634,19 @@ Concretely:
 
     Deferred external constructs (documented, not yet mapped):
         checkfield      → P0 text label only (checkbox semantics later)
-        insert / delete → P0 markers dropped, sibling content kept
-                          (revision tracking is a separate concern)
         scripts / valid → not part of the four-layer model
+
+    Revision marks (§12.13) are no longer deferred. The carrier
+    observed in REAL exports is `rtype` ON the host inline node
+    (`{ type: 'insert' | 'delete', author, authorId, date, … }`),
+    not a standalone marker node. The importer MUST read `rtype` and
+    attach RevisionMark to the TextNode it produces (`checkfield`
+    maps to a TextNode, so its mark survives too). Standalone inline
+    `insert` / `delete` marker nodes are a fixture-only shape with no
+    content of their own; they apply to the following inline siblings
+    until the next marker or the end of the paragraph. Block-level
+    standalone markers have no verified range semantics and remain
+    skipped — a registered boundary, not silent loss.
 
 ------------------------------------------------------------
 12.3 Design-mode interaction boundary
@@ -2972,6 +2999,114 @@ living inside the very same container and still advancing 4.3.x →
 4.4.0. The existing container buys the absence of any data rewrite —
 which is why the step is a NO-OP, not why it can be skipped.
 
+12.13 REVISION TRACKING BOUNDARY
+------------------------------------------------------------
+
+Revision marks record who changed which text, and why text that is
+no longer wanted is still present. They are CONTENT state — not
+presentation, not a view, not a diff.
+
+Model
+    interface RevisionMark {
+      type: 'insert' | 'delete' | 'modify'
+      author?: string
+      authorId?: string
+      /** epoch ms; absent when the source carried no parseable date */
+      at?: number
+      /** reserved for 'delete' when the deleted text must be recoverable
+       *  independently of the node's own text */
+      original?: string
+    }
+    TextNode.revision?: RevisionMark
+
+    TextNode is the ONLY home (§7.3). Revision MUST NOT be a TextStyle
+    field: the format painter copies TextStyle (§12.5), and carrying a
+    change record onto unrelated text is wrong. It is also NOT
+    range-based: comments are side notes (the range model is right
+    there), whereas a revision is a property of the text and must
+    follow it through copy / split / merge. Range re-anchoring exists
+    nowhere in this engine — CommentThread.anchorStatus is never
+    updated by any code — and MUST NOT be reintroduced for revisions.
+
+    'modify' is RESERVED: it has no producer in this batch. Only
+    'insert' and 'delete' are stamped. The renderer already has a
+    token for 'modify' (revisionModify).
+
+Production — ONE choke point
+    CommandManager.buildContext() injects the revision context —
+    tracking flag, current user, and ONE timestamp read per command
+    execution. Commands MUST NOT reach into Editor state directly.
+
+    Only commands that change text CONTENT stamp:
+        InsertTextCommand, DeleteRangeCommand, ReplaceTextCommand.
+    SplitParagraphCommand / MergeParagraphCommand MUST preserve
+    existing marks and MUST NOT create them: this model has no
+    paragraph-mark node, so a paragraph break cannot carry a mark.
+
+    Deleting a pending insertion CANCELS it (remove the text; never
+    stack a delete mark on an insert mark).
+    Non-text inline nodes (image / smarttext) cannot carry a mark,
+    because RevisionMark lives on TextNode. Deleting one is structural
+    and is NOT tracked. This boundary is explicit, not accidental.
+
+    Stamps MUST be deterministic across redo: a command caches its
+    mark on first forward. Re-running forward with a fresh clock would
+    produce a different `at`, breaking the §8.3 byte-identical redo
+    criterion.
+
+Deletion semantics
+    With tracking ON, DeleteRangeCommand KEEPS the deleted text and
+    marks it 'delete'. With tracking OFF, the old removal semantics
+    are unchanged. normalizeParagraph MUST NOT merge text nodes whose
+    revision marks differ — a merge would destroy one mark.
+
+Rendering
+    Revision reaches the renderer through the EXISTING particle
+    pipeline: TextNode.revision → LineElement.revision →
+    SLIFItem.revision → ParticleAdapters → TextParticle's existing
+    revision branch (§4). There MUST NOT be a second drawing path;
+    screen and print share this one.
+
+    showRevisionMarks is a VIEW switch (default true) mirroring
+    showInvisible. It is NOT EditorMode.clean: clean is readonly and
+    i18n-labelled as plain text, and redefining it would be a
+    contract-level semantic migration. Turning the switch off changes
+    only the drawing of marks (colour and revision-induced strikeout);
+    it MUST NOT change the document, the layout, or the serialized
+    bytes. Unlike showInvisible, print does NOT force it off: revision
+    marks are content annotations, not editing aids.
+
+Accept / reject
+    Accept and reject MUST be commands (undoable), never raw pool
+    mutations. The four combinations are all implemented:
+        accept insert → drop the mark, keep the text
+        reject insert → remove the text node
+        accept delete → remove the text node
+        reject delete → drop the mark, keep the text
+        modify        → both accept and reject drop the mark
+                        (nothing to restore; reserved type)
+    Whole-document accept/reject walks paragraphs through the
+    sanctioned spines (bodyParagraphSpine / hfParagraphsForExport),
+    never doc.body.children directly (§31).
+
+Import
+    The carrier in real exports is `rtype` ON the host node. The
+    importer reads it and attaches RevisionMark to the TextNode it
+    produces (text and checkfield both map to TextNode). `date` is
+    parsed to epoch ms; an unparseable date leaves `at` absent while
+    the author is kept. Standalone inline marker nodes apply to the
+    following inline siblings until the next marker or paragraph end
+    (§12.2).
+
+NOT THE REVISION MODEL
+    DocumentDiffer's 'insert' | 'delete' | 'modify' | 'equal' is a
+    computed diff between two document versions. It is persisted
+    nowhere and MUST NOT be reused as the revision model.
+
+Format version
+    4.8.0 → 4.9.0, explicit NO-OP (§14). A pre-4.9 document has no
+    revision field, so every node reads exactly as before.
+
 ============================================================
 13. DOCUMENT SERIALIZATION
 ============================================================
@@ -3063,8 +3198,13 @@ exactly as before.
     rewrite or backfill is needed — that is why the step is a NO-OP,
     not why it can be skipped.
 
-    A future revision (§14 is §14) adds 4.8.0 → 4.9.0 for revision
-    marks, which touch TextNode itself rather than TemplateDefinition.
+    Revision marks (§12.13) advance the format from 4.8.0 to 4.9.0,
+    again an explicit NO-OP step (4.8.0 → 4.9.0, breaking: false,
+    upgrade returns the document unchanged). TextNode.revision is
+    additive and optional; a pre-4.9 document has no marks, so every
+    node reads exactly as before. Unlike §12.12 this field lives on
+    TextNode itself rather than inside TemplateDefinition — the bump
+    rule is the same, the container argument simply does not apply.
 
 Two caveats about the version mechanism itself (see §31.12):
 
