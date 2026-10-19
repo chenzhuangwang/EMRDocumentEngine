@@ -44,6 +44,7 @@ import { BookmarkRenderer } from '../../render/BookmarkRenderer'
 import { getFlatPageItems, tableRowUnitHeight } from './SLIF'
 import { createTablePaginator } from '../table/TablePaginator'
 import type { TableFragment } from '../table/TablePaginator'
+import { VirtualViewport } from '../viewport/VirtualViewport'
 
 export type { LayoutConfig } from './LayoutContext'
 export type { LayoutResult } from './LayoutResult'
@@ -1426,22 +1427,15 @@ export class LayoutEngine {
     return false
   }
 
+  /** 可见页范围 (契约 §16.1) — 唯一实现委托给 VirtualViewport */
+  private readonly visibleViewport = new VirtualViewport(0)
+
   getVisiblePages(scrollY: number, viewportHeight: number): { start: number; end: number } {
     // 分页间隙 — 与 Draw.renderer.getPageVerticalGap() 同源
     // (LayoutEngine 不持有 renderer 引用, 调用方负责传参一致性)
-    const pageVerticalGap = this.pageVerticalGap
-    let cumulativeY = 0
-    let start = 0; let end = this.pages.length - 1
-
-    for (let i = 0; i < this.pages.length; i++) {
-      const pageHeight = this.pages[i].height // CSS pixels, 与 scrollY/viewportHeight 同单位
-      // 累加步长 = 单页高度 + 间隙 (末页之外不再追加间隙, 但循环以 height 判断可见性)
-      const slot = pageHeight + pageVerticalGap
-      if (cumulativeY + pageHeight < scrollY) start = i + 1
-      if (cumulativeY > scrollY + viewportHeight) { end = i - 1; break }
-      cumulativeY += slot
-    }
-    return { start: Math.max(0, start), end: Math.min(this.pages.length - 1, end) }
+    return this.visibleViewport.computeVisiblePages(
+      this.pages, scrollY, viewportHeight, this.pageVerticalGap,
+    )
   }
 
   /**
