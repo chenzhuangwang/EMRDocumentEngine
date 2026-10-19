@@ -3402,19 +3402,27 @@ are not list items — keyed by `IncrementalLayout.paragraphKey`
 available width and the revision-marks flag. The cache holds at most one
 entry per paragraph id and MUST be cleared when the document is swapped.
 
-Still NOT wired: page breaking and hit-test indexing are full passes on
-every `document:changed`. `LayoutEngine.incrementalLayout()`,
-`LayoutCache`, `PageStartTable` and the `DirtyTracker` marks have no
-consumer. They MUST NOT be cited as evidence that layout is incremental.
+M2b IS wired for the same provably safe subset: when the body consists
+only of plain-text, non-list paragraphs and the document has no tables,
+section breaks, footnotes, fields, controls, cross-references or
+header/footer content, page breaking resumes from the page BEFORE the
+first recomputed paragraph (widow control can pull a line back from the
+next page). If no paragraph line changed, the whole page array is
+reused. The page-start line table (`PageStartTable`) backs this lookup.
 
-Unknown or unprovable cases MUST fall back to recomputing the paragraph
-(list numbering, controls, fields, cross-references, images, footnotes
-are deliberately excluded from the cache). The cache is correct only if
-the key covers every input that can change line layout; when adding a
-new input, extend the key or add the paragraph to the excluded set.
+Still NOT wired: `HitTestIndex` is rebuilt in full on every pass;
+`LayoutEngine.incrementalLayout()` and `LayoutCache` have no consumer.
+They MUST NOT be cited as evidence that layout is incremental.
 
-The page-level design (dirty-page repagination, `PageStartTable`) is
-`knowledge/增量排版-设计方案.md`, M2b.
+Unknown or unprovable cases MUST fall back to a full pass (list
+numbering, controls, fields, cross-references, images, footnotes,
+tables, sections, headers are deliberately excluded). The cache and
+resume path are correct only if the key/eligibility test covers every
+input that can change line layout or pagination; when adding a new
+input, extend the key/eligibility test or fall back to full.
+
+The page-level design and remaining milestones are in
+`knowledge/增量排版-设计方案.md`.
 
 
 ============================================================
