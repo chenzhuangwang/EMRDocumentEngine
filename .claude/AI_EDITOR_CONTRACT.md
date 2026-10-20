@@ -4379,6 +4379,27 @@ W3:
       survives §31.13 because on a document with no nested table the
       recursive expansion degenerates to the flat one.
 
+W3-SELECTION:
+
+    - The paragraph order of a selection is W3 for body, or the variant
+      array for header/footer.
+    - The per-paragraph clip ranges MUST come from
+      `collectSelectionSegments` (SelectionCollector). Copy, selection
+      painting and range commands all consume that one function; a
+      consumer that re-derives `lo/hi` offsets locally is a drift bug —
+      the copies had already diverged once (keyboard delete skipped the
+      macro wrapping, so one cross-paragraph delete needed N undo steps).
+    - Region mixing is refused by region identity
+      (`regionIdOf`): body↔header and header↔header:first are invalid
+      selections.
+    - Copy and painting walk the flattened W3 spine, so a body↔cell
+      selection is a linear text range. Deletion mutates paragraphs
+      through the region-scoped sibling array: it deletes text in the
+      paragraphs it can address and skips block nodes (a table between
+      the endpoints stays), and it REFUSES body↔cell ranges. That
+      asymmetry is deliberate until a product decision says otherwise —
+      do not "fix" it by silently changing one side.
+
 ------------------------------------------------------------
 31.4 `paragraphPath` — 2 elements, and container resolution
      does not go through it
