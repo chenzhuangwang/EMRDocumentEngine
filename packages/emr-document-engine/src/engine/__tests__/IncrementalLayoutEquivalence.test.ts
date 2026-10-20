@@ -167,7 +167,7 @@ describe('增量排版等价性骨架 (M1)', () => {
     }
 
     for (let step = 0; step < 40; step++) {
-      const action = Math.floor(rand() * 4)
+      const action = Math.floor(rand() * 5)
       const para = paragraphs[Math.floor(rand() * paragraphs.length)]
 
       if (action === 0) {
@@ -182,8 +182,13 @@ describe('增量排版等价性骨架 (M1)', () => {
         const extra = createTextNode('补充')
         pool.addNode(extra as unknown as BaseNode)
         pool.insertChild(para.id, extra.id, para.children.length)
-      } else if (para.children.length > 1) {
-        pool.removeChild(para.id, para.children.length - 1)
+      } else if (action === 3) {
+        if (para.children.length > 1) pool.removeChild(para.id, para.children.length - 1)
+      } else {
+        // 列表开关: 编号是跨段状态, 但标记进键, 缓存必须跟着变
+        const current = (para as unknown as { list?: unknown }).list
+        const next = current ? undefined : { type: 'ordered', level: 1, numberStyle: 'decimal' }
+        pool.updateNode(para.id, { list: next } as Partial<BaseNode>)
       }
 
       const withCache = canonical(persistent.fullLayout(doc, pool))

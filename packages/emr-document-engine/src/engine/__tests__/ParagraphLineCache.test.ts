@@ -157,11 +157,35 @@ describe('段落行缓存 (M2a)', () => {
     expect(cached).toBe(canonical(reference.fullLayout(doc, pool)))
   })
 
-  it('列表段落不缓存 (编号是跨段状态)', () => {
+  it('列表段落也缓存: 第二次布局全部命中', () => {
     const { doc, pool } = makeFixture({ list: true })
     const engine = newEngine()
     engine.fullLayout(doc, pool)
-    expect(engine.getParagraphCacheStats().size).toBe(2) // 只有两个纯文本段
+    expect(engine.getParagraphCacheStats().size).toBe(3)
+
+    engine.fullLayout(doc, pool)
+    expect(engine.getParagraphCacheStats().hits).toBe(3)
+  })
+
+  it('有序列表编号变化 → 后续段落键变并重算, 结果与全量一致', () => {
+    // 三个有序列表项: 第 1 项改成无序后, 第 2/3 项的编号会重排
+    const { doc, pool, p1, p2, p3 } = makeFixture()
+    for (const p of [p1, p2, p3]) p.list = { type: 'ordered', level: 1, numberStyle: 'decimal' }
+    const engine = newEngine()
+    engine.fullLayout(doc, pool)
+
+    // 只改文本: 编号不变, 后两项应命中
+    const t1 = pool.nodes.get(p1.children[0]) as unknown as { id: string }
+    pool.updateNode(t1.id, { text: '第一段改。' } as Partial<BaseNode>)
+    engine.fullLayout(doc, pool)
+    expect(engine.getParagraphCacheStats().hits).toBe(2)
+
+    // 改列表类型: 编号重排, 后两项键变
+    pool.updateNode(p1.id, { list: { type: 'bullet', level: 1 } } as Partial<BaseNode>)
+    const beforeHits = engine.getParagraphCacheStats().hits
+    const cached = canonical(engine.fullLayout(doc, pool))
+    expect(engine.getParagraphCacheStats().hits).toBe(beforeHits) // 无新增命中
+    expect(cached).toBe(canonical(newEngine().fullLayout(doc, pool)))
   })
 
   it('控件段落不缓存, 但值变化后结果仍正确', () => {

@@ -155,10 +155,9 @@ export class LayoutEngine {
   // ================================================================
   // 段落行缓存 (M2a)
   //
-  // 只缓存"纯文本、非列表"段落 —— 这是可证明安全的子集:
-  //   - 列表编号依赖前序段落 (跨段状态), 不进段落键 → 不缓存;
-  //   - 控件/域/交叉引用/图片/脚注的显示值来自段落之外 (计算值、页码、
-  //     域预留宽) → 不缓存。
+  // 只缓存"子节点全为纯文本"的段落 (列表段也在内: 编号标记已算好并进键)。
+  // 控件/域/交叉引用/图片/脚注的显示值来自段落之外 (计算值、页码、
+  // 域预留宽) → 不缓存。
   // 缓存条目按段落 ID 存**最新一份** (key 不匹配即重算并覆盖), 因此不会
   // 随每次按键无限增长; 换文档时由 Draw 调用 clearParagraphLineCache()。
   // ================================================================
@@ -186,11 +185,13 @@ export class LayoutEngine {
   /**
    * 段落行缓存键; null = 该段落不可缓存。
    *
-   * 键 = 段落布局键 (结构版本 + 段落版本 + 逐子节点版本) + 两个段落之外但
-   * 影响行断的输入: 可用宽 (页面设置/分节) 与修订标记显隐 (布局期样式)。
+   * 键 = 段落布局键 (结构版本 + 段落版本 + 逐子节点版本) + 三个段落之外但
+   * 影响行断的输入: 可用宽 (页面设置/分节)、修订标记显隐 (布局期样式)、
+   * 列表标记 (编号依赖前序段落，但标记本身已由调用方算好并参与断行)。
    */
-  private paragraphLineCacheKey(pool: NodePool, para: Paragraph, contentWidth: number): string | null {
-    if (para.list) return null
+  private paragraphLineCacheKey(
+    pool: NodePool, para: Paragraph, contentWidth: number, listMarker: string,
+  ): string | null {
     const children = (para as unknown as { children?: readonly string[] }).children
     if (!children) return null
     for (const childId of children) {
@@ -199,16 +200,16 @@ export class LayoutEngine {
     }
     const base = IncrementalLayout.paragraphKey(pool, para.id)
     if (!base) return null
-    return `${base}#w${contentWidth}#r${this.showRevisionMarks ? 1 : 0}`
+    return `${base}#w${contentWidth}#r${this.showRevisionMarks ? 1 : 0}#m${listMarker}`
   }
 
   // ================================================================
   // 增量分页 (M2b)
   //
   // 只对**纯文本正文**启用: 没有表格 (分页游标有状态)、分节 (页面设置会变)、
-  // 脚注 (页底预留)、域/控件/交叉引用 (预留宽依赖总页数)、列表 (编号跨段)、
-  // 页眉页脚 (正文可用区依赖带高)。这些场景一律全量分页 —— 可证明安全比省一点
-  // 分页更重要 (契约 §16.1)。
+  // 脚注 (页底预留)、域/控件/交叉引用 (预留宽依赖总页数)、页眉页脚 (正文可用区
+  // 依赖带高)。列表可以: 编号标记已进段落键, 编号重排会让键自动失效。
+  // 这些场景一律全量分页 —— 可证明安全比省一点分页更重要 (契约 §16.1)。
   //
   // 续排从「首个脏段落所在页的**前一页**」开始: 寡行控制会从下一页拉一行回来,
   // 所以脏段落所在页的上一页也可能变。
@@ -252,8 +253,8 @@ export class LayoutEngine {
 
     for (const blockId of bodyBlockSpine(doc, pool)) {
       const block = pool.nodes.get(blockId) as unknown as
-        { type?: string; list?: unknown; children?: readonly string[] } | undefined
-      if (block?.type !== 'paragraph' || block.list) return false
+        { type?: string; children?: readonly string[] } | undefined
+      if (block?.type !== 'paragraph') return false
       for (const childId of block.children ?? []) {
         const child = pool.nodes.get(childId) as { type?: string } | undefined
         if (child?.type !== 'text') return false
@@ -497,9 +498,10 @@ export class LayoutEngine {
           savedListMarker = listMarker
         }
 
-        // 段落行缓存 (M2a): 命中则整段跳过元素构建与断行
+        // 段落行缓存 (M2a): 命中则整段跳过元素构建与断行。
+        // 列表段也可缓存 —— 编号标记已算出并进键; 前序段落变化导致编号变化时键必变。
         const cacheKey = this.paragraphCacheEnabled
-          ? this.paragraphLineCacheKey(pool, para, contentWidth)
+          ? this.paragraphLineCacheKey(pool, para, contentWidth, savedListMarker)
           : null
         if (cacheKey) {
           const cached = this.paragraphLineCache.get(para.id)

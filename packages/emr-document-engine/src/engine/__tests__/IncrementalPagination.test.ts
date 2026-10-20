@@ -131,8 +131,24 @@ describe('增量分页 (M2b)', () => {
     expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
   })
 
-  it('含表格的文档不启用增量分页', () => {
-    const { doc, pool, texts } = makeLongDoc(60)
+  it('含有序列表的文档: 编号进键, 续排仍与全量一致', () => {
+    const { doc, pool, texts } = makeLongDoc(80)
+    for (const id of doc.body.children) {
+      const p = pool.nodes.get(id) as unknown as Paragraph
+      p.list = { type: 'ordered', level: 1, numberStyle: 'decimal' }
+    }
+    const engine = newEngine()
+    engine.fullLayout(doc, pool, 'paragraph')
+
+    // 改一项的文本: 编号不变 → 后续项命中缓存; 该项重算 → 从它所在页续排
+    pool.updateNode(texts[70], { text: `第71段：${SENTENCE}（改）` } as Partial<BaseNode>)
+    const pages = engine.fullLayout(doc, pool, 'paragraph')
+
+    expect(engine.getPaginationStats().mode).toBe('resume')
+    expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
+  })
+
+  it('含表格的文档不启用增量分页', () => {    const { doc, pool, texts } = makeLongDoc(60)
     // 在正文尾部挂一个 1×1 表格 —— 现成工厂在测试里过重, 直接构造最小表
     const cellText = createTextNode('单元格')
     const cellPara = createParagraph([cellText.id]) as Paragraph
