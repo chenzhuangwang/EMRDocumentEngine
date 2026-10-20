@@ -215,11 +215,12 @@ export class LayoutEngine {
   // ================================================================
   // 增量分页 (M2b)
   //
-  // 只对**可证明安全**的正文启用: 段落 (文本/图片/列表) 与表格。仍排除: 分节
-  // (页面设置会变)、脚注 (页底预留, 且 Step 4 会重复收集复用页)、域/控件/交叉
-  // 引用 (预留宽依赖总页数)、页眉页脚 (正文可用区依赖带高)。表格内**只放行
-  // 纯文本 cell** —— cell 里的控件/嵌套表/脚注引用同属上面的危险类。这些场景
-  // 一律全量分页 (契约 §16.1)。
+  // 只对**可证明安全**的正文启用: 段落 (文本/图片/脚注引用/列表) 与表格。仍排除:
+  // 分节 (页面设置会变)、域/控件/交叉引用 (预留宽依赖总页数)、页眉页脚 (正文
+  // 可用区依赖带高)。脚注引用可以: 页底预留只取决于"文档有没有脚注" (增删引用
+  // 是结构编辑, 会让全部段落键失效), 而 Step 4 只处理新页 + 按复用页播种编号。
+  // 表格内**只放行纯文本 cell** —— cell 里的控件/嵌套表/脚注引用同属危险类。
+  // 这些场景一律全量分页 (契约 §16.1)。
   //
   // 续排从「首个脏段落所在页的**前一页**」开始: 寡行控制会从下一页拉一行回来,
   // 所以脏段落所在页的上一页也可能变。若该页从表格中间开始, 还要再回退到
@@ -285,9 +286,11 @@ export class LayoutEngine {
       if (block?.type !== 'paragraph') return false
       for (const childId of block.children ?? []) {
         const child = pool.nodes.get(childId) as { type?: string } | undefined
-        // 图片是自包含的行内元素 (尺寸在节点上), 可安全续排;
-        // 控件/域/交叉引用/脚注引用仍排除 (显示值或页底预留依赖段落之外)
-        if (child?.type !== 'text' && child?.type !== 'image') return false
+        // 图片是自包含的行内元素 (尺寸在节点上); 脚注引用只影响页底脚注区,
+        // Step 4 已按「只处理新页 + 播种编号」处理 (契约 §16.1)。
+        // 控件/域/交叉引用仍排除: 显示值或预留宽依赖段落之外。
+        if (child?.type !== 'text' && child?.type !== 'image'
+          && child?.type !== 'footnote_ref') return false
       }
     }
     return true
@@ -956,9 +959,12 @@ export class LayoutEngine {
       ? [...presetPages, ...convertedPages]
       : convertedPages
 
-    // Step 4: 脚注收集与布局 — 每页独立收集 footnote_ref, 生成脚注区 SLIF items
+    // Step 4: 脚注收集与布局 — **只处理本轮新排的页** (契约 §16.1)。
+    // 复用页的脚注区在上轮已生成, 再收集一次会把脚注 item 重复追加到同一页对象;
+    // 但编号是跨页连续的, 所以要先用复用页里的引用数播种计数器。
     const footnoteEngine = new FootnoteLayout()
-    for (const page of slifPages) {
+    if (mode === 'resume') footnoteEngine.seedFrom(presetPages, pool)
+    for (const page of convertedPages) {
       const footnotes = footnoteEngine.collectFootnotes(page, pool)
       if (footnotes.length > 0) {
         // 回填正文中 footnote SLIF items 的编号

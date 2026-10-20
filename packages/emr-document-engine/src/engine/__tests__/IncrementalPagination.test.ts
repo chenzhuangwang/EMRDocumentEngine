@@ -7,8 +7,8 @@
 // ================================================================
 // 增量分页 (M2b)
 //
-// 安全子集: 正文段落 (文本/图片/列表) 与纯文本表格; 无分节/脚注/域/控件/
-// 页眉页脚。判据与 M2a 相同: 与全新引擎的全量结果逐字节相同。
+// 安全子集: 正文段落 (文本/图片/脚注引用/列表) 与纯文本表格;
+// 无分节/域/控件/页眉页脚。判据与 M2a 相同: 与全新引擎的全量结果逐字节相同。
 // 另外必须证明续排真的发生了 (reusedPages > 0), 否则用例退化成全量。
 // ================================================================
 
@@ -111,6 +111,36 @@ function buildDocWithTables(
 function makeTableDoc(leading: number, rows: number, trailing: number) {
   const built = buildDocWithTables([{ paras: leading }, { tableRows: rows }, { paras: trailing }])
   return { ...built, tableId: 't0-table' }
+}
+
+/**
+ * 在段落的第 index 个位置插入脚注引用, 并补上脚注内容节点。
+ * 内容节点按 FootnoteLayout 的取文规则挂一个 paragraph → text。
+ */
+function addFootnote(
+  pool: NodePool, paraId: string, index: number, key: string, text: string,
+): { refId: string } {
+  const textNode = createTextNode(text)
+  const para = createParagraph([textNode.id]) as Paragraph
+  const content = {
+    type: 'footnote_content', id: `fn-content-${key}`,
+    refId: `fn-ref-${key}`, children: [para.id],
+  }
+  const ref = { type: 'footnote_ref', id: `fn-ref-${key}`, footnoteId: content.id }
+  for (const n of [textNode, para, content, ref]) pool.addNode(n as unknown as BaseNode)
+  pool.insertChild(paraId, ref.id, index)
+  return { refId: ref.id }
+}
+
+/** 页面上已回填的脚注编号文本 (按页面顺序) */
+function footnoteNumbers(pages: ReturnType<LayoutEngine['fullLayout']>): string[] {
+  const out: string[] = []
+  for (const page of pages) {
+    for (const item of page.items) {
+      if (item.nodeId.startsWith('fn-num-')) out.push(item.text ?? '')
+    }
+  }
+  return out
 }
 
 function canonical(value: unknown): string {
@@ -225,6 +255,53 @@ describe('增量分页 (M2b)', () => {
     const pages = engine.fullLayout(doc, pool, 'paragraph')
 
     expect(engine.getPaginationStats().mode).toBe('resume')
+    expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
+  })
+
+  it('含脚注引用的文档: 脚注之后的正文编辑可续排, 编号与全量一致', () => {
+    const { doc, pool, paras, texts } = makeLongDoc(90)
+    addFootnote(pool, paras[10].id, 1, 'a', '既往史：高血压十年')
+
+    const engine = newEngine()
+    engine.fullLayout(doc, pool, 'paragraph')
+
+    pool.updateNode(texts[70], { text: `${SENTENCE}（已修改）` } as Partial<BaseNode>)
+    const pages = engine.fullLayout(doc, pool, 'paragraph')
+
+    expect(engine.getPaginationStats().mode).toBe('resume')
+    expect(engine.getPaginationStats().reusedPages).toBeGreaterThan(0)
+    expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
+    expect(footnoteNumbers(pages)).toEqual(['1.'])
+  })
+
+  it('续排点之前已有脚注: 新页编号接续 (播种生效)', () => {
+    const { doc, pool, paras, texts } = makeLongDoc(130)
+    addFootnote(pool, paras[10].id, 1, 'a', '既往史：高血压十年')
+    addFootnote(pool, paras[110].id, 1, 'b', '家族史：父亲糖尿病')
+
+    const engine = newEngine()
+    engine.fullLayout(doc, pool, 'paragraph')
+
+    // 编辑点在两个脚注之间: 复用页带着第 1 条脚注, 新页必须从 2 开始
+    pool.updateNode(texts[100], { text: `${SENTENCE}（已修改）` } as Partial<BaseNode>)
+    const pages = engine.fullLayout(doc, pool, 'paragraph')
+
+    expect(engine.getPaginationStats().mode).toBe('resume')
+    expect(engine.getPaginationStats().reusedPages).toBeGreaterThan(0)
+    expect(footnoteNumbers(pages)).toEqual(['1.', '2.'])
+    expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
+  })
+
+  it('新增脚注引用是结构编辑: 回落全量, 编号重排后结果一致', () => {
+    const { doc, pool, paras } = makeLongDoc(60)
+    const engine = newEngine()
+    engine.fullLayout(doc, pool, 'paragraph')
+
+    addFootnote(pool, paras[30].id, 1, 'late', '本次新增脚注')
+    const pages = engine.fullLayout(doc, pool, 'paragraph')
+
+    expect(engine.getPaginationStats().mode).toBe('full')
+    expect(footnoteNumbers(pages)).toEqual(['1.'])
     expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
   })
 

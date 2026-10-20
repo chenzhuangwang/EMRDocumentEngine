@@ -61,6 +61,26 @@ export class FootnoteLayout {
   }
 
   /**
+   * 续排播种 (契约 §16.1): 把编号接在**复用页**之后。
+   *
+   * 复用页的脚注区已经生成好, Step 4 不会再处理它们; 但编号是跨页连续的,
+   * 所以必须先把复用页里"会真正产出入条"的引用数一遍 —— 判据与
+   * `collectFootnotes` 完全一致 (节点存在、有 footnoteId、内容节点存在),
+   * 否则新页的编号会从 1 重新开始。
+   */
+  seedFrom(pages: readonly SLIFPage[], pool: NodePool): void {
+    for (const page of pages) {
+      for (const item of page.items) {
+        if (item.nodeType !== 'footnote_ref') continue
+        const ref = pool.nodes.get(item.nodeId) as { footnoteId?: string } | undefined
+        if (!ref?.footnoteId) continue
+        if (!pool.nodes.get(ref.footnoteId)) continue
+        this.globalCounter++
+      }
+    }
+  }
+
+  /**
    * 为给定页面收集脚注引用并分配编号
    */
   collectFootnotes(page: SLIFPage, pool: NodePool): FootnoteEntry[] {
