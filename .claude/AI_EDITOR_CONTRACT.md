@@ -3416,22 +3416,24 @@ Rules:
 INCREMENTAL LAYOUT STATUS (2026-10-19)
 
 M2a IS wired: `LayoutEngine` caches paragraph LINE layout for a provably
-safe subset — paragraphs whose children are all plain `text` — keyed by
-`IncrementalLayout.paragraphKey` (structure version + paragraph version +
-per-child versions) plus the available width, the revision-marks flag
-and, for list paragraphs, the resolved list marker. The cache holds at
-most one entry per paragraph id and MUST be cleared when the document is
-swapped.
+safe subset — paragraphs whose children are plain `text`, `image` or
+`footnote_ref` — keyed by `IncrementalLayout.paragraphKey` (structure
+version + paragraph version + per-child versions) plus the available
+width, the revision-marks flag, the resolved list marker and image
+dimensions. The cache holds at most one entry per paragraph id and MUST
+be cleared when the document is swapped.
 
-M2b IS wired for the same provably safe subset: when the body consists
-only of plain-text paragraphs and the document has no tables, section
+M2b IS wired for a slightly narrower subset: when the body consists only
+of plain-text/image paragraphs and the document has no tables, section
 breaks, footnotes, fields, controls, cross-references or header/footer
 content, page breaking resumes from the page BEFORE the first recomputed
 paragraph (widow control can pull a line back from the next page). If no
 paragraph line changed, the whole page array is reused. The page-start
 line table (`PageStartTable`) backs this lookup. List numbering is
 allowed because the marker is part of the paragraph key: a renumbering
-change invalidates the affected paragraphs automatically.
+change invalidates the affected paragraphs automatically. `footnote_ref`
+is excluded from M2b because the footnote gutter changes page height and
+Step 4 would re-collect footnotes on reused pages.
 
 `HitTestIndex` follows pagination: on a resume it rebuilds only from the
 first non-reused page, and when nothing changed it is not rebuilt at all.
@@ -3442,10 +3444,10 @@ deciding what to recompute (cache misses are the source of truth).
 They MUST NOT be cited as evidence that layout is incremental.
 
 Unknown or unprovable cases MUST fall back to a full pass (controls,
-fields, cross-references, images, footnotes, tables, sections, headers
-are deliberately excluded). The cache and resume path are correct only
-if the key/eligibility test covers every input that can change line
-layout or pagination; when adding a new input, extend the
+fields, cross-references, footnote references for pagination, tables,
+sections, headers are deliberately excluded). The cache and resume path
+are correct only if the key/eligibility test covers every input that can
+change line layout or pagination; when adding a new input, extend the
 key/eligibility test or fall back to full.
 
 The page-level design and remaining milestones are in
