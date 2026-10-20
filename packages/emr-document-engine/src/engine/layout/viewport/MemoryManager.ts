@@ -8,7 +8,7 @@
 // MemoryManager — 内存管理器 (R56, v6.0)
 //
 // 缓存容量限制 + LRU 淘汰 + 统计
-// TextMeasurer / FontManager / LayoutCache 共享此策略
+// TextMeasurer / FontManager 共享此策略
 // ============================================================
 
 export interface MemoryStats {

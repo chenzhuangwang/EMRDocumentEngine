@@ -1013,69 +1013,6 @@ export class LayoutEngine {
     }
   }
 
-  /** 增量布局 (仅重排脏区, TASK-446 incrementalRepaginate)
-   *
-   * 策略: 脏段落 ≤ 3 → 保留早期页面 + 从脏页开始 fullLayout 切片
-   *       否则 → 全量重排
-   */
-  incrementalLayout(
-    doc: DocumentTree, pool: NodePool, dirtyParagraphIds: Set<string>,
-  ): LayoutResult {
-    if (dirtyParagraphIds.size === 0) return this.pages
-
-    // 小范围脏: 局部重排
-    if (dirtyParagraphIds.size <= 3) {
-      const firstDirtyPageIndex = this.findPageContainingParagraph(dirtyParagraphIds)
-      if (firstDirtyPageIndex <= 0) return this.fullLayout(doc, pool)
-
-      // 全量重排 (LineBreaker + PageBreaker 管道无法只重排中间部分)
-      const allPages = this.fullLayout(doc, pool)
-
-      // 如果早期页面布局未变, 复用它们 (页码对齐)
-      let preservedCount = 0
-      for (let i = 0; i < firstDirtyPageIndex && i < allPages.length; i++) {
-        if (i < this.pages.length &&
-            this.pages[i].items.length === allPages[i].items.length &&
-            this.pages[i].items[0]?.nodeId === allPages[i].items[0]?.nodeId) {
-          preservedCount++
-        } else {
-          break
-        }
-      }
-
-      if (preservedCount > 0) {
-        const result = [...this.pages.slice(0, preservedCount), ...allPages.slice(preservedCount)]
-        // 重新编号页面
-        for (let i = 0; i < result.length; i++) result[i].pageIndex = i
-        this.pages = result
-        this.eventBus.emit('layout:changed', result)
-        console.debug(
-          `[LayoutEngine] incrementalLayout: preserved ${preservedCount}/${firstDirtyPageIndex} pages, ` +
-          `${dirtyParagraphIds.size} dirty → ${result.length} total pages`
-        )
-        return result
-      }
-
-      this.pages = allPages
-      return allPages
-    }
-
-    // 大范围脏 → 全量重排
-    return this.fullLayout(doc, pool)
-  }
-
-  /** 查找包含任一脏段落的页面索引, -1 表示需要全量重排 */
-  private findPageContainingParagraph(dirtyParagraphIds: ReadonlySet<string>): number {
-    for (let pi = 0; pi < this.pages.length; pi++) {
-      for (const item of this.pages[pi].items) {
-        if (dirtyParagraphIds.has(item.nodeId)) return pi
-        // item 可能属于某个段落的子节点, 尝试匹配
-      }
-    }
-    // 未找到 → 脏段可能不在已有页面中 (新增段落) → 需要全量重排
-    return -1
-  }
-
   getPages(): SLIFPage[] { return this.pages }
 
   /**

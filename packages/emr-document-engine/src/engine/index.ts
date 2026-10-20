@@ -36,7 +36,6 @@ export {
 } from './layout/core/SLIF'
 export { resolveLineHeight, DEFAULT_FONT_METRICS } from './layout/text/FontMetrics'
 export type { FontMetrics } from './layout/text/FontMetrics'
-export { LayoutCache } from './layout/incremental/LayoutCache'
 
 // Render
 export { LayeredRenderer } from './render/LayeredRenderer'

@@ -16,5 +16,5 @@
 
 import type { SLIFPage } from './SLIF'
 
-/** 布局结果 — LayoutEngine.fullLayout / incrementalLayout 的返回类型 */
+/** 布局结果 — LayoutEngine.fullLayout 的返回类型 */
 export type LayoutResult = SLIFPage[]
