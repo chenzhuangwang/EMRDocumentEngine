@@ -187,12 +187,32 @@ describe('增量分页 (M2b)', () => {
     expect(engine.getPaginationStats().reusedPages).toBe(again.length)
   })
 
-  it('首段编辑回落到全量分页', () => {
+  it('首段同形状编辑: 补丁首段所在页, 之后整段复用 (M2e)', () => {
+    const { doc, pool, texts } = makeLongDoc()
+    const engine = newEngine()
+    const before = engine.fullLayout(doc, pool, 'paragraph')
+
+    pool.updateNode(texts[0], { text: `第1段：${SENTENCE}（改）` } as Partial<BaseNode>)
+    const pages = engine.fullLayout(doc, pool, 'paragraph')
+
+    const stats = engine.getPaginationStats()
+    expect(stats.mode).toBe('resume')
+    expect(stats.reusedPages).toBe(0)             // 脏段落在第 0 页, 前面没有可复用页
+    expect(stats.reusedTailPages).toBeGreaterThan(0)
+    // 补丁范围之后的页对象**原样复用** (不是重建后恰好相等)
+    expect(pages[pages.length - 1]).toBe(before[before.length - 1])
+    expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
+  })
+
+  it('首段改行数 → 回落全量分页', () => {
     const { doc, pool, texts } = makeLongDoc()
     const engine = newEngine()
     engine.fullLayout(doc, pool, 'paragraph')
 
-    pool.updateNode(texts[0], { text: `第1段：${SENTENCE}（改）` } as Partial<BaseNode>)
+    pool.updateNode(
+      texts[0],
+      { text: `第1段：${SENTENCE}${SENTENCE}${SENTENCE}${SENTENCE}` } as Partial<BaseNode>,
+    )
     const pages = engine.fullLayout(doc, pool, 'paragraph')
 
     expect(engine.getPaginationStats().mode).toBe('full')

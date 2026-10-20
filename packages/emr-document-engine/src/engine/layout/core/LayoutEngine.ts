@@ -81,6 +81,17 @@ function revisionVariantOf(
 }
 
 /**
+ * 行的段末标记 — 与 PageBreaker 的 paragraphEnds 判据**同源**:
+ * pageable/表格 fragment 行视为块边界, 否则看最后一个元素 value === '\n'。
+ * M2e 的同形状判定必须用同一判据, 否则孤行/寡行输入可能悄悄变化。
+ */
+function lineEndsParagraph(line: ILine): boolean {
+  if (line.pageable || line.tableFragment) return true
+  const last = line.elements[line.elements.length - 1]
+  return last?.value === '\n'
+}
+
+/**
  * 运行时控件内联渲染预留宽所需的最小信息 (契约 §12.6 表单模式内联渲染)。
  * 正交读取: controlType 直接来自 TemplateDefinition, options 直接来自 element.format.enums,
  * 布局只消费、不推导 (绝不从 dataType/enums 反向推断 controlType)。
@@ -112,6 +123,21 @@ interface HfRegion { items: SLIFItem[]; regionHeight: number }
 
 /** 已算出的页眉/页脚变体布局 — default 恒有; first/even 视开关惰性计算 */
 type HfVariantRegions = Partial<Record<HeaderFooterVariant, { header: HfRegion; footer: HfRegion }>>
+
+/** 单轮布局结果 (layoutOnce 与 M2e 同形状补丁共用; 状态由 fullLayout 提交) */
+interface LayoutPassResult {
+  pages: SLIFPage[]
+  state: {
+    pageStartLineIndex: number[]
+    paraFirstLine: Map<string, number>
+    tableKeys: Map<string, string>
+  }
+  mode: 'full' | 'reuse-all' | 'resume'
+  /** 从第 0 页起原样复用的页数 */
+  reusedPages: number
+  /** 补丁范围**之后**原样复用的页数 (M2e; 普通路径恒为 0) */
+  reusedTailPages: number
+}
 
 /** 标题级别 → 字体缩放倍率 (基于正文默认 16px: H1=32, H2=24, H3=20, H4=18, H5=16, H6=14) */
 const HEADING_SCALE: Record<number, number> = { 1: 2.0, 2: 1.5, 3: 1.25, 4: 1.125, 5: 1.0, 6: 0.875 }
@@ -166,10 +192,23 @@ export class LayoutEngine {
   private paragraphCacheHits = 0
   private paragraphCacheMisses = 0
 
+  /**
+   * M2e 同形状页补丁开关 (契约 §16.1)。
+   *
+   * 关闭后回落到 M2b 续排 —— 等价性测试用它做"无补丁"反证 (让补丁路径
+   * 必须由用例自己证明是它省掉了重排, 而不是恰好看不出差别)。
+   */
+  private sameShapePatchEnabled = true
+
   /** 关闭段落行缓存 (等价性测试用: 关闭侧必须是"纯全量") */
   setParagraphCacheEnabled(v: boolean): void {
     this.paragraphCacheEnabled = v
     if (!v) this.clearParagraphLineCache()
+  }
+
+  /** 关闭 M2e 同形状页补丁 (测试用: 关闭侧必须走 M2b 续排) */
+  setSameShapePatchEnabled(v: boolean): void {
+    this.sameShapePatchEnabled = v
   }
 
   /** 清空段落行缓存 (换文档 / 全量失效时调用) */
@@ -231,6 +270,8 @@ export class LayoutEngine {
   private paraPageTable = new PageStartTable()
   private lastPaginationMode: 'full' | 'reuse-all' | 'resume' = 'full'
   private lastReusedPages = 0
+  /** 补丁范围**之后**原样复用的页数 (M2e; 普通续排恒为 0) */
+  private lastReusedTailPages = 0
   /** 上一轮各表格的子树键 — 只有键变了才把表格标记为"需重排" */
   private tableKeys = new Map<string, string>()
   /** 计算值代次 (Draw 在布局前同步) — 代次变化会让所有表格键失效 */
@@ -241,9 +282,24 @@ export class LayoutEngine {
     this.computedGeneration = generation
   }
 
-  /** 分页模式统计 (诊断与测试用; 不参与布局决策) */
-  getPaginationStats(): { mode: 'full' | 'reuse-all' | 'resume'; reusedPages: number; totalPages: number } {
-    return { mode: this.lastPaginationMode, reusedPages: this.lastReusedPages, totalPages: this.pages.length }
+  /**
+   * 分页模式统计 (诊断与测试用; 不参与布局决策)。
+   *
+   * reusedPages = 从第 0 页起原样复用的页数; reusedTailPages = 补丁范围之后
+   * 原样复用的页数 (M2e 同形状补丁才有, 普通续排恒为 0)。
+   */
+  getPaginationStats(): {
+    mode: 'full' | 'reuse-all' | 'resume'
+    reusedPages: number
+    reusedTailPages: number
+    totalPages: number
+  } {
+    return {
+      mode: this.lastPaginationMode,
+      reusedPages: this.lastReusedPages,
+      reusedTailPages: this.lastReusedTailPages,
+      totalPages: this.pages.length,
+    }
   }
 
   /** 换文档时必须调用: 旧页与新文档无关 (Draw.setDocument) */
@@ -252,6 +308,7 @@ export class LayoutEngine {
     this.paraPageTable = new PageStartTable()
     this.lastPaginationMode = 'full'
     this.lastReusedPages = 0
+    this.lastReusedTailPages = 0
     this.tableKeys.clear()
     this.pages = []
   }
@@ -382,7 +439,7 @@ export class LayoutEngine {
       pages = result.pages
     }
     this.pages = pages
-    this.commitPaginationState(result.state, result.mode, result.reusedPages)
+    this.commitPaginationState(result.state, result.mode, result.reusedPages, result.reusedTailPages)
     // 段落→页映射总是刷新: O(N) 只读派生, 不参与布局输出 (无行为变化), 但书签
     // 对话框与交叉引用都按它显示"第几页"。上面 needsXrefPass 时已建过一次, 这里
     // 用最终 pages 再建一次 —— 多一次 O(N) 换取"永不过期"的简单性。
@@ -400,11 +457,13 @@ export class LayoutEngine {
     },
     mode: 'full' | 'reuse-all' | 'resume',
     reusedPages: number,
+    reusedTailPages: number,
   ): void {
     this.pageStartLineIndex = state.pageStartLineIndex
     this.tableKeys = state.tableKeys
     this.lastPaginationMode = mode
     this.lastReusedPages = reusedPages
+    this.lastReusedTailPages = reusedTailPages
 
     const paras = [...state.paraFirstLine.entries()].sort((a, b) => a[1] - b[1])
     const entries: { id: string; pageIndex: number }[] = []
@@ -457,16 +516,7 @@ export class LayoutEngine {
     pool: NodePool,
     pageNumberHint: number,
     allowIncremental: boolean,
-  ): {
-    pages: SLIFPage[]
-    state: {
-      pageStartLineIndex: number[]
-      paraFirstLine: Map<string, number>
-      tableKeys: Map<string, string>
-    }
-    mode: 'full' | 'reuse-all' | 'resume'
-    reusedPages: number
-  } {
+  ): LayoutPassResult {
     // locale 必须与渲染期 (Draw.resolveFieldText) 同源 —— 否则域的量宽与
     // 绘制宽会漂移 (en-US 的 '9/22/2026' 比 zh-CN 的 '2026/9/22' 窄)。
     this.fieldReserveCtx = { totalPagesHint: pageNumberHint, documentTitle: doc.title, locale: locale.getLocale() }
@@ -510,7 +560,15 @@ export class LayoutEngine {
     const bodyArea = Math.max(0, bodyBottom - bodyTop - footnoteReserve)
 
     const paraFirstLine = new Map<string, number>()
-    const recomputed: { paraId: string; lineIndex: number }[] = []
+    // 本趟重算了哪些块。kind/shapeSame 供 M2e 判定 (同形状补丁只接受"唯一的
+    // 重算段落, 且其新行与缓存旧行形状相同")。
+    const recomputed: {
+      paraId: string
+      lineIndex: number
+      lineCount: number
+      kind: 'paragraph' | 'table'
+      shapeSame: boolean
+    }[] = []
     const nextTableKeys = new Map<string, string>()
 
     for (const blockId of bodyBlockSpine(doc, pool)) {
@@ -550,7 +608,7 @@ export class LayoutEngine {
           + `#cv${this.computedGeneration}#rev${this.showRevisionMarks ? 1 : 0}`
         nextTableKeys.set(block.id, tableKey)
         if (this.tableKeys.get(block.id) !== tableKey) {
-          recomputed.push({ paraId: block.id, lineIndex: allLines.length })
+          recomputed.push({ paraId: block.id, lineIndex: allLines.length, lineCount: 0, kind: 'table', shapeSame: false })
         }
         const { rows, columnWidths } = this.buildTableRows(tbl, pool, contentWidth, lineBreaker)
         const pageBreak = tbl.pageBreak
@@ -599,6 +657,7 @@ export class LayoutEngine {
         const cacheKey = this.paragraphCacheEnabled
           ? this.paragraphLineCacheKey(pool, para, contentWidth, savedListMarker)
           : null
+        let previousLines: ILine[] | undefined
         if (cacheKey) {
           const cached = this.paragraphLineCache.get(para.id)
           if (cached && cached.key === cacheKey) {
@@ -607,9 +666,15 @@ export class LayoutEngine {
             continue
           }
           this.paragraphCacheMisses++
+          // 旧行留作 M2e 同形状判定的基线 (键变才走到这里, 所以旧行必然过期)
+          previousLines = cached?.lines
         }
         // 未命中 (或不可缓存) → 本段行要重算; 它所在页及其后页需要重排
-        recomputed.push({ paraId: para.id, lineIndex: allLines.length })
+        const recomputedEntry = {
+          paraId: para.id, lineIndex: allLines.length, lineCount: 0,
+          kind: 'paragraph' as const, shapeSame: false,
+        }
+        recomputed.push(recomputedEntry)
 
         // 标题样式: outlineLevel > 0 时缩放字体 + 加粗
         const outlineLevel = para.outlineLevel ?? 0
@@ -753,6 +818,8 @@ export class LayoutEngine {
         }
         allLines.push(...paraLines)
         if (cacheKey) this.paragraphLineCache.set(para.id, { key: cacheKey, lines: paraLines })
+        recomputedEntry.lineCount = paraLines.length
+        if (previousLines) recomputedEntry.shapeSame = this.sameLineShape(previousLines, paraLines)
       }
     }
 
@@ -768,6 +835,14 @@ export class LayoutEngine {
         // 没有任何段落行变化 → 分页结果必然不变, 整份重用
         mode = 'reuse-all'
       } else {
+        // M2e 同形状补丁: 脏段落行数/行高不变时页边界不可能移动, 只重建它
+        // 所在的页, 前后页原样复用 (契约 §16.1)。不满足前提则回落 M2b 续排。
+        const patched = this.sameShapePagePatch(
+          recomputed, allLines, contentWidth, bodyTop, hfVariants, doc,
+          paraFirstLine, nextTableKeys, footnoteReserve,
+        )
+        if (patched) return patched
+
         const first = recomputed[0]
         const page = this.paraPageTable.getPage(first.paraId)
         // 寡行控制会从下一页拉行回来, 所以从脏段落所在页的**前一页**续排
@@ -796,6 +871,7 @@ export class LayoutEngine {
         },
         mode,
         reusedPages: this.pages.length,
+        reusedTailPages: 0,
       }
     }
 
@@ -805,154 +881,10 @@ export class LayoutEngine {
       mode === 'resume' ? resumePage : 0,
     )
 
-    // Step 3: IPage[] → SLIFPage[]
-    const convertedPages: SLIFPage[] = iPages.map((ip: IPage) => {
-      let y = bodyTop
-      const items: SLIFItem[] = []
-      for (const line of ip.lines) {
-        const firstEl = line.elements[0]
-
-        // 表格: 直接消费 PageBreaker 已产出的 fragment (headerRows + bodyRows)
-        if (line.tableFragment) {
-          const frag = line.tableFragment
-          const tbl = (firstEl as LineElement).tableBlock as { id: string } | undefined
-          items.push(this.createTableItemFromFragment(
-            tbl?.id ?? firstEl.id, frag, contentWidth, y, line.columnWidths || [],
-          ))
-          y += line.height
-          continue
-        }
-
-        if (line.height === 0) continue // 跳过 section_break 标记行
-        if (firstEl?.type === 'separator') {
-          items.push({
-            nodeId: firstEl.id, nodeType: 'separator', type: 'separator',
-            x: this.config.marginLeft, y, width: contentWidth, height: line.height,
-            ascent: line.maxAscent, descent: line.maxDescent,
-            font: 'SimSun', size: 12,
-          })
-          y += line.height
-          continue
-        }
-        // 行起始 X (对齐/缩进后) — 元素级 X 累积基准 (修复拆分节点后多 item 重叠/选区偏移)
-        // 块缩进 indent 每行生效; 首行缩进 firstLineIndent 仅首行 (LineBreaker 已只给首行赋值)。
-        let lineStartX = this.config.marginLeft + (line.indent ?? 0) + (line.firstLineIndent ?? 0)
-        if (line.alignment === 'center') {
-          lineStartX = this.config.marginLeft + (contentWidth - line.width) / 2 + (line.indent ?? 0) + (line.firstLineIndent ?? 0)
-        } else if (line.alignment === 'right') {
-          lineStartX = this.config.marginLeft + contentWidth - line.width
-        }
-        let cursorX = lineStartX
-        for (const el of line.elements) {
-          if (el.type === 'section_break') continue
-          if (el.type === 'footnote_ref') {
-            // 脚注引用: 生成占位 SLIF item, 编号在 Step 4 回填
-            const fnCharHeight = measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || 12 })
-            items.push({
-              nodeId: el.id, nodeType: 'footnote_ref', type: 'footnote',
-              x: this.config.marginLeft + (line.indent ?? 0), y,
-              width: 12, height: fnCharHeight,
-              ascent: fnCharHeight * 0.8, descent: fnCharHeight * 0.2,
-              font: el.font || 'SimSun', size: el.size || 12,
-              text: '?',  // 占位, Step 4 回填为正确编号
-              superscript: true,
-            })
-            continue
-          }
-          if (el.type === 'image') {
-            const imgEl = el as { imageData?: { width?: number; height?: number } }
-            const iw = imgEl.imageData?.width || contentWidth
-            const ih = imgEl.imageData?.height || 200
-            items.push({
-              nodeId: el.id, nodeType: 'image', type: 'image',
-              x: this.config.marginLeft, y,
-              width: Math.min(iw, contentWidth), height: ih,
-              ascent: ih, descent: 0,
-              font: 'SimSun', size: 12,
-            })
-            continue
-          }
-          const charHeight = measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || 16 })
-
-          // 元素级 X: 从行内累积游标取值 (而非整行同一起点), 修复拆分节点后多 item 重叠/选区偏移
-          let itemX = cursorX
-
-          // 列表标记: 从首元素 text 中剥离, 通过 listMarker 字段传给 Draw
-          let itemText: string | undefined = el.value
-          let itemListMarker: string | undefined = line.listMarker
-          let itemMarkerWidth: number | undefined
-          const markerX = itemX  // 保存标记原始位置 (shift 前)
-          if (itemListMarker && itemText && itemText.startsWith(itemListMarker)) {
-            itemText = itemText.slice(itemListMarker.length)
-            // 测量标记宽度, 偏移正文 x
-            const markerW = measurer.measure(itemListMarker, {
-              font: el.font || 'SimSun', size: el.size || 16,
-              bold: el.bold, italic: el.italic,
-            })
-            itemMarkerWidth = markerW.width
-            itemX += markerW.width
-          } else {
-            itemListMarker = undefined // 非首元素不带标记
-          }
-
-          // 元素实际渲染宽度 (与 LineBreaker 同源度量), 供 x 累积 + hit-test 精确命中。
-          // smarttext 是原子控件: 布局 advance 取「盒宽」= 文本宽 + 2*内边距 (与
-          // LineBreaker.getElementWidth 同源), 否则相邻控件盒重叠、且换行不生效。
-          const isSmart = el.type === 'smarttext'
-          // 离散控件内联渲染: 预留候选项宽 (control.width), 与 LineBreaker 同源。
-          // PageLayout.ILine.elements 是窄化类型 (无 control), 运行时仍保留该字段, 故回 cast。
-          const elControl = (el as LineElement).control
-          const controlWidth = isSmart && typeof elControl?.width === 'number' && elControl.width > 0
-            ? elControl.width
-            : undefined
-          // 域代码: 按代表值量宽 (非模型占位符 '[总页数]'), 与 LineBreaker 同源。
-          // 否则预留宽远大于渲染期解析出的 '3' → 域后拖出一大片空白。
-          const reserveText = el.type === 'field'
-            ? ((el as LineElement).fieldReserveText ?? itemText)
-            : itemText
-          const itemWidth = controlWidth !== undefined
-            ? controlWidth
-            : measurer.measureWidth(reserveText || '', {
-                font: el.font || 'SimSun', size: el.size || 16,
-                bold: el.bold, italic: el.italic,
-              })
-          const advanceWidth = itemWidth + (isSmart ? CONTROL_BOX_PADDING * 2 : 0)
-
-          items.push({
-            nodeId: el.id, nodeType: el.type, type: el.type,
-            text: itemText,
-            x: itemX, y, width: (itemMarkerWidth || 0) + itemWidth,
-            height: charHeight,
-            ascent: line.maxAscent, descent: line.maxDescent,
-            font: el.font || 'SimSun', size: el.size || 16,
-            bold: el.bold, italic: el.italic,
-            color: el.color, underline: el.underline,
-            underlineStyle: (el as { underlineStyle?: string }).underlineStyle,
-            strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,
-            highlight: (el as { highlight?: string }).highlight,
-            revision: (el as LineElement).revision,
-            listMarker: itemListMarker,            listMarkerX: itemListMarker ? markerX : undefined,
-            markerWidth: itemMarkerWidth,
-            controlLines: isSmart ? elControl?.lines : undefined,
-            wrapWidth: isSmart ? elControl?.wrapWidth : undefined,
-            fieldType: (el as { fieldType?: string }).fieldType,
-          })
-
-          // 推进元素级 X 游标 (标记宽度 + 正文宽度 [+ 控件盒内边距])
-          cursorX += (itemMarkerWidth || 0) + advanceWidth
-        }
-        y += line.height
-      }
-
-      // 页眉/页脚 — 按本页页码取生效变体 (契约 §7.9)。
-      // 同一变体各页共享同一 items 数组 (不做逐页复制)。
-      const hfSet = hfVariants[resolveVariantForPage(doc, ip.pageIndex + 1)] ?? hfVariants.default!
-      return {
-        pageIndex: ip.pageIndex, width: this.config.pageWidth, height: this.config.pageHeight, items,
-        headerItems: hfSet.header.items, footerItems: hfSet.footer.items,
-        headerHeight: hfSet.header.regionHeight, footerHeight: hfSet.footer.regionHeight,
-      }
-    })
+    // Step 3: IPage[] → SLIFPage[] (唯一实现见 convertLinesToPage)
+    const convertedPages: SLIFPage[] = iPages.map((ip: IPage) =>
+      this.convertLinesToPage(ip.pageIndex, ip.lines, contentWidth, bodyTop, hfVariants, doc),
+    )
 
     // 复用前序页 + 新排的页 (续排时 PageBreaker 已从 resumePage 开始编号)
     const slifPages: SLIFPage[] = mode === 'resume'
@@ -1016,6 +948,260 @@ export class LayoutEngine {
       state: { pageStartLineIndex, paraFirstLine, tableKeys: nextTableKeys },
       mode,
       reusedPages: presetPages.length,
+      reusedTailPages: 0,
+    }
+  }
+
+  /**
+   * M2e 同形状页补丁 (契约 §16.1)。
+   *
+   * 前提全部成立时才生效, 否则返回 null 让调用方回落 M2b 续排:
+   *   - 本趟**只有一个**重算块, 且是段落, 且其新行与缓存旧行"同形状"
+   *     (行数、逐行行高、段末标记都不变);
+   *   - 文档无表格 (表格 fragment 让"页 ↔ 输入行切片"不再一一对应) 且无脚注
+   *     (脚注区不属于正文行切片);
+   *   - 页起始行表与页数组一致 (增量状态完好)。
+   *
+   * 为什么形状相同 ⇒ 页边界不动: PageBreaker 的决策序列只读每一行的 height、
+   * pageable 与段末标记 (最后一个元素 value === '\n'), 三者都不变则整趟循环
+   * 走出一模一样的分页。于是只需重建承载该段落行的页 —— 它们必须重转 (文本
+   * 变了), 其余页连对象都不必换。
+   */
+  private sameShapePagePatch(
+    recomputed: readonly {
+      paraId: string
+      lineIndex: number
+      lineCount: number
+      kind: 'paragraph' | 'table'
+      shapeSame: boolean
+    }[],
+    allLines: ILine[],
+    contentWidth: number,
+    bodyTop: number,
+    hfVariants: HfVariantRegions,
+    doc: DocumentTree,
+    paraFirstLine: Map<string, number>,
+    tableKeys: Map<string, string>,
+    footnoteReserve: number,
+  ): LayoutPassResult | null {
+    if (!this.sameShapePatchEnabled) return null
+    if (recomputed.length !== 1) return null
+    const only = recomputed[0]
+    if (only.kind !== 'paragraph' || !only.shapeSame || only.lineCount <= 0) return null
+    // 表格/脚注都让"页承载哪些输入行"不再等于页起始行表里的切片
+    if (tableKeys.size > 0 || footnoteReserve > 0) return null
+
+    const firstLine = only.lineIndex
+    const lastLine = firstLine + only.lineCount - 1
+    if (firstLine < 0 || lastLine >= allLines.length) return null
+
+    const firstPage = this.pageOfLine(firstLine)
+    const lastPage = this.pageOfLine(lastLine)
+    if (firstPage < 0 || lastPage < firstPage || lastPage >= this.pages.length) return null
+
+    const rebuilt: SLIFPage[] = []
+    for (let p = firstPage; p <= lastPage; p++) {
+      const start = this.pageStartLineIndex[p]
+      const end = p + 1 < this.pageStartLineIndex.length
+        ? this.pageStartLineIndex[p + 1]
+        : allLines.length
+      if (start < 0 || end < start || end > allLines.length) return null
+      rebuilt.push(this.convertLinesToPage(p, allLines.slice(start, end), contentWidth, bodyTop, hfVariants, doc))
+    }
+
+    return {
+      pages: [
+        ...this.pages.slice(0, firstPage),
+        ...rebuilt,
+        ...this.pages.slice(lastPage + 1),
+      ],
+      // 页边界与输入行映射都没动 —— 直接沿用旧表
+      state: { pageStartLineIndex: this.pageStartLineIndex.slice(), paraFirstLine, tableKeys },
+      mode: 'resume',
+      reusedPages: firstPage,
+      reusedTailPages: this.pages.length - lastPage - 1,
+    }
+  }
+
+  /**
+   * 同形状判定 (M2e): 行数、逐行行高、逐行段末标记都相同。
+   *
+   * 段末标记按 PageBreaker 的判据取"最后一个元素 value === '\n'"。它不是逐段
+   * 只落在段尾: 行内元素如果恰好是单独的换行也会命中, 所以逐行比较而不是只比
+   * 最后一行。
+   */
+  private sameLineShape(a: ILine[], b: ILine[]): boolean {
+    if (a.length === 0 || a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
+      if (a[i].height !== b[i].height) return false
+      if (!!a[i].pageable !== !!b[i].pageable) return false
+      if (lineEndsParagraph(a[i]) !== lineEndsParagraph(b[i])) return false
+    }
+    return true
+  }
+
+  /**
+   * IPage 的行 → SLIFPage (Step 3 的唯一实现)。
+   *
+   * 续排后的新页与 M2e 的同形状补丁页共用这一条转换路径 —— 补丁页必须与
+   * 全量排版逐字节相同, 所以不允许第二份实现。
+   *
+   * 逐行产出 SLIF items: 表格 fragment / 分隔符 / 脚注引用占位 / 图片 / 文本。
+   * 页眉页脚按**本页页码**取生效变体 (契约 §7.9); 同一变体各页共享 items。
+   */
+  private convertLinesToPage(
+    pageIndex: number,
+    pageLines: ILine[],
+    contentWidth: number,
+    bodyTop: number,
+    hfVariants: HfVariantRegions,
+    doc: DocumentTree,
+  ): SLIFPage {
+    const measurer = this.measurer
+    let y = bodyTop
+    const items: SLIFItem[] = []
+    for (const line of pageLines) {
+      const firstEl = line.elements[0]
+
+      // 表格: 直接消费 PageBreaker 已产出的 fragment (headerRows + bodyRows)
+      if (line.tableFragment) {
+        const frag = line.tableFragment
+        const tbl = (firstEl as LineElement).tableBlock as { id: string } | undefined
+        items.push(this.createTableItemFromFragment(
+          tbl?.id ?? firstEl.id, frag, contentWidth, y, line.columnWidths || [],
+        ))
+        y += line.height
+        continue
+      }
+
+      if (line.height === 0) continue // 跳过 section_break 标记行
+      if (firstEl?.type === 'separator') {
+        items.push({
+          nodeId: firstEl.id, nodeType: 'separator', type: 'separator',
+          x: this.config.marginLeft, y, width: contentWidth, height: line.height,
+          ascent: line.maxAscent, descent: line.maxDescent,
+          font: 'SimSun', size: 12,
+        })
+        y += line.height
+        continue
+      }
+      // 行起始 X (对齐/缩进后) — 元素级 X 累积基准 (修复拆分节点后多 item 重叠/选区偏移)
+      // 块缩进 indent 每行生效; 首行缩进 firstLineIndent 仅首行 (LineBreaker 已只给首行赋值)。
+      let lineStartX = this.config.marginLeft + (line.indent ?? 0) + (line.firstLineIndent ?? 0)
+      if (line.alignment === 'center') {
+        lineStartX = this.config.marginLeft + (contentWidth - line.width) / 2 + (line.indent ?? 0) + (line.firstLineIndent ?? 0)
+      } else if (line.alignment === 'right') {
+        lineStartX = this.config.marginLeft + contentWidth - line.width
+      }
+      let cursorX = lineStartX
+      for (const el of line.elements) {
+        if (el.type === 'section_break') continue
+        if (el.type === 'footnote_ref') {
+          // 脚注引用: 生成占位 SLIF item, 编号在 Step 4 回填
+          const fnCharHeight = measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || 12 })
+          items.push({
+            nodeId: el.id, nodeType: 'footnote_ref', type: 'footnote',
+            x: this.config.marginLeft + (line.indent ?? 0), y,
+            width: 12, height: fnCharHeight,
+            ascent: fnCharHeight * 0.8, descent: fnCharHeight * 0.2,
+            font: el.font || 'SimSun', size: el.size || 12,
+            text: '?',  // 占位, Step 4 回填为正确编号
+            superscript: true,
+          })
+          continue
+        }
+        if (el.type === 'image') {
+          const imgEl = el as { imageData?: { width?: number; height?: number } }
+          const iw = imgEl.imageData?.width || contentWidth
+          const ih = imgEl.imageData?.height || 200
+          items.push({
+            nodeId: el.id, nodeType: 'image', type: 'image',
+            x: this.config.marginLeft, y,
+            width: Math.min(iw, contentWidth), height: ih,
+            ascent: ih, descent: 0,
+            font: 'SimSun', size: 12,
+          })
+          continue
+        }
+        const charHeight = measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || 16 })
+
+        // 元素级 X: 从行内累积游标取值 (而非整行同一起点), 修复拆分节点后多 item 重叠/选区偏移
+        let itemX = cursorX
+
+        // 列表标记: 从首元素 text 中剥离, 通过 listMarker 字段传给 Draw
+        let itemText: string | undefined = el.value
+        let itemListMarker: string | undefined = line.listMarker
+        let itemMarkerWidth: number | undefined
+        const markerX = itemX  // 保存标记原始位置 (shift 前)
+        if (itemListMarker && itemText && itemText.startsWith(itemListMarker)) {
+          itemText = itemText.slice(itemListMarker.length)
+          // 测量标记宽度, 偏移正文 x
+          const markerW = measurer.measure(itemListMarker, {
+            font: el.font || 'SimSun', size: el.size || 16,
+            bold: el.bold, italic: el.italic,
+          })
+          itemMarkerWidth = markerW.width
+          itemX += markerW.width
+        } else {
+          itemListMarker = undefined // 非首元素不带标记
+        }
+
+        // 元素实际渲染宽度 (与 LineBreaker 同源度量), 供 x 累积 + hit-test 精确命中。
+        // smarttext 是原子控件: 布局 advance 取「盒宽」= 文本宽 + 2*内边距 (与
+        // LineBreaker.getElementWidth 同源), 否则相邻控件盒重叠、且换行不生效。
+        const isSmart = el.type === 'smarttext'
+        // 离散控件内联渲染: 预留候选项宽 (control.width), 与 LineBreaker 同源。
+        // PageLayout.ILine.elements 是窄化类型 (无 control), 运行时仍保留该字段, 故回 cast。
+        const elControl = (el as LineElement).control
+        const controlWidth = isSmart && typeof elControl?.width === 'number' && elControl.width > 0
+          ? elControl.width
+          : undefined
+        // 域代码: 按代表值量宽 (非模型占位符 '[总页数]'), 与 LineBreaker 同源。
+        // 否则预留宽远大于渲染期解析出的 '3' → 域后拖出一大片空白。
+        const reserveText = el.type === 'field'
+          ? ((el as LineElement).fieldReserveText ?? itemText)
+          : itemText
+        const itemWidth = controlWidth !== undefined
+          ? controlWidth
+          : measurer.measureWidth(reserveText || '', {
+              font: el.font || 'SimSun', size: el.size || 16,
+              bold: el.bold, italic: el.italic,
+            })
+        const advanceWidth = itemWidth + (isSmart ? CONTROL_BOX_PADDING * 2 : 0)
+
+        items.push({
+          nodeId: el.id, nodeType: el.type, type: el.type,
+          text: itemText,
+          x: itemX, y, width: (itemMarkerWidth || 0) + itemWidth,
+          height: charHeight,
+          ascent: line.maxAscent, descent: line.maxDescent,
+          font: el.font || 'SimSun', size: el.size || 16,
+          bold: el.bold, italic: el.italic,
+          color: el.color, underline: el.underline,
+          underlineStyle: (el as { underlineStyle?: string }).underlineStyle,
+          strikeout: el.strikeout, superscript: el.superscript, subscript: el.subscript,
+          highlight: (el as { highlight?: string }).highlight,
+          revision: (el as LineElement).revision,
+          listMarker: itemListMarker,            listMarkerX: itemListMarker ? markerX : undefined,
+          markerWidth: itemMarkerWidth,
+          controlLines: isSmart ? elControl?.lines : undefined,
+          wrapWidth: isSmart ? elControl?.wrapWidth : undefined,
+          fieldType: (el as { fieldType?: string }).fieldType,
+        })
+
+        // 推进元素级 X 游标 (标记宽度 + 正文宽度 [+ 控件盒内边距])
+        cursorX += (itemMarkerWidth || 0) + advanceWidth
+      }
+      y += line.height
+    }
+
+    // 页眉/页脚 — 按本页页码取生效变体 (契约 §7.9)。
+    // 同一变体各页共享同一 items 数组 (不做逐页复制)。
+    const hfSet = hfVariants[resolveVariantForPage(doc, pageIndex + 1)] ?? hfVariants.default!
+    return {
+      pageIndex, width: this.config.pageWidth, height: this.config.pageHeight, items,
+      headerItems: hfSet.header.items, footerItems: hfSet.footer.items,
+      headerHeight: hfSet.header.regionHeight, footerHeight: hfSet.footer.regionHeight,
     }
   }
 
