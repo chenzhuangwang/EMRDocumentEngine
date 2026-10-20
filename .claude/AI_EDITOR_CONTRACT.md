@@ -972,6 +972,26 @@ remote / system) is a separate concern and MAY be distinguished via
 change origin when collaboration or auditing needs it. Do NOT solve
 that distinction by introducing a second event transport.
 
+8.2.1 Command merging
+
+The undo stack MAY merge consecutive commands, but only when the
+merged command is an exact substitute for the sequence:
+
+- merging MUST NOT change the state produced by redo;
+- one undo of the merged unit MUST restore the state before the first
+  command, one redo MUST restore the state after the last one —
+  including the §8.3 byte-identical node identity;
+- a command that mints node ids, captures a paragraph snapshot, or
+  applies revision marks MAY merge only if the merged command carries
+  the same minted ids / snapshot / resolved mark;
+- when in doubt, do NOT merge. Extra undo steps are acceptable;
+  a lost character or a non-identical redo is not.
+
+Implemented: `ParagraphStyleCommand`; `InsertTextCommand` (in-place
+append only, contiguous offset, same style and revision kind);
+`DeleteRangeCommand` (untracked, no snapshot, left-adjacent only —
+rightward deletes reuse the same range and MUST NOT merge).
+
 ------------------------------------------------------------
 8.3 Command replay identity — forward is called more than once
 ------------------------------------------------------------
