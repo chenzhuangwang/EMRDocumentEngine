@@ -972,6 +972,32 @@ remote / system) is a separate concern and MAY be distinguished via
 change origin when collaboration or auditing needs it. Do NOT solve
 that distinction by introducing a second event transport.
 
+UNDO EXACTNESS. The inverse of a command MUST restore the document as it
+was BEFORE that command — node identity and run boundaries included, not
+merely the same visible text. A plain "insert the deleted text back"
+inverse is lossy whenever the forward changed node structure:
+
+    - an insert that splits a run mints new nodes, and normalizeParagraph
+      may merge same-style neighbours — deleting the inserted characters
+      can then no longer restore the original run ids;
+    - a delete that crosses runs, or covers a run entirely, loses each
+      run's style and the removed node ids (text re-insertion takes the
+      target run's style only).
+
+Such commands MUST capture the paragraph before mutating
+(`captureParagraphSnapshot`) and invert with `RestoreParagraphsCommand`.
+Style commands MUST invert by REPLACING each node's style with its own
+old value — deleting the fields the command added — because one merged
+`changes` object can not represent per-node old styles (and spreading a
+`nodeId → style` map into a node writes a bogus field named after the id).
+
+Gate: `UndoRedoEquivalence.test.ts` runs random mixed command sequences
+through the real Editor and requires, step by step, that undo returns to
+each historical snapshot and redo returns to each forward snapshot.
+Compared data is the canonicalized serialization: values, node ids and
+array order; object key insertion order is serialization noise, not
+identity.
+
 8.2.1 Command merging
 
 The undo stack MAY merge consecutive commands, but only when the
@@ -990,7 +1016,10 @@ merged command is an exact substitute for the sequence:
 Implemented: `ParagraphStyleCommand`; `InsertTextCommand` (in-place
 append only, contiguous offset, same style and revision kind);
 `DeleteRangeCommand` (untracked, no snapshot, left-adjacent only —
-rightward deletes reuse the same range and MUST NOT merge).
+rightward deletes reuse the same range and MUST NOT merge). A delete that
+crosses runs or consumes a whole run now carries a paragraph snapshot
+(§8.2 undo exactness) and therefore never merges; only same-run partial
+deletions merge.
 
 ------------------------------------------------------------
 8.3 Command replay identity — forward is called more than once
