@@ -4392,13 +4392,16 @@ W3-SELECTION:
     - Region mixing is refused by region identity
       (`regionIdOf`): body↔header and header↔header:first are invalid
       selections.
-    - Copy and painting walk the flattened W3 spine, so a body↔cell
-      selection is a linear text range. Deletion mutates paragraphs
-      through the region-scoped sibling array: it deletes text in the
-      paragraphs it can address and skips block nodes (a table between
-      the endpoints stays), and it REFUSES body↔cell ranges. That
-      asymmetry is deliberate until a product decision says otherwise —
-      do not "fix" it by silently changing one side.
+    - Copy, painting AND deletion walk the same flattened W3 spine. A
+      body↔cell or cross-cell selection is one linear text range: the
+      text it covers — cell text included — is deleted. Block structure
+      (a table, a block-level image) is never removed by text deletion;
+      it stays where it is.
+    - After a cross-paragraph deletion, each paragraph merges into its
+      preceding sibling only when that sibling is a paragraph in the
+      same container. MergeParagraphCommand decides this itself and
+      returns null otherwise (no undo entry), so a table boundary is
+      never crossed and no index bookkeeping is needed.
 
 ------------------------------------------------------------
 31.4 `paragraphPath` — 2 elements, and container resolution
