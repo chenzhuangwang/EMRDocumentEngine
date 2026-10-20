@@ -3485,6 +3485,29 @@ to the line AFTER the table, so `pageOfLine(tableIndex)` resolves to the
 FIRST fragment page. This mapping is what makes resume and the
 `PageStartTable` lookups correct with tables present.
 
+SAME-SHAPE PAGE PATCH (M2e). When EXACTLY ONE block was recomputed and it is
+a paragraph whose new lines have the same COUNT and the same PER-LINE HEIGHTS
+as its cached previous lines, page boundaries cannot move: PageBreaker's
+decision sequence reads only each line's height, its pageable flag and its
+paragraph-end flag, all unchanged. Layout may then rebuild ONLY the pages
+that carry that paragraph's lines and reuse every other page object verbatim,
+INCLUDING pages after the rebuilt range — it must not resume re-breaking from
+the first dirty page. Required preconditions (any failure falls back to the
+M2b resume path, then to a full pass):
+  - the document has no tables and no footnotes (footnote reserve = 0): a
+    table fragment or a footnote area would make a page's line slice
+    ambiguous;
+  - the paragraph's last line still ends the paragraph (same '\n' flag), so
+    widow/orphan control sees identical boundaries;
+  - the previous lines are still in the paragraph line cache (otherwise the
+    shape comparison has no baseline).
+Rebuilt pages and reused pages MUST be byte-identical to a fresh full layout;
+the randomized equivalence gate is the acceptance proof. The hit-test index
+rebuild starts at the first patched page (re-indexing the reused tail is
+harmless). `getPaginationStats()` reports the prefix reuse count in
+`reusedPages` and the count reused after the patched range in
+`reusedTailPages`; both being zero means nothing was reused.
+
 Step 4 (footnote collection) is incremental-safe under two rules:
 1. It processes ONLY the newly paginated pages. Reused pages already carry
    their footnote items; re-collecting them would append duplicates on every
