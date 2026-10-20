@@ -3423,17 +3423,40 @@ width, the revision-marks flag, the resolved list marker and image
 dimensions. The cache holds at most one entry per paragraph id and MUST
 be cleared when the document is swapped.
 
-M2b IS wired for a slightly narrower subset: when the body consists only
-of plain-text/image paragraphs and the document has no tables, section
-breaks, footnotes, fields, controls, cross-references or header/footer
-content, page breaking resumes from the page BEFORE the first recomputed
-paragraph (widow control can pull a line back from the next page). If no
-paragraph line changed, the whole page array is reused. The page-start
-line table (`PageStartTable`) backs this lookup. List numbering is
-allowed because the marker is part of the paragraph key: a renumbering
-change invalidates the affected paragraphs automatically. `footnote_ref`
-is excluded from M2b because the footnote gutter changes page height and
-Step 4 would re-collect footnotes on reused pages.
+M2b IS wired for a provably safe subset: plain-text/image paragraphs (list
+markers included) and tables whose cells contain only `text` leaves.
+Section breaks, footnotes, fields, controls, cross-references and
+header/footer content remain excluded. Page breaking resumes from the page
+BEFORE the first recomputed paragraph (widow control can pull a line back
+from the next page). If that page begins in the middle of a table, it MUST
+walk back to the table's first page: the paginator receives the original
+input-line slice and a table has exactly ONE input line, so starting from
+the middle would re-emit fragments already carried by reused pages. If no
+paragraph line changed and no table key changed, the whole page array is
+reused.
+
+List numbering is allowed because the marker is part of the paragraph key:
+a renumbering change invalidates the affected paragraphs automatically.
+
+A table is allowed only when `IncrementalLayout.tableKey` proves its
+subtree unchanged: structure version + every node version under the table
+(rows, cells, cell paragraphs, text), combined with the computed-values
+generation and the revision-marks flag. The generation is required because
+a formula/definition change alters displayed values without touching node
+versions. A cell holding a control (`smarttext`), a nested table, a footnote
+reference or any non-`text` leaf makes the whole document ineligible for
+M2b — those inputs change cell geometry from outside the table key, or make
+Step 4 mutate reused pages.
+
+The page-start line table maps each page to an INPUT-line index. A table
+occupies one input line but can span several pages: the page carrying its
+first fragment advances the index by one, and every continuation page maps
+to the line AFTER the table, so `pageOfLine(tableIndex)` resolves to the
+FIRST fragment page. This mapping is what makes resume and the
+`PageStartTable` lookups correct with tables present.
+
+`footnote_ref` is excluded from M2b because the footnote gutter changes page
+height and Step 4 would re-collect footnotes on reused pages.
 
 `HitTestIndex` follows pagination: on a resume it rebuilds only from the
 first non-reused page, and when nothing changed it is not rebuilt at all.
@@ -3444,11 +3467,11 @@ deciding what to recompute (cache misses are the source of truth).
 They MUST NOT be cited as evidence that layout is incremental.
 
 Unknown or unprovable cases MUST fall back to a full pass (controls,
-fields, cross-references, footnote references for pagination, tables,
-sections, headers are deliberately excluded). The cache and resume path
-are correct only if the key/eligibility test covers every input that can
-change line layout or pagination; when adding a new input, extend the
-key/eligibility test or fall back to full.
+fields, cross-references, footnote references for pagination, tables whose
+cells are not plain text, sections, headers are deliberately excluded). The
+cache and resume path are correct only if the key/eligibility test covers
+every input that can change line layout or pagination; when adding a new
+input, extend the key/eligibility test or fall back to full.
 
 The page-level design and remaining milestones are in
 `knowledge/增量排版-设计方案.md`.
