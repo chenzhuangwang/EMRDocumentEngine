@@ -19,7 +19,7 @@
 //     重建非文本节点, 且跨非文本节点删除时 deletedText 拼接会丢失位置)。
 // ================================================================
 
-import type { BaseNode, Paragraph, TextNode, RevisionMark } from '../../document/core/DocumentModel'
+import type { BaseNode, Paragraph, TextNode, RevisionMark, TextStyle } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
 import { generateCommandId } from '../ICommand'
 import type { ICommand } from '../ICommand'
@@ -52,6 +52,8 @@ export class DeleteRangeCommand extends PositionalCommand {
   readonly startOffset: number
   readonly endOffset: number
   private _deletedText = ''
+  /** 删除开始处文本节点的样式 — 撤销时原样写回, 否则默认样式会把带格式的 run 拆开 */
+  private _targetStyle: TextStyle | undefined
   /** 删除范围涉及非文本节点时捕获的整段快照; 否则保持 null (走文本反转) */
   private _paragraphSnapshot: ParagraphSnapshot | null = null
   /** 铸造一次台账 (契约 §8.3): 空段落补的空文本节点在 redo 时复用同一 id */
@@ -89,6 +91,8 @@ export class DeleteRangeCommand extends PositionalCommand {
     )
     // 文档顺序: 先删的字符在后、后删的在前
     merged._deletedText = o.deletedText + this.deletedText
+    // 合并区间从后一条的起点开始, 撤销也应由那个 run 的样式接住
+    merged._targetStyle = o._targetStyle
     merged._paragraphSnapshot = null
     merged.tracked = false
     return merged
@@ -115,6 +119,14 @@ export class DeleteRangeCommand extends PositionalCommand {
     if (!start || !end) return null
     if (this.startOffset >= this.endOffset) return null
 
+    // 记下起点 run 的样式 (撤销用): 不传样式时 InsertTextCommand 按默认样式
+    // 重建文字 —— 带字号/加粗的 run 被删一个字再撤销, 会变成"原样式 + 默认样式"
+    // 两个 run, 逐字节不等 (契约 §8.3)。
+    const startNode = pool.nodes.get(start.textNodeId)
+    if ((startNode as { type?: string } | undefined)?.type === 'text') {
+      this._targetStyle = extractStyle(startNode as TextNode)
+    }
+
     // Step 1.5: 先快照整段 (供 invert 精确还原), 两种情形:
     //   a) 范围触及非文本节点 —— 文本反转重建不出非文本节点 (既有);
     //   b) 整段被删空 —— Step 4 会补一个空文本节点, 纯文本反转 (InsertTextCommand)
@@ -131,7 +143,16 @@ export class DeleteRangeCommand extends PositionalCommand {
     })()
     const emptiesParagraph =
       this.startOffset === 0 && this.endOffset >= paragraphCharLength(pool, para)
-    if (tracked || this.rangeTouchesNonText(pool, para, this.startOffset, this.endOffset) || emptiesParagraph) {
+    // c) 跨节点删除 —— 被删文字可能横跨多种样式, 而纯文本反转只按**插入目标**
+    //    的一份样式重建; 且 normalize 可能吞掉被删空的 run. 样式与节点身份都会丢.
+    // d) 整段覆盖某个 run —— InsertText 只能在目标 run 里补字, 还原不出被移除
+    //    节点的 id (契约 §8.3: 带 id 的序列化逐字节相同).
+    const crossesNodes = start.textNodeId !== end.textNodeId
+    const removesWholeNode =
+      this.rangeRemovesWholeNode(pool, para, this.startOffset, this.endOffset)
+    if (tracked || crossesNodes || removesWholeNode
+      || this.rangeTouchesNonText(pool, para, this.startOffset, this.endOffset)
+      || emptiesParagraph) {
       this._paragraphSnapshot = captureParagraphSnapshot(pool, para)
     }
     const mark = this.stamp.value
@@ -226,7 +247,7 @@ export class DeleteRangeCommand extends PositionalCommand {
     }
     return new InsertTextCommand(
       generateCommandId(), Date.now(), this.author,
-      this.path, this.startOffset, this._deletedText,
+      this.path, this.startOffset, this._deletedText, this._targetStyle,
     )
   }
 
@@ -350,6 +371,23 @@ export class DeleteRangeCommand extends PositionalCommand {
     for (const id of dropped) {
       if (!ids.includes(id)) pool.removeNode(id)
     }
+  }
+
+  /** [startOffset, endOffset) 是否整段覆盖任一文本 run (含空 run) */
+  private rangeRemovesWholeNode(pool: NodePool, para: Paragraph, startOffset: number, endOffset: number): boolean {
+    let offset = 0
+    for (const childId of para.children) {
+      const node = pool.nodes.get(childId)
+      if (!node) continue
+      const isText = (node as unknown as { type?: string }).type === 'text'
+      const len = isText ? ((node as unknown as TextNode).text ?? '').length : 1
+      const nodeStart = offset
+      const nodeEnd = offset + len
+      offset = nodeEnd
+      // 非文本节点的整段覆盖已由 rangeTouchesNonText 覆盖
+      if (isText && nodeStart >= startOffset && nodeEnd <= endOffset) return true
+    }
+    return false
   }
 
   /** 判断 [startOffset, endOffset) 是否触及任何非文本节点 (决定是否快照整段) */

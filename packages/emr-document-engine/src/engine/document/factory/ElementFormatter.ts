@@ -263,8 +263,11 @@ export function sameStyle(a: TextStyle, b: TextStyle): boolean {
 /**
  * 选区样式快照: 各字段全部一致 → 返回该值; 任一字段不一致 → 该字段置 undefined
  * (混合/不定态, 供工具栏按钮保持未激活)。空数组 → 返回 {}。
+ *
+ * 同时是「文本样式有哪些字段」的唯一清单 —— 命令的样式还原与连续输入合并的
+ * 同样式判定都从这里取; 新增样式字段只改这一处。
  */
-const TEXT_STYLE_KEYS = [
+export const TEXT_STYLE_KEYS = [
   'font', 'size', 'bold', 'italic', 'underline', 'underlineStyle',
   'strikeout', 'color', 'highlight', 'superscript', 'subscript', 'letterSpacing',
 ] as const

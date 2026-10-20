@@ -13,7 +13,7 @@
 // ================================================================
 
 import type { Paragraph, TextNode, TextStyle, RevisionMark } from '../../document/core/DocumentModel'
-import { extractStyle, sameStyle, createTextNode } from '../../document/factory/ElementFormatter'
+import { extractStyle, sameStyle, createTextNode, TEXT_STYLE_KEYS } from '../../document/factory/ElementFormatter'
 import {
   ICommand, CommandContext, StatePatch,
   SerializedCommand, PositionalCommand, generateCommandId,
@@ -21,6 +21,10 @@ import {
 import { DeleteRangeCommand } from './DeleteRangeCommand'
 import { normalizeParagraph } from './ParagraphUtils'
 import { MintedOnce } from './MintedNodes'
+import {
+  captureParagraphSnapshot, RestoreParagraphsCommand,
+  type ParagraphSnapshot,
+} from './ParagraphSnapshot'
 import { RevisionStamp, NO_REVISION, sameRevisionKind } from '../../revision/Revision'
 
 /** 两个标记是否同一作者 (撤销/续写时用于判断能否并入既有插入 run) */
@@ -44,11 +48,7 @@ function sameRevisionKindForInsert(existing: RevisionMark | undefined, next: Rev
 /** 两份样式是否逐字段相同 (合并连续输入的前提; undefined 与缺省字段视为不同, 宁可不合) */
 function sameTextStyle(a?: TextStyle, b?: TextStyle): boolean {
   if (!a || !b) return a === b
-  const keys: readonly (keyof TextStyle)[] = [
-    'font', 'size', 'bold', 'italic', 'underline', 'underlineStyle', 'strikeout',
-    'color', 'highlight', 'superscript', 'subscript', 'letterSpacing',
-  ]
-  return keys.every((k) => a[k] === b[k])
+  return TEXT_STYLE_KEYS.every((k) => a[k] === b[k])
 }
 
 export class InsertTextCommand extends PositionalCommand {
@@ -82,6 +82,15 @@ export class InsertTextCommand extends PositionalCommand {
    * 把两条合并成一条会让重放身份对不上 (契约 §8.3)。
    */
   private appendedInPlace = false
+
+  /**
+   * 非原地路径动手前的整段快照 (契约 §8.3: 撤销必须逐字节回到原样, 含节点 id)。
+   *
+   * 拆分/新建节点后 normalizeParagraph 会把**同样式**的相邻 run 合并 —— 新节点
+   * 可能吞掉原节点 (`srf_1j`), 于是"删掉刚插入的字"只能还原文字, 还原不出
+   * 原节点身份. 原地追加路径不铸节点、不合并, 保持轻量反转.
+   */
+  private _paragraphSnapshot: ParagraphSnapshot | null = null
 
   /** 本次解析出的修订标记 (未追踪为 null) — 合并判定用 */
   get revisionMark(): RevisionMark | null { return this.stamp.value }
@@ -138,6 +147,8 @@ export class InsertTextCommand extends PositionalCommand {
       // 在正确位置新建 text 节点, 而非误用头部插入或把非文本节点当文本拆分。
       // 铸造一次 (契约 §8.3): redo 必须复用同一 id, 否则该节点在段落 children
       // 里的身份每次重放都变, 与「带 id 的序列化」判据不符。
+      // 撤销走整段快照: 新节点可能与相邻同样式 run 合并, 纯文本反转还原不出。
+      this._paragraphSnapshot = captureParagraphSnapshot(pool, para)
       const [newNodeId] = this.mint.run(pool, () => {
         const n = createTextNode(this.text, style)
         if (newMark) n.revision = { ...newMark }
@@ -179,6 +190,9 @@ export class InsertTextCommand extends PositionalCommand {
       }
     }
     // 样式不同 → 拆分 TextNode + 插入新 TextNode
+    // 撤销走整段快照: 拆出的空 before 可能被 normalize 与 after 合并, 节点身份
+    // 无法用"删掉刚插入的字"还原 (契约 §8.3)。
+    this._paragraphSnapshot = captureParagraphSnapshot(pool, para)
     const before = textNode.text.slice(0, localOffset)
     const after = textNode.text.slice(localOffset)
     pool.updateNode(textNode.id, { text: before || '' } as Partial<TextNode>)
@@ -214,6 +228,12 @@ export class InsertTextCommand extends PositionalCommand {
 
   invert(ctx: CommandContext): ICommand | null {
     if (ctx.mode !== 'local') return null
+    // 非原地路径: 整段快照精确还原 (含节点 id, 契约 §8.3)
+    if (this._paragraphSnapshot) {
+      return new RestoreParagraphsCommand(
+        generateCommandId(), Date.now(), this.author, [this._paragraphSnapshot],
+      )
+    }
     return new DeleteRangeCommand(
       generateCommandId(), Date.now(), this.author,
       this.path, this.offset, this.offset + [...this.text].length,

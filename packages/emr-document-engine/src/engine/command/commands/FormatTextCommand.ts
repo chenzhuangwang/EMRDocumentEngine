@@ -11,7 +11,7 @@
 // ================================================================
 
 import type { TextNode, TextStyle, Paragraph } from '../../document/core/DocumentModel'
-import { extractStyle, createTextNode } from '../../document/factory/ElementFormatter'
+import { extractStyle, createTextNode, TEXT_STYLE_KEYS } from '../../document/factory/ElementFormatter'
 import type { NodePool } from '../../document/core/NodePool'
 import type { FormatRange } from '../../document/selection/SelectionCollector'
 import { collectTextNodeIds } from '../../document/selection/SelectionCollector'
@@ -49,10 +49,8 @@ export class FormatTextCommand implements ICommand {
   }
 
   invert(): ICommand | null {
-    return new FormatTextCommand(
-      generateCommandId(), Date.now(), this.author,
-      this.nodeIds,
-      Object.fromEntries(this.oldStyles) as Partial<TextStyle>,
+    return new RestoreTextStyleCommand(
+      generateCommandId(), Date.now(), this.author, this.oldStyles,
     )
   }
 
@@ -62,6 +60,61 @@ export class FormatTextCommand implements ICommand {
       author: this.author, nodeIds: this.nodeIds,
       changes: this.changes as Record<string, unknown>,
       oldStyles: Object.fromEntries(this.oldStyles),
+    }
+  }
+}
+
+/**
+ * 文本样式还原 — 逐节点把样式**替换**回旧值 (契约 §8.2 / §8.3)。
+ *
+ * 为什么不能复用 FormatTextCommand 做逆操作:
+ *   - 它的 forward 是"在现有样式上叠加 changes"(Object.assign 浅合并), 而撤销
+ *     要求删除本次新增的字段并写回旧值 —— 否则"加粗 → 撤销"后仍然是粗体;
+ *   - 一次格式化的多个节点旧样式**各不相同**, 不能把一张样式表套到所有节点上
+ *     (旧实现 `Object.fromEntries(oldStyles)` 被当成 TextStyle 展开, 还会给
+ *     节点写出一个以 nodeId 命名的字段)。
+ *
+ * 只在 undo 里被临时 forward(), 不入栈, 故无需 invert。
+ */
+export class RestoreTextStyleCommand implements ICommand {
+  readonly type = 'restore-text-style'
+  readonly id: string
+  readonly timestamp: number
+  readonly author: string
+  private readonly styles: ReadonlyMap<string, Partial<TextStyle>>
+
+  constructor(
+    id: string, timestamp: number, author: string,
+    styles: ReadonlyMap<string, Partial<TextStyle>>,
+  ) {
+    this.id = id; this.timestamp = timestamp; this.author = author
+    // 快照一份: 原命令后续 replay 会重写自己的 oldStyles
+    this.styles = new Map(styles)
+  }
+
+  forward(ctx: CommandContext): StatePatch | null {
+    if (ctx.mode !== 'local') return null
+    const { pool } = ctx
+    for (const [nodeId, style] of this.styles) {
+      const node = pool.nodes.get(nodeId) as TextNode | undefined
+      if (!node) continue
+      const next: Record<string, unknown> = {}
+      for (const key of TEXT_STYLE_KEYS) {
+        const value = (style as Record<string, unknown>)[key]
+        // 旧样式里没有的字段必须**删键** —— 只写回旧值会让新增格式留在节点上
+        if (value === undefined) pool.deleteNodeField(nodeId, key)
+        else next[key] = value
+      }
+      pool.updateNode(nodeId, next as Partial<TextNode>)
+      pool.bumpNodeVersion(nodeId)
+    }
+    return { invalidation: 'node' }
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: 'restore-text-style', id: this.id, timestamp: this.timestamp,
+      author: this.author, nodeIds: [...this.styles.keys()],
     }
   }
 }
@@ -108,10 +161,8 @@ export class ClearFormatCommand implements ICommand {
   }
 
   invert(): ICommand | null {
-    return new FormatTextCommand(
-      generateCommandId(), Date.now(), this.author,
-      this.nodeIds,
-      Object.fromEntries(this.oldStyles) as Partial<TextStyle>,
+    return new RestoreTextStyleCommand(
+      generateCommandId(), Date.now(), this.author, this.oldStyles,
     )
   }
 
