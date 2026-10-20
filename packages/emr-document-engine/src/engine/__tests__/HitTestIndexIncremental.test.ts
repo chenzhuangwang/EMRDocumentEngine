@@ -121,4 +121,38 @@ describe('Draw 命中索引按分页模式重建', () => {
     // 前序页仍可命中 (桶没被清掉)
     expect(draw.hitTest(100, 100, 0)).toBeTruthy()
   })
+
+  it('同形状补丁 (M2e): 从首个补丁页重建, 尾部复用页仍可命中', () => {
+    const { doc, pool, texts } = makeLongDoc()
+    const container = document.createElement('div')
+    container.style.width = '800px'
+    container.style.height = '600px'
+    document.body.appendChild(container)
+    testHost.surface.mount(container)
+
+    const draw = new Draw(testHost, new EventBus(), testMeasurer, doc)
+    draw.setDocument(doc, pool)
+
+    const before = draw.recomputeLayout(pool, 'paragraph')
+    const total = draw.getHitIndexStats().totalPages
+    expect(total).toBeGreaterThan(2)
+
+    // 等宽替换 (同形状): 行数/行高/段末标记都不变 → M2e 只重建所在页
+    const node = pool.nodes.get(texts[40]) as { text: string }
+    pool.updateNode(texts[40], { text: node.text.replace('患者', '病人') } as Partial<BaseNode>)
+    const pages = draw.recomputeLayout(pool, 'paragraph')
+
+    // 尾部页对象原样复用 (不是重建后恰好相等)
+    expect(pages[pages.length - 1]).toBe(before[before.length - 1])
+
+    // 命中索引不是整份重建 (起点 > 0), 也没跳过 (起点 < 总页数)
+    const stats = draw.getHitIndexStats()
+    expect(stats.rebuildStartPage).toBeGreaterThan(0)
+    expect(stats.rebuildStartPage).toBeLessThan(total)
+
+    // 尾部复用页仍被索引覆盖 —— 该页 item 可命中
+    const last = pages[pages.length - 1]
+    const lastItem = last.items[0]
+    expect(draw.hitTest(lastItem.x + 1, lastItem.y + 1, last.pageIndex)).toBe(lastItem.nodeId)
+  })
 })
