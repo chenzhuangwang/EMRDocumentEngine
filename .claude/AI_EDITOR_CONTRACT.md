@@ -665,7 +665,7 @@ it through copy, split and merge.
 
 Owner:
 
-    LayoutEngine / LayoutCache
+    LayoutEngine
 
 Examples:
 
@@ -3368,7 +3368,6 @@ consider:
 
 - DirtyTracker
 - IncrementalLayout
-- LayoutCache
 - VirtualViewport
 - PageStartTable
 
@@ -3461,10 +3460,14 @@ height and Step 4 would re-collect footnotes on reused pages.
 `HitTestIndex` follows pagination: on a resume it rebuilds only from the
 first non-reused page, and when nothing changed it is not rebuilt at all.
 
-Still NOT wired: `LayoutEngine.incrementalLayout()` and `LayoutCache`
-have no consumer, and `DirtyTracker` marks are not consulted when
-deciding what to recompute (cache misses are the source of truth).
-They MUST NOT be cited as evidence that layout is incremental.
+REMOVED (2026-10-20): `LayoutCache` and `LayoutEngine.incrementalLayout()`
+are gone, not merely unwired. Both were exported but had no consumer; the
+old `incrementalLayout()` only reused page objects after a full pass, so
+it could never save work. Do NOT reintroduce either name as a placeholder:
+the live path is `fullLayout` + the paragraph line cache + the resume
+pagination described above. `DirtyTracker` marks are still not consulted
+when deciding what to recompute (cache misses are the source of truth) and
+must not be cited as evidence that layout is incremental.
 
 Unknown or unprovable cases MUST fall back to a full pass (controls,
 fields, cross-references, footnote references for pagination, tables whose
