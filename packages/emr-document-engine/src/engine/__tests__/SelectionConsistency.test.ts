@@ -18,8 +18,9 @@
 // 本文件锁住用户可见的不变量:
 //   复制出的文本 == 删除会移除的文本; 删除后的残留 == 首段前缀 + 末段后缀。
 //
-// 已知策略差异 (测试显式记录, 待产品裁决): body↔cell 选区, 复制/渲染按
-// 展平读序处理, 删除拒绝 (它逐段变更, 不能删除块结构)。
+// 2026-10-20 产品裁决: 删除与复制/高亮使用**同一条**展平读序。body↔cell、
+// 跨 cell 都是线性文本范围; 块结构 (表格/块级图) 不进删除范围, 但其中的
+// cell 文字会被删除。合并只在同容器相邻段落之间发生, 不跨块边界。
 // ================================================================
 
 import { describe, it, expect, afterEach } from 'vitest'
@@ -88,6 +89,10 @@ function makeFixture(): Fixture {
   table.children = [row.id]
   doc.body.children.push(table.id)
 
+  // 表格之后的一段 —— 用于覆盖「选区跨表格」的展平读序
+  const t5 = add(createTextNode('表后'))
+  const p5 = mkPara([t5.id])
+
   // header(default)
   const ht = add(createTextNode('页眉文字'))
   const hp = add(createParagraph([ht.id]) as Paragraph)
@@ -106,7 +111,7 @@ function makeFixture(): Fixture {
 
   return {
     editor, doc,
-    p: { p0: p0.id, p1: p1.id, p2: p2.id, p3: p3.id, p4: p4.id },
+    p: { p0: p0.id, p1: p1.id, p2: p2.id, p3: p3.id, p4: p4.id, p5: p5.id },
     headerPara: hp.id,
     cellPara: cellInner.id,
     imageId: img.id,
@@ -174,16 +179,16 @@ describe('选区一致性 — 复制与删除共用同一范围实现', () => {
 
     expect(f.editor.deleteSelection()).toBe(true)
 
-    // 前 / 甲+庚辛(合并) / 壬癸子丑
-    expect(bodyParaIds(f).map((id) => paraText(f, id))).toEqual(['前', '甲庚辛', '壬癸子丑'])
+    // 前 / 甲+庚辛(合并) / 壬癸子丑 / 表后
+    expect(bodyParaIds(f).map((id) => paraText(f, id))).toEqual(['前', '甲庚辛', '壬癸子丑', '表后'])
     // 表格仍在 (删除只作用在文本容器上)
-    expect(f.editor.getDocument().body.children.length).toBe(4)
+    expect(f.editor.getDocument().body.children.length).toBe(5)
 
     // 键盘/右键同一入口: 整次删除一个 undo 单元
     expect(f.editor.getStore().state.runtime.history.undoDepth).toBe(1)
     f.editor.undo()
     expect(bodyParaIds(f).map((id) => paraText(f, id)))
-      .toEqual(['前', '甲乙丙丁', '', '戊己庚辛', '壬癸子丑'])
+      .toEqual(['前', '甲乙丙丁', '', '戊己庚辛', '壬癸子丑', '表后'])
   })
 
   it('反向选区 (anchor 在后) 与正向结果完全相同', () => {
@@ -192,7 +197,7 @@ describe('选区一致性 — 复制与删除共用同一范围实现', () => {
 
     expect(copyText(f)).toBe('乙丙丁\n\n戊己')
     expect(f.editor.deleteSelection()).toBe(true)
-    expect(bodyParaIds(f).map((id) => paraText(f, id))).toEqual(['前', '甲庚辛', '壬癸子丑'])
+    expect(bodyParaIds(f).map((id) => paraText(f, id))).toEqual(['前', '甲庚辛', '壬癸子丑', '表后'])
   })
 
   it('选中行内图片: 复制只带走图片, 删除移除该原子节点', () => {
@@ -233,21 +238,39 @@ describe('选区一致性 — 复制与删除共用同一范围实现', () => {
     expect(mgr.getPlainText()).toBeNull()
   })
 
-  /**
-   * 已知策略差异 (显式记录, 待产品裁决):
-   * 复制/渲染使用展平的 body spine → body↔cell 选区是一个线性文本范围;
-   * 删除逐段变更且不能移除表格块结构 → 拒绝 body↔cell 选区。
-   * 若将来统一策略, 本用例应随裁决一起改写。
-   */
-  it('body↔cell 选区: 复制按展平读序可取, 删除拒绝且文档不变', () => {
+  it('body↔cell 选区: 复制与删除同一读序, cell 文字被删且表格结构保留', () => {
     const f = makeFixture()
     select(f, f.p.p4, 0, f.cellPara, 2)
 
     expect(copyText(f)).toBe('壬癸子丑\n格内')
+    expect(f.editor.deleteSelection()).toBe(true)
 
-    const before = bodyParaIds(f).map((id) => paraText(f, id)).join('|')
-    expect(f.editor.deleteSelection()).toBe(false)
-    expect(bodyParaIds(f).map((id) => paraText(f, id)).join('|')).toBe(before)
+    // p4: 文字与行内图都被删空; cell: 文字被删空
+    expect(paraText(f, f.p.p4)).toBe('')
+    expect(paraText(f, f.cellPara)).toBe('')
+    // p4 的合并对象是 cell (无前驱) → p4 保留; 结构 (表格) 不变
+    expect(bodyParaIds(f).map((id) => paraText(f, id)))
+      .toEqual(['前', '甲乙丙丁', '', '戊己庚辛', '', '表后'])
+    expect(f.editor.getDocument().body.children.length).toBe(7)
+
+    f.editor.undo()
+    expect(paraText(f, f.p.p4)).toBe('壬癸子丑')
     expect(paraText(f, f.cellPara)).toBe('格内')
+  })
+
+  it('跨表格选区: 展平读序删除 cell 文字, 表格保留, 合并止于块边界', () => {
+    const f = makeFixture()
+    select(f, f.p.p3, 2, f.p.p5, 1)
+
+    expect(copyText(f)).toBe('庚辛\n壬癸子丑\n格内\n表')
+    expect(f.editor.deleteSelection()).toBe(true)
+
+    // p4 与 p3 同容器相邻 → 并入 p3; p5 的前驱是表格 → 不合并
+    expect(bodyParaIds(f).map((id) => paraText(f, id)))
+      .toEqual(['前', '甲乙丙丁', '', '戊己', '后'])
+    expect(paraText(f, f.cellPara)).toBe('')
+    expect(f.editor.getPool().nodes.has(f.p.p4)).toBe(false)
+    // body = 前/甲乙丙丁/空段/戊己/表格/后
+    expect(f.editor.getDocument().body.children.length).toBe(6)
   })
 })

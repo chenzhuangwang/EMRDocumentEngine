@@ -49,7 +49,7 @@ import type { FindOptions, MatchResult } from './FindReplaceEngine'
 import { computeOffsetInItems } from './layout/text/CharWidthHelper'
 import { FontManager } from './layout/text/FontManager'
 import { TextMeasurer } from './layout/text/TextMeasurer'
-import { resolveCellPosition, getCaretScope, resolveParagraphRegion, resolveSiblingRange, isPoolRegion, resolveBlockParent } from './state/CaretScope'
+import { resolveCellPosition, getCaretScope, resolveParagraphRegion, isPoolRegion, resolveBlockParent } from './state/CaretScope'
 import type { CellPosition } from './state/CaretScope'
 import { screenToDoc, findPageByDocY, pageCenteringOffset, getTotalDocHeight as docHeightOf } from './layout/table/TableCoordUtil'
 import { findControlItemAt } from './interaction/ControlHitTest'
@@ -2816,29 +2816,15 @@ export class Editor {
       return true
     }
 
-    // v21.0 Phase 4: 检测 scope 并获取 siblings
-    const aCell = resolveCellPosition(aId, this.pool)
-    const fCell = resolveCellPosition(fId, this.pool)
+    // 跨段选区: 段落读序与复制/高亮同源 (契约 §31.3 W3-SELECTION)。
+    // body↔cell / 跨 cell 都是线性文本范围 —— 用户看到复制到的高亮，删除就删它;
+    // 块结构 (表格、块级图) 不在范围里，删除只作用于它能寻址到的段落。
+    const spineInfo = selectionSpine(this.doc, this.pool, aId, fId)
+    if (!spineInfo) return false
+    const segments = collectSelectionSegments(spineInfo.spine, aId, aOff, fId, fOff)
+    if (segments.length === 0) return false
 
-    // 跨域选区禁止 / 不同 cell 暂不支持 (resolveSiblingRange 同语义, 保留早期守卫)
-    if ((aCell && !fCell) || (!aCell && fCell)) return false
-    if (aCell && fCell && (aCell.tableId !== fCell.tableId || aCell.row !== fCell.row || aCell.col !== fCell.col)) return false
-
-    // 区域感知兄弟 (body / header / footer / 同 cell) — resolveSiblingRange
-    const range = resolveSiblingRange(this.doc, this.pool, aId, fId)
-    if (!range) return false
-    const siblings: readonly string[] = range.siblings
-
-    const aIdx = siblings.indexOf(aId)
-    const fIdx = siblings.indexOf(fId)
-    if (aIdx < 0 || fIdx < 0) return false
-
-    const lo = Math.min(aIdx, fIdx)
-    const hi = Math.max(aIdx, fIdx)
-
-    // 逐段裁剪区间与复制/渲染共用 SelectionCollector 的同一实现
-    // (契约 §31.3 W3-SELECTION); 从后往前删, 避免索引漂移。
-    const segments = collectSelectionSegments(siblings, aId, aOff, fId, fOff)
+    // 从后往前删, 避免索引漂移
     for (let si = segments.length - 1; si >= 0; si--) {
       const seg = segments[si]
       const totalLen = this.getParagraphTextLengthById(seg.paraId)
@@ -2849,27 +2835,22 @@ export class Editor {
       this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, start, end))
     }
 
-    // 跨段落选区: 合并残段
-    if (lo < hi) {
-      for (let mergeCount = hi - lo; mergeCount > 0; mergeCount--) {
-        const currentSiblings = aCell
-          ? ((() => {
-              const tn = this.pool.nodes.get(aCell.tableId) as { children?: readonly string[] } | undefined
-              const rn = this.pool.nodes.get(tn?.children?.[aCell.row] || '') as { children?: readonly string[] } | undefined
-              return (this.pool.nodes.get(rn?.children?.[aCell.col] || '') as { children?: readonly string[] } | undefined)?.children || siblings
-            })())
-          : siblings
-        const nextParaId = currentSiblings[lo + 1]
-        if (!nextParaId) break
-        const mergePath = [...selection.anchor.paragraphPath.slice(0, -1), nextParaId]
-        this.commandManager.execute(new MergeParagraphCommand(generateCommandId(), Date.now(), 'user', mergePath))
-      }
+    // 跨段落选区: 逐段并入其**同容器且相邻**的前一段落。MergeParagraph 自己判
+    // 前驱 (无前驱 / 前驱不是段落 / 跨容器) 并返回 null，不入撤销栈 —— 所以这里
+    // 不必维护索引，块边界 (表格) 天然不会被跨过。
+    const isParagraphNode = (id: string): boolean =>
+      (this.pool.nodes.get(id) as { type?: string } | undefined)?.type === 'paragraph'
+    for (let si = 1; si < segments.length; si++) {
+      const seg = segments[si]
+      if (!isParagraphNode(seg.paraId)) continue
+      const mergePath = [...selection.anchor.paragraphPath.slice(0, -1), seg.paraId]
+      this.commandManager.execute(new MergeParagraphCommand(generateCommandId(), Date.now(), 'user', mergePath))
     }
 
-    // 光标落到删除起点 (lo 段的选区起点)
+    // 光标落到删除起点 (首个片段的选区起点)
     const loSeg = segments[0]
-    const loParaId = loSeg ? loSeg.paraId : siblings[lo]
-    const loOff = loSeg ? Math.min(loSeg.start, this.getParagraphTextLengthById(loParaId)) : 0
+    const loParaId = loSeg.paraId
+    const loOff = Math.min(loSeg.start, this.getParagraphTextLengthById(loParaId))
     this.store.setCursor({ paragraphPath: [...selection.anchor.paragraphPath.slice(0, -1), loParaId], offset: loOff, visible: true })
 
     return true
