@@ -109,7 +109,7 @@ describe('增量排版等价性骨架 (M1)', () => {
     expectLayoutEquivalent(doc, pool, 'baseline')
   })
 
-  it('随机编辑 40 步, 每一步的布局都可重复', () => {
+  it('随机编辑 300 步, 每一步的布局都可重复', () => {
     const { doc, pool, p1, p2, t1, t2 } = makeFixture()
     const paragraphs = [p1, p2]
     const texts = [t1, t2]
@@ -121,7 +121,7 @@ describe('增量排版等价性骨架 (M1)', () => {
       return seed / 4294967296
     }
 
-    for (let step = 0; step < 40; step++) {
+    for (let step = 0; step < 300; step++) {
       const action = Math.floor(rand() * 4)
       const para = paragraphs[Math.floor(rand() * paragraphs.length)]
 
@@ -149,8 +149,8 @@ describe('增量排版等价性骨架 (M1)', () => {
     }
   })
 
-  it('M2a 硬门: 持久引擎 (段落缓存) 与全新引擎全量结果逐字节相同 (40 步)', () => {
-    // 与上一条的区别: 上面每次 new 引擎 (缓存永远为空), 这里同一个引擎连跑 40 步,
+  it('M2a 硬门: 持久引擎 (段落缓存) 与全新引擎全量结果逐字节相同 (300 步)', () => {
+    // 与上一条的区别: 上面每次 new 引擎 (缓存永远为空), 这里同一个引擎连跑 300 步,
     // 未改动段落会命中缓存 —— 这正是 M2a 要证的东西。
     const { doc, pool, p1, p2, t1, t2 } = makeFixture()
     const paragraphs = [p1, p2]
@@ -166,7 +166,7 @@ describe('增量排版等价性骨架 (M1)', () => {
       return seed / 4294967296
     }
 
-    for (let step = 0; step < 40; step++) {
+    for (let step = 0; step < 300; step++) {
       const action = Math.floor(rand() * 5)
       const para = paragraphs[Math.floor(rand() * paragraphs.length)]
 

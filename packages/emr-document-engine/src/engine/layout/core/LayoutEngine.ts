@@ -155,9 +155,9 @@ export class LayoutEngine {
   // ================================================================
   // 段落行缓存 (M2a)
   //
-  // 只缓存"子节点全为纯文本"的段落 (列表段也在内: 编号标记已算好并进键)。
-  // 控件/域/交叉引用/图片/脚注的显示值来自段落之外 (计算值、页码、
-  // 域预留宽) → 不缓存。
+  // 缓存"子节点为纯文本 / 图片 / 脚注引用"的段落 (列表也在内: 编号标记进键)。
+  // 图片行元素只取节点自身尺寸; 脚注引用的编号在分页后的 Step 4 回填, 不参与断行。
+  // 控件/域/交叉引用的显示值来自段落之外 (计算值、页码、域预留宽) → 不缓存。
   // 缓存条目按段落 ID 存**最新一份** (key 不匹配即重算并覆盖), 因此不会
   // 随每次按键无限增长; 换文档时由 Draw 调用 clearParagraphLineCache()。
   // ================================================================
@@ -194,22 +194,32 @@ export class LayoutEngine {
   ): string | null {
     const children = (para as unknown as { children?: readonly string[] }).children
     if (!children) return null
+    const digests: string[] = []
     for (const childId of children) {
-      const child = pool.nodes.get(childId) as { type?: string } | undefined
-      if (child?.type !== 'text') return null
+      const child = pool.nodes.get(childId) as
+        { type?: string; width?: number; height?: number; wrapMode?: string } | undefined
+      if (child?.type === 'text' || child?.type === 'footnote_ref') continue
+      if (child?.type === 'image') {
+        // 图片行元素只取节点自身的尺寸/环绕方式 (节点版本已进 paragraphKey)
+        digests.push(`img:${childId}:${child.width ?? ''}x${child.height ?? ''}:${child.wrapMode ?? ''}`)
+        continue
+      }
+      // 控件/域/交叉引用的显示值来自段落之外 (计算值/页码/预留宽) → 不缓存
+      return null
     }
     const base = IncrementalLayout.paragraphKey(pool, para.id)
     if (!base) return null
-    return `${base}#w${contentWidth}#r${this.showRevisionMarks ? 1 : 0}#m${listMarker}`
+    return `${base}#w${contentWidth}#r${this.showRevisionMarks ? 1 : 0}#m${listMarker}#d${digests.join(',')}`
   }
 
   // ================================================================
   // 增量分页 (M2b)
   //
-  // 只对**纯文本正文**启用: 没有表格 (分页游标有状态)、分节 (页面设置会变)、
-  // 脚注 (页底预留)、域/控件/交叉引用 (预留宽依赖总页数)、页眉页脚 (正文可用区
-  // 依赖带高)。列表可以: 编号标记已进段落键, 编号重排会让键自动失效。
-  // 这些场景一律全量分页 —— 可证明安全比省一点分页更重要 (契约 §16.1)。
+  // 只对**纯文本/图片正文**启用: 没有表格 (分页游标有状态)、分节 (页面设置会变)、
+  // 脚注 (页底预留, 且 Step 4 会重复收集复用页)、域/控件/交叉引用 (预留宽依赖
+  // 总页数)、页眉页脚 (正文可用区依赖带高)。列表可以: 编号标记已进段落键,
+  // 编号重排会让键自动失效。这些场景一律全量分页 —— 可证明安全比省一点分页
+  // 更重要 (契约 §16.1)。
   //
   // 续排从「首个脏段落所在页的**前一页**」开始: 寡行控制会从下一页拉一行回来,
   // 所以脏段落所在页的上一页也可能变。
@@ -257,7 +267,9 @@ export class LayoutEngine {
       if (block?.type !== 'paragraph') return false
       for (const childId of block.children ?? []) {
         const child = pool.nodes.get(childId) as { type?: string } | undefined
-        if (child?.type !== 'text') return false
+        // 图片是自包含的行内元素 (尺寸在节点上), 可安全续排;
+        // 控件/域/交叉引用/脚注引用仍排除 (显示值或页底预留依赖段落之外)
+        if (child?.type !== 'text' && child?.type !== 'image') return false
       }
     }
     return true

@@ -18,7 +18,7 @@ import { EventBus } from '../interaction/EventBus'
 import { testMeasurer } from './helpers'
 import { buildNodePool } from '../document/core/NodePool'
 import {
-  createDocument, createParagraph, createTextNode,
+  createDocument, createParagraph, createTextNode, createImageNode,
 } from '../document/factory/ElementFormatter'
 import type { BaseNode, Paragraph } from '../document/core/DocumentModel'
 
@@ -148,6 +148,22 @@ describe('增量分页 (M2b)', () => {
     expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
   })
 
+  it('含行内图片的文档: 图片自包含, 可以续排', () => {
+    const { doc, pool, texts } = makeLongDoc(80)
+    const paraId = doc.body.children[40]
+    const img = createImageNode('img-key', 120, 80, 'inline')
+    pool.addNode(img as unknown as BaseNode)
+    pool.insertChild(paraId, img.id, 1)
+
+    const engine = newEngine()
+    engine.fullLayout(doc, pool, 'paragraph')
+    pool.updateNode(texts[70], { text: `第71段：${SENTENCE}（改）` } as Partial<BaseNode>)
+    const pages = engine.fullLayout(doc, pool, 'paragraph')
+
+    expect(engine.getPaginationStats().mode).toBe('resume')
+    expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
+  })
+
   it('含表格的文档不启用增量分页', () => {    const { doc, pool, texts } = makeLongDoc(60)
     // 在正文尾部挂一个 1×1 表格 —— 现成工厂在测试里过重, 直接构造最小表
     const cellText = createTextNode('单元格')
@@ -166,7 +182,7 @@ describe('增量分页 (M2b)', () => {
     expect(engine.getPaginationStats().mode).toBe('full')
   })
 
-  it('随机编辑 30 步: 每步与全量一致, 且至少发生一次续排', () => {
+  it('随机编辑 120 步: 每步与全量一致, 且至少发生一次续排', () => {
     const { doc, pool, texts } = makeLongDoc(80)
     const engine = newEngine()
     engine.fullLayout(doc, pool, 'paragraph')
@@ -179,7 +195,7 @@ describe('增量分页 (M2b)', () => {
     let resumeCount = 0
     const alignments = ['left', 'center', 'right', 'justify'] as const
 
-    for (let step = 0; step < 30; step++) {
+    for (let step = 0; step < 120; step++) {
       const idx = Math.floor(rand() * texts.length)
       const action = Math.floor(rand() * 4)
       if (action === 0) {

@@ -22,6 +22,7 @@ import { testMeasurer } from './helpers'
 import { buildNodePool } from '../document/core/NodePool'
 import {
   createDocument, createParagraph, createTextNode, createSmartTextNode,
+  createImageNode, createFootnoteRef,
 } from '../document/factory/ElementFormatter'
 import type { BaseNode, Paragraph } from '../document/core/DocumentModel'
 
@@ -196,6 +197,31 @@ describe('段落行缓存 (M2a)', () => {
 
     pool.updateNode(st!.id, { value: 42 } as Partial<BaseNode>)
     expect(canonical(engine.fullLayout(doc, pool))).toBe(canonical(newEngine().fullLayout(doc, pool)))
+  })
+
+  it('含图片/脚注引用的段落可缓存; 图片尺寸变化使键失效', () => {
+    const doc = createDocument('cache-img')
+    const t1 = createTextNode('图示见下：')
+    const img = createImageNode('img-key', 200, 100, 'inline')
+    const fnRef = createFootnoteRef('fn-1')
+    const p1 = createParagraph([t1.id, img.id, fnRef.id]) as Paragraph
+    const t2 = createTextNode('第二段：说明。')
+    const p2 = createParagraph([t2.id]) as Paragraph
+    doc.body.children = [p1.id, p2.id]
+
+    const all = new Map<string, BaseNode>()
+    for (const n of [doc, t1, img, fnRef, p1, t2, p2]) all.set(n.id, n as unknown as BaseNode)
+    const pool = buildNodePool(all, { body: doc.id })
+
+    const engine = newEngine()
+    engine.fullLayout(doc, pool)
+    engine.fullLayout(doc, pool)
+    expect(engine.getParagraphCacheStats().hits).toBe(2) // 两段都可命中
+
+    // 图片尺寸变化 → 本段键变
+    pool.updateNode(img.id, { width: 320 } as Partial<BaseNode>)
+    const cached = canonical(engine.fullLayout(doc, pool))
+    expect(cached).toBe(canonical(newEngine().fullLayout(doc, pool)))
   })
 
   it('关闭缓存时零命中, 结果与开启时一致', () => {
