@@ -67,6 +67,33 @@ export class DeleteRangeCommand extends PositionalCommand {
 
   get deletedText(): string { return this._deletedText }
 
+  // ---- 连续退格合并 (契约 §8.2 / CommandUndoRedoStack 的 500ms 窗口) ----
+  //
+  // 只合并「纯文本、未追踪、无整段快照」的**向左连续**删除 (Backspace)。
+  // 向右删除 (Delete) 的两次范围相同 (光标不后退), 合并成一个范围只能删一个字,
+  // 故此不合并 —— 宁可多一步撤销, 不可少删字。
+  canMergeWith(other: ICommand): boolean {
+    if (!(other instanceof DeleteRangeCommand)) return false
+    if (this.tracked || other.tracked) return false
+    if (this._paragraphSnapshot || other._paragraphSnapshot) return false
+    if (this.path.join('.') !== other.path.join('.')) return false
+    // 第二次删的范围必须紧接在第一次之前: [o-2,o-1) 紧接 [o-1,o)
+    return other.endOffset === this.startOffset && other.startOffset < other.endOffset
+  }
+
+  mergeWith(other: ICommand): ICommand {
+    const o = other as DeleteRangeCommand
+    const merged = new DeleteRangeCommand(
+      this.id, this.timestamp, this.author, [...this.path],
+      o.startOffset, this.endOffset,
+    )
+    // 文档顺序: 先删的字符在后、后删的在前
+    merged._deletedText = o.deletedText + this.deletedText
+    merged._paragraphSnapshot = null
+    merged.tracked = false
+    return merged
+  }
+
   constructor(
     id: string, timestamp: number, author: string,
     path: string[], startOffset: number, endOffset: number,

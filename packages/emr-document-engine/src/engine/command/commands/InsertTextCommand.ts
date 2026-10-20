@@ -21,7 +21,7 @@ import {
 import { DeleteRangeCommand } from './DeleteRangeCommand'
 import { normalizeParagraph } from './ParagraphUtils'
 import { MintedOnce } from './MintedNodes'
-import { RevisionStamp, NO_REVISION } from '../../revision/Revision'
+import { RevisionStamp, NO_REVISION, sameRevisionKind } from '../../revision/Revision'
 
 /** 两个标记是否同一作者 (撤销/续写时用于判断能否并入既有插入 run) */
 function sameAuthor(a: RevisionMark, b: RevisionMark): boolean {
@@ -39,6 +39,16 @@ function sameAuthor(a: RevisionMark, b: RevisionMark): boolean {
 function sameRevisionKindForInsert(existing: RevisionMark | undefined, next: RevisionMark | null): boolean {
   if (!next) return existing === undefined
   return existing?.type === 'insert' && sameAuthor(existing, next)
+}
+
+/** 两份样式是否逐字段相同 (合并连续输入的前提; undefined 与缺省字段视为不同, 宁可不合) */
+function sameTextStyle(a?: TextStyle, b?: TextStyle): boolean {
+  if (!a || !b) return a === b
+  const keys: readonly (keyof TextStyle)[] = [
+    'font', 'size', 'bold', 'italic', 'underline', 'underlineStyle', 'strikeout',
+    'color', 'highlight', 'superscript', 'subscript', 'letterSpacing',
+  ]
+  return keys.every((k) => a[k] === b[k])
 }
 
 export class InsertTextCommand extends PositionalCommand {
@@ -64,6 +74,41 @@ export class InsertTextCommand extends PositionalCommand {
     this.style = style
   }
   readonly offset: number
+
+  /**
+   * 本次 forward 是否走了「直接追加进既有 TextNode」路径 (未拆分、未铸造)。
+   *
+   * 只有这条路径可以合并: 拆分路径的 undo 依赖 MintedOnce 台账与拆出的后半段,
+   * 把两条合并成一条会让重放身份对不上 (契约 §8.3)。
+   */
+  private appendedInPlace = false
+
+  /** 本次解析出的修订标记 (未追踪为 null) — 合并判定用 */
+  get revisionMark(): RevisionMark | null { return this.stamp.value }
+
+  // ---- 连续输入合并 (契约 §8.2 / CommandUndoRedoStack 的 500ms 窗口) ----
+
+  canMergeWith(other: ICommand): boolean {
+    if (!(other instanceof InsertTextCommand)) return false
+    if (!this.appendedInPlace || !other.appendedInPlace) return false
+    if (this.path.join('.') !== other.path.join('.')) return false
+    // 只合并光标处连续追加: 第二段必须紧接第一段末尾
+    if (other.offset !== this.offset + this.text.length) return false
+    if (!sameTextStyle(this.style, other.style)) return false
+    return sameRevisionKind(this.stamp.value ?? undefined, other.stamp.value ?? undefined)
+  }
+
+  mergeWith(other: ICommand): ICommand {
+    const o = other as InsertTextCommand
+    const merged = new InsertTextCommand(
+      this.id, this.timestamp, this.author, [...this.path],
+      this.offset, this.text + o.text, this.style,
+    )
+    merged.appendedInPlace = true
+    // 复用第一条的盖戳台账: 合并后重放仍拿到首次解析出的同一个标记 (§8.3/§12.13)
+    merged.stamp = this.stamp
+    return merged
+  }
 
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
@@ -125,6 +170,8 @@ export class InsertTextCommand extends PositionalCommand {
       // 样式一致 → 在 localOffset 处直接插入字符串
       const newText = textNode.text.slice(0, localOffset) + this.text + textNode.text.slice(localOffset)
       pool.updateNode(textNode.id, { text: newText } as Partial<TextNode>)
+      // 只有这条路径可合并 (见 appendedInPlace 注释)
+      this.appendedInPlace = true
       normalizeParagraph(para, pool)
       return {
         cursor: { paragraphPath: this.path, offset: this.offset + [...this.text].length },
