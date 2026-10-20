@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-20T10:42:16Z",
+  "updated_at": "2026-10-20T10:51:51Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
@@ -2032,9 +2032,9 @@
     },
     "knowledge/增量排版-设计方案.md": {
       "role": "index",
-      "sha256": "9031eaf9ef8688ef8c5dd7ee0f41e4e18d566db78aa7b5fb5418375ff2c349f3",
-      "size": 17417,
-      "normalized_sha256": "9031eaf9ef8688ef8c5dd7ee0f41e4e18d566db78aa7b5fb5418375ff2c349f3"
+      "sha256": "c5947d82e36bb1443e715c8a4575829e653c4c557860a9ffa71e03104c5f8130",
+      "size": 18023,
+      "normalized_sha256": "c5947d82e36bb1443e715c8a4575829e653c4c557860a9ffa71e03104c5f8130"
     },
     "knowledge/引擎能力补齐-设计方案.md": {
       "role": "index",
@@ -2254,9 +2254,9 @@
     },
     "knowledge/编辑器功能清单.md": {
       "role": "index",
-      "sha256": "852e5c6cdb69d102ab20acdb01ff0b0eff140813988f53685a12379b40cb8c40",
+      "sha256": "e2b79f97d07e173a45d661cebaa46f4d148ea647c6a0b100dd6086caf817ba9c",
       "size": 86542,
-      "normalized_sha256": "52c35e1b6e5ff8b344c5c6fcf40df67b3a19943a1e843ed00ba7e734bc2fa3b0"
+      "normalized_sha256": "c58077db5e2f0e6cc20efb2cdc57bdc073f3d935eb4afe77ff6dc823680baa79"
     },
     "nginx.conf": {
       "role": "index",
@@ -2752,9 +2752,9 @@
     },
     "packages/emr-document-engine/src/engine/__tests__/HitTestIndexIncremental.test.ts": {
       "role": "observe",
-      "sha256": "26ee740083435287a7e8e33f00ad2bf1c6ca93f24b2e679d88634a4a8fe68f3c",
-      "size": 4883,
-      "normalized_sha256": "26ee740083435287a7e8e33f00ad2bf1c6ca93f24b2e679d88634a4a8fe68f3c"
+      "sha256": "5c2e4e8726e3cc8a1f419febc120b2d5652072381569d11ca06e2d92e51332e2",
+      "size": 6420,
+      "normalized_sha256": "5c2e4e8726e3cc8a1f419febc120b2d5652072381569d11ca06e2d92e51332e2"
     },
     "packages/emr-document-engine/src/engine/__tests__/HitTestTable.test.ts": {
       "role": "observe",
