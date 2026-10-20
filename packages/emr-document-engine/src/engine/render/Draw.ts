@@ -281,6 +281,9 @@ export class Draw {
     // 计算值: 布局趟开头 ensure() 一次 (契约 §12.12.7)。脏了才真算, 时钟在那时读
     // 一次; 不脏则连钟都不读 —— 于是同一份文档的布局与渲染必然读到同一个值。
     this.computedValues?.ensure()
+    // 计算值代次同步给布局: 表格键里含代次 —— 改公式/改模板定义让显示值变了
+    // 但节点版本不变, 只有代次能证明"表格的行高/分页可能变了" (契约 §16.1)
+    this.layoutEngine.setComputedGeneration(this.computedValues?.generation ?? 0)
     // invalidation 交给布局: 只有段落级失效才允许增量分页 (M2b, 契约 §16.1)
     this.pages = this.layoutEngine.fullLayout(this.document, pool, invalidation)
 

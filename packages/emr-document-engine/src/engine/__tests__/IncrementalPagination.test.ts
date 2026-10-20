@@ -7,8 +7,8 @@
 // ================================================================
 // 增量分页 (M2b)
 //
-// 安全子集: 纯文本正文, 无表格/分节/脚注/域/控件/列表/页眉页脚。
-// 判据与 M2a 相同: 与全新引擎的全量结果逐字节相同。
+// 安全子集: 正文段落 (文本/图片/列表) 与纯文本表格; 无分节/脚注/域/控件/
+// 页眉页脚。判据与 M2a 相同: 与全新引擎的全量结果逐字节相同。
 // 另外必须证明续排真的发生了 (reusedPages > 0), 否则用例退化成全量。
 // ================================================================
 
@@ -47,6 +47,70 @@ function makeLongDoc(paragraphCount = 120) {
 
 function newEngine() {
   return new LayoutEngine(new EventBus(), testMeasurer)
+}
+
+/**
+ * 正文按段落段/表格段交替构建; 表格行数足够大时跨页。
+ * 用于验证表格键、跨页表格的续排回退, 以及多表相邻的情形。
+ */
+function buildDocWithTables(
+  segments: ({ paras: number } | { tableRows: number })[],
+) {
+  const doc = createDocument('table-paging')
+  const all = new Map<string, BaseNode>()
+  all.set(doc.id, doc as unknown as BaseNode)
+  const textIds: string[] = []
+  const paraIds: string[] = []
+  const cellTextIds: string[] = []
+  const rowIds: string[] = []
+  let paraNo = 0
+  let tableNo = 0
+
+  const addParagraph = (text: string) => {
+    const t = createTextNode(text)
+    const p = createParagraph([t.id]) as Paragraph
+    all.set(t.id, t as unknown as BaseNode)
+    all.set(p.id, p as unknown as BaseNode)
+    doc.body.children.push(p.id)
+    textIds.push(t.id)
+    paraIds.push(p.id)
+  }
+
+  for (const seg of segments) {
+    if ('tableRows' in seg) {
+      const prefix = `t${tableNo++}`
+      const tableRowIds: string[] = []
+      for (let r = 0; r < seg.tableRows; r++) {
+        const t = createTextNode(`单元格${r + 1}`)
+        const p = createParagraph([t.id]) as Paragraph
+        const cell = { type: 'cell', id: `${prefix}-cell-${r}`, children: [p.id], colspan: 1, rowspan: 1 }
+        const row = { type: 'row', id: `${prefix}-row-${r}`, children: [cell.id], height: 24 }
+        all.set(t.id, t as unknown as BaseNode)
+        all.set(p.id, p as unknown as BaseNode)
+        all.set(cell.id, cell as unknown as BaseNode)
+        all.set(row.id, row as unknown as BaseNode)
+        tableRowIds.push(row.id)
+        cellTextIds.push(t.id)
+      }
+      const table = { type: 'table', id: `${prefix}-table`, columns: [{ width: 400 }], children: tableRowIds }
+      all.set(table.id, table as unknown as BaseNode)
+      doc.body.children.push(table.id)
+      rowIds.push(...tableRowIds)
+      continue
+    }
+    for (let i = 0; i < seg.paras; i++) {
+      paraNo++
+      addParagraph(`正文第${paraNo}段：${SENTENCE}`)
+    }
+  }
+
+  const pool = buildNodePool(all, { body: doc.id })
+  return { doc, pool, textIds, paraIds, cellTextIds, rowIds }
+}
+
+function makeTableDoc(leading: number, rows: number, trailing: number) {
+  const built = buildDocWithTables([{ paras: leading }, { tableRows: rows }, { paras: trailing }])
+  return { ...built, tableId: 't0-table' }
 }
 
 function canonical(value: unknown): string {
@@ -164,22 +228,127 @@ describe('增量分页 (M2b)', () => {
     expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
   })
 
-  it('含表格的文档不启用增量分页', () => {    const { doc, pool, texts } = makeLongDoc(60)
-    // 在正文尾部挂一个 1×1 表格 —— 现成工厂在测试里过重, 直接构造最小表
-    const cellText = createTextNode('单元格')
-    const cellPara = createParagraph([cellText.id]) as Paragraph
-    const cell = { type: 'cell', id: 'cell-1', children: [cellPara.id], colspan: 1, rowspan: 1 }
-    const row = { type: 'row', id: 'row-1', children: [cell.id], height: 24 }
-    const table = { type: 'table', id: 'table-1', columns: [{ width: 1 }], children: [row.id] }
-    for (const n of [cellText, cellPara, cell, row, table]) pool.addNode(n as unknown as BaseNode)
-    doc.body.children.push(table.id)
+  it('含表格的文档: 内容不变时整份复用', () => {
+    const { doc, pool } = makeTableDoc(90, 6, 40)
+    const engine = newEngine()
+    engine.fullLayout(doc, pool, 'paragraph')
+
+    engine.fullLayout(doc, pool, 'paragraph')
+    expect(engine.getPaginationStats().mode).toBe('reuse-all')
+  })
+
+  it('表格后正文编辑: 续排并复用前序页, 结果一致', () => {
+    const { doc, pool, textIds } = makeTableDoc(90, 6, 40)
+    // textIds 末尾是后置段落
+    const target = textIds[textIds.length - 10]
+    const engine = newEngine()
+    engine.fullLayout(doc, pool, 'paragraph')
+
+    pool.updateNode(target, { text: `${SENTENCE}（已修改）` } as Partial<BaseNode>)
+    const pages = engine.fullLayout(doc, pool, 'paragraph')
+
+    expect(engine.getPaginationStats().mode).toBe('resume')
+    expect(engine.getPaginationStats().reusedPages).toBeGreaterThan(0)
+    expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
+  })
+
+  it('表格单元格编辑: 表格键失效, 从表格起始页重排, 结果一致', () => {
+    const { doc, pool, cellTextIds } = makeTableDoc(90, 6, 20)
+    const engine = newEngine()
+    engine.fullLayout(doc, pool, 'paragraph')
+
+    pool.updateNode(cellTextIds[2], { text: '单元格3（改）' } as Partial<BaseNode>)
+    const pages = engine.fullLayout(doc, pool, 'paragraph')
+
+    const stats = engine.getPaginationStats()
+    expect(stats.mode).toBe('resume')
+    // 表格之前的页仍可复用 (表格起始页之后才重排)
+    expect(stats.reusedPages).toBeGreaterThan(0)
+    expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
+  })
+
+  it('跨页表格后的段落编辑: 回退到表格起始页, 结果一致', () => {
+    // 110 行表格跨越数页; 编辑紧随其后的段落 —— 它所在页的上一页是表格续排页,
+    // 若从那页开始切行会重复表格片段。回退到表格起始页后必须逐字节相同。
+    const { doc, pool, textIds } = makeTableDoc(90, 110, 20)
+    const engine = newEngine()
+    engine.fullLayout(doc, pool, 'paragraph')
+
+    // 表格后的第一段 = 前置 90 段之后的那一条
+    const firstTrailing = textIds[90]
+    pool.updateNode(firstTrailing, { text: `${SENTENCE}（已修改）` } as Partial<BaseNode>)
+    const pages = engine.fullLayout(doc, pool, 'paragraph')
+
+    expect(engine.getPaginationStats().mode).toBe('resume')
+    expect(engine.getPaginationStats().reusedPages).toBeGreaterThan(0)
+    expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
+  })
+
+  it('表格 cell 内有非文本叶节点: 回落全量', () => {
+    const { doc, pool } = makeTableDoc(20, 4, 10)
+    // 在 cell 段落里挂一个脚注引用 (Step 4 会往复用页重复追加脚注 item)
+    const cellPara = pool.nodes.get('t0-cell-1') as { children: readonly string[] } | undefined
+    const paraId = cellPara?.children[0]
+    const fn = { type: 'footnote_ref', id: 'fn-1', refId: 'fn-1' }
+    pool.addNode(fn as unknown as BaseNode)
+    pool.insertChild(paraId!, fn.id, 1)
 
     const engine = newEngine()
     engine.fullLayout(doc, pool, 'paragraph')
-    pool.updateNode(texts[30], { text: `${SENTENCE}（改）` } as Partial<BaseNode>)
     engine.fullLayout(doc, pool, 'paragraph')
 
     expect(engine.getPaginationStats().mode).toBe('full')
+  })
+
+  it('计算值代次变化: 表格键失效, 不复用整份且结果一致', () => {
+    const { doc, pool } = makeTableDoc(40, 6, 10)
+    const engine = newEngine()
+    engine.fullLayout(doc, pool, 'paragraph')
+
+    engine.setComputedGeneration(1)
+    const pages = engine.fullLayout(doc, pool, 'paragraph')
+
+    expect(engine.getPaginationStats().mode).not.toBe('reuse-all')
+    expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
+  })
+
+  it('两张跨页表格 + 随机编辑 60 步: 每步与全量逐字节相同', () => {
+    const { doc, pool, textIds, paraIds, cellTextIds } = buildDocWithTables([
+      { paras: 30 }, { tableRows: 40 }, { paras: 30 }, { tableRows: 40 }, { paras: 30 },
+    ])
+    const engine = newEngine()
+    engine.fullLayout(doc, pool, 'paragraph')
+
+    let seed = 27182
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) % 4294967296
+      return seed / 4294967296
+    }
+    let resumeCount = 0
+    const alignments = ['left', 'center', 'right', 'justify'] as const
+
+    for (let step = 0; step < 60; step++) {
+      const action = Math.floor(rand() * 3)
+      if (action === 0) {
+        const t = textIds[Math.floor(rand() * textIds.length)]
+        const tail = rand() < 0.5 ? '随访。' : `（改${Math.floor(rand() * 9)}）`
+        pool.updateNode(t, { text: `${SENTENCE}${tail}` } as Partial<BaseNode>)
+      } else if (action === 1) {
+        // cell 文本变化 → 表格键失效 → 从该表格起始页重排
+        const c = cellTextIds[Math.floor(rand() * cellTextIds.length)]
+        pool.updateNode(c, { text: `单元格（改${Math.floor(rand() * 9)}）` } as Partial<BaseNode>)
+      } else {
+        const p = paraIds[Math.floor(rand() * paraIds.length)]
+        const alignment = alignments[Math.floor(rand() * alignments.length)]
+        pool.updateNode(p, { alignment } as Partial<BaseNode>)
+      }
+
+      const pages = engine.fullLayout(doc, pool, 'paragraph')
+      if (engine.getPaginationStats().mode === 'resume') resumeCount++
+      expect(canonical(pages), `step ${step}`).toBe(canonical(newEngine().fullLayout(doc, pool)))
+    }
+
+    expect(resumeCount).toBeGreaterThan(0)
   })
 
   it('随机编辑 120 步: 每步与全量一致, 且至少发生一次续排', () => {

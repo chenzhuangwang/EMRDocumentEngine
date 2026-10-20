@@ -215,19 +215,30 @@ export class LayoutEngine {
   // ================================================================
   // 增量分页 (M2b)
   //
-  // 只对**纯文本/图片正文**启用: 没有表格 (分页游标有状态)、分节 (页面设置会变)、
-  // 脚注 (页底预留, 且 Step 4 会重复收集复用页)、域/控件/交叉引用 (预留宽依赖
-  // 总页数)、页眉页脚 (正文可用区依赖带高)。列表可以: 编号标记已进段落键,
-  // 编号重排会让键自动失效。这些场景一律全量分页 —— 可证明安全比省一点分页
-  // 更重要 (契约 §16.1)。
+  // 只对**可证明安全**的正文启用: 段落 (文本/图片/列表) 与表格。仍排除: 分节
+  // (页面设置会变)、脚注 (页底预留, 且 Step 4 会重复收集复用页)、域/控件/交叉
+  // 引用 (预留宽依赖总页数)、页眉页脚 (正文可用区依赖带高)。表格内**只放行
+  // 纯文本 cell** —— cell 里的控件/嵌套表/脚注引用同属上面的危险类。这些场景
+  // 一律全量分页 (契约 §16.1)。
   //
   // 续排从「首个脏段落所在页的**前一页**」开始: 寡行控制会从下一页拉一行回来,
-  // 所以脏段落所在页的上一页也可能变。
+  // 所以脏段落所在页的上一页也可能变。若该页从表格中间开始, 还要再回退到
+  // 该表格的起始页 —— 传给 PageBreaker 的是从 startLine 起的**原始行**, 从
+  // 表格中间切会丢掉前序页已承载的续排片段。
   // ================================================================
   private pageStartLineIndex: number[] = []
   private paraPageTable = new PageStartTable()
   private lastPaginationMode: 'full' | 'reuse-all' | 'resume' = 'full'
   private lastReusedPages = 0
+  /** 上一轮各表格的子树键 — 只有键变了才把表格标记为"需重排" */
+  private tableKeys = new Map<string, string>()
+  /** 计算值代次 (Draw 在布局前同步) — 代次变化会让所有表格键失效 */
+  private computedGeneration = 0
+
+  /** 同步计算值代次 (契约 §12.12.7 / §16.1) — 由 Draw 在每趟布局前调用 */
+  setComputedGeneration(generation: number): void {
+    this.computedGeneration = generation
+  }
 
   /** 分页模式统计 (诊断与测试用; 不参与布局决策) */
   getPaginationStats(): { mode: 'full' | 'reuse-all' | 'resume'; reusedPages: number; totalPages: number } {
@@ -240,6 +251,7 @@ export class LayoutEngine {
     this.paraPageTable = new PageStartTable()
     this.lastPaginationMode = 'full'
     this.lastReusedPages = 0
+    this.tableKeys.clear()
     this.pages = []
   }
 
@@ -264,6 +276,12 @@ export class LayoutEngine {
     for (const blockId of bodyBlockSpine(doc, pool)) {
       const block = pool.nodes.get(blockId) as unknown as
         { type?: string; children?: readonly string[] } | undefined
+      // 表格允许: 子树键未变时复用其前序页, 变了则从表格起始页重排。
+      // cell 里只放行纯文本 —— 控件/域/嵌套表/脚注引用仍属危险类。
+      if (block?.type === 'table') {
+        if (!this.tableSubtreeIncrementalSafe(pool, blockId)) return false
+        continue
+      }
       if (block?.type !== 'paragraph') return false
       for (const childId of block.children ?? []) {
         const child = pool.nodes.get(childId) as { type?: string } | undefined
@@ -275,6 +293,33 @@ export class LayoutEngine {
     return true
   }
 
+  /**
+   * 表格子树是否落在增量安全子集内: table → row → cell → paragraph → text,
+   * **叶节点只能是 text**。
+   *
+   * 拒绝的具体理由:
+   *   - 控件 (smarttext): 显示值/宽度依赖计算值与总页数, 不在表格子树键里;
+   *   - 嵌套表: cell 内的嵌套布局有自己的行高增长, 且同样可能藏危险叶节点;
+   *   - 脚注引用: Step 4 会往**复用页**重复追加脚注 item;
+   *   - 域/交叉引用: 预留宽依赖本趟页数。
+   * 这些都让"表格键未变 ⇒ 分页未变"不再成立 (契约 §16.1)。
+   */
+  private tableSubtreeIncrementalSafe(pool: NodePool, tableId: string): boolean {
+    const root = pool.nodes.get(tableId) as { children?: readonly string[] } | undefined
+    const stack = [...(root?.children ?? [])]
+    while (stack.length > 0) {
+      const id = stack.pop()!
+      const node = pool.nodes.get(id) as { type?: string; children?: readonly string[] } | undefined
+      if (!node) continue
+      if (node.type === 'text') continue
+      if (node.type === 'row' || node.type === 'cell' || node.type === 'paragraph') {
+        for (const childId of node.children ?? []) stack.push(childId)
+        continue
+      }
+      return false
+    }
+    return true
+  }
 
   /** 元素的修订渲染视图 (标记 + 由 delete 派生的删除线) */
   private revisionViewOf(node: { revision?: { type: string }; strikeout?: boolean }): {
@@ -345,11 +390,16 @@ export class LayoutEngine {
 
   /** 提交本轮分页状态 (只有最后一轮布局的状态才算数) */
   private commitPaginationState(
-    state: { pageStartLineIndex: number[]; paraFirstLine: Map<string, number> },
+    state: {
+      pageStartLineIndex: number[]
+      paraFirstLine: Map<string, number>
+      tableKeys: Map<string, string>
+    },
     mode: 'full' | 'reuse-all' | 'resume',
     reusedPages: number,
   ): void {
     this.pageStartLineIndex = state.pageStartLineIndex
+    this.tableKeys = state.tableKeys
     this.lastPaginationMode = mode
     this.lastReusedPages = reusedPages
 
@@ -375,6 +425,22 @@ export class LayoutEngine {
   }
 
   /**
+   * 该页是否从某表格的**续排片段**开始 (上一页以同一表格的片段结尾)。
+   *
+   * 这样的页没有对应的"输入行下标" —— 页首落在表格输入行的中间。续排不能从
+   * 它开始: 传进去的是 allLines 的切片, 而表格只有**一个**输入行, 从中间切会
+   * 让 PageBreaker 用一个全新游标重排表格, 于是前序页承载的续排片段被重复。
+   */
+  private pageStartsInsideTable(pageIndex: number): boolean {
+    if (pageIndex <= 0 || pageIndex >= this.pages.length) return false
+    const first = this.pages[pageIndex].items[0]
+    const prevItems = this.pages[pageIndex - 1].items
+    const last = prevItems[prevItems.length - 1]
+    return !!first && first.type === 'table'
+      && !!last && last.type === 'table' && last.nodeId === first.nodeId
+  }
+
+  /**
    * 段落 id → 页下标 (0-based) 的只读快照 —— 供 UI 显示"目标在第几页"
    * (书签/交叉引用目标列表)。派生数据: 每次布局刷新, 不是文档内容。
    */
@@ -390,7 +456,11 @@ export class LayoutEngine {
     allowIncremental: boolean,
   ): {
     pages: SLIFPage[]
-    state: { pageStartLineIndex: number[]; paraFirstLine: Map<string, number> }
+    state: {
+      pageStartLineIndex: number[]
+      paraFirstLine: Map<string, number>
+      tableKeys: Map<string, string>
+    }
     mode: 'full' | 'reuse-all' | 'resume'
     reusedPages: number
   } {
@@ -438,6 +508,7 @@ export class LayoutEngine {
 
     const paraFirstLine = new Map<string, number>()
     const recomputed: { paraId: string; lineIndex: number }[] = []
+    const nextTableKeys = new Map<string, string>()
 
     for (const blockId of bodyBlockSpine(doc, pool)) {
       const block = pool.nodes.get(blockId)
@@ -467,6 +538,16 @@ export class LayoutEngine {
         const tbl = block as unknown as {
           id: string; columns?: { width: number }[]; children: readonly string[]
           pageBreak?: { repeatHeader?: boolean; minRowsBeforeBreak?: number; continuationLabel?: string }
+        }
+        paraFirstLine.set(block.id, allLines.length)
+        // 表格子树键: 只有内容/结构/计算值代次变化时才要求"从表格起始页重排"。
+        // 未变化时允许分页从表格之后的页续排 (契约 §16.1)。
+        // 修订标记是布局期开关 (cell 内的删除线由它派生), 必须进键 — 与段落键同理。
+        const tableKey = `${IncrementalLayout.tableKey(pool, block.id) ?? ''}`
+          + `#cv${this.computedGeneration}#rev${this.showRevisionMarks ? 1 : 0}`
+        nextTableKeys.set(block.id, tableKey)
+        if (this.tableKeys.get(block.id) !== tableKey) {
+          recomputed.push({ paraId: block.id, lineIndex: allLines.length })
         }
         const { rows, columnWidths } = this.buildTableRows(tbl, pool, contentWidth, lineBreaker)
         const pageBreak = tbl.pageBreak
@@ -687,8 +768,11 @@ export class LayoutEngine {
         const first = recomputed[0]
         const page = this.paraPageTable.getPage(first.paraId)
         // 寡行控制会从下一页拉行回来, 所以从脏段落所在页的**前一页**续排
-        const candidate = Math.max(0, page - 1)
-        const startLine = page > 0 ? this.pageStartLineIndex[candidate] : -1
+        let candidate = Math.max(0, page - 1)
+        // 候选页若从表格中间开始, 回退到该表格的起始页: 传给 PageBreaker 的是
+        // 原始行切片, 从表格中间切会丢掉前序页已承载的续排片段 (契约 §16.1)
+        while (candidate > 0 && this.pageStartsInsideTable(candidate)) candidate--
+        const startLine = this.pageStartLineIndex[candidate]
         if (page > 0 && startLine >= 0 && startLine <= first.lineIndex) {
           mode = 'resume'
           resumePage = candidate
@@ -702,7 +786,11 @@ export class LayoutEngine {
     if (mode === 'reuse-all') {
       return {
         pages: this.pages,
-        state: { pageStartLineIndex: this.pageStartLineIndex.slice(), paraFirstLine },
+        state: {
+          pageStartLineIndex: this.pageStartLineIndex.slice(),
+          paraFirstLine,
+          tableKeys: nextTableKeys,
+        },
         mode,
         reusedPages: this.pages.length,
       }
@@ -891,19 +979,35 @@ export class LayoutEngine {
       }
     }
 
-    // 页起始行索引: 前序页沿用旧表, 新页从续排起点按行数累加
+    // 页起始行索引 (相对 allLines 的**输入行**下标): 前序页沿用旧表, 新页从
+    // 续排起点重新累积。
+    //
+    // 表格只占**一个**输入行, 却可跨多页 —— 所以不能数每页承载的行数:
+    //   - 表格的首个 fragment 让累积前进一行;
+    //   - 同一表格的后续 fragment 不再前进, 该页的起始下标就等于"表格之后那一行"
+    //     (页面从表格中间开始, 没有精确的输入行下标; 取它右侧的下标, 使
+    //     pageOfLine(表格下标) 落到**首个** fragment 所在页, 而不是最后一页)。
     const pageStartLineIndex: number[] = mode === 'resume'
       ? this.pageStartLineIndex.slice(0, resumePage)
       : []
-    let cumulativeLine = mode === 'resume' ? breakStartLine : 0
+    const seenTables = new Set<string>()
+    let nextInputLine = mode === 'resume' ? breakStartLine : 0
     for (const ip of iPages) {
-      pageStartLineIndex.push(cumulativeLine)
-      cumulativeLine += ip.lines.length
+      pageStartLineIndex.push(nextInputLine)
+      for (const line of ip.lines) {
+        const isTableLine = !!line.pageable || !!line.tableFragment
+        if (!isTableLine) { nextInputLine++; continue }
+        const tableId = (line.elements[0] as { id?: string } | undefined)?.id
+        if (tableId !== undefined && !seenTables.has(tableId)) {
+          seenTables.add(tableId)
+          nextInputLine++
+        }
+      }
     }
 
     return {
       pages: slifPages,
-      state: { pageStartLineIndex, paraFirstLine },
+      state: { pageStartLineIndex, paraFirstLine, tableKeys: nextTableKeys },
       mode,
       reusedPages: presetPages.length,
     }

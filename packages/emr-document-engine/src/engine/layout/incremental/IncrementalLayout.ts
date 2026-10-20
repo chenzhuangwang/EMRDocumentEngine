@@ -53,6 +53,31 @@ export class IncrementalLayout {
     return parts.join('|')
   }
 
+  /**
+   * 表格子树缓存键 (增量分页用, 契约 §16.1)。
+   *
+   * 表格不是"段落布局单元"——它的分页由 TablePaginator 自持游标。这里只需要
+   * 判断"表格子树是否变了": 变了就必须从表格起始页重排, 没变则可以让分页从
+   * 表格之后的页续排。
+   *
+   * 覆盖: structureVersion + 子树每个节点 (table/row/cell/paragraph/child) 的 id
+   * 与版本。控件值的变化通过节点版本体现; 公式结果的变化不在节点上 —— 由调用方
+   * 把计算值代次并入键 (见 LayoutEngine)。
+   */
+  static tableKey(pool: NodePool, tableId: string): string | null {
+    const root = pool.nodes.get(tableId)
+    if (!root) return null
+    const parts: string[] = [String(pool.structureVersion)]
+    const visit = (id: string): void => {
+      const node = pool.nodes.get(id) as
+        { children?: readonly string[] } | undefined
+      parts.push(`${id}:${pool.getNodeVersion(id)}`)
+      for (const childId of node?.children ?? []) visit(childId)
+    }
+    visit(tableId)
+    return parts.join('|')
+  }
+
   private cache = new Map<string, CachedParagraphLayout>()
 
   /** 检查段落布局是否已缓存且未变脏 */
