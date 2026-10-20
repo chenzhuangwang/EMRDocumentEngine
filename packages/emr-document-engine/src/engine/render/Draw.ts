@@ -59,7 +59,7 @@ import { createBarcodeParticle } from './particles/BarcodeParticle'
 import { particleRegistry } from './particles/ParticleRegistry'
 import { textParticle, separatorParticle, listParticle, fieldParticle } from './particles/ParticleAdapters'
 import { buildCellGrid } from '../document/table/TableOps'
-import { regionIdOf, selectionSpine, paragraphTextLength, bodyParagraphSpine, sectionsOf, sectionOf } from '../document/selection/SelectionCollector'
+import { regionIdOf, selectionSpine, collectSelectionSegments, paragraphTextLength, sectionsOf, sectionOf } from '../document/selection/SelectionCollector'
 import { COMMENT_HIGHLIGHT, commentHighlight } from './particles/CommentParticle'
 import { safeRenderParticle, safeRenderPage } from '../ErrorRecovery'
 import { resolveHfParagraphLocation } from '../document/core/HeaderFooterRegions'
@@ -913,23 +913,27 @@ export class Draw {
       return
     }
 
-    // 展平 body → 阅读顺序 (契约 §31.3 W3: 表格展开为 cell 段落)。cell 段落不在
-    // body.children, 若不展平, body↔table 跨域选区 indexOf=-1 被整体丢弃
-    // (「全选/拖选选不中表格」)。
-    const spine = this.document ? bodyParagraphSpine(this.document, pool) : []
-    const aIdx = spine.indexOf(anchorParaId)
-    const fIdx = spine.indexOf(focusParaId)
-    if (aIdx < 0 || fIdx < 0) return
+    // 选区范围**不再本地推导**: 段落读序与逐段裁剪区间来自 SelectionCollector
+    // (契约 §31.3 W3-SELECTION), 与复制、范围命令共用同一份实现。
+    // body 展平后 cell 段落参与线性范围 —— body↔table 跨域选区可被高亮。
+    const spineInfo = selectionSpine(this.document, pool, anchorParaId, focusParaId)
+    if (!spineInfo) return
+    const segments = collectSelectionSegments(
+      spineInfo.spine, anchorParaId, selection.anchor.offset,
+      focusParaId, selection.focus.offset,
+    )
+    if (segments.length === 0) return
 
-    const lo = Math.min(aIdx, fIdx)
-    const hi = Math.max(aIdx, fIdx)
-    const samePara = lo === hi
-
-    // 首段/末段的选区 offset — 标准化为 loOff <= hiOff
-    const anchorOff = selection.anchor.offset
-    const focusOff = selection.focus.offset
-    const selMin = Math.min(anchorOff, focusOff)
-    const selMax = Math.max(anchorOff, focusOff)
+    // 段内裁剪区间; 非段落块 (如块级图片) 在展平 spine 里占 1 个偏移单位。
+    const clips = new Map<string, { start: number; end: number }>()
+    for (const seg of segments) {
+      const node = pool.nodes.get(seg.paraId)
+      const isParagraph = node?.type === 'paragraph'
+      const end = seg.end === Number.MAX_SAFE_INTEGER
+        ? (isParagraph ? paragraphTextLength(pool, seg.paraId) : 1)
+        : seg.end
+      clips.set(seg.paraId, { start: seg.start, end })
+    }
 
     // 追踪每个段落的累计字符偏移
     const paraOffsets = new Map<string, number>()
@@ -940,8 +944,8 @@ export class Draw {
     // 当前文档滚动位置 — 直接读取, 与 computeCaretPos 同源
     const scrollY = this.coordSystem.transform.scrollY
 
-    // 单个文本 run 的裁剪 + 填充: 基于 paraId 在 spine 中的索引与段内累计偏移
-    // 计算是否落入 [lo,hi] 选区范围, 落入则按逐字符像素宽度裁剪后 fillRect。
+    // 单个文本 run 的裁剪 + 填充: 用所属段落的 clip 与段内累计偏移定位,
+    // 落入区间则按逐字符像素宽度裁剪后 fillRect。
     // 原子内联节点 (控件/图片/域等) 按「1 字符」计偏移 (与光标/命中同源), 并按整宽填充。
     const fillItem = (
       paraId: string,
@@ -950,39 +954,20 @@ export class Draw {
       fontCfg: { font: string; size: number; bold?: boolean; italic?: boolean },
       atomic = false, atomicW?: number,
     ): void => {
-      const pi = spine.indexOf(paraId)
-      if (pi < lo || pi > hi) return
+      const clip = clips.get(paraId)
+      if (!clip) return
 
       const itemStart = paraOffsets.get(paraId) ?? 0
       const tLen = text?.length || 0
       const unitLen = atomic ? 1 : tLen
       const itemEnd = itemStart + unitLen
-
-      // ---- 第一层: item 级筛选 ----
-      let include = true
-      if (samePara) {
-        include = itemEnd > selMin && itemStart < selMax
-      } else if (pi === lo) {
-        include = itemEnd > (aIdx === lo ? anchorOff : focusOff)
-      } else if (pi === hi) {
-        include = itemStart < (aIdx === hi ? anchorOff : focusOff)
-      }
-
-      let localStart = 0
-      let localEnd = unitLen || 1  // 空段落占位至少 1 个单位宽度
-      if (samePara) {
-        localStart = Math.max(0, selMin - itemStart)
-        localEnd = Math.min(unitLen, selMax - itemStart)
-      } else if (pi === lo) {
-        localStart = Math.max(0, (aIdx === lo ? anchorOff : focusOff) - itemStart)
-        localEnd = unitLen || 1
-      } else if (pi === hi) {
-        localStart = 0
-        localEnd = Math.min(unitLen || 1, (aIdx === hi ? anchorOff : focusOff) - itemStart)
-      }
-
       paraOffsets.set(paraId, itemEnd)
-      if (!include) return
+
+      // ---- item 级筛选 ----
+      if (itemEnd <= clip.start || itemStart >= clip.end) return
+
+      const localStart = Math.max(0, clip.start - itemStart)
+      const localEnd = Math.min(unitLen || 1, clip.end - itemStart)  // 空段落占位至少 1 个单位宽度
 
       if (atomic) {
         // 原子节点: 部分覆盖即整块高亮 (与「非文本计 1」一致)
@@ -1040,24 +1025,15 @@ export class Draw {
           const ownerParaId = this.findItemParagraph(item.nodeId, pool)
           if (ownerParaId) {
             // 内联图: 归属段落, 按段内 1 字符偏移定位 (与 paragraphTextLength 一致)
-            const pi = spine.indexOf(ownerParaId)
-            if (pi < lo || pi > hi) continue
+            const clip = clips.get(ownerParaId)
+            if (!clip) continue
             const itemStart = paraOffsets.get(ownerParaId) ?? 0
             const itemEnd = itemStart + 1
-            let include = true
-            if (samePara) {
-              include = itemEnd > selMin && itemStart < selMax
-            } else if (pi === lo) {
-              include = itemEnd > (aIdx === lo ? anchorOff : focusOff)
-            } else if (pi === hi) {
-              include = itemStart < (aIdx === hi ? anchorOff : focusOff)
-            }
             paraOffsets.set(ownerParaId, itemEnd)
-            if (!include) continue
+            if (itemEnd <= clip.start || itemStart >= clip.end) continue
           } else {
-            // 块级图: nodeId 即 body 顶层 child (spine 成员), 按索引直接定位
-            const pi = spine.indexOf(item.nodeId)
-            if (pi < lo || pi > hi) continue
+            // 块级图: nodeId 即 body 顶层 child (展平 spine 成员), 在区间内即整块高亮
+            if (!clips.has(item.nodeId)) continue
           }
           ictx.fillRect(item.x, spY + item.y, item.width, item.height)
         } else {
@@ -1089,19 +1065,20 @@ export class Draw {
     const doc = this.document!
     const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1] || ''
     const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1] || ''
-    const sp = selectionSpine(doc, pool, anchorParaId, focusParaId)
-    if (!sp) return
-    const spine = sp.spine
-    const aIdx = spine.indexOf(anchorParaId)
-    const fIdx = spine.indexOf(focusParaId)
-    if (aIdx < 0 || fIdx < 0) return
-    const lo = Math.min(aIdx, fIdx)
-    const hi = Math.max(aIdx, fIdx)
-    const samePara = lo === hi
-    const anchorOff = selection.anchor.offset
-    const focusOff = selection.focus.offset
-    const selMin = Math.min(anchorOff, focusOff)
-    const selMax = Math.max(anchorOff, focusOff)
+    const spineInfo = selectionSpine(doc, pool, anchorParaId, focusParaId)
+    if (!spineInfo) return
+    const segments = collectSelectionSegments(
+      spineInfo.spine, anchorParaId, selection.anchor.offset,
+      focusParaId, selection.focus.offset,
+    )
+    if (segments.length === 0) return
+    const clips = new Map<string, { start: number; end: number }>()
+    for (const seg of segments) {
+      const end = seg.end === Number.MAX_SAFE_INTEGER
+        ? paragraphTextLength(pool, seg.paraId)
+        : seg.end
+      clips.set(seg.paraId, { start: seg.start, end })
+    }
 
     const tokens = this.theme?.tokenSet ?? STANDARD_CANVAS_TOKENS
     ictx.fillStyle = withAlpha(tokens.selectionBg, 0.2)
@@ -1118,38 +1095,20 @@ export class Draw {
       for (const item of items) {
         const paraId = this.findItemParagraph(item.nodeId, pool)
         if (!paraId) continue
-        const pi = spine.indexOf(paraId)
-        if (pi < lo || pi > hi) continue
+        const clip = clips.get(paraId)
+        if (!clip) continue
         const text = item.text || ''
         const isAtomic = item.type === 'smarttext' || item.type === 'image' ||
           item.type === 'field' || item.type === 'cross_reference' || item.type === 'footnote_ref'
         const tLen = isAtomic ? 1 : text.length
         const itemStart = paraOffsets.get(paraId) ?? 0
         const itemEnd = itemStart + tLen
-
-        let include = true
-        if (samePara) {
-          include = itemEnd > selMin && itemStart < selMax
-        } else if (pi === lo) {
-          include = itemEnd > (aIdx === lo ? anchorOff : focusOff)
-        } else if (pi === hi) {
-          include = itemStart < (aIdx === hi ? anchorOff : focusOff)
-        }
-
-        let localStart = 0
-        let localEnd = tLen || 1
-        if (samePara) {
-          localStart = Math.max(0, selMin - itemStart)
-          localEnd = Math.min(tLen, selMax - itemStart)
-        } else if (pi === lo) {
-          localStart = Math.max(0, (aIdx === lo ? anchorOff : focusOff) - itemStart)
-          localEnd = tLen || 1
-        } else if (pi === hi) {
-          localStart = 0
-          localEnd = Math.min(tLen || 1, (aIdx === hi ? anchorOff : focusOff) - itemStart)
-        }
         paraOffsets.set(paraId, itemEnd)
-        if (!include) continue
+
+        if (itemEnd <= clip.start || itemStart >= clip.end) continue
+
+        const localStart = Math.max(0, clip.start - itemStart)
+        const localEnd = Math.min(tLen || 1, clip.end - itemStart)
 
         if (isAtomic) {
           if (localStart < localEnd) ictx.fillRect(item.x, spY + bandTop + item.y, item.width, item.ascent + item.descent)

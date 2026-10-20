@@ -2835,38 +2835,18 @@ export class Editor {
 
     const lo = Math.min(aIdx, fIdx)
     const hi = Math.max(aIdx, fIdx)
-    const loOff = aIdx === lo ? aOff : fOff
-    const hiOff = fIdx === hi ? fOff : aOff
 
-    // 从后往前删, 避免索引漂移
-    for (let pi = hi; pi >= lo; pi--) {
-      const paraId = siblings[pi]
-      if (!paraId) continue
-      const node = this.pool.nodes.get(paraId)
-      if (!node || node.type !== 'paragraph') continue
-      const path = [...selection.anchor.paragraphPath.slice(0, -1), paraId]
-
-      if (pi === lo && pi === hi) {
-        const start = Math.min(loOff, hiOff)
-        const end = Math.max(loOff, hiOff)
-        if (end > start) {
-          this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, start, end))
-        }
-      } else if (pi === hi) {
-        if (hiOff > 0) {
-          this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, hiOff))
-        }
-      } else if (pi === lo) {
-        const totalLen = this.getParagraphTextLengthById(paraId)
-        if (loOff < totalLen) {
-          this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, loOff, totalLen))
-        }
-      } else {
-        const totalLen = this.getParagraphTextLengthById(paraId)
-        if (totalLen > 0) {
-          this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, totalLen))
-        }
-      }
+    // 逐段裁剪区间与复制/渲染共用 SelectionCollector 的同一实现
+    // (契约 §31.3 W3-SELECTION); 从后往前删, 避免索引漂移。
+    const segments = collectSelectionSegments(siblings, aId, aOff, fId, fOff)
+    for (let si = segments.length - 1; si >= 0; si--) {
+      const seg = segments[si]
+      const totalLen = this.getParagraphTextLengthById(seg.paraId)
+      const start = Math.min(seg.start, totalLen)
+      const end = Math.min(seg.end, totalLen)
+      if (end <= start) continue
+      const path = [...selection.anchor.paragraphPath.slice(0, -1), seg.paraId]
+      this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, start, end))
     }
 
     // 跨段落选区: 合并残段
@@ -2886,7 +2866,10 @@ export class Editor {
       }
     }
 
-    const loParaId = siblings[lo]
+    // 光标落到删除起点 (lo 段的选区起点)
+    const loSeg = segments[0]
+    const loParaId = loSeg ? loSeg.paraId : siblings[lo]
+    const loOff = loSeg ? Math.min(loSeg.start, this.getParagraphTextLengthById(loParaId)) : 0
     this.store.setCursor({ paragraphPath: [...selection.anchor.paragraphPath.slice(0, -1), loParaId], offset: loOff, visible: true })
 
     return true

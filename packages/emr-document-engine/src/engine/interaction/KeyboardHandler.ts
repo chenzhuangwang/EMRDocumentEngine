@@ -21,7 +21,7 @@ import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand
 import { EnsureBodyParagraphCommand, EnsureCellParagraphCommand } from '../command/commands/StructuralCommands'
 import { generateCommandId } from '../command/ICommand'
 import type { SLIFPage } from '../layout/core/SLIF'
-import { resolveCellPosition, getCaretScope, getAdjacentCell, resolveParagraphRegion, resolveSiblingRange } from '../state/CaretScope'
+import { resolveCellPosition, getCaretScope, getAdjacentCell, resolveParagraphRegion } from '../state/CaretScope'
 import { buildCellGrid } from '../document/table/TableOps'
 import type { TableGrid, GridCell } from '../document/table/TableOps'
 import type { NodePool } from '../document/core/NodePool'
@@ -234,95 +234,16 @@ export class KeyboardHandler {
   }
 
   /** 删除选区内容: 跨段落逐段删除 — v21.0 Phase 4 区分 body/cell 作用域 */
-  private deleteSelection(ed: Editor, sel: { anchor: { paragraphPath: string[]; offset: number }; focus: { paragraphPath: string[]; offset: number } }): void {
-    const pool = ed.getPool()
-    const doc = ed.getDocument()
-    const aId = sel.anchor.paragraphPath[sel.anchor.paragraphPath.length - 1]
-    const fId = sel.focus.paragraphPath[sel.focus.paragraphPath.length - 1]
-
-    // 同段落选区 — 直接删除偏移范围
-    if (aId === fId) {
-      const start = Math.min(sel.anchor.offset, sel.focus.offset)
-      const end = Math.max(sel.anchor.offset, sel.focus.offset)
-      if (end > start) {
-        ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', sel.anchor.paragraphPath, start, end))
-      }
-      return
-    }
-
-    // v21.0 Phase 4: 检测 scope
-    const aCell = resolveCellPosition(aId, pool)
-    const fCell = resolveCellPosition(fId, pool)
-
-    // 跨域选区禁止 — 不删除任何内容
-    if ((aCell && !fCell) || (!aCell && fCell)) return
-    if (aCell && fCell && (aCell.tableId !== fCell.tableId || aCell.row !== fCell.row || aCell.col !== fCell.col)) return
-
-    // 区域感知兄弟 (body / header / footer / 同 cell)
-    const range = resolveSiblingRange(doc, pool, aId, fId)
-    if (!range) return
-    const siblings: readonly string[] = range.siblings
-
-    const aIdx = siblings.indexOf(aId)
-    const fIdx = siblings.indexOf(fId)
-    if (aIdx < 0 || fIdx < 0) return
-    const lo = Math.min(aIdx, fIdx)
-    const hi = Math.max(aIdx, fIdx)
-    const loOff = aIdx === lo ? sel.anchor.offset : sel.focus.offset
-    const hiOff = fIdx === hi ? sel.focus.offset : sel.anchor.offset
-
-    // 从后往前删, 避免索引漂移
-    for (let pi = hi; pi >= lo; pi--) {
-      const paraId = siblings[pi]
-      if (!paraId) continue
-      const node = pool.nodes.get(paraId)
-      if (!node || (node.type !== 'paragraph')) continue
-      const path = [...sel.anchor.paragraphPath.slice(0, -1), paraId]
-      if (pi === lo && pi === hi) {
-        const start = Math.min(loOff, hiOff)
-        const end = Math.max(loOff, hiOff)
-        if (end > start) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, start, end))
-      } else if (pi === hi) {
-        if (hiOff > 0) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, hiOff))
-      } else if (pi === lo) {
-        const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
-        let totalLen = 0
-        if (para?.children) {
-          for (const cid of para.children) {
-            const n = pool.nodes.get(cid) as { type?: string; text?: string } | undefined
-            totalLen += n?.type === 'text' ? (n.text || '').length : 1
-          }
-        }
-        if (loOff < totalLen) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, loOff, totalLen))
-      } else {
-        const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
-        let totalLen = 0
-        if (para?.children) {
-          for (const cid of para.children) {
-            const n = pool.nodes.get(cid) as { type?: string; text?: string } | undefined
-            totalLen += n?.type === 'text' ? (n.text || '').length : 1
-          }
-        }
-        if (totalLen > 0) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, totalLen))
-      }
-    }
-
-    // 跨段落选区: 合并残段
-    if (lo < hi) {
-      for (let mergeCount = (hi - lo); mergeCount > 0; mergeCount--) {
-        const currentSiblings = aCell
-          ? ((() => {
-              const tn = pool.nodes.get(aCell.tableId) as { children?: readonly string[] } | undefined
-              const rn = pool.nodes.get(tn?.children?.[aCell.row] || '') as { children?: readonly string[] } | undefined
-              return (pool.nodes.get(rn?.children?.[aCell.col] || '') as { children?: readonly string[] } | undefined)?.children || siblings
-            })())
-          : siblings
-        const nextParaId = currentSiblings[lo + 1]
-        if (!nextParaId) break
-        const mergePath = [...sel.anchor.paragraphPath.slice(0, -1), nextParaId]
-        ed.execCommand(new MergeParagraphCommand(generateCommandId(), Date.now(), 'user', mergePath))
-      }
-    }
+  /**
+   * 删除当前选区 — 委托 `Editor.deleteSelection()` (契约 RULE 11)。
+   *
+   * 这里曾经是一份与 `Editor.deleteSelectedRange` 近乎逐行相同的副本: 同样的
+   * 区域守卫、同样的逐段裁剪、同样的合并残段。副本的代价是行为分叉 —— 键盘
+   * 路径没有事务包装, 跨段落删除会产生 N 条 undo 单元 (右键「删除」早已修成
+   * 单步)。范围计算也只保留一份 (Editor → collectSelectionSegments)。
+   */
+  private deleteSelection(ed: Editor, _sel: { anchor: { paragraphPath: string[]; offset: number }; focus: { paragraphPath: string[]; offset: number } }): void {
+    ed.deleteSelection()
   }
 
   /** Tab / Shift+Tab: 在表格 cell 间移动光标 (Phase 4) */
