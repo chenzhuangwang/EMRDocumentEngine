@@ -290,6 +290,9 @@ export class LayoutEngine {
   /** 模板定义版本 (Draw 在布局前同步) — 控件外观定义变化, 不进节点版本也不进计算值代次 */
   private templateDefinitionVersion = 0
 
+  /** 上一趟的页眉/页脚几何签名 (M3b) — 未变才允许续排复用页 */
+  private lastHfSignature: string | null = null
+
   /** 同步计算值代次 (契约 §12.12.7 / §16.1) — 由 Draw 在每趟布局前调用 */
   setComputedGeneration(generation: number): void {
     this.computedGeneration = generation
@@ -333,6 +336,7 @@ export class LayoutEngine {
     this.lastReusedPages = 0
     this.lastReusedTailPages = 0
     this.tableKeys.clear()
+    this.lastHfSignature = null
     this.pages = []
   }
 
@@ -340,6 +344,7 @@ export class LayoutEngine {
   private canIncrementalPagination(
     doc: DocumentTree,
     pool: NodePool,
+    hfSignature: string,
     invalidation?: string,
   ): boolean {
     if (this.pageStartLineIndex.length === 0 || this.pages.length === 0) return false
@@ -347,12 +352,10 @@ export class LayoutEngine {
     if (invalidation !== undefined && invalidation !== 'node'
       && invalidation !== 'paragraph' && invalidation !== 'paragraph_and_downstream') return false
 
-    // 页眉页脚会改变正文可用区与逐页带内容
-    const hf = doc as unknown as Record<string, readonly string[] | undefined>
-    for (const key of ['header', 'footer', 'firstPageHeader', 'firstPageFooter', 'evenPageHeader', 'evenPageFooter']) {
-      if ((hf[key]?.length ?? 0) > 0) return false
-    }
-    if (doc.headerFooterConfig?.differentFirstPage || doc.headerFooterConfig?.differentOddEven) return false
+    // 页眉/页脚 (M3b): 它们决定正文可用区 (带高) 与每页携带的 items。
+    // 签名相等 ⇒ 任一页重建出的 HF 与上一趟逐字节相同, 复用页无需重算;
+    // 不等 (含首趟) 仍按全量保守处理。
+    if (this.lastHfSignature === null || hfSignature !== this.lastHfSignature) return false
 
     for (const blockId of bodyBlockSpine(doc, pool)) {
       const block = pool.nodes.get(blockId) as unknown as
@@ -376,6 +379,52 @@ export class LayoutEngine {
       }
     }
     return true
+  }
+
+  /**
+   * 页眉/页脚几何签名 (M3b, 契约 §16.1)。
+   *
+   * 只覆盖「改变 HF 带高或 HF 行内容」的输入 —— 签名相等即可复用已排好的页:
+   *   - 六个变体数组的段落 id 与其子节点版本 (段落样式/run 样式/控件值/域缓存值
+   *     都落在节点版本上); 另加 structureVersion (增删段落/子节点会整表变);
+   *   - 变体开关 (differentFirstPage / differentOddEven) 决定逐页变体解析;
+   *   - 修订留痕开关: 删除线是布局期产物, 与正文同理必须进签名;
+   *   - HF 内控件的计算值代次与模板定义版本 —— 仅当 HF 真的含 smarttext 才带,
+   *     否则每次公式重算都会让带页眉的文档退回全量;
+   *   - 域预留宽的取样输入: 页数位数 (totalPagesHint 只取位数)、locale、文档标题。
+   *
+   * 页眉里的页码/总页数文本在**渲染期**解析 (Draw.resolveFieldText), 不烤进
+   * SLIF item, 因此页数变化本身不需要重建复用页 —— 只有位数变化会改写域预留宽。
+   */
+  private headerFooterSignature(
+    doc: DocumentTree, pool: NodePool, contentWidth: number, pageNumberHint: number,
+  ): string {
+    const parts: string[] = [
+      String(pool.structureVersion),
+      String(contentWidth),
+      this.showRevisionMarks ? 'rev1' : 'rev0',
+      String(Math.min(4, Math.max(1, String(Math.max(1, Math.floor(pageNumberHint))).length))),
+      locale.getLocale(),
+      doc.title || '',
+      doc.headerFooterConfig?.differentFirstPage ? 'first1' : 'first0',
+      doc.headerFooterConfig?.differentOddEven ? 'even1' : 'even0',
+    ]
+    const hf = doc as unknown as Record<string, readonly string[] | undefined>
+    let hasSmart = false
+    for (const key of ['header', 'footer', 'firstPageHeader', 'firstPageFooter', 'evenPageHeader', 'evenPageFooter']) {
+      parts.push(`#${key}`)
+      for (const id of hf[key] ?? []) {
+        const block = pool.nodes.get(id) as { children?: readonly string[] } | undefined
+        parts.push(`${id}@${pool.getNodeVersion(id)}`)
+        for (const childId of block?.children ?? []) {
+          const child = pool.nodes.get(childId) as { type?: string } | undefined
+          if (child?.type === 'smarttext') hasSmart = true
+          parts.push(`${childId}@${pool.getNodeVersion(childId)}`)
+        }
+      }
+    }
+    if (hasSmart) parts.push(`cv${this.computedGeneration}`, `tv${this.templateDefinitionVersion}`)
+    return parts.join('|')
   }
 
   /**
@@ -452,7 +501,11 @@ export class LayoutEngine {
    */
   fullLayout(doc: DocumentTree, pool: NodePool, invalidation?: string): LayoutResult {
     const hint = Math.max(1, this.pages.length)
-    const allowIncremental = this.canIncrementalPagination(doc, pool, invalidation)
+    const contentWidth = this.config.pageWidth - this.config.marginLeft - this.config.marginRight
+    // 页眉/页脚几何签名 (M3b): 与本趟实际使用的 pageNumberHint 同参计算,
+    // 与上一趟不同则不允许复用页 (带高/逐页 items 可能已变)
+    const hfSignature = this.headerFooterSignature(doc, pool, contentWidth, hint)
+    const allowIncremental = this.canIncrementalPagination(doc, pool, hfSignature, invalidation)
     let result = this.layoutOnce(doc, pool, hint, allowIncremental)
     let pages = result.pages
     const pageDigitsChanged = String(hint).length !== String(Math.max(1, pages.length)).length
@@ -465,6 +518,9 @@ export class LayoutEngine {
       pages = result.pages
     }
     this.pages = pages
+    // 只提交最终一趟使用的签名: 页数位数若在本趟变化, 签名按新位数记 ——
+    // 下一趟的 hint 取本轮页数, 与这里同口径 (契约 §16.1)
+    this.lastHfSignature = this.headerFooterSignature(doc, pool, contentWidth, Math.max(1, pages.length))
     this.commitPaginationState(result.state, result.mode, result.reusedPages, result.reusedTailPages)
     // 段落→页映射总是刷新: O(N) 只读派生, 不参与布局输出 (无行为变化), 但书签
     // 对话框与交叉引用都按它显示"第几页"。上面 needsXrefPass 时已建过一次, 这里
