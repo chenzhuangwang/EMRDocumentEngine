@@ -35,7 +35,7 @@ import { DEFAULT_PAGE_SETUP } from '../../document/core/DocumentModel'
 import { controlValueDisplay } from '../../document/factory/ElementFormatter'
 import { CONTROL_BOX_PADDING } from '../../document/control/ControlBox'
 import { smarttextLayoutHint } from '../control/ControlLayoutHint'
-import { representativeFieldText, type FieldReserveContext } from '../../document/factory/FieldFormatter'
+import { representativeFieldText, fieldReserveDigits, type FieldReserveContext } from '../../document/factory/FieldFormatter'
 import { locale } from '../../i18n/index'
 import { MergeMatrix } from '../../document/table/MergeMatrix'
 import { FootnoteLayout } from '../footnote/FootnoteLayout'
@@ -226,9 +226,11 @@ export class LayoutEngine {
   /**
    * 段落行缓存键; null = 该段落不可缓存。
    *
-   * 键 = 段落布局键 (结构版本 + 段落版本 + 逐子节点版本) + 三个段落之外但
-   * 影响行断的输入: 可用宽 (页面设置/分节)、修订标记显隐 (布局期样式)、
+   * 键 = 段落布局键 (结构版本 + 段落版本 + 逐子节点版本) + 段落之外但影响
+   * 行断的输入: 可用宽 (页面设置/分节)、修订标记显隐 (布局期样式)、
    * 列表标记 (编号依赖前序段落，但标记本身已由调用方算好并参与断行)。
+   * 含控件段落追加计算值代次/模板定义版本；含域段落追加域预留宽取样输入
+   * (页数位数/locale/标题)。交叉引用仍不缓存 (显示文本依赖本趟分页结果)。
    */
   private paragraphLineCacheKey(
     pool: NodePool, para: Paragraph, contentWidth: number, listMarker: string,
@@ -237,6 +239,7 @@ export class LayoutEngine {
     if (!children) return null
     const digests: string[] = []
     let hasSmart = false
+    let hasField = false
     for (const childId of children) {
       const child = pool.nodes.get(childId) as
         { type?: string; width?: number; height?: number; wrapMode?: string } | undefined
@@ -252,24 +255,37 @@ export class LayoutEngine {
         hasSmart = true
         continue
       }
-      // 域/交叉引用的显示值或预留宽依赖页码 → 不缓存
+      if (child?.type === 'field') {
+        // 域的显示值 (cachedValue) 在节点版本上; 但量宽用的是 representativeFieldText
+        // 的样本串 —— 页数位数/locale/标题改了, 预留宽就变, 必须进键 (契约 §16.1)。
+        hasField = true
+        continue
+      }
+      // 交叉引用的显示文本依赖本趟分页结果 (上一轮页映射) → 不缓存
       return null
     }
     const base = IncrementalLayout.paragraphKey(pool, para.id)
     if (!base) return null
     // 代次只加在**含控件**的段落上: 否则每次公式重算都会让纯文本段落的键全部失效
     const ctl = hasSmart ? `#cv${this.computedGeneration}#tv${this.templateDefinitionVersion}` : ''
-    return `${base}#w${contentWidth}#r${this.showRevisionMarks ? 1 : 0}#m${listMarker}#d${digests.join(',')}${ctl}`
+    const fld = hasField
+      ? `#f${fieldReserveDigits(this.fieldReserveCtx.totalPagesHint)}`
+        + `#l${this.fieldReserveCtx.locale ?? ''}`
+        + `#t${JSON.stringify(this.fieldReserveCtx.documentTitle ?? '')}`
+      : ''
+    return `${base}#w${contentWidth}#r${this.showRevisionMarks ? 1 : 0}#m${listMarker}#d${digests.join(',')}${ctl}${fld}`
   }
 
   // ================================================================
   // 增量分页 (M2b)
   //
-  // 只对**可证明安全**的正文启用: 段落 (文本/图片/脚注引用/列表) 与表格。仍排除:
-  // 分节 (页面设置会变)、域/控件/交叉引用 (预留宽依赖总页数)、页眉页脚 (正文
-  // 可用区依赖带高)。脚注引用可以: 页底预留只取决于"文档有没有脚注" (增删引用
-  // 是结构编辑, 会让全部段落键失效), 而 Step 4 只处理新页 + 按复用页播种编号。
-  // 表格内**只放行纯文本 cell** —— cell 里的控件/嵌套表/脚注引用同属危险类。
+  // 只对**可证明安全**的正文启用: 段落 (文本/图片/脚注引用/控件/域/列表) 与
+  // 表格; 页眉页脚按几何签名放行 (M2g)。仍排除: 分节 (页面设置会变)、交叉引用
+  // (显示文本依赖本趟页映射)。域可以: 量宽只依赖 representativeFieldText 的
+  // 样本串 (页数位数/locale/标题已进段落键), 显示值在节点版本上。脚注引用可以:
+  // 页底预留只取决于"文档有没有脚注" (增删引用是结构编辑, 会让全部段落键失效),
+  // 而 Step 4 只处理新页 + 按复用页播种编号。表格内只放行 text/smarttext cell ——
+  // cell 里的域/嵌套表/脚注引用同属危险类 (cell 内的域本身也不参与排版)。
   // 这些场景一律全量分页 (契约 §16.1)。
   //
   // 续排从「首个脏段落所在页的**前一页**」开始: 寡行控制会从下一页拉一行回来,
@@ -373,9 +389,11 @@ export class LayoutEngine {
         // Step 4 已按「只处理新页 + 播种编号」处理 (契约 §16.1)。
         // 控件 (smarttext) 放行: 显示值/可见性由计算值代次与模板定义版本进键,
         // 两代次变化时段落键失效 → 该段落重排 (契约 §16.1)。
-        // 域/交叉引用仍排除: 预留宽依赖本趟页数。
+        // 域 (field) 放行: 量宽输入 (页数位数/locale/标题) 已进段落键。
+        // 交叉引用仍排除: 显示文本依赖上一轮页映射。
         if (child?.type !== 'text' && child?.type !== 'image'
-          && child?.type !== 'footnote_ref' && child?.type !== 'smarttext') return false
+          && child?.type !== 'footnote_ref' && child?.type !== 'smarttext'
+          && child?.type !== 'field') return false
       }
     }
     return true
@@ -403,7 +421,7 @@ export class LayoutEngine {
       String(pool.structureVersion),
       String(contentWidth),
       this.showRevisionMarks ? 'rev1' : 'rev0',
-      String(Math.min(4, Math.max(1, String(Math.max(1, Math.floor(pageNumberHint))).length))),
+      String(fieldReserveDigits(pageNumberHint)),
       locale.getLocale(),
       doc.title || '',
       doc.headerFooterConfig?.differentFirstPage ? 'first1' : 'first0',
