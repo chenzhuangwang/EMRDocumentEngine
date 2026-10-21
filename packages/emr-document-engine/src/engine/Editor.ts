@@ -2575,6 +2575,10 @@ export class Editor {
 
     const markerId = generateCommandId()
     const threadId = generateCommandId()
+    // 线程与首条内容的 id/时间戳都必须在**铸造之前**取定: 两个工厂在 redo
+    // 时会再跑一次, 工厂内再铸 id / 读钟会让重做后的线程与首次逐字节不同
+    // (契约 §8.3 MintedOnce 同一条规则)。
+    const entryId = generateCommandId()
     const ts = Date.now()
     const rangeStart = { path: [...anchor.path], offset: anchor.start }
     const rangeEnd = { path: [...anchor.path], offset: anchor.end }
@@ -2594,7 +2598,7 @@ export class Editor {
         status: 'open' as const,
         baseVersion: 1,
         anchorStatus: 'valid' as const,
-        comments: [{ id: generateCommandId(), author: 'user', createdAt: ts, content }],
+        comments: [{ id: entryId, author: 'user', createdAt: ts, content }],
       }),
     ))
     return true

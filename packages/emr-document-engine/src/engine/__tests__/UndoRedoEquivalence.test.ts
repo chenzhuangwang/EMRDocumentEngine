@@ -26,12 +26,14 @@
 // 动作含输入/删除/格式/段落样式/拆段/并段/清格式/列表开关/表格追加行/
 // 控件值变更/控件删除/表格结构(插删行列·合并/拆分格)/插入图片/插入脚注/
 // 查找替换/复制粘贴(经 Editor 门面, 覆盖 ClipboardManager 序列化 +
-// InsertNodesCommand)/剪切(copy + 删除选区, 宏单元)/接受·拒绝修订.
+// InsertNodesCommand)/剪切(copy + 删除选区, 宏单元)/接受·拒绝修订/
+// **创建批注(Editor 门面 + 直接命令两条链)/批注状态变更/块移动/插入节/
+// 批量绑定值**.
 // 第三条种子开启修订追踪 (setTrackChanges + 当前用户): 输入/删除都会留下
 // 标记, 接受/拒绝修订也在随机动作里 —— 标记的撤销/重做同样要求逐字节还原.
-// 控件动作先确定性地各做一次, 并有「动作真的入过栈」的假覆盖守卫 —— 否则
-// 表格结构操作可能先把夹具里的控件删光, 控件 case 全部空转, 闸门看起来
-// 覆盖了实际没跑.
+// 控件与新旧动作先确定性地各做一次, 并有「动作真的入过栈」的假覆盖守卫 ——
+// 否则表格结构/剪切可能先把夹具抽空, 后面的 case 全部空转, 闸门看起来
+// 覆盖了实际没跑 (动作池扩到 24 种后随机稀释, 守卫更要靠确定性预演兜底).
 // cell/控件/粘贴编辑此前从未进入随机组合 —— 扩充后抓到六处真实缺陷
 // (前四处是撤销精确性, 后两处由粘贴动作暴露):
 //   1. 原地输入会 normalize 并掉**早已存在**的相邻同样式 run, 轻量反转还原不出;
@@ -44,6 +46,10 @@
 //   6. 粘贴整段 normalize 目的地段落, 并掉与粘贴无关的 run; 撤销按 id
 //      恢复 children, 被并节点的身份与文字还原不出 (改为只并接缝, §8.2)。
 // 1-4 均改为"会破坏 run 身份的命令先拍整段快照"或"并段只合并接缝一对"。
+// 动作池扩到批注/块移动/插入节/批量绑定后抓到的第 10 处缺陷:
+//   Editor.createComment 在线程工厂**内部**铸造首条内容的 id —— 工厂在
+//   redo 时会再跑一次, 重做后的批注条目 id 与首次不同 (契约 §8.3 MintedOnce
+//   同一规则: 铸造一次, 重放复用同一批 id)。改为铸造前取定。
 // ================================================================
 
 import { describe, it, expect, afterEach } from 'vitest'
@@ -64,6 +70,10 @@ import { AppendTableRowCommand } from '../command/commands/AppendTableRowCommand
 import { SetControlValueCommand } from '../command/commands/SetControlValueCommand'
 import { RemoveControlCommand } from '../command/commands/RemoveControlCommand'
 import { TableStructureCommand, InsertFootnoteCommand } from '../command/commands/StructuralCommands'
+import {
+  CreateCommentCommand, ResolveCommentCommand, MoveBlockCommand, InsertSectionCommand,
+} from '../command/commands/StructuralCommands'
+import { SetBoundValuesCommand } from '../command/commands/SetBoundValuesCommand'
 import { InsertImageCommand } from '../command/commands/InsertImageCommand'
 import { ReplaceTextCommand } from '../command/commands/ReplaceTextCommand'
 import {
@@ -72,7 +82,7 @@ import {
 } from '../document/table/TableOps'
 import { createSmartTextNode } from '../document/factory/ElementFormatter'
 import type {
-  BaseNode, ControlValue, DocumentTree, ElementMeta, FootnoteContent, Paragraph, TextNode,
+  BaseNode, CommentThread, ControlValue, DocumentTree, ElementMeta, FootnoteContent, Paragraph, TextNode,
 } from '../document/core/DocumentModel'
 
 afterEach(() => { document.body.innerHTML = '' })
@@ -253,8 +263,8 @@ const ALIGNMENTS = ['left', 'center', 'right', 'justify'] as const
 /** 脚注铸造用的唯一键 (同一次测试进程内不重复) */
 let footnoteSeq = 0
 
-/** 非命令型随机动作: 走 Editor 门面 (copy→paste / cut / 接受·拒绝修订), 由真实命令链落栈 */
-interface EditorAction { action: 'copy-paste' | 'cut' | 'accept-all' | 'reject-all' }
+/** 非命令型随机动作: 走 Editor 门面 (copy→paste / cut / createComment / 接受·拒绝修订), 由真实命令链落栈 */
+interface EditorAction { action: 'copy-paste' | 'cut' | 'create-comment' | 'accept-all' | 'reject-all' }
 type RandomAction = ICommand | EditorAction | null
 
 function isEditorAction(a: ICommand | EditorAction): a is EditorAction { return 'action' in a }
@@ -319,13 +329,34 @@ function runRevisionDecision(f: Fixture, action: 'accept-all' | 'reject-all'): v
   else f.editor.rejectAllRevisions()
 }
 
+/**
+ * 经 Editor 门面建批注 (契约 §12.2)。
+ *
+ * 这条链上还有 resolveCommentAnchor: 无光标/跨段选区会被拒绝。它同时覆盖
+ * Editor 里那对「铸造前取定 id/时间戳」的工厂 —— 工厂在 redo 时会再跑一次,
+ * 在工厂内铸 id/读钟会让重做后的线程逐字节漂移。
+ */
+function runEditorCreateComment(f: Fixture, rng: Rng): void {
+  const cands = editableParagraphs(f).filter((p) => textLengthOf(f, p) > 0)
+  if (cands.length === 0) return
+  const p = cands[rng.int(cands.length)]
+  const len = textLengthOf(f, p)
+  // 光标前一个字符是锚点, offset 必须 ≥ 1
+  const offset = 1 + rng.int(len)
+  const caret = { paragraphPath: [f.doc.id, p.id], offset, visible: true }
+  f.editor.getStore().setSelection({
+    anchor: caret, focus: caret, active: false, granularity: 'character',
+  })
+  f.editor.createComment(`批注${offset}`)
+}
+
 function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): RandomAction {
   const doc = f.editor.getDocument()
   const pool = f.editor.getPool()
   const paras = editableParagraphs(f)
   if (paras.length === 0) return null
 
-  switch (rng.int(19)) {
+  switch (rng.int(24)) {
     case 0: {
       const p = paras[rng.int(paras.length)]
       const len = textLengthOf(f, p)
@@ -521,6 +552,53 @@ function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): RandomAc
       return f.editor.isTrackingChanges() ? { action: 'accept-all' } : null
     case 17:
       return f.editor.isTrackingChanges() ? { action: 'reject-all' } : null
+    case 18:
+      // 经 Editor 门面建批注 (锚点解析 + 铸造前取定 id/时间戳)
+      return { action: 'create-comment' }
+    case 19: {
+      // 批注状态: open/reopened/resolved 三态, 撤销必须精确还原原状态
+      const threads = f.editor.getDocument().comments ?? []
+      if (threads.length === 0) return null
+      const t = threads[rng.int(threads.length)]
+      return new ResolveCommentCommand(
+        generateCommandId(), nextTs(), 'user', t.id, rng.int(2) === 0,
+      )
+    }
+    case 20: {
+      // 块移动: 换容器下标 (body 内)。撤销必须移回原容器原下标
+      const body = doc.body.children
+      if (body.length < 2) return null
+      const nodeId = body[rng.int(body.length)]
+      return new MoveBlockCommand(
+        generateCommandId(), nextTs(), 'user', nodeId, doc.id, rng.int(body.length),
+      )
+    }
+    case 21: {
+      // 插入节: 铸造节 + 初始段落 (MintedOnce), 撤销经 RemoveNodesCommand
+      const idx = rng.int(doc.body.children.length + 1)
+      return new InsertSectionCommand(generateCommandId(), nextTs(), 'user', doc.id, idx)
+    }
+    case 22: {
+      // 批量绑定值: 整批一个撤销单元, 撤销按旧值逐节点还原
+      const controls = controlNodes(f)
+      if (controls.length === 0) return null
+      // 去重: 真实调用侧按「键 → 唯一节点」解析, 同一节点不会在一批里出现两次
+      const picked: { id: string }[] = []
+      const pool2 = f.editor.getPool()
+      for (const c of controls) {
+        if (picked.some((x) => x.id === c.id)) continue
+        if (pool2.nodes.get(c.id)) picked.push(c)
+      }
+      if (picked.length === 0) return null
+      const count = 1 + rng.int(Math.min(2, picked.length))
+      const entries = []
+      for (let i = 0; i < count; i++) {
+        const c = picked[(rng.int(picked.length) + i) % picked.length]
+        const value: ControlValue | undefined = ['120/80', '118/76', 37.5, undefined][rng.int(4)]
+        entries.push({ key: `bound-${i}`, nodeId: c.id, value })
+      }
+      return new SetBoundValuesCommand(generateCommandId(), nextTs(), 'user', entries)
+    }
     default:
       return new AppendTableRowCommand(generateCommandId(), nextTs(), 'user', f.tableId)
   }
@@ -546,7 +624,7 @@ function runGate(seed: number, target: number, tracking = false): void {
   // 覆盖保证: 控件动作先确定性地各做一次, 再进入随机序列。
   // 只靠随机抽取的话, 表格结构操作可能先把夹具里的控件删光, 之后的控件
   // case 全部空转 —— 闸门看着覆盖了, 实际没跑 (假覆盖)。
-  const prelude: ICommand[] = []
+  const prelude: RandomAction[] = []
   {
     const controls = controlNodes(f)
     if (controls.length > 0) {
@@ -558,6 +636,89 @@ function runGate(seed: number, target: number, tracking = false): void {
       prelude.push(new RemoveControlCommand(
         generateCommandId(), nextTs(), 'user', [f.doc.id, controls[1].paraId], controls[1].id,
       ))
+    }
+    // 批注/块移动/节/批量绑定 — 同样先确定性地各做一次, 防止随机序列把它们饿死
+    {
+      const firstPara = editableParagraphs(f)[0]
+      const threadId = 'th-prelude'
+      const markerId = 'mk-prelude'
+      const range = { path: [f.doc.id, firstPara.id], offset: 0 }
+      const createdAt = nextTs()
+      prelude.push(new CreateCommentCommand(
+        generateCommandId(), nextTs(), 'user', [f.doc.id, firstPara.id], 0,
+        () => ({
+          type: 'comment_marker', id: markerId, threadId, rangeStart: range, rangeEnd: range,
+        } as unknown as BaseNode),
+        () => ({
+          id: threadId, rangeStart: range, rangeEnd: range, author: 'user',
+          createdAt, status: 'open', baseVersion: 1, anchorStatus: 'valid', comments: [],
+        } as unknown as CommentThread),
+      ))
+      // open → reopened: 撤销必须精确回到 open (不是笼统的"未解决")
+      prelude.push(new ResolveCommentCommand(generateCommandId(), nextTs(), 'user', threadId, false))
+    }
+    {
+      const body = f.editor.getDocument().body.children
+      if (body.length > 1) {
+        prelude.push(new MoveBlockCommand(
+          generateCommandId(), nextTs(), 'user', body[body.length - 1], f.doc.id, 0,
+        ))
+      }
+      prelude.push(new InsertSectionCommand(
+        generateCommandId(), nextTs(), 'user', f.doc.id, 1,
+      ))
+    }
+    {
+      const controls = controlNodes(f)
+      if (controls.length > 0) {
+        prelude.push(new SetBoundValuesCommand(generateCommandId(), nextTs(), 'user', [
+          { key: 'bound-prelude', nodeId: controls[0].id, value: '120/80' },
+        ]))
+      }
+    }
+    // 动作池扩到 24 种后, 查找替换 / 复制粘贴 / 剪切在 60 步里可能抽不到 ——
+    // 它们正是以前抓到过缺陷的动作, 不能因稀释而静默退出覆盖。各确定性做一次:
+    // 替换放在剪切之前 (剪切可能把某段抽空); 粘贴只追加、不删字。
+    {
+      const withText = editableParagraphs(f).find((p) => textLengthOf(f, p) >= 1)
+      if (withText) {
+        prelude.push(new ReplaceTextCommand(generateCommandId(), nextTs(), 'user', [{
+          paragraphPath: [f.doc.id, withText.id], startOffset: 0, endOffset: 1, newText: '甲',
+        }]))
+      }
+      const anchor = withText ?? editableParagraphs(f)[0]
+      if (anchor) {
+        prelude.push(new InsertImageCommand(
+          generateCommandId(), nextTs(), 'user', [f.doc.id, anchor.id], 0,
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+          60, 40,
+        ))
+        const key = `fnprelude${footnoteSeq++}`
+        prelude.push(new InsertFootnoteCommand(
+          generateCommandId(), nextTs(), 'user', [f.doc.id, anchor.id], 0,
+          (pool) => {
+            const t = createTextNode(`脚注${key}`)
+            const para = createParagraph([t.id])
+            const content = {
+              type: 'footnote_content', id: `fn-content-${key}`, refId: '', children: [para.id],
+            } as unknown as FootnoteContent
+            pool.addNode(t as unknown as BaseNode)
+            pool.addNode(para as unknown as BaseNode)
+            pool.addNode(content as unknown as BaseNode)
+            return content
+          },
+          (contentId) => ({
+            type: 'footnote_ref', id: `fn-ref-${key}`, refId: contentId, footnoteId: contentId,
+          } as unknown as BaseNode),
+        ))
+      }
+      prelude.push(new TableStructureCommand(
+        generateCommandId(), nextTs(), 'user', f.tableId,
+        (p) => { insertRow(p, f.tableId, 0); return true },
+      ))
+      prelude.push({ action: 'create-comment' })
+      prelude.push({ action: 'copy-paste' })
+      prelude.push({ action: 'cut' })
     }
   }
 
@@ -572,11 +733,14 @@ function runGate(seed: number, target: number, tracking = false): void {
 
     const kind = isEditorAction(action)
       ? (action.action === 'copy-paste' ? 'insert-nodes'
-        : action.action === 'cut' ? 'cut' : action.action)
+        : action.action === 'cut' ? 'cut'
+        : action.action === 'create-comment' ? 'editor-create-comment'
+        : action.action)
       : action.type
     if (isEditorAction(action)) {
       if (action.action === 'copy-paste') runCopyPaste(f, rng)
       else if (action.action === 'cut') runCut(f, rng)
+      else if (action.action === 'create-comment') runEditorCreateComment(f, rng)
       else runRevisionDecision(f, action.action)
     } else {
       f.editor.execCommand(action)
@@ -624,6 +788,12 @@ function runGate(seed: number, target: number, tracking = false): void {
   expect(kindsSeen.has('insert-nodes'), `seed ${seed}: 复制粘贴从未入栈`).toBe(true)
   expect(kindsSeen.has('replace-text'), `seed ${seed}: 查找替换从未入栈`).toBe(true)
   expect(kindsSeen.has('cut'), `seed ${seed}: 剪切从未入栈`).toBe(true)
+  expect(kindsSeen.has('create-comment'), `seed ${seed}: 创建批注从未入栈`).toBe(true)
+  expect(kindsSeen.has('editor-create-comment'), `seed ${seed}: Editor 门面建批注从未入栈`).toBe(true)
+  expect(kindsSeen.has('resolve-comment'), `seed ${seed}: 批注状态变更从未入栈`).toBe(true)
+  expect(kindsSeen.has('move-block'), `seed ${seed}: 块移动从未入栈`).toBe(true)
+  expect(kindsSeen.has('insert-section'), `seed ${seed}: 插入节从未入栈`).toBe(true)
+  expect(kindsSeen.has('set-bound-values'), `seed ${seed}: 批量绑定值从未入栈`).toBe(true)
   if (tracking) {
     // 追踪模式下必须真的做过至少一次修订决定, 否则案例只是空转
     const decided = kindsSeen.has('accept-all') || kindsSeen.has('reject-all')
