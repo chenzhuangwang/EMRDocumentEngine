@@ -186,7 +186,8 @@ export class LayoutEngine {
   // 图片行元素只取节点自身尺寸; 脚注引用的编号在分页后的 Step 4 回填, 不参与断行。
   // 控件 (smarttext) 的显示值/可见性来自计算值、外观定义来自 TemplateDefinitionStore
   // —— 两者都用代次进键 (仅含控件的段落), 见 paragraphLineCacheKey (契约 §16.1)。
-  // 域/交叉引用的显示值或预留宽依赖本趟页数 → 不缓存。
+  // 域与带 {page}/{number} 的交叉引用: 显示值/预留宽依赖本趟页数 → 不缓存;
+  // 常量交叉引用 (无占位符) 的显示文本与页映射无关, 可缓存。
   // 缓存条目按段落 ID 存**最新一份** (key 不匹配即重算并覆盖), 因此不会
   // 随每次按键无限增长; 换文档时由 Draw 调用 clearParagraphLineCache()。
   // ================================================================
@@ -231,7 +232,8 @@ export class LayoutEngine {
    * 行断的输入: 可用宽 (页面设置/分节)、修订标记显隐 (布局期样式)、
    * 列表标记 (编号依赖前序段落，但标记本身已由调用方算好并参与断行)。
    * 含控件段落追加计算值代次/模板定义版本；含域段落追加域预留宽取样输入
-   * (页数位数/locale/标题)。交叉引用仍不缓存 (显示文本依赖本趟分页结果)。
+   * (页数位数/locale/标题)。带 {page}/{number} 的交叉引用仍不缓存 (显示文本
+   * 依赖本趟分页结果); 常量交叉引用可缓存 (节点版本覆盖其改动)。
    */
   private paragraphLineCacheKey(
     pool: NodePool, para: Paragraph, contentWidth: number, listMarker: string,
@@ -262,7 +264,13 @@ export class LayoutEngine {
         hasField = true
         continue
       }
-      // 交叉引用的显示文本依赖本趟分页结果 (上一轮页映射) → 不缓存
+      if (child?.type === 'cross_reference') {
+        // 带 {page}/{number} 时显示文本取自上一轮页映射 → 不缓存;
+        // 常量显示文本与页映射无关, 节点版本已覆盖其改动 → 可缓存 (契约 §16.1)。
+        if (crossRefNeedsPageMap(child as { displayText?: string })) return null
+        continue
+      }
+      // 未知行内类型: 保守起见不进缓存
       return null
     }
     const base = IncrementalLayout.paragraphKey(pool, para.id)
@@ -301,15 +309,16 @@ export class LayoutEngine {
   // ================================================================
   // 增量分页 (M2b)
   //
-  // 只对**可证明安全**的正文启用: 段落 (文本/图片/脚注引用/控件/域/列表) 与
-  // 表格; 页眉页脚按几何签名放行 (M2g)。仍排除: 分节 (页面设置会变)、交叉引用
-  // (显示文本依赖本趟页映射)。域可以: 量宽只依赖 representativeFieldText 的
+  // 只对**可证明安全**的正文启用: 段落 (文本/图片/脚注引用/控件/域/列表/常量
+  // 交叉引用) 与表格; 页眉页脚按几何签名放行 (M2g)。仍排除: 分节 (页面设置会变)
+  // 与带 {page}/{number} 的交叉引用 (显示文本依赖本趟页映射)。域可以: 量宽只依赖 representativeFieldText 的
   // 样本串 (页数位数/locale/标题已进段落键), 显示值在节点版本上。脚注引用可以:
   // 页底预留只取决于"文档有没有脚注" (增删引用是结构编辑, 会让全部段落键失效),
   // 而 Step 4 只处理新页 + 按复用页播种编号。表格 cell 与正文同一张白名单
   // (text/smarttext/image/field/footnote_ref); 子树含域时域预留宽取样输入进
-  // 表格键。嵌套表与交叉引用仍不安全 —— cell 里的嵌套表改变几何而扁平键看不全,
-  // 交叉引用的显示文本依赖本趟页映射。这些场景一律全量分页 (契约 §16.1)。
+  // 表格键。嵌套表与带占位符的交叉引用仍不安全 —— cell 里的嵌套表改变几何而
+  // 扁平键看不全, 占位符交叉引用的显示文本依赖本趟页映射。这些场景一律全量分页
+  // (契约 §16.1)。
   //
   // 续排从「首个脏段落所在页的**前一页**」开始: 寡行控制会从下一页拉一行回来,
   // 所以脏段落所在页的上一页也可能变。若该页从表格中间开始, 还要再回退到
@@ -401,7 +410,7 @@ export class LayoutEngine {
         { type?: string; children?: readonly string[] } | undefined
       // 表格允许: 子树键未变时复用其前序页, 变了则从表格起始页重排。
       // cell 里放行 text/smarttext/image/field/footnote_ref —— 与正文同一张白名单;
-      // 域预留宽输入已进表格键。嵌套表与交叉引用仍属危险类 (契约 §16.1)。
+      // 域预留宽输入已进表格键。嵌套表与带占位符的交叉引用仍属危险类 (契约 §16.1)。
       if (block?.type === 'table') {
         if (!this.tableSubtreeIncrementalSafe(pool, blockId)) return false
         continue
@@ -414,7 +423,12 @@ export class LayoutEngine {
         // 控件 (smarttext) 放行: 显示值/可见性由计算值代次与模板定义版本进键,
         // 两代次变化时段落键失效 → 该段落重排 (契约 §16.1)。
         // 域 (field) 放行: 量宽输入 (页数位数/locale/标题) 已进段落键。
-        // 交叉引用仍排除: 显示文本依赖上一轮页映射。
+        // 交叉引用: 带 {page}/{number} 时显示文本依赖本趟页映射 → 排除;
+        // 常量显示文本 (无占位符) 与页映射无关 → 与正文其它内联节点同权。
+        if (child?.type === 'cross_reference') {
+          if (crossRefNeedsPageMap(child as { displayText?: string })) return false
+          continue
+        }
         if (child?.type !== 'text' && child?.type !== 'image'
           && child?.type !== 'footnote_ref' && child?.type !== 'smarttext'
           && child?.type !== 'field') return false
@@ -491,6 +505,11 @@ export class LayoutEngine {
       if (node.type === 'text' || node.type === 'smarttext'
         || node.type === 'image' || node.type === 'field'
         || node.type === 'footnote_ref') continue
+      if (node.type === 'cross_reference') {
+        // 常量显示文本可复用; 带占位符的显示文本取自上一轮页映射 (契约 §16.1)
+        if (crossRefNeedsPageMap(node as { displayText?: string })) return false
+        continue
+      }
       if (node.type === 'row' || node.type === 'cell' || node.type === 'paragraph') {
         for (const childId of node.children ?? []) stack.push(childId)
         continue
@@ -2282,11 +2301,23 @@ function buildParaPageMap(pages: SLIFPage[], pool: NodePool): Map<string, number
 function hasCrossRefPlaceholder(pool: NodePool): boolean {
   for (const [, node] of pool.nodes) {
     if (node.type !== 'cross_reference') continue
-    const ref = node as unknown as { displayText?: string }
-    const t = ref.displayText
-    if (typeof t === 'string' && (t.includes('{page}') || t.includes('{number}'))) return true
+    if (crossRefNeedsPageMap(node as { displayText?: string })) return true
   }
   return false
+}
+
+/**
+ * 交叉引用是否依赖**本趟分页结果**。
+ *
+ * 判据只有一个: displayText 里带 `{page}` / `{number}` 占位符。带占位符时
+ * 显示文本取自上一轮页映射 (自指输入), 不能进行缓存、不能增量复用;
+ * **不带占位符时解析器原样返回, 显示文本是常量**, 与页映射无关 ——
+ * 节点版本已经覆盖 displayText/targetRef 的改动, 因此可以安全纳入 M2b
+ * (契约 §16.1)。
+ */
+function crossRefNeedsPageMap(node: { displayText?: string }): boolean {
+  const t = node.displayText
+  return typeof t === 'string' && (t.includes('{page}') || t.includes('{number}'))
 }
 
 /**
