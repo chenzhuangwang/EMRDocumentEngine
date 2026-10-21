@@ -28,7 +28,10 @@
 // 查找替换/复制粘贴(经 Editor 门面, 覆盖 ClipboardManager 序列化 +
 // InsertNodesCommand)/剪切(copy + 删除选区, 宏单元)/接受·拒绝修订/
 // **创建批注(Editor 门面 + 直接命令两条链)/批注状态变更/块移动/插入节/
-// 批量绑定值**.
+// 批量绑定值/文档标题与元数据/页眉页脚变体开关/页面几何/节代码/
+// 控件语义层与设计期定义/批注回复/表格可增长标记**.
+// 快照带上 templateDefinitions: 设计期定义存在 store 而非文档树里, 不带它
+// 就等于"恢复定义"根本不在判据里 —— 闸门会假绿.
 // 第三条种子开启修订追踪 (setTrackChanges + 当前用户): 输入/删除都会留下
 // 标记, 接受/拒绝修订也在随机动作里 —— 标记的撤销/重做同样要求逐字节还原.
 // 控件与新旧动作先确定性地各做一次, 并有「动作真的入过栈」的假覆盖守卫 ——
@@ -69,7 +72,17 @@ import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand
 import { AppendTableRowCommand } from '../command/commands/AppendTableRowCommand'
 import { SetControlValueCommand } from '../command/commands/SetControlValueCommand'
 import { RemoveControlCommand } from '../command/commands/RemoveControlCommand'
-import { TableStructureCommand, InsertFootnoteCommand } from '../command/commands/StructuralCommands'
+import { SetHeaderFooterConfigCommand } from '../command/commands/HeaderFooterConfigCommand'
+import { UpdateDocumentTitleCommand } from '../command/commands/UpdateDocumentTitleCommand'
+import { UpdateDocumentPropertiesCommand } from '../command/commands/UpdateDocumentPropertiesCommand'
+import { SetTableGrowableCommand } from '../command/commands/SetTableGrowableCommand'
+import { UpdateControlElementCommand } from '../command/commands/UpdateControlElementCommand'
+import { UpdateControlDefinitionCommand } from '../command/commands/UpdateControlDefinitionCommand'
+import { TemplateDefinitionStore } from '../template/TemplateDefinition'
+import {
+  TableStructureCommand, InsertFootnoteCommand,
+  SetPageSetupCommand, UpdateSectionCommand, AddCommentReplyCommand,
+} from '../command/commands/StructuralCommands'
 import {
   CreateCommentCommand, ResolveCommentCommand, MoveBlockCommand, InsertSectionCommand,
 } from '../command/commands/StructuralCommands'
@@ -82,7 +95,8 @@ import {
 } from '../document/table/TableOps'
 import { createSmartTextNode } from '../document/factory/ElementFormatter'
 import type {
-  BaseNode, CommentThread, ControlValue, DocumentTree, ElementMeta, FootnoteContent, Paragraph, TextNode,
+  BaseNode, CommentThread, ControlValue, DocumentMetadata, DocumentTree, ElementMeta,
+  FootnoteContent, Paragraph, SmartTextNode, TextNode,
 } from '../document/core/DocumentModel'
 
 afterEach(() => { document.body.innerHTML = '' })
@@ -94,7 +108,7 @@ const CONTROL_ELEMENT = {
 
 // ---- 夹具: 4 段正文 (含一个控件) + 一张 2×2 表格 (cell 内也含一个控件) ----
 
-interface Fixture { editor: Editor; doc: DocumentTree; tableId: string }
+interface Fixture { editor: Editor; doc: DocumentTree; tableId: string; defs: TemplateDefinitionStore }
 
 function makeFixture(): Fixture {
   const doc = createDocument('撤销等价闸门')
@@ -146,8 +160,11 @@ function makeFixture(): Fixture {
   host.surface.mount(container)
   host.input.mount(container)
   const editor = new Editor(host, doc)
-  editor.setDocument(doc)
-  return { editor, doc, tableId: table.id }
+  // 设计期命令 (UpdateControlDefinitionCommand) 经 ctx.templateDefinitions 取 store;
+  // 快照也要带上它 —— 否则"定义恢复"根本不在判据里, 用例会假绿。
+  const defs = new TemplateDefinitionStore()
+  editor.setDocument(doc, undefined, { templateDefinitions: defs })
+  return { editor, doc, tableId: table.id, defs }
 }
 
 // ---- 读数 ----
@@ -178,7 +195,9 @@ function canonicalJson(value: unknown): string {
 }
 
 const snapshot = (f: Fixture): string =>
-  canonicalJson(JSON.parse(serializeDocument(f.editor.getDocument(), f.editor.getPool())))
+  canonicalJson(JSON.parse(serializeDocument(
+    f.editor.getDocument(), f.editor.getPool(), { templateDefinitions: f.defs },
+  )))
 
 const undoDepth = (f: Fixture): number =>
   f.editor.getStore().state.runtime.history.undoDepth
@@ -262,12 +281,20 @@ const CHARS = ['甲', '乙', '丙', '丁', '随访']
 const ALIGNMENTS = ['left', 'center', 'right', 'justify'] as const
 /** 脚注铸造用的唯一键 (同一次测试进程内不重复) */
 let footnoteSeq = 0
+/** 批注回复的唯一 id */
+let replySeq = 0
 
 /** 非命令型随机动作: 走 Editor 门面 (copy→paste / cut / createComment / 接受·拒绝修订), 由真实命令链落栈 */
 interface EditorAction { action: 'copy-paste' | 'cut' | 'create-comment' | 'accept-all' | 'reject-all' }
-type RandomAction = ICommand | EditorAction | null
+/**
+ * 需要在**执行时**才确定目标的命令 (如"更新当前存在的某个 Section"):
+ * 预演阶段构造命令时, 目标 id 由前一条预演命令铸造, 只能延迟到执行时取。
+ */
+interface FactoryAction { make: (f: Fixture) => ICommand | null }
+type RandomAction = ICommand | EditorAction | FactoryAction
 
-function isEditorAction(a: ICommand | EditorAction): a is EditorAction { return 'action' in a }
+function isEditorAction(a: ICommand | EditorAction | FactoryAction): a is EditorAction { return 'action' in a }
+function isFactoryAction(a: ICommand | EditorAction | FactoryAction): a is FactoryAction { return 'make' in a }
 
 /**
  * 复制一段文本 → 在随机光标处粘贴。
@@ -350,13 +377,13 @@ function runEditorCreateComment(f: Fixture, rng: Rng): void {
   f.editor.createComment(`批注${offset}`)
 }
 
-function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): RandomAction {
+function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): RandomAction | null {
   const doc = f.editor.getDocument()
   const pool = f.editor.getPool()
   const paras = editableParagraphs(f)
   if (paras.length === 0) return null
 
-  switch (rng.int(24)) {
+  switch (rng.int(34)) {
     case 0: {
       const p = paras[rng.int(paras.length)]
       const len = textLengthOf(f, p)
@@ -599,6 +626,88 @@ function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): RandomAc
       }
       return new SetBoundValuesCommand(generateCommandId(), nextTs(), 'user', entries)
     }
+    case 23:
+      return new AppendTableRowCommand(generateCommandId(), nextTs(), 'user', f.tableId)
+    case 24: {
+      // 文档标题: 落在 doc 顶层字段, 撤销必须精确还原原串
+      return new UpdateDocumentTitleCommand(
+        generateCommandId(), nextTs(), 'user', `闸门标题${rng.int(99)}`,
+      )
+    }
+    case 25: {
+      // 文档元数据: 整体替换/清除 (白名单字段由 normalizeDocumentMetadata 收口)
+      const metas: DocumentMetadata[] = [
+        { author: `user${rng.int(9)}` },
+        { department: '内科', keywords: ['血压', '随访'] },
+        {},
+      ]
+      return new UpdateDocumentPropertiesCommand(
+        generateCommandId(), nextTs(), 'user', metas[rng.int(metas.length)],
+      )
+    }
+    case 26: {
+      // 页眉页脚变体开关: 改的是逐页变体解析, 撤销要精确回到旧组合
+      return new SetHeaderFooterConfigCommand(generateCommandId(), nextTs(), 'user', {
+        differentFirstPage: rng.int(2) === 0,
+        differentOddEven: rng.int(2) === 0,
+      })
+    }
+    case 27: {
+      // 页面几何: 纸张/页边距变化会清分页状态, 撤销后版面与文档值一起还原
+      const setups = [
+        { width: 794, height: 1123, marginTop: 72, marginBottom: 72, marginLeft: 90, marginRight: 90 },
+        { width: 595, height: 842, marginTop: 50, marginBottom: 50, marginLeft: 60, marginRight: 60 },
+        { width: 1000, height: 700, marginTop: 40, marginBottom: 40, marginLeft: 40, marginRight: 40 },
+      ]
+      return new SetPageSetupCommand(generateCommandId(), nextTs(), 'user', { ...setups[rng.int(setups.length)] })
+    }
+    case 28: {
+      // 节代码: undefined = 真删键 (匿名节), 撤销需区分「缺失」与「写 undefined」
+      const section = [...pool.nodes.values()].find((n) => n.type === 'section') as { id: string } | undefined
+      if (!section) return null
+      return new UpdateSectionCommand(
+        generateCommandId(), nextTs(), 'user', section.id,
+        rng.int(4) === 0 ? undefined : `S${rng.int(9)}`,
+      )
+    }
+    case 29: {
+      // 控件语义层: element 整体替换 (含 text), 撤销按 element/text 双快照还原
+      const controls = controlNodes(f)
+      if (controls.length === 0) return null
+      const c = controls[rng.int(controls.length)]
+      const node = pool.nodes.get(c.id) as SmartTextNode | undefined
+      if (!node?.element) return null
+      const next = JSON.parse(JSON.stringify(node.element)) as ElementMeta
+      next.name = `改名${rng.int(9)}`
+      return new UpdateControlElementCommand(
+        generateCommandId(), nextTs(), 'user', c.id, next, `[${next.name}]`,
+      )
+    }
+    case 30: {
+      // 设计期定义: 条目新增/改写/删除都由 store 快照逆操作还原 (快照含 store)
+      const controls = controlNodes(f)
+      if (controls.length === 0) return null
+      const c = controls[rng.int(controls.length)]
+      const defs = [{ controlType: 'input' as const }, { controlType: 'textarea' as const }, {}]
+      return new UpdateControlDefinitionCommand(
+        generateCommandId(), nextTs(), 'user', c.id, defs[rng.int(defs.length)],
+      )
+    }
+    case 31: {
+      // 批注回复: 追加到线程 comments 数组, 撤销按 reply id 精确摘除
+      const threads = f.editor.getDocument().comments ?? []
+      if (threads.length === 0) return null
+      const t = threads[rng.int(threads.length)]
+      return new AddCommentReplyCommand(
+        generateCommandId(), nextTs(), 'user', t.id, `reply-${replySeq++}`, `已阅${rng.int(9)}`,
+      )
+    }
+    case 32: {
+      // 表格可增长标记: absent 与 false 在序列化上不等价 (契约 §12.9)
+      return new SetTableGrowableCommand(
+        generateCommandId(), nextTs(), 'user', f.tableId, rng.int(2) === 0,
+      )
+    }
     default:
       return new AppendTableRowCommand(generateCommandId(), nextTs(), 'user', f.tableId)
   }
@@ -676,6 +785,39 @@ function runGate(seed: number, target: number, tracking = false): void {
         ]))
       }
     }
+    {
+      // 文档级字段 / 页面几何 / 节 / 设计期定义 / 批注回复 / 表格标记 ——
+      // 随机池扩到 34 种后每种都被稀释, 预演保证守卫断言的不是空转。
+      const controls = controlNodes(f)
+      prelude.push(new UpdateDocumentTitleCommand(generateCommandId(), nextTs(), 'user', '闸门标题'))
+      prelude.push(new UpdateDocumentPropertiesCommand(generateCommandId(), nextTs(), 'user', { author: 'user' }))
+      prelude.push(new SetHeaderFooterConfigCommand(generateCommandId(), nextTs(), 'user', { differentFirstPage: true }))
+      prelude.push(new SetPageSetupCommand(generateCommandId(), nextTs(), 'user', {
+        width: 700, height: 900, marginTop: 60, marginBottom: 60, marginLeft: 70, marginRight: 70,
+      }))
+      prelude.push({
+        make: (fx) => {
+          const section = [...fx.editor.getPool().nodes.values()]
+            .find((n) => n.type === 'section') as { id: string } | undefined
+          return section
+            ? new UpdateSectionCommand(generateCommandId(), nextTs(), 'user', section.id, 'S-prelude')
+            : null
+        },
+      })
+      if (controls.length > 0) {
+        prelude.push(new UpdateControlElementCommand(
+          generateCommandId(), nextTs(), 'user', controls[0].id,
+          { ...CONTROL_ELEMENT, name: '血压改' } as ElementMeta, '[血压改]',
+        ))
+        prelude.push(new UpdateControlDefinitionCommand(
+          generateCommandId(), nextTs(), 'user', controls[0].id, { controlType: 'input' },
+        ))
+      }
+      prelude.push(new AddCommentReplyCommand(
+        generateCommandId(), nextTs(), 'user', 'th-prelude', 'reply-prelude', '已阅',
+      ))
+      prelude.push(new SetTableGrowableCommand(generateCommandId(), nextTs(), 'user', f.tableId, true))
+    }
     // 动作池扩到 24 种后, 查找替换 / 复制粘贴 / 剪切在 60 步里可能抽不到 ——
     // 它们正是以前抓到过缺陷的动作, 不能因稀释而静默退出覆盖。各确定性做一次:
     // 替换放在剪切之前 (剪切可能把某段抽空); 粘贴只追加、不删字。
@@ -728,7 +870,10 @@ function runGate(seed: number, target: number, tracking = false): void {
   while (executed < target && attempts < target * 8) {
     attempts++
     const depthBefore = undoDepth(f)
-    const action = prelude.length > 0 ? prelude.shift()! : makeRandomCommand(f, rng, nextTs)
+    const pending = prelude.length > 0 ? prelude.shift()! : makeRandomCommand(f, rng, nextTs)
+    if (!pending) continue
+    // 延迟构造的动作 (需要执行时才知道目标 id) 在这里落成真实命令
+    const action: ICommand | EditorAction | null = isFactoryAction(pending) ? pending.make(f) : pending
     if (!action) continue
 
     const kind = isEditorAction(action)
@@ -794,6 +939,15 @@ function runGate(seed: number, target: number, tracking = false): void {
   expect(kindsSeen.has('move-block'), `seed ${seed}: 块移动从未入栈`).toBe(true)
   expect(kindsSeen.has('insert-section'), `seed ${seed}: 插入节从未入栈`).toBe(true)
   expect(kindsSeen.has('set-bound-values'), `seed ${seed}: 批量绑定值从未入栈`).toBe(true)
+  expect(kindsSeen.has('update-document-title'), `seed ${seed}: 改标题从未入栈`).toBe(true)
+  expect(kindsSeen.has('update-document-properties'), `seed ${seed}: 改文档属性从未入栈`).toBe(true)
+  expect(kindsSeen.has('set-header-footer-config'), `seed ${seed}: 页眉页脚变体开关从未入栈`).toBe(true)
+  expect(kindsSeen.has('set-page-setup'), `seed ${seed}: 页面几何从未入栈`).toBe(true)
+  expect(kindsSeen.has('update-section'), `seed ${seed}: 节代码从未入栈`).toBe(true)
+  expect(kindsSeen.has('update-control-element'), `seed ${seed}: 控件语义层从未入栈`).toBe(true)
+  expect(kindsSeen.has('update-control-definition'), `seed ${seed}: 控件定义从未入栈`).toBe(true)
+  expect(kindsSeen.has('add-comment-reply'), `seed ${seed}: 批注回复从未入栈`).toBe(true)
+  expect(kindsSeen.has('set-table-growable'), `seed ${seed}: 表格可增长标记从未入栈`).toBe(true)
   if (tracking) {
     // 追踪模式下必须真的做过至少一次修订决定, 否则案例只是空转
     const decided = kindsSeen.has('accept-all') || kindsSeen.has('reject-all')
