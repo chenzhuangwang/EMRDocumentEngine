@@ -3533,9 +3533,12 @@ document is swapped.
 M2b IS wired for a provably safe subset: plain-text/image/smarttext/field
 paragraphs (list markers included) and tables whose cell leaves are
 `text`, `smarttext`, `image`, `field` or `footnote_ref`. Section breaks
-and cross-references remain excluded (a cross-reference ANYWHERE in a
-table subtree, cell paragraph included, keeps the whole document
-ineligible); header/footer content is governed by the M3b signature
+remain excluded; so does a cross-reference whose `displayText` contains
+a `{page}` or `{number}` placeholder. A cross-reference WITHOUT a
+placeholder is a CONSTANT string (the resolver returns it verbatim), so
+it is part of the safe subset both in body paragraphs and inside table
+cells — its node version already covers a changed `displayText` or
+`targetRef`. Header/footer content is governed by the M3b signature
 below.
 Inline footnote references ARE allowed (see the
 Step 4 rule below). Page breaking resumes from the page
@@ -3562,10 +3565,12 @@ When the subtree contains a `field`, the table key ALSO carries the same
 field-reserve sampling inputs as a paragraph key (total-page digit count,
 locale, document title) — a page-count digit or locale change alters
 field reserve width inside cells without touching any node version. A
-cell holding a nested table or a cross-reference makes the whole document
-ineligible for M2b; nested tables change cell geometry from outside the
-flat table key, and a cross-reference's display text depends on the
-previous pass's page map. Image dimensions live on the node (already in
+cell holding a nested table makes the whole document ineligible for M2b;
+nested tables change cell geometry from outside the flat table key. A
+cross-reference whose display text needs the page map (contains
+`{page}`/`{number}`) is likewise ineligible; a CONSTANT cross-reference
+(no placeholder) is allowed in a cell for the same reason it is allowed
+in a body paragraph. Image dimensions live on the node (already in
 the table key), and a footnote reference only affects the page-bottom
 footnote area, which Step 4 handles per new page (see below).
 
@@ -4854,9 +4859,10 @@ Consequences that are part of the contract, not implementation detail:
     and are NOT numbered per page — the same choice hit-test flattening
     already makes.
   - **Cross-references in cells** resolve against the same page map as
-    body cross-references. A table subtree containing one therefore
-    keeps the whole document outside the incremental safe subset
-    (§16.1).
+    body cross-references. One whose display text contains `{page}` or
+    `{number}` therefore keeps the whole document outside the
+    incremental safe subset (§16.1); a constant one (no placeholder)
+    is safe, exactly as in a body paragraph.
   - **Images in cells** are clamped to the cell's text width, exactly as
     body images are clamped to the content width.
 
