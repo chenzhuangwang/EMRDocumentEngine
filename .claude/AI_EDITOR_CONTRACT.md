@@ -3450,7 +3450,7 @@ Do not introduce unnecessary full-document recomputation.
 When changing layout behavior,
 consider:
 
-- DirtyTracker
+- the paragraph line cache and resume-pagination state
 - IncrementalLayout
 - VirtualViewport
 - PageStartTable
@@ -3621,13 +3621,20 @@ are gone, not merely unwired. Both were exported but had no consumer; the
 old `incrementalLayout()` only reused page objects after a full pass, so
 it could never save work. Do NOT reintroduce either name as a placeholder:
 the live path is `fullLayout` + the paragraph line cache + the resume
-pagination described above. `DirtyTracker` marks are still not consulted
-when deciding what to recompute (cache misses are the source of truth) and
-must not be cited as evidence that layout is incremental.
+pagination described above.
 
-Unknown or unprovable cases MUST fall back to a full pass (controls,
-fields, cross-references, tables whose cells are not plain text, sections,
-headers are deliberately excluded). The
+REMOVED (2026-10-21): `DirtyTracker` / `DirtyScope` are gone as well
+(dead-API removal approved by the owner). Their marks were never consulted
+when deciding what to recompute. `document:changed` keeps the
+`dirtyNodeIds` field but always emits an EMPTY array, for subscriber
+compatibility only; it carries no information. Cache misses and keys
+remain the ONLY source of truth for what is recomputed — never cite dirty
+marks, and never reintroduce a placeholder tracker.
+
+Unknown or unprovable cases MUST fall back to a full pass (cross-references,
+section breaks, tables whose cells hold nested tables / footnote references
+/ fields, and any input not covered by the keys listed above are
+deliberately excluded). The
 cache and resume path are correct only if the key/eligibility test covers
 every input that can change line layout or pagination; when adding a new
 input, extend the key/eligibility test or fall back to full.
