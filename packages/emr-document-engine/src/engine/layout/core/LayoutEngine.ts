@@ -8,7 +8,7 @@
 // LayoutEngine — 布局编排器 (架构 §7.3, v20.34)
 //
 // 独立于 Draw, 无 Canvas 依赖
-// 输入: DocumentTree + NodePool + DirtyTracker
+// 输入: DocumentTree + NodePool + invalidation 作用域
 // 输出: SLIFPage[] (布局产物)
 //
 // 职责: LineBreaker/PageBreaker 调度 + PageStartTable 增量分页

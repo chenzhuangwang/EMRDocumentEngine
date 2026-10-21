@@ -7,25 +7,10 @@
 import { describe, it, expect } from 'vitest'
 import { IncrementalLayout } from '../layout/incremental/IncrementalLayout'
 import { PageStartTable } from '../layout/page/PageStartTable'
-import { DirtyTracker } from '../layout/incremental/DirtyTracker'
 
 // ---- IncrementalLayout ----
 
 describe('IncrementalLayout', () => {
-  it('should not be valid when dirty', () => {
-    const il = new IncrementalLayout()
-    const dt = new DirtyTracker()
-    dt.markParagraphDirty('p1')
-    expect(il.isValid('p1', dt)).toBe(false)
-  })
-
-  it('should be valid when cached and clean', () => {
-    const il = new IncrementalLayout()
-    const dt = new DirtyTracker()
-    il.set('p1', { paragraphId: 'p1', lines: [], totalHeight: 0 })
-    expect(il.isValid('p1', dt)).toBe(true)
-  })
-
   it('should invalidate cached paragraph', () => {
     const il = new IncrementalLayout()
     il.set('p1', { paragraphId: 'p1', lines: [], totalHeight: 0 })
@@ -39,16 +24,6 @@ describe('IncrementalLayout', () => {
     il.set('b', { paragraphId: 'b', lines: [], totalHeight: 0 })
     il.invalidateAll()
     expect(il.size).toBe(0)
-  })
-
-  it('should compute reuse stats', () => {
-    const il = new IncrementalLayout()
-    const dt = new DirtyTracker()
-    il.set('p1', { paragraphId: 'p1', lines: [], totalHeight: 0 })
-    dt.markParagraphDirty('p2')
-    const stats = il.computeStats(['p1', 'p2'], dt)
-    expect(stats.reused).toBe(1)
-    expect(stats.recomputed).toBe(1)
   })
 })
 

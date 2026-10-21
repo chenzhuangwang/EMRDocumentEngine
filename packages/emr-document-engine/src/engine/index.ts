@@ -91,7 +91,6 @@ export type { InsertSectionOpts } from './command/commands/StructuralCommands'
 export { normalizeParagraph } from './command/commands/ParagraphUtils'
 export { CommandUndoRedoStack } from './command/CommandUndoRedoStack'
 export { CommandManager } from './command/CommandManager'
-export { DirtyTracker } from './layout/incremental/DirtyTracker'
 
 // FindReplace
 export { FindReplaceEngine } from './FindReplaceEngine'
