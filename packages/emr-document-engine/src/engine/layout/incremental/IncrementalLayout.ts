@@ -34,7 +34,9 @@ export class IncrementalLayout {
    *   不会向父节点冒泡), 所以必须逐子聚合, 不能只读段落版本。
    *
    * 不覆盖的输入: 页边距/纸张、页眉页脚变体、主题 token、locale、模板定义、
-   * 计算值 —— 它们由调用方的全量失效规则兜底 (§3.2), 不进入本键。
+   * 计算值 —— 它们由调用方的全量失效规则兜底 (§3.2), 不进入本键。含控件的
+   * 段落由调用方把计算值代次与模板定义版本作为附加段并入
+   * (LayoutEngine.paragraphLineCacheKey, 契约 §16.1)。
    *
    * @returns 段落不存在或无 children 时返回 null
    */
@@ -61,8 +63,8 @@ export class IncrementalLayout {
    * 表格之后的页续排。
    *
    * 覆盖: structureVersion + 子树每个节点 (table/row/cell/paragraph/child) 的 id
-   * 与版本。控件值的变化通过节点版本体现; 公式结果的变化不在节点上 —— 由调用方
-   * 把计算值代次并入键 (见 LayoutEngine)。
+   * 与版本。控件值的变化通过节点版本体现; 公式结果与模板外观定义的变化不在
+   * 节点上 —— 由调用方把计算值代次与模板定义版本并入键 (见 LayoutEngine)。
    */
   static tableKey(pool: NodePool, tableId: string): string | null {
     const root = pool.nodes.get(tableId)

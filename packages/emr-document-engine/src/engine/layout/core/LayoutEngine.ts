@@ -181,9 +181,11 @@ export class LayoutEngine {
   // ================================================================
   // 段落行缓存 (M2a)
   //
-  // 缓存"子节点为纯文本 / 图片 / 脚注引用"的段落 (列表也在内: 编号标记进键)。
+  // 缓存"子节点为纯文本 / 图片 / 脚注引用 / 控件"的段落 (列表也在内: 编号标记进键)。
   // 图片行元素只取节点自身尺寸; 脚注引用的编号在分页后的 Step 4 回填, 不参与断行。
-  // 控件/域/交叉引用的显示值来自段落之外 (计算值、页码、域预留宽) → 不缓存。
+  // 控件 (smarttext) 的显示值/可见性来自计算值、外观定义来自 TemplateDefinitionStore
+  // —— 两者都用代次进键 (仅含控件的段落), 见 paragraphLineCacheKey (契约 §16.1)。
+  // 域/交叉引用的显示值或预留宽依赖本趟页数 → 不缓存。
   // 缓存条目按段落 ID 存**最新一份** (key 不匹配即重算并覆盖), 因此不会
   // 随每次按键无限增长; 换文档时由 Draw 调用 clearParagraphLineCache()。
   // ================================================================
@@ -234,6 +236,7 @@ export class LayoutEngine {
     const children = (para as unknown as { children?: readonly string[] }).children
     if (!children) return null
     const digests: string[] = []
+    let hasSmart = false
     for (const childId of children) {
       const child = pool.nodes.get(childId) as
         { type?: string; width?: number; height?: number; wrapMode?: string } | undefined
@@ -243,12 +246,20 @@ export class LayoutEngine {
         digests.push(`img:${childId}:${child.width ?? ''}x${child.height ?? ''}:${child.wrapMode ?? ''}`)
         continue
       }
-      // 控件/域/交叉引用的显示值来自段落之外 (计算值/页码/预留宽) → 不缓存
+      if (child?.type === 'smarttext') {
+        // 控件几何的段落外输入: 计算值 (显示值/可见性) 与模板定义 (controlType/
+        // label/prefix) —— 两者都不冒泡到节点版本, 各自用代次进键。
+        hasSmart = true
+        continue
+      }
+      // 域/交叉引用的显示值或预留宽依赖页码 → 不缓存
       return null
     }
     const base = IncrementalLayout.paragraphKey(pool, para.id)
     if (!base) return null
-    return `${base}#w${contentWidth}#r${this.showRevisionMarks ? 1 : 0}#m${listMarker}#d${digests.join(',')}`
+    // 代次只加在**含控件**的段落上: 否则每次公式重算都会让纯文本段落的键全部失效
+    const ctl = hasSmart ? `#cv${this.computedGeneration}#tv${this.templateDefinitionVersion}` : ''
+    return `${base}#w${contentWidth}#r${this.showRevisionMarks ? 1 : 0}#m${listMarker}#d${digests.join(',')}${ctl}`
   }
 
   // ================================================================
@@ -274,12 +285,24 @@ export class LayoutEngine {
   private lastReusedTailPages = 0
   /** 上一轮各表格的子树键 — 只有键变了才把表格标记为"需重排" */
   private tableKeys = new Map<string, string>()
-  /** 计算值代次 (Draw 在布局前同步) — 代次变化会让所有表格键失效 */
+  /** 计算值代次 (Draw 在布局前同步) — 代次变化会让所有表格键与含控件段落的键失效 */
   private computedGeneration = 0
+  /** 模板定义版本 (Draw 在布局前同步) — 控件外观定义变化, 不进节点版本也不进计算值代次 */
+  private templateDefinitionVersion = 0
 
   /** 同步计算值代次 (契约 §12.12.7 / §16.1) — 由 Draw 在每趟布局前调用 */
   setComputedGeneration(generation: number): void {
     this.computedGeneration = generation
+  }
+
+  /**
+   * 同步模板定义版本 (契约 §16.1) — 由 Draw 在每趟布局前调用。
+   *
+   * 控件的 controlType/label/prefix 住在 TemplateDefinitionStore, 改它们既不
+   * 动节点版本也不动计算值代次; 缺了这条, "改控件外观不重排"会静默保留旧几何。
+   */
+  setTemplateDefinitionVersion(version: number): void {
+    this.templateDefinitionVersion = version
   }
 
   /**
@@ -335,7 +358,7 @@ export class LayoutEngine {
       const block = pool.nodes.get(blockId) as unknown as
         { type?: string; children?: readonly string[] } | undefined
       // 表格允许: 子树键未变时复用其前序页, 变了则从表格起始页重排。
-      // cell 里只放行纯文本 —— 控件/域/嵌套表/脚注引用仍属危险类。
+      // cell 里只放行 text/smarttext —— 域/嵌套表/脚注引用仍属危险类。
       if (block?.type === 'table') {
         if (!this.tableSubtreeIncrementalSafe(pool, blockId)) return false
         continue
@@ -345,24 +368,27 @@ export class LayoutEngine {
         const child = pool.nodes.get(childId) as { type?: string } | undefined
         // 图片是自包含的行内元素 (尺寸在节点上); 脚注引用只影响页底脚注区,
         // Step 4 已按「只处理新页 + 播种编号」处理 (契约 §16.1)。
-        // 控件/域/交叉引用仍排除: 显示值或预留宽依赖段落之外。
+        // 控件 (smarttext) 放行: 显示值/可见性由计算值代次与模板定义版本进键,
+        // 两代次变化时段落键失效 → 该段落重排 (契约 §16.1)。
+        // 域/交叉引用仍排除: 预留宽依赖本趟页数。
         if (child?.type !== 'text' && child?.type !== 'image'
-          && child?.type !== 'footnote_ref') return false
+          && child?.type !== 'footnote_ref' && child?.type !== 'smarttext') return false
       }
     }
     return true
   }
 
   /**
-   * 表格子树是否落在增量安全子集内: table → row → cell → paragraph → text,
-   * **叶节点只能是 text**。
+   * 表格子树是否落在增量安全子集内: table → row → cell → paragraph →
+   * **text / smarttext**。
    *
    * 拒绝的具体理由:
-   *   - 控件 (smarttext): 显示值/宽度依赖计算值与总页数, 不在表格子树键里;
    *   - 嵌套表: cell 内的嵌套布局有自己的行高增长, 且同样可能藏危险叶节点;
    *   - 脚注引用: Step 4 会往**复用页**重复追加脚注 item;
    *   - 域/交叉引用: 预留宽依赖本趟页数。
-   * 这些都让"表格键未变 ⇒ 分页未变"不再成立 (契约 §16.1)。
+   * 控件 (smarttext) 安全: 其显示值只经由计算值代次与模板定义版本影响几何,
+   * 两者都已进表格键 (layoutOnce 的 `#cv`/`#tv` 段), 变了则整表重排。
+   * 其余都让"表格键未变 ⇒ 分页未变"不再成立 (契约 §16.1)。
    */
   private tableSubtreeIncrementalSafe(pool: NodePool, tableId: string): boolean {
     const root = pool.nodes.get(tableId) as { children?: readonly string[] } | undefined
@@ -371,7 +397,7 @@ export class LayoutEngine {
       const id = stack.pop()!
       const node = pool.nodes.get(id) as { type?: string; children?: readonly string[] } | undefined
       if (!node) continue
-      if (node.type === 'text') continue
+      if (node.type === 'text' || node.type === 'smarttext') continue
       if (node.type === 'row' || node.type === 'cell' || node.type === 'paragraph') {
         for (const childId of node.children ?? []) stack.push(childId)
         continue
@@ -605,7 +631,8 @@ export class LayoutEngine {
         // 未变化时允许分页从表格之后的页续排 (契约 §16.1)。
         // 修订标记是布局期开关 (cell 内的删除线由它派生), 必须进键 — 与段落键同理。
         const tableKey = `${IncrementalLayout.tableKey(pool, block.id) ?? ''}`
-          + `#cv${this.computedGeneration}#rev${this.showRevisionMarks ? 1 : 0}`
+          + `#cv${this.computedGeneration}#tv${this.templateDefinitionVersion}`
+          + `#rev${this.showRevisionMarks ? 1 : 0}`
         nextTableKeys.set(block.id, tableKey)
         if (this.tableKeys.get(block.id) !== tableKey) {
           recomputed.push({ paraId: block.id, lineIndex: allLines.length, lineCount: 0, kind: 'table', shapeSame: false })

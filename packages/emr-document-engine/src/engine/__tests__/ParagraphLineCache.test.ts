@@ -11,8 +11,8 @@
 //   1. 正确性: 缓存开启与全新引擎全量布局逐字节相同
 //   2. 有效性: 未改动的纯文本段落在第二次布局里确实命中
 //
-// 第二类用例同时锁住"哪些段落不可缓存" (列表/控件) —— 它们不命中不是缺陷,
-// 是安全边界。
+// 第二类用例同时锁住"哪些段落不可缓存" (域/交叉引用) —— 它们不命中不是缺陷,
+// 是安全边界。控件段落自 M3a 起可缓存 (计算值代次 + 模板定义版本进键)。
 // ================================================================
 
 import { describe, it, expect } from 'vitest'
@@ -189,11 +189,15 @@ describe('段落行缓存 (M2a)', () => {
     expect(cached).toBe(canonical(newEngine().fullLayout(doc, pool)))
   })
 
-  it('控件段落不缓存, 但值变化后结果仍正确', () => {
+  it('控件段落也缓存 (M3a): 未变时命中, 值变化后键失效且结果正确', () => {
     const { doc, pool, st } = makeFixture({ control: true })
     const engine = newEngine()
     engine.fullLayout(doc, pool)
-    expect(engine.getParagraphCacheStats().size).toBe(3) // 控件段不在内
+    expect(engine.getParagraphCacheStats().size).toBe(4) // 控件段也在内
+
+    const hitsBefore = engine.getParagraphCacheStats().hits
+    engine.fullLayout(doc, pool)
+    expect(engine.getParagraphCacheStats().hits - hitsBefore).toBe(4)
 
     pool.updateNode(st!.id, { value: 42 } as Partial<BaseNode>)
     expect(canonical(engine.fullLayout(doc, pool))).toBe(canonical(newEngine().fullLayout(doc, pool)))
