@@ -215,7 +215,6 @@ export { controlVisualRecipe, computeControlBox, CONTROL_BOX_PADDING, AFFORDANCE
 export type { ControlVisualRecipe } from './document/control/ControlBox'
 export { createFootnoteParticle } from './render/particles/FootnoteParticle'
 export { createImageParticle } from './render/particles/ImageParticle'
-export { createCommentParticle } from './render/particles/CommentParticle'
 export { createTableParticle } from './render/particles/TableParticle'
 export { createBarcodeParticle } from './render/particles/BarcodeParticle'
 
