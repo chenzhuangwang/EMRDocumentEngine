@@ -3476,6 +3476,18 @@ derived from the worst case over the ENABLED variants so pagination
 stays uniform and deterministic (per-page body height is a later
 concern, not a licence to re-run the paginator per page).
 
+PAGE GEOMETRY (2026-10-21). `DocumentTree.pageSetup` is the canonical owner
+of page width, page height and the four margins (§7.3). Layout MUST consume
+it: `Draw` MUST push the current document's page setup into `LayoutEngine`
+before every layout pass, including right after a document load/swap, and a
+page-setup change MUST invalidate pagination state (paragraph line keys
+already include the available width; the page-start table and reused pages
+do not). The 794×1123 / margins 72/90 values exist ONLY as the defaults for
+documents that omit `pageSetup`; they are not the editor's page geometry.
+`SLIFPage.width` / `SLIFPage.height` are the actual page geometry and remain
+the single source for every other consumer (overlays, hit testing, export).
+A change of page setup is a full-layout invalidation, not a resume.
+
 16.1 VISIBLE-PAGE RANGE
 
 The set of pages painted by `Draw.render` is DERIVED data computed from
