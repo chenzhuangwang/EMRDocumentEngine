@@ -381,20 +381,24 @@ describe('增量分页 (M2b)', () => {
     expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
   })
 
-  it('表格 cell 内有非文本叶节点: 回落全量', () => {
+  it('表格 cell 内的脚注引用: 仍可增量, 结果与全量一致 (契约 §31.13.1)', () => {
     const { doc, pool } = makeTableDoc(20, 4, 10)
-    // 在 cell 段落里挂一个脚注引用 (Step 4 会往复用页重复追加脚注 item)
+    // cell 段落里挂一个脚注引用 — 它参与全页编号 (Step 4 展平后回填),
+    // 且只影响页底脚注区, 不再把整份文档踢出增量安全集。
     const cellPara = pool.nodes.get('t0-cell-1') as { children: readonly string[] } | undefined
     const paraId = cellPara?.children[0]
-    const fn = { type: 'footnote_ref', id: 'fn-1', refId: 'fn-1' }
+    const fn = {
+      type: 'footnote_ref', id: 'fn-1', footnoteId: 'fn-1', refId: 'fn-1',
+    }
     pool.addNode(fn as unknown as BaseNode)
     pool.insertChild(paraId!, fn.id, 1)
 
     const engine = newEngine()
     engine.fullLayout(doc, pool, 'paragraph')
-    engine.fullLayout(doc, pool, 'paragraph')
+    const pages = engine.fullLayout(doc, pool, 'paragraph')
 
-    expect(engine.getPaginationStats().mode).toBe('full')
+    expect(engine.getPaginationStats().mode).toBe('reuse-all')
+    expect(canonical(pages)).toBe(canonical(newEngine().fullLayout(doc, pool)))
   })
 
   it('计算值代次变化: 表格键失效, 不复用整份且结果一致', () => {

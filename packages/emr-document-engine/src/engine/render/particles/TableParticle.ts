@@ -100,6 +100,17 @@ export function createTableParticle(): IParticle {
                   continue
                 }
               }
+              // 其余原子行内项 (图片/域/交叉引用/脚注引用) 交回宿主渲染 — 契约
+              // §31.13.1: cell 与正文同一行内集合, 必须复用同一批渲染器。
+              // 此前这些类型在 cell 里既不委托也不 fillText (text 为空), 静默不画。
+              if (options?.renderCellItem) {
+                const drawn = options.renderCellItem(
+                  ctx, ci2,
+                  cellX + CELL_PADDING + (ci2.x || 0),
+                  cellY + (ci2.y || 0),
+                )
+                if (drawn) continue
+              }
               if (!ci2.text) continue
               const font = ci2.font || 'SimSun'
               const size = ci2.size || 16

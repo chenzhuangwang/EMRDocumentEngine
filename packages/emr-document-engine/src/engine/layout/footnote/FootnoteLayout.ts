@@ -14,6 +14,7 @@
 // ================================================================
 
 import type { SLIFPage, SLIFItem } from '../core/SLIF'
+import { forEachPageItem } from '../core/SLIF'
 import type { NodePool } from '../../document/core/NodePool'
 
 // ---- 脚注条目 ----
@@ -70,13 +71,14 @@ export class FootnoteLayout {
    */
   seedFrom(pages: readonly SLIFPage[], pool: NodePool): void {
     for (const page of pages) {
-      for (const item of page.items) {
-        if (item.nodeType !== 'footnote_ref') continue
+      // cell 内引用同样参与编号 (契约 §31.13.1) — 故必须展平, 不能只看顶层
+      forEachPageItem(page, item => {
+        if (item.nodeType !== 'footnote_ref') return
         const ref = pool.nodes.get(item.nodeId) as { footnoteId?: string } | undefined
-        if (!ref?.footnoteId) continue
-        if (!pool.nodes.get(ref.footnoteId)) continue
+        if (!ref?.footnoteId) return
+        if (!pool.nodes.get(ref.footnoteId)) return
         this.globalCounter++
-      }
+      })
     }
   }
 
@@ -86,26 +88,26 @@ export class FootnoteLayout {
   collectFootnotes(page: SLIFPage, pool: NodePool): FootnoteEntry[] {
     const entries: FootnoteEntry[] = []
 
-    for (const item of page.items) {
-      if (item.nodeType === 'footnote_ref') {
-        const ref = pool.nodes.get(item.nodeId) as { footnoteId?: string } | undefined
-        if (!ref?.footnoteId) continue
+    // cell 内引用与正文引用同权 (契约 §31.13.1); 顺序 = getFlatPageItems 顺序
+    forEachPageItem(page, item => {
+      if (item.nodeType !== 'footnote_ref') return
+      const ref = pool.nodes.get(item.nodeId) as { footnoteId?: string } | undefined
+      if (!ref?.footnoteId) return
 
-        // 查找 FootnoteContent
-        const content = pool.nodes.get(ref.footnoteId)
-        if (!content) continue
+      // 查找 FootnoteContent
+      const content = pool.nodes.get(ref.footnoteId)
+      if (!content) return
 
-        this.globalCounter++
-        const text = this.getFootnoteText(content, pool)
+      this.globalCounter++
+      const text = this.getFootnoteText(content, pool)
 
-        entries.push({
-          refId: item.nodeId,
-          number: this.globalCounter,
-          contentId: ref.footnoteId,
-          text,
-        })
-      }
-    }
+      entries.push({
+        refId: item.nodeId,
+        number: this.globalCounter,
+        contentId: ref.footnoteId,
+        text,
+      })
+    })
 
     return entries
   }

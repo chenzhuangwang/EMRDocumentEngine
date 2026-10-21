@@ -42,7 +42,7 @@ import { MergeMatrix } from '../../document/table/MergeMatrix'
 import { FootnoteLayout } from '../footnote/FootnoteLayout'
 import { ListParticle } from '../../render/particles/ListParticle'
 import { BookmarkRenderer } from '../../render/BookmarkRenderer'
-import { getFlatPageItems, tableRowUnitHeight } from './SLIF'
+import { getFlatPageItems, forEachPageItem, tableRowUnitHeight } from './SLIF'
 import { createTablePaginator } from '../table/TablePaginator'
 import type { TableFragment } from '../table/TablePaginator'
 import { PageStartTable } from '../page/PageStartTable'
@@ -277,6 +277,27 @@ export class LayoutEngine {
     return `${base}#w${contentWidth}#r${this.showRevisionMarks ? 1 : 0}#m${listMarker}#d${digests.join(',')}${ctl}${fld}`
   }
 
+  /**
+   * 表格子树的布局键 (契约 §16.1 / §31.13.1)。
+   *
+   * = 子树结构/节点版本 + 计算值代次 + 模板定义版本 + 修订留痕开关;
+   * 子树含域时再追加与段落键**同一组**域预留宽取样输入 (页数位数/locale/标题)。
+   * cell 内的域量宽来自 representativeFieldText 的样本串, 这些输入不在节点版本上;
+   * 缺了它们, 页数从 9 页涨到 10 页后 cell 里的页码域会静默保留 1 位预留宽。
+   * 不含域的表格 MUST NOT 带这三段, 否则每次改标题都会让所有表格重排。
+   */
+  private tableLayoutKey(pool: NodePool, tableId: string): string {
+    const fldSeg = IncrementalLayout.subtreeHasType(pool, tableId, 'field')
+      ? `#f${fieldReserveDigits(this.fieldReserveCtx.totalPagesHint)}`
+        + `#l${this.fieldReserveCtx.locale ?? ''}`
+        + `#t${JSON.stringify(this.fieldReserveCtx.documentTitle ?? '')}`
+      : ''
+    return `${IncrementalLayout.tableKey(pool, tableId) ?? ''}`
+      + `#cv${this.computedGeneration}#tv${this.templateDefinitionVersion}`
+      + `#rev${this.showRevisionMarks ? 1 : 0}`
+      + fldSeg
+  }
+
   // ================================================================
   // 增量分页 (M2b)
   //
@@ -285,9 +306,10 @@ export class LayoutEngine {
   // (显示文本依赖本趟页映射)。域可以: 量宽只依赖 representativeFieldText 的
   // 样本串 (页数位数/locale/标题已进段落键), 显示值在节点版本上。脚注引用可以:
   // 页底预留只取决于"文档有没有脚注" (增删引用是结构编辑, 会让全部段落键失效),
-  // 而 Step 4 只处理新页 + 按复用页播种编号。表格内只放行 text/smarttext cell ——
-  // cell 里的域/嵌套表/脚注引用同属危险类 (cell 内的域本身也不参与排版)。
-  // 这些场景一律全量分页 (契约 §16.1)。
+  // 而 Step 4 只处理新页 + 按复用页播种编号。表格 cell 与正文同一张白名单
+  // (text/smarttext/image/field/footnote_ref); 子树含域时域预留宽取样输入进
+  // 表格键。嵌套表与交叉引用仍不安全 —— cell 里的嵌套表改变几何而扁平键看不全,
+  // 交叉引用的显示文本依赖本趟页映射。这些场景一律全量分页 (契约 §16.1)。
   //
   // 续排从「首个脏段落所在页的**前一页**」开始: 寡行控制会从下一页拉一行回来,
   // 所以脏段落所在页的上一页也可能变。若该页从表格中间开始, 还要再回退到
@@ -378,7 +400,8 @@ export class LayoutEngine {
       const block = pool.nodes.get(blockId) as unknown as
         { type?: string; children?: readonly string[] } | undefined
       // 表格允许: 子树键未变时复用其前序页, 变了则从表格起始页重排。
-      // cell 里只放行 text/smarttext —— 域/嵌套表/脚注引用仍属危险类。
+      // cell 里放行 text/smarttext/image/field/footnote_ref —— 与正文同一张白名单;
+      // 域预留宽输入已进表格键。嵌套表与交叉引用仍属危险类 (契约 §16.1)。
       if (block?.type === 'table') {
         if (!this.tableSubtreeIncrementalSafe(pool, blockId)) return false
         continue
@@ -465,7 +488,9 @@ export class LayoutEngine {
       const id = stack.pop()!
       const node = pool.nodes.get(id) as { type?: string; children?: readonly string[] } | undefined
       if (!node) continue
-      if (node.type === 'text' || node.type === 'smarttext') continue
+      if (node.type === 'text' || node.type === 'smarttext'
+        || node.type === 'image' || node.type === 'field'
+        || node.type === 'footnote_ref') continue
       if (node.type === 'row' || node.type === 'cell' || node.type === 'paragraph') {
         for (const childId of node.children ?? []) stack.push(childId)
         continue
@@ -703,16 +728,14 @@ export class LayoutEngine {
         }
         paraFirstLine.set(block.id, allLines.length)
         // 表格子树键: 只有内容/结构/计算值代次变化时才要求"从表格起始页重排"。
-        // 未变化时允许分页从表格之后的页续排 (契约 §16.1)。
-        // 修订标记是布局期开关 (cell 内的删除线由它派生), 必须进键 — 与段落键同理。
-        const tableKey = `${IncrementalLayout.tableKey(pool, block.id) ?? ''}`
-          + `#cv${this.computedGeneration}#tv${this.templateDefinitionVersion}`
-          + `#rev${this.showRevisionMarks ? 1 : 0}`
+        // 未变化时允许分页从表格之后的页续排 (契约 §16.1)。键的构成见
+        // tableLayoutKey (含域时追加域预留宽取样输入, 契约 §31.13.1)。
+        const tableKey = this.tableLayoutKey(pool, block.id)
         nextTableKeys.set(block.id, tableKey)
         if (this.tableKeys.get(block.id) !== tableKey) {
           recomputed.push({ paraId: block.id, lineIndex: allLines.length, lineCount: 0, kind: 'table', shapeSame: false })
         }
-        const { rows, columnWidths } = this.buildTableRows(tbl, pool, contentWidth, lineBreaker)
+        const { rows, columnWidths } = this.buildTableRows(tbl, pool, contentWidth, lineBreaker, doc)
         const pageBreak = tbl.pageBreak
         const repeatHeader = !!pageBreak?.repeatHeader
         const paginator = createTablePaginator(rows, columnWidths, {
@@ -1001,13 +1024,13 @@ export class LayoutEngine {
     for (const page of convertedPages) {
       const footnotes = footnoteEngine.collectFootnotes(page, pool)
       if (footnotes.length > 0) {
-        // 回填正文中 footnote SLIF items 的编号
-        for (const item of page.items) {
-          if (item.type === 'footnote') {
-            const fn = footnotes.find(f => f.refId === item.nodeId)
-            if (fn) item.text = String(fn.number)
-          }
-        }
+        // 回填正文 (含表格 cell) 中 footnote SLIF items 的编号 — 必须展平:
+        // cell 内引用同样参与编号, 只看顶层会留下 '?' 占位 (契约 §31.13.1)
+        forEachPageItem(page, item => {
+          if (item.type !== 'footnote') return
+          const fn = footnotes.find(f => f.refId === item.nodeId)
+          if (fn) item.text = String(fn.number)
+        })
         const footnoteY = page.height - this.config.marginBottom - 60
         const fnItems = footnoteEngine.generateFootnoteItems(
           footnotes, footnoteY, contentWidth, this.config.marginLeft,
@@ -1329,6 +1352,7 @@ export class LayoutEngine {
     pool: NodePool,
     contentWidth: number,
     lineBreaker: LineBreaker,
+    doc: DocumentTree,
   ): { rows: SLIFRow[]; columnWidths: number[] } {
     const CELL_PAD = 6
     const MIN_ROW_HEIGHT = 24
@@ -1394,7 +1418,7 @@ export class LayoutEngine {
         if (cellWidth === 0) cellWidth = 40
 
         // 布局 cell 内文本: 换行 + 多段落堆叠 (y 从 0 顶部对齐)
-        const { items, contentHeight } = this.layoutCellItems(cell.children, cellWidth, pool, lineBreaker, CELL_PAD)
+        const { items, contentHeight } = this.layoutCellItems(cell.children, cellWidth, pool, lineBreaker, CELL_PAD, doc)
 
         cellLayouts.push({
           id: cellId, row: ri, col: colCursor,
@@ -1481,12 +1505,14 @@ export class LayoutEngine {
   /**
    * 布局 cell 内的子块: 段落 + **嵌套表** (契约 §31.13)。
    *
-   * cell 的合法子节点是 paragraph | table。此前这里只认 text/smarttext, 遇到
-   * 嵌套表时 `elements.length === 0` 落到"空段落"分支 —— 整个 cell 被当成一个
-   * 空行, 嵌套表的内容既不排版也不占高 (行高因此算错)。这与"跳过"不同, 是
-   * 静默产出一个幻影空行, 正是 §31.5 禁止的失败模式。
+   * cell 的合法**块级**子节点是 paragraph | table; 块内段落消费与正文完全相同的
+   * 行内集合 (text/smarttext/image/field/cross_reference/footnote_ref,
+   * bookmark/comment_marker 零宽) —— 契约 §31.13.1。此前这里只认 text/smarttext,
+   * 域/图片/脚注/交叉引用被静默跳过; 遇到嵌套表时又因 `elements.length === 0`
+   * 落到"空段落"分支 —— 整个 cell 被当成一个空行。两者都是 §31.5 禁止的失败模式:
+   * 内容既没排版也不占高, 文档看起来像被删除了。
    *
-   * 非法类型 (Section / image / separator) 在此**抛错**: 三层边界 (NodePool /
+   * 非法类型 (Section / separator 等) 在此**抛错**: 三层边界 (NodePool /
    * Loader / Importer) 已保证它们进不来, 走到这里即数据损坏, 不该被当成空段落。
    */
   private layoutCellItems(
@@ -1495,6 +1521,7 @@ export class LayoutEngine {
     pool: NodePool,
     lineBreaker: LineBreaker,
     CELL_PAD: number,
+    doc: DocumentTree,
   ): { items: SLIFItem[]; contentHeight: number } {
     const items: SLIFItem[] = []
     const maxTextWidth = Math.max(cellWidth - CELL_PAD * 2, 1)
@@ -1512,7 +1539,7 @@ export class LayoutEngine {
           id: string; columns?: { width: number }[]; children: readonly string[]
           pageBreak?: { repeatHeader?: boolean }
         }
-        const { rows, columnWidths } = this.buildTableRows(nested, pool, maxTextWidth, lineBreaker)
+        const { rows, columnWidths } = this.buildTableRows(nested, pool, maxTextWidth, lineBreaker, doc)
         const height = nestedTableHeight(rows)
         items.push({
           nodeId: blockId, nodeType: 'table', type: 'table',
@@ -1545,47 +1572,92 @@ export class LayoutEngine {
             underline?: boolean; strikeout?: boolean
             superscript?: boolean; subscript?: boolean
             value?: unknown; element?: { format?: { enums?: { multiple?: boolean; data?: ElementEnumOption[] }; minRows?: number } }
+            width?: number; height?: number; wrapMode?: string
+            cachedValue?: string; fieldType?: string
+            refType?: string; targetRef?: string; displayText?: string
           } | undefined
           if (!child) continue
-          if (child.type === 'text') {
+          const childType = child.type
+          if (childType === 'text' || childType === 'smarttext' || childType === 'cross_reference') {
+            // 控件有效显示与可见性 — 与正文同一入口 (契约 §12.12.8 / §12.12.5)
+            const view = childType === 'smarttext'
+              ? this.controlViewOf(
+                  textId, (child as SmartTextNode).element, (child as SmartTextNode).value,
+                  (child as { text: string }).text,
+                )
+              : undefined
+            if (view && !view.visible) continue
+            // 交叉引用: 与正文同一解析器 (契约 §31.13.1) —— 同一份页映射,
+            // 不在 cell 路径里重写一份展开逻辑。
+            const textVal = childType === 'cross_reference'
+              ? this.resolveCrossRefDisplay(
+                  child as unknown as { id: string; refType: string; targetRef: string; displayText?: string; text?: string },
+                  doc, pool,
+                )
+              : view
+                ? view.display
+                : (child.text || '')
+            let control: LineElement['control']
+            // 控件未显式设字体/字号时继承同段落文字 run (与正文同源)
+            const runDefault = this.paraRunDefault(pool, para.children, DEFAULT_SIZE)
+            let font = child.font
+            let size = child.size
+            if (childType === 'smarttext') {
+              const cFont: string = child.font || runDefault.font
+              const cSize: number = child.size || runDefault.size
+              font = cFont
+              size = cSize
+              const measure = (t: string) =>
+                this.measurer.measureWidth(t, { font: cFont, size: cSize, bold: child.bold, italic: child.italic })
+              const info = view?.info
+              control = smarttextLayoutHint({
+                value: child.value,
+                display: textVal,
+                definition: info,
+                options: info?.options,
+                minRows: child.element?.format?.minRows,
+              }, measure, maxTextWidth)
+            }
             elements.push({
-              id: textId, type: 'text', value: child.text || '',
-              font: child.font, size: child.size, bold: child.bold, italic: child.italic,
-              color: child.color, underline: child.underline, strikeout: child.strikeout,
-              superscript: child.superscript, subscript: child.subscript,
-              ...this.revisionViewOf(child as { revision?: { type: string }; strikeout?: boolean }),
-            })
-          } else if (child.type === 'smarttext') {
-            // 表格 cell 内控件 — 与正文/页眉共用 smarttextLayoutHint (契约 §12.8):
-            // 候选组宽 / 方括号+affordance / 文本域折行 / label·prefix·suffix lead·trail
-            // 全部同源, 且内容宽于 cell 文本宽时折行而非溢出 cell。
-            // 有效显示与可见性也走同一个入口 (§12.12.8 / §12.12.5)。
-            const view = this.controlViewOf(
-              textId, (child as SmartTextNode).element, (child as SmartTextNode).value,
-              (child as { text: string }).text,
-            )
-            if (!view.visible) continue
-            const display = view.display
-            // 未显式设字体/字号时继承同段落文字 run (与周围文字协调)
-            const rd = this.paraRunDefault(pool, para.children, DEFAULT_SIZE)
-            const font = child.font || rd.font
-            const size = child.size || rd.size
-            const measure = (t: string) => this.measurer.measureWidth(t, { font, size, bold: child.bold, italic: child.italic })
-            const info = view.info
-            const control = smarttextLayoutHint({
-              value: child.value,
-              display,
-              definition: info,
-              options: info?.options,
-              minRows: child.element?.format?.minRows,
-            }, measure, maxTextWidth)
-            elements.push({
-              id: textId, type: 'smarttext', value: display,
+              id: textId, type: childType, value: textVal,
               font, size, bold: child.bold, italic: child.italic,
               color: child.color, underline: child.underline, strikeout: child.strikeout,
               superscript: child.superscript, subscript: child.subscript,
+              ...this.revisionViewOf(child as { revision?: { type: string }; strikeout?: boolean }),
               control,
             })
+          } else if (childType === 'image') {
+            // 图片: 自包含行内原子, 尺寸在节点上; 超宽按 cell 文本宽钳制
+            elements.push({
+              id: textId, type: 'image', value: '',
+              imageData: {
+                width: Math.min(child.width || maxTextWidth, maxTextWidth),
+                height: child.height || 100,
+                wrapType: child.wrapMode || 'inline',
+              },
+            })
+          } else if (childType === 'footnote_ref') {
+            elements.push({ id: textId, type: 'footnote_ref', value: '' })
+          } else if (childType === 'field') {
+            // 域: 量宽用代表值 (与正文/页眉页脚同一函数), 显示值在渲染期解析
+            elements.push({
+              id: textId, type: 'field', value: child.cachedValue || '',
+              font: child.font, size: child.size, bold: child.bold, italic: child.italic,
+              fieldType: child.fieldType,
+              fieldReserveText: representativeFieldText(
+                child.fieldType || '', child.cachedValue || '', this.fieldReserveCtx,
+              ),
+            })
+          } else if (childType === 'bookmark' || childType === 'comment_marker') {
+            // 零宽定位标记 (契约 §31.13.1): 合法但不占排版宽度, 无 item。
+            continue
+          } else {
+            // 声明集合之外的段落子节点 = §31.13 违规。静默跳过会让内容凭空
+            // 消失 (§31.5), 所以这里必须抛。
+            throw new Error(
+              `LayoutEngine.layoutCellItems: illegal inline child type ${String(childType)} ` +
+              `(node ${textId}) — contract §31.13.1`,
+            )
           }
         }
       }
@@ -1639,13 +1711,47 @@ export class LayoutEngine {
             elX += layoutW + CONTROL_BOX_PADDING * 2
             continue
           }
-          if (el.type !== 'text') continue
-          const elWidth = this.measurer.measureWidth(el.value || '', {
+          if (el.type === 'image') {
+            // cell 内图片: 与正文同为原子 item (契约 §31.13.1), 宽度已在元素上
+            // 按 cell 文本宽钳制; x 跟随行内游标, 不再固定贴 cell 左缘。
+            const img = el as { imageData?: { width?: number; height?: number } }
+            const iw = Math.min(img.imageData?.width || maxTextWidth, maxTextWidth)
+            const ih = img.imageData?.height || 100
+            items.push({
+              nodeId: el.id, nodeType: 'image', type: 'image',
+              x: elX, y: lineY,
+              width: iw, height: ih,
+              ascent: ih, descent: 0,
+              font: 'SimSun', size: DEFAULT_SIZE,
+            })
+            elX += iw
+            continue
+          }
+          if (el.type === 'footnote_ref') {
+            // 占位 item, 编号由页级 Step 4 回填 (含 cell 内引用, 契约 §31.13.1)
+            const fnHeight = this.measurer.getLineHeight({ font: el.font || 'SimSun', size: el.size || 12 })
+            items.push({
+              nodeId: el.id, nodeType: 'footnote_ref', type: 'footnote',
+              x: elX, y: lineY,
+              width: 12, height: fnHeight,
+              ascent: fnHeight * 0.8, descent: fnHeight * 0.2,
+              font: el.font || 'SimSun', size: el.size || 12,
+              text: '?', superscript: true,
+            })
+            elX += 12
+            continue
+          }
+          if (el.type !== 'text' && el.type !== 'field' && el.type !== 'cross_reference') continue
+          // 域按代表值量宽 (与正文/页眉页脚同源); 交叉引用按解析后的显示文本量宽
+          const reserve = el.type === 'field'
+            ? ((el as LineElement).fieldReserveText ?? el.value)
+            : el.value
+          const elWidth = this.measurer.measureWidth(reserve || '', {
             font: el.font || 'SimSun', size: el.size || DEFAULT_SIZE,
             bold: el.bold, italic: el.italic,
           })
           items.push({
-            nodeId: el.id, nodeType: 'text', type: 'text',
+            nodeId: el.id, nodeType: el.type, type: el.type,
             x: elX, y: lineY,
             width: elWidth, height: line.height,
             ascent: line.maxAscent, descent: line.maxDescent,
@@ -1654,6 +1760,7 @@ export class LayoutEngine {
             color: el.color, underline: el.underline, strikeout: el.strikeout,
             superscript: el.superscript, subscript: el.subscript,
             revision: el.revision,
+            fieldType: el.type === 'field' ? (el as LineElement).fieldType : undefined,
             text: el.value || '',
           })
           elX += elWidth

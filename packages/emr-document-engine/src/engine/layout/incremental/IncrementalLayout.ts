@@ -79,6 +79,26 @@ export class IncrementalLayout {
     return parts.join('|')
   }
 
+  /**
+   * 子树里是否含某类型节点 (不含根自身)。
+   *
+   * 表格键需要知道"子树里有没有域" —— 域的量宽取样输入 (页数位数/locale/标题)
+   * 不在节点版本上, 必须像段落键一样追加进表格键 (契约 §16.1)。
+   */
+  static subtreeHasType(pool: NodePool, rootId: string, type: string): boolean {
+    const root = pool.nodes.get(rootId) as { children?: readonly string[] } | undefined
+    const stack = [...(root?.children ?? [])]
+    while (stack.length > 0) {
+      const id = stack.pop()!
+      const node = pool.nodes.get(id) as
+        { type?: string; children?: readonly string[] } | undefined
+      if (!node) continue
+      if (node.type === type) return true
+      for (const childId of node.children ?? []) stack.push(childId)
+    }
+    return false
+  }
+
   private cache = new Map<string, CachedParagraphLayout>()
 
   /** 获取缓存的段落布局 */

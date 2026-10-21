@@ -1284,7 +1284,9 @@ export class Draw {
         tokenSet: tokens ?? undefined,
       })
     } else if (item.type === 'table') {
-      // 表格渲染 (R37) — cell 内 smarttext 经 TableParticle 委托 registry (§4)
+      // 表格渲染 (R37) — cell 内 smarttext 经 TableParticle 委托 registry (§4),
+      // 图片/域/交叉引用/脚注引用经 renderCellItem 回到这里复用同一批渲染器
+      // (契约 §31.13.1)。
       const tp = createTableParticle()
       tp.render(ctx, item, item.x, pageY + item.y, {
         showInvisible,
@@ -1295,6 +1297,9 @@ export class Draw {
         controlValueOf: this.controlValueOf,
         activeControlId: this.activeControlNodeId,
         tokenSet: tokens ?? undefined,
+        renderCellItem: (c, cellItem, x, y) => this.renderCellItem(
+          c, cellItem, x, y, pageIndex, tokens, showInvisible,
+        ),
       })
     } else {
       // 文本/域代码/控件 — 通过 ParticleRegistry 调度 (含列表标记)
@@ -1312,6 +1317,52 @@ export class Draw {
         })
       }
     }
+  }
+
+  /**
+   * 表格 cell 内的原子行内项 — 由 TableParticle 回调到这里 (契约 §31.13.1)。
+   *
+   * 复用正文的同一批渲染器: 图片走 imageParticle (缓存/异步加载在 Draw),
+   * 脚注引用走 FootnoteParticle, 域与交叉引用走 Registry + `resolveFieldText`
+   * (页码/总页数必须按**本页**解析)。返回 false 表示不认识, 让 TableParticle
+   * 回落到 fillText。
+   */
+  private renderCellItem(
+    ctx: CanvasRenderingContext2D,
+    item: SLIFItem,
+    x: number,
+    y: number,
+    pageIndex: number,
+    tokens: CanvasTokenSet | null,
+    showInvisible: boolean,
+  ): boolean {
+    if (item.type === 'image') {
+      const imgUrl = this.resolveImageUrl(item)
+      if (imgUrl) this.renderImage(ctx, imgUrl, x, y, item.width, item.height, tokens)
+      return true
+    }
+    if (item.type === 'footnote') {
+      createFootnoteParticle().render(ctx, item, x, y, {
+        pageIndex, totalPages: this.pages.length, tokenSet: tokens ?? undefined,
+      })
+      return true
+    }
+    if (item.type === 'field' || item.type === 'cross_reference') {
+      const renderer = particleRegistry.get(item.nodeType || item.type) || particleRegistry.get('text')
+      if (!renderer) return false
+      renderer.render(ctx, { ...item, text: this.resolveFieldText(item, pageIndex) }, x, y, {
+        showInvisible,
+        pageIndex,
+        presentationStyleOf: this.presentationStyleOf,
+        templateDefinitionOf: this.templateDefinitionOf,
+        elementOf: this.elementOf,
+        controlValueOf: this.controlValueOf,
+        activeControlId: this.activeControlNodeId,
+        tokenSet: tokens ?? undefined,
+      })
+      return true
+    }
+    return false
   }
 
   /** 页眉/页脚带分隔线 (0.5px 浅灰) — 屏幕渲染与打印同源 */
