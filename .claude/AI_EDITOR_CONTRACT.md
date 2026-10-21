@@ -3532,8 +3532,11 @@ document is swapped.
 
 M2b IS wired for a provably safe subset: plain-text/image/smarttext/field
 paragraphs (list markers included) and tables whose cell leaves are
-`text` or `smarttext`. Section breaks and cross-references remain
-excluded; header/footer content is governed by the M3b signature below.
+`text`, `smarttext`, `image`, `field` or `footnote_ref`. Section breaks
+and cross-references remain excluded (a cross-reference ANYWHERE in a
+table subtree, cell paragraph included, keeps the whole document
+ineligible); header/footer content is governed by the M3b signature
+below.
 Inline footnote references ARE allowed (see the
 Step 4 rule below). Page breaking resumes from the page
 BEFORE the first recomputed paragraph (widow control can pull a line back
@@ -3549,16 +3552,22 @@ a renumbering change invalidates the affected paragraphs automatically.
 
 A table is allowed only when `IncrementalLayout.tableKey` proves its
 subtree unchanged: structure version + every node version under the table
-(rows, cells, cell paragraphs, text), combined with the computed-values
-generation, the `TemplateDefinitionStore` version and the revision-marks
-flag. The generation is required because a formula/definition change
-alters displayed values without touching node versions; the definition
-version is required for the same reason (control type/labels live in that
-store). A cell holding a nested table, a footnote reference or any leaf
-other than `text`/`smarttext` makes the whole document ineligible for
-M2b — those inputs change cell geometry from outside the table key (a cell
-footnote reference or `field` is not laid out at all today, so excluding
-it costs nothing and keeps the rule uniform).
+(rows, cells, cell paragraphs, text, images, fields, footnote refs),
+combined with the computed-values generation, the
+`TemplateDefinitionStore` version and the revision-marks flag. The
+generation is required because a formula/definition change alters
+displayed values without touching node versions; the definition version
+is required for the same reason (control type/labels live in that store).
+When the subtree contains a `field`, the table key ALSO carries the same
+field-reserve sampling inputs as a paragraph key (total-page digit count,
+locale, document title) — a page-count digit or locale change alters
+field reserve width inside cells without touching any node version. A
+cell holding a nested table or a cross-reference makes the whole document
+ineligible for M2b; nested tables change cell geometry from outside the
+flat table key, and a cross-reference's display text depends on the
+previous pass's page map. Image dimensions live on the node (already in
+the table key), and a footnote reference only affects the page-bottom
+footnote area, which Step 4 handles per new page (see below).
 
 The page-start line table maps each page to an INPUT-line index. A table
 occupies one input line but can span several pages: the page carrying its
@@ -4816,6 +4825,39 @@ Consequences worth stating explicitly, because each closes a real gap:
     laid out as a paragraph line list (`collectHFParagraphLines`,
     `hfParagraphsForPage`), and that is their whole contract.
 
+------------------------------------------------------------
+31.13.1 Cell paragraph inline parity
+------------------------------------------------------------
+
+A paragraph inside a table cell consumes EXACTLY the same inline node set
+as a body paragraph: `text`, `smarttext`, `image`, `field`, `bookmark`,
+`cross_reference`, `footnote_ref`, `comment_marker` (the census lives in
+`DEFERRED_INLINE_CHILD_TYPES`; bookmark and comment_marker occupy no
+layout width and may legitimately produce no item). The cell layout path
+MUST NOT silently skip any of these. An inline type outside the set is a
+§31.13 violation and must throw — never a phantom empty line (§31.5).
+
+Consequences that are part of the contract, not implementation detail:
+
+  - **Fields in cells** measure with `representativeFieldText` and the
+    same reserve inputs as body fields (page-count digit count, locale,
+    document title), and their display text is resolved at draw time
+    through the SAME page-aware resolver. A second field formatter in
+    the cell path is forbidden (§4).
+  - **Footnote references in cells** participate in the page's footnote
+    numbering exactly like body references. The per-page collector walks
+    INTO table cells (row-major rows, cells left-to-right, matching
+    `getFlatPageItems` order), and the Step-4 number back-fill writes
+    back into the cell items. Repeated table header rows are visual-only
+    and are NOT numbered per page — the same choice hit-test flattening
+    already makes.
+  - **Cross-references in cells** resolve against the same page map as
+    body cross-references. A table subtree containing one therefore
+    keeps the whole document outside the incremental safe subset
+    (§16.1).
+  - **Images in cells** are clamped to the cell's text width, exactly as
+    body images are clamped to the content width.
+
 FAILURE SEMANTICS (§31.5 applies unchanged):
 
     An illegal container/child pair MUST THROW at every boundary that
@@ -4864,13 +4906,12 @@ DEFERRED, RECORDED (not silently omitted):
     NOT because it is already guarded — do not read the table as "the set
     of things already enforced" until this line is removed.
 
-  - `paragraph.children` inline types are NOT enforced in this round.
-    The legal inline set needs its own census first (the engine has, at
-    minimum, text · smarttext · image · field · bookmark ·
-    cross_reference · footnote_ref · comment_marker), and the
-    blast radius of getting it wrong is larger than the cell rule that
-    motivated this section. It is declared here as the next item, not
-    left unstated.
+  - `paragraph.children` inline ENFORCEMENT is NOT yet wired at the three
+    boundaries. The legal inline set is now the one declared in
+    §31.13.1 (`DEFERRED_INLINE_CHILD_TYPES`) and layout consumes it in
+    full, but no boundary rejects an unknown inline type yet. Enforcement
+    needs its own round; keeping the comment honest avoids the failure
+    mode where "declared" is read as "already guarded".
 
   - The nested-table support landed with this section is DELIBERATELY
     PARTIAL, and each partial point is recorded rather than implied:
