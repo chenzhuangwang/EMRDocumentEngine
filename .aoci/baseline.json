@@ -1,13 +1,13 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-21T09:03:20Z",
+  "updated_at": "2026-10-21T10:12:07Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
-      "sha256": "57e9c837ffb26a7a4a7298bcc21d2f0170c4ef53c620f3eb5ae58bafa5616aeb",
-      "size": 227170,
-      "normalized_sha256": "57e9c837ffb26a7a4a7298bcc21d2f0170c4ef53c620f3eb5ae58bafa5616aeb"
+      "sha256": "2cbd8e711eca15ca5edf2265d8a7397b11ea9f87962906f0b11212a30588a30c",
+      "size": 230711,
+      "normalized_sha256": "2cbd8e711eca15ca5edf2265d8a7397b11ea9f87962906f0b11212a30588a30c"
     },
     ".claude/CLAUDE.md": {
       "role": "index",
@@ -95,9 +95,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "dc69dea9baf5d4eae55ca8d381b6a0b85195283564d2765a3d9e284c50074fc8",
-      "size": 141674,
-      "normalized_sha256": "dc69dea9baf5d4eae55ca8d381b6a0b85195283564d2765a3d9e284c50074fc8"
+      "sha256": "5ed095934044363f6a81e3d6155568134afb6a36b88cc0414c079a17b7e7395f",
+      "size": 141739,
+      "normalized_sha256": "5ed095934044363f6a81e3d6155568134afb6a36b88cc0414c079a17b7e7395f"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2032,9 +2032,9 @@
     },
     "knowledge/增量排版-设计方案.md": {
       "role": "index",
-      "sha256": "20f78e52e4ff73802573affd79400b6a87bc85643b3078d9ac5f666685003b8a",
-      "size": 25458,
-      "normalized_sha256": "20f78e52e4ff73802573affd79400b6a87bc85643b3078d9ac5f666685003b8a"
+      "sha256": "35a3a363aae2687b8a989bd237fe28464dfe046d498bb35a121d441cac5b5167",
+      "size": 28882,
+      "normalized_sha256": "35a3a363aae2687b8a989bd237fe28464dfe046d498bb35a121d441cac5b5167"
     },
     "knowledge/引擎能力补齐-设计方案.md": {
       "role": "index",
@@ -2254,9 +2254,9 @@
     },
     "knowledge/编辑器功能清单.md": {
       "role": "index",
-      "sha256": "5601efc7e5ad1db109b0c0cdf367124a6e96f21f0941d622a387377fa862025a",
-      "size": 91896,
-      "normalized_sha256": "571b95fcc0e803e20f1b5a10bb84bab4380c2bbcacf5cc76a7e25d6aa87299f6"
+      "sha256": "36e5e63fbb87aaf0e25cdbb507868c62c779e22315fc26f59a41e31cdd26e0c9",
+      "size": 93348,
+      "normalized_sha256": "8800b5e75c48d0ba05ca73924772a17c5223526a0adff33faf4219f9b6a6e519"
     },
     "nginx.conf": {
       "role": "index",
@@ -2464,9 +2464,9 @@
     },
     "packages/emr-document-engine/src/engine/__tests__/ContainerChildTypes.test.ts": {
       "role": "observe",
-      "sha256": "490ff99527e44b131674c9a011625960027a828383a07993b43dd9c7b26f1b42",
-      "size": 14139,
-      "normalized_sha256": "490ff99527e44b131674c9a011625960027a828383a07993b43dd9c7b26f1b42"
+      "sha256": "0530e47b4ccc03892149d5559efceafb9e8932cf0ee62f0c9fcb639b57980e35",
+      "size": 15945,
+      "normalized_sha256": "0530e47b4ccc03892149d5559efceafb9e8932cf0ee62f0c9fcb639b57980e35"
     },
     "packages/emr-document-engine/src/engine/__tests__/ContractCompliance.test.ts": {
       "role": "observe",
@@ -2527,6 +2527,12 @@
       "sha256": "c8d6f383f51089507cd7b8224f44d953623bea33010941bd28f5b5cc90e98ef2",
       "size": 6297,
       "normalized_sha256": "c8d6f383f51089507cd7b8224f44d953623bea33010941bd28f5b5cc90e98ef2"
+    },
+    "packages/emr-document-engine/src/engine/__tests__/CrossReferenceIncremental.test.ts": {
+      "role": "observe",
+      "sha256": "b635817e0413cf4a1e47a3aff9862b2c53bc7d13fcb9a957160178cf4dd4f049",
+      "size": 6327,
+      "normalized_sha256": "b635817e0413cf4a1e47a3aff9862b2c53bc7d13fcb9a957160178cf4dd4f049"
     },
     "packages/emr-document-engine/src/engine/__tests__/CursorScrollStability.test.ts": {
       "role": "observe",
@@ -2800,9 +2806,9 @@
     },
     "packages/emr-document-engine/src/engine/__tests__/IncrementalPagination.test.ts": {
       "role": "observe",
-      "sha256": "208f67bd4224cf6938349f7e70f391fa2b8f76ac03f4658e23fe8ba4152483dd",
-      "size": 20418,
-      "normalized_sha256": "208f67bd4224cf6938349f7e70f391fa2b8f76ac03f4658e23fe8ba4152483dd"
+      "sha256": "049728c2df145f97219d94320449862840cd5652c3cf0f94dec99e68f19fb6ea",
+      "size": 20666,
+      "normalized_sha256": "049728c2df145f97219d94320449862840cd5652c3cf0f94dec99e68f19fb6ea"
     },
     "packages/emr-document-engine/src/engine/__tests__/InsertAfterImage.test.ts": {
       "role": "observe",
@@ -3110,6 +3116,12 @@
       "size": 5206,
       "normalized_sha256": "6858d51547634f90cdef8ce8f648bee39dd8c412e102167d81ac030c8fedda64"
     },
+    "packages/emr-document-engine/src/engine/__tests__/TableCellInline.test.ts": {
+      "role": "observe",
+      "sha256": "128e26a18287e2ef4d6113b0f8c519c3e8dc6b5d28934968d2cc15c1adb2ae9b",
+      "size": 14891,
+      "normalized_sha256": "128e26a18287e2ef4d6113b0f8c519c3e8dc6b5d28934968d2cc15c1adb2ae9b"
+    },
     "packages/emr-document-engine/src/engine/__tests__/TableCellTextSelection.test.ts": {
       "role": "observe",
       "sha256": "64456ff6a29e93c966d66758e256680bf5274930cc202cfd137a256383e15f79",
@@ -3148,9 +3160,9 @@
     },
     "packages/emr-document-engine/src/engine/__tests__/TableParticleSmartText.test.ts": {
       "role": "observe",
-      "sha256": "740636bf8747f570f1787e5bd82dd2372473d2e7d3af7cd30fb66806a77828cf",
-      "size": 6229,
-      "normalized_sha256": "740636bf8747f570f1787e5bd82dd2372473d2e7d3af7cd30fb66806a77828cf"
+      "sha256": "625265b4bde213bb43148af33dd62ecd25d8525715ca610876d5806290eb47c5",
+      "size": 8134,
+      "normalized_sha256": "625265b4bde213bb43148af33dd62ecd25d8525715ca610876d5806290eb47c5"
     },
     "packages/emr-document-engine/src/engine/__tests__/TableStructureDelete.test.ts": {
       "role": "observe",
@@ -3502,9 +3514,9 @@
     },
     "packages/emr-document-engine/src/engine/document/core/ContainerChildTypes.ts": {
       "role": "index",
-      "sha256": "3f51d01b9cbb12f727cada2ab90667fc4c2f3fe3a8f6a2f514f6a5a37b31c9b9",
-      "size": 7592,
-      "normalized_sha256": "3f51d01b9cbb12f727cada2ab90667fc4c2f3fe3a8f6a2f514f6a5a37b31c9b9"
+      "sha256": "9d8fa42f3c5b8905bf28afe0cafac0addbd1045f805daf58122c21dcb3b3003b",
+      "size": 7708,
+      "normalized_sha256": "9d8fa42f3c5b8905bf28afe0cafac0addbd1045f805daf58122c21dcb3b3003b"
     },
     "packages/emr-document-engine/src/engine/document/core/DocumentModel.ts": {
       "role": "index",
@@ -3538,9 +3550,9 @@
     },
     "packages/emr-document-engine/src/engine/document/io/DocumentLoader.ts": {
       "role": "index",
-      "sha256": "e04dd189df8db7fa55957a1fe49c82236d08e351e2e4a183778f3e07db4ecb47",
-      "size": 17342,
-      "normalized_sha256": "e04dd189df8db7fa55957a1fe49c82236d08e351e2e4a183778f3e07db4ecb47"
+      "sha256": "be623fc04625de6936c6e21a82ff3ebd622279f92b8323b5af8342fd12a334b8",
+      "size": 17367,
+      "normalized_sha256": "be623fc04625de6936c6e21a82ff3ebd622279f92b8323b5af8342fd12a334b8"
     },
     "packages/emr-document-engine/src/engine/document/io/DocumentSerializer.ts": {
       "role": "index",
@@ -3616,15 +3628,15 @@
     },
     "packages/emr-document-engine/src/engine/i18n/index.ts": {
       "role": "index",
-      "sha256": "cd550f732a755f354b9a002229c56c1dd4e0424da3c0e7db080e35d60653fd7c",
-      "size": 145047,
-      "normalized_sha256": "cd550f732a755f354b9a002229c56c1dd4e0424da3c0e7db080e35d60653fd7c"
+      "sha256": "1a235c81e2e2530107db15406b6ecd1c18575f8ee3c2f5c34a2ba097e5040fa3",
+      "size": 145305,
+      "normalized_sha256": "1a235c81e2e2530107db15406b6ecd1c18575f8ee3c2f5c34a2ba097e5040fa3"
     },
     "packages/emr-document-engine/src/engine/import/TemplateImporter.ts": {
       "role": "index",
-      "sha256": "84f0c05073793ded9acc0565ed3435cfa5b8bcdaee0c2282087cc6b3bbe0ada1",
-      "size": 34784,
-      "normalized_sha256": "fa0ad27270ccbb380e1d00d4cef096ef7c79ca7d1d41833ca1b74b271c746f34"
+      "sha256": "fe9aa11026f93ddded3762ff7863cffdb4e48ebaf4be37bd15682c6df41934b7",
+      "size": 34725,
+      "normalized_sha256": "fe9aa11026f93ddded3762ff7863cffdb4e48ebaf4be37bd15682c6df41934b7"
     },
     "packages/emr-document-engine/src/engine/index.ts": {
       "role": "index",
@@ -3676,9 +3688,9 @@
     },
     "packages/emr-document-engine/src/engine/layout/core/LayoutEngine.ts": {
       "role": "index",
-      "sha256": "35f3423b7eb873cd7e516fcd5da42588878c5246ad21c49958a8ce876ab1778a",
-      "size": 102522,
-      "normalized_sha256": "33ecc615b6fb88a6ce2c02c7baa427152698c5eb0d331f7a99825ca605d664fb"
+      "sha256": "0c418e01d3fdaf067ad2344d080472c4d66dc7a20abaa8c668dfe3f696a115a6",
+      "size": 107774,
+      "normalized_sha256": "0c418e01d3fdaf067ad2344d080472c4d66dc7a20abaa8c668dfe3f696a115a6"
     },
     "packages/emr-document-engine/src/engine/layout/core/LayoutResult.ts": {
       "role": "index",
@@ -3688,15 +3700,15 @@
     },
     "packages/emr-document-engine/src/engine/layout/core/SLIF.ts": {
       "role": "index",
-      "sha256": "952904d9096b115ef77bd874ff9e26c91a306d5fb5e95629c9bda312a6712d70",
-      "size": 7825,
-      "normalized_sha256": "51c62f0c8b67a5a3df2823a639f74a49b7b241052d3ff11db9bbbace6f6127d3"
+      "sha256": "c3578323421fa6941643c28633abb5d9dd32f8172df0244b01d88d77c83ee1a1",
+      "size": 8823,
+      "normalized_sha256": "7fba59ce77a54319299de01c67fd33b9fca82acaa9a8717dbe06808415da2ca1"
     },
     "packages/emr-document-engine/src/engine/layout/footnote/FootnoteLayout.ts": {
       "role": "index",
-      "sha256": "733733ceda8ee7f67e121aa310e00e7621e5948ffedfec9207d3a76539efeb7e",
-      "size": 6713,
-      "normalized_sha256": "733733ceda8ee7f67e121aa310e00e7621e5948ffedfec9207d3a76539efeb7e"
+      "sha256": "a6bda48039695d082862cc45a56c70a79a9bb5ac3bf29098407335604cb1a61c",
+      "size": 6918,
+      "normalized_sha256": "a6bda48039695d082862cc45a56c70a79a9bb5ac3bf29098407335604cb1a61c"
     },
     "packages/emr-document-engine/src/engine/layout/incremental/DirtyTracker.ts": {
       "role": "index",
@@ -3706,9 +3718,9 @@
     },
     "packages/emr-document-engine/src/engine/layout/incremental/IncrementalLayout.ts": {
       "role": "index",
-      "sha256": "ab997e7233adff3c8830bbc966411d41ca2344fe4ae79f797339d17c21617e06",
-      "size": 4300,
-      "normalized_sha256": "ab997e7233adff3c8830bbc966411d41ca2344fe4ae79f797339d17c21617e06"
+      "sha256": "6bd269cfe3087cbff7842e2822847eb5e7cf660bc111fa563fedff753d4a0317",
+      "size": 5128,
+      "normalized_sha256": "6bd269cfe3087cbff7842e2822847eb5e7cf660bc111fa563fedff753d4a0317"
     },
     "packages/emr-document-engine/src/engine/layout/incremental/LayoutCache.ts": {
       "role": "index",
@@ -3838,9 +3850,9 @@
     },
     "packages/emr-document-engine/src/engine/render/Draw.ts": {
       "role": "index",
-      "sha256": "9224e88a571540fcfb080742841705f5d5c6bac2561d289610dffe44c38dca36",
-      "size": 94164,
-      "normalized_sha256": "08448886c36a59546fb2c53735afa58c55e78704c39ba6da57efb535e5087cf4"
+      "sha256": "0e5da74b476f8b3fb982d6a424641a5cd479c20355686dc7cbea557f2618e17f",
+      "size": 96208,
+      "normalized_sha256": "35d8c47981c9e73444b50811ca19616b338cf83488420622158bc0931fefb46b"
     },
     "packages/emr-document-engine/src/engine/render/HitTestIndex.ts": {
       "role": "index",
@@ -3892,9 +3904,9 @@
     },
     "packages/emr-document-engine/src/engine/render/particles/IParticle.ts": {
       "role": "index",
-      "sha256": "c6190d038d56a93ff4a9ab71b63d9943dc4c15878b0db6992a7a4a5eb3c0fd10",
-      "size": 3568,
-      "normalized_sha256": "fcc3fac0cf4a3733df1513ad7deb10193556d4f4466ba5ae6150457acd205af0"
+      "sha256": "b5d85a64586a164f1855a8939e06a3e73d5d70c289823bb595435a748e10e77b",
+      "size": 4225,
+      "normalized_sha256": "8002810214b7ca0430f29b0fa4d60d300f6b7e5daa8a4670c90a30fbde673cd5"
     },
     "packages/emr-document-engine/src/engine/render/particles/ImageParticle.ts": {
       "role": "index",
@@ -3928,9 +3940,9 @@
     },
     "packages/emr-document-engine/src/engine/render/particles/TableParticle.ts": {
       "role": "index",
-      "sha256": "8d345b05aba79e4db93890730631de8c12adec76e9ed9a7c514f7118b1ab1112",
-      "size": 5438,
-      "normalized_sha256": "a98bfd6ea3301c113667bcddd9d1476a502b38aaa1e991b0730a869d94cccffd"
+      "sha256": "3b87417ef145a1b219ee779c6724d9f881d9b3c413ccdba363f79290b6075fa7",
+      "size": 6051,
+      "normalized_sha256": "210a080b7189cbe042f97bc3437a75e43bd0a17a21a90a5bcef8441c31cca955"
     },
     "packages/emr-document-engine/src/engine/render/particles/TextParticle.ts": {
       "role": "index",
