@@ -3499,17 +3499,23 @@ Rules:
 INCREMENTAL LAYOUT STATUS (2026-10-19)
 
 M2a IS wired: `LayoutEngine` caches paragraph LINE layout for a provably
-safe subset — paragraphs whose children are plain `text`, `image` or
-`footnote_ref` — keyed by `IncrementalLayout.paragraphKey` (structure
-version + paragraph version + per-child versions) plus the available
-width, the revision-marks flag, the resolved list marker and image
-dimensions. The cache holds at most one entry per paragraph id and MUST
-be cleared when the document is swapped.
+safe subset — paragraphs whose children are plain `text`, `image`,
+`smarttext` or `footnote_ref` — keyed by `IncrementalLayout.paragraphKey`
+(structure version + paragraph version + per-child versions) plus the
+available width, the revision-marks flag, the resolved list marker and
+image dimensions. A paragraph that contains a `smarttext` ALSO keys the
+computed-values generation and the `TemplateDefinitionStore` version:
+control geometry (display text, visibility, control type, labels,
+options) comes from those two stores without touching node versions.
+Text-only paragraphs MUST NOT include those segments — otherwise every
+formula change would churn the entire line cache. The cache holds at most
+one entry per paragraph id and MUST be cleared when the document is
+swapped.
 
-M2b IS wired for a provably safe subset: plain-text/image paragraphs (list
-markers included) and tables whose cells contain only `text` leaves.
-Section breaks, fields, controls, cross-references and header/footer
-content remain excluded. Inline footnote references ARE allowed (see the
+M2b IS wired for a provably safe subset: plain-text/image/smarttext
+paragraphs (list markers included) and tables whose cell leaves are
+`text` or `smarttext`. Section breaks, fields, cross-references and
+header/footer content remain excluded. Inline footnote references ARE allowed (see the
 Step 4 rule below). Page breaking resumes from the page
 BEFORE the first recomputed paragraph (widow control can pull a line back
 from the next page). If that page begins in the middle of a table, it MUST
@@ -3525,10 +3531,12 @@ a renumbering change invalidates the affected paragraphs automatically.
 A table is allowed only when `IncrementalLayout.tableKey` proves its
 subtree unchanged: structure version + every node version under the table
 (rows, cells, cell paragraphs, text), combined with the computed-values
-generation and the revision-marks flag. The generation is required because
-a formula/definition change alters displayed values without touching node
-versions. A cell holding a control (`smarttext`), a nested table, a footnote
-reference or any non-`text` leaf makes the whole document ineligible for
+generation, the `TemplateDefinitionStore` version and the revision-marks
+flag. The generation is required because a formula/definition change
+alters displayed values without touching node versions; the definition
+version is required for the same reason (control type/labels live in that
+store). A cell holding a nested table, a footnote reference or any leaf
+other than `text`/`smarttext` makes the whole document ineligible for
 M2b — those inputs change cell geometry from outside the table key (a cell
 footnote reference is not laid out at all today, so excluding it costs
 nothing and keeps the rule uniform).
