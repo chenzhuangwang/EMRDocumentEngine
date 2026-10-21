@@ -1010,6 +1010,14 @@ Conversely, a paragraph MERGE MUST normalize ONLY the seam pair
 IS a merge, so a whole-paragraph normalize rewrites run boundaries that
 existed before the split.
 
+A SPLIT's inverse MUST NOT be implemented as a merge at all. Restore the
+paragraph from a pre-split paragraph snapshot instead: a merge has to
+decide whether to fuse the seam run, and no single choice is right for
+both cases — when the split cut a run, the two halves must fuse; when the
+split point sat on a run boundary, two separate runs must stay separate.
+`RestoreSplitCommand` removes the minted paragraph subtree and restores
+the original children (ids and boundaries) from the snapshot.
+
 Gate: `UndoRedoEquivalence.test.ts` runs random mixed command sequences
 through the real Editor and requires, step by step, that undo returns to
 each historical snapshot and redo returns to each forward snapshot.

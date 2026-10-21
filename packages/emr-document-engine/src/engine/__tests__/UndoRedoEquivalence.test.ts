@@ -23,12 +23,17 @@
 //   与成功命令一一对应, 快照可以直接按下标对齐. 合并本身由 UndoMerge.test 守.
 //
 // 覆盖范围 (2026-10-21 扩充): 正文段落与**表格 cell 内的段落**都参与随机选取;
-// 动作含输入/删除/格式/段落样式/拆段/并段/清格式/列表开关/表格追加行.
-// cell 编辑此前从未进入随机组合 —— 扩充后立刻抓到三个真实撤销缺陷:
+// 动作含输入/删除/格式/段落样式/拆段/并段/清格式/列表开关/表格追加行/
+// 控件值变更/控件删除/表格结构(插删行列). 控件动作先确定性地各做一次, 并有
+// 「动作真的入过栈」的假覆盖守卫 —— 否则表格结构操作可能先把夹具里的控件
+// 删光, 控件 case 全部空转, 闸门看起来覆盖了实际没跑.
+// cell/控件编辑此前从未进入随机组合 —— 扩充后抓到四个真实撤销缺陷:
 //   1. 原地输入会 normalize 并掉**早已存在**的相邻同样式 run, 轻量反转还原不出;
 //   2. 往**空 run** 里输入, 反转删字后节点被摘除并铸新 id, 原 id/样式丢失;
-//   3. 拆段的逆操作 (并段) 整段 normalize, 并掉拆段前就有的 run 边界.
-// 三处均改为"会破坏 run 身份的命令先拍整段快照"或"并段只合并接缝一对"。
+//   3. 拆段的逆操作 (并段) 整段 normalize, 并掉拆段前就有的 run 边界;
+//   4. 拆点恰在 run 边界时, 并段会在接缝处把两个本应独立的 run 合并 ——
+//      拆段撤销改为按拆段前整段快照恢复 (RestoreSplitCommand)。
+// 前三处均改为"会破坏 run 身份的命令先拍整段快照"或"并段只合并接缝一对"。
 // ================================================================
 
 import { describe, it, expect, afterEach } from 'vitest'
@@ -46,11 +51,25 @@ import { ParagraphStyleCommand } from '../command/commands/ParagraphStyleCommand
 import { SplitParagraphCommand } from '../command/commands/SplitParagraphCommand'
 import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand'
 import { AppendTableRowCommand } from '../command/commands/AppendTableRowCommand'
-import type { BaseNode, DocumentTree, Paragraph, TextNode } from '../document/core/DocumentModel'
+import { SetControlValueCommand } from '../command/commands/SetControlValueCommand'
+import { RemoveControlCommand } from '../command/commands/RemoveControlCommand'
+import { TableStructureCommand } from '../command/commands/StructuralCommands'
+import {
+  buildCellGrid, insertRow, deleteRow, insertColumn, deleteColumn,
+} from '../document/table/TableOps'
+import { createSmartTextNode } from '../document/factory/ElementFormatter'
+import type {
+  BaseNode, ControlValue, DocumentTree, ElementMeta, Paragraph, TextNode,
+} from '../document/core/DocumentModel'
 
 afterEach(() => { document.body.innerHTML = '' })
 
-// ---- 夹具: 4 段正文 + 一张 2×2 表格 ----
+/** 夹具控件的元素声明 (最低限度: 名称 + 文本类型) */
+const CONTROL_ELEMENT = {
+  code: 'E1', name: '血压', format: { dataType: 'S1' },
+} as unknown as ElementMeta
+
+// ---- 夹具: 4 段正文 (含一个控件) + 一张 2×2 表格 (cell 内也含一个控件) ----
 
 interface Fixture { editor: Editor; doc: DocumentTree; tableId: string }
 
@@ -69,7 +88,9 @@ function makeFixture(): Fixture {
     return p
   }
 
-  addParagraph('甲乙丙丁戊己')
+  const p1 = addParagraph('甲乙丙丁戊己')
+  // 段落里放一个控件 —— EMR 文档的常态, 让输入/删除/拆段/撤销都经过内联非文本节点
+  p1.children = [...p1.children, add(createSmartTextNode('[血压]', CONTROL_ELEMENT)).id]
   addParagraph('庚辛壬癸子丑')
   addParagraph('寅卯辰巳午未')
   addParagraph('申酉戌亥')
@@ -80,6 +101,10 @@ function makeFixture(): Fixture {
     for (let c = 0; c < 2; c++) {
       const t = add(createTextNode(`格${r}${c}`))
       const p = add(createParagraph([t.id]) as Paragraph)
+      // cell 段落里也放一个控件 (控件删除/值变更在 cell 内的撤销同样要精确)
+      if (r === 0 && c === 0) {
+        p.children = [...p.children, add(createSmartTextNode('[体重]', CONTROL_ELEMENT)).id]
+      }
       const cell = add(createTableCell([p.id]))
       cellIds.push(cell.id)
     }
@@ -182,6 +207,19 @@ function textLengthOf(f: Fixture, para: Paragraph): number {
   return n
 }
 
+/** 夹具里现存的控件节点 (id + 所在段落) */
+function controlNodes(f: Fixture): { id: string; paraId: string }[] {
+  const pool = f.editor.getPool()
+  const out: { id: string; paraId: string }[] = []
+  for (const p of editableParagraphs(f)) {
+    for (const childId of p.children) {
+      const node = pool.nodes.get(childId) as { type?: string } | undefined
+      if (node?.type === 'smarttext') out.push({ id: childId, paraId: p.id })
+    }
+  }
+  return out
+}
+
 // ---- 固定种子 LCG (确定性: 失败可复现) ----
 
 interface Rng { int(max: number): number }
@@ -206,7 +244,7 @@ function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): ICommand
   const paras = editableParagraphs(f)
   if (paras.length === 0) return null
 
-  switch (rng.int(9)) {
+  switch (rng.int(12)) {
     case 0: {
       const p = paras[rng.int(paras.length)]
       const len = textLengthOf(f, p)
@@ -281,6 +319,55 @@ function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): ICommand
         : { type: 'ordered' as const, level: 1 }
       return new ParagraphStyleCommand(generateCommandId(), nextTs(), 'user', [p.id], { list })
     }
+    case 8: {
+      // 控件值变更: 撤销必须逐字段还原 (含"清空"= undefined 的规范空态)
+      const controls = controlNodes(f)
+      if (controls.length === 0) return null
+      const c = controls[rng.int(controls.length)]
+      const values: (ControlValue | undefined)[] = ['120/80', 37.5, undefined]
+      return new SetControlValueCommand(
+        generateCommandId(), nextTs(), 'user', c.id, values[rng.int(values.length)],
+      )
+    }
+    case 9: {
+      // 删除控件: 从段落摘除节点, 撤销必须把节点与位置原样放回。
+      // 保留最后一个控件 —— 否则控件值变更会因夹具被删空而静默空转
+      // (假覆盖守卫会红, 但更根本的是别把随机池抽干)。
+      const controls = controlNodes(f)
+      if (controls.length < 2) return null
+      const c = controls[rng.int(controls.length)]
+      return new RemoveControlCommand(
+        generateCommandId(), nextTs(), 'user', [doc.id, c.paraId], c.id,
+      )
+    }
+    case 10: {
+      // 表格结构: 插入/删除行列 (会改 span、铸新行/格, 且表格可落在 cell 外)
+      const pool = f.editor.getPool()
+      const grid = buildCellGrid(pool, f.tableId)
+      const tableId = f.tableId
+      const kind = rng.int(4)
+      if (kind === 0 && grid.numRows < 4) {
+        const at = rng.int(grid.numRows)
+        return new TableStructureCommand(generateCommandId(), nextTs(), 'user', tableId,
+          (p) => { insertRow(p, tableId, at); return true })
+      }
+      if (kind === 1 && grid.numRows > 1) {
+        const at = rng.int(grid.numRows)
+        return new TableStructureCommand(generateCommandId(), nextTs(), 'user', tableId,
+          (p) => { deleteRow(p, tableId, at); return true })
+      }
+      if (kind === 2 && grid.numCols < 4) {
+        const at = rng.int(grid.numCols)
+        return new TableStructureCommand(generateCommandId(), nextTs(), 'user', tableId,
+          (p) => { insertColumn(p, tableId, at); return true })
+      }
+      if (kind === 3 && grid.numCols > 1) {
+        const at = rng.int(grid.numCols)
+        return new TableStructureCommand(generateCommandId(), nextTs(), 'user', tableId,
+          (p) => { deleteColumn(p, tableId, at); return true })
+      }
+      return null
+    }
     default:
       return new AppendTableRowCommand(generateCommandId(), nextTs(), 'user', f.tableId)
   }
@@ -296,13 +383,33 @@ function runGate(seed: number, target: number): void {
 
   const snapshots: string[] = [snapshot(f)]
   const kinds: string[] = []
+  const kindsSeen = new Set<string>()
+
+  // 覆盖保证: 控件动作先确定性地各做一次, 再进入随机序列。
+  // 只靠随机抽取的话, 表格结构操作可能先把夹具里的控件删光, 之后的控件
+  // case 全部空转 —— 闸门看着覆盖了, 实际没跑 (假覆盖)。
+  const prelude: ICommand[] = []
+  {
+    const controls = controlNodes(f)
+    if (controls.length > 0) {
+      prelude.push(new SetControlValueCommand(
+        generateCommandId(), nextTs(), 'user', controls[0].id, '120/80',
+      ))
+    }
+    if (controls.length > 1) {
+      prelude.push(new RemoveControlCommand(
+        generateCommandId(), nextTs(), 'user', [f.doc.id, controls[1].paraId], controls[1].id,
+      ))
+    }
+  }
+
   let executed = 0
   let attempts = 0
 
   while (executed < target && attempts < target * 8) {
     attempts++
     const depthBefore = undoDepth(f)
-    const cmd = makeRandomCommand(f, rng, nextTs)
+    const cmd = prelude.length > 0 ? prelude.shift()! : makeRandomCommand(f, rng, nextTs)
     if (!cmd) continue
 
     f.editor.execCommand(cmd)
@@ -311,6 +418,7 @@ function runGate(seed: number, target: number): void {
     if (depthAfter === depthBefore + 1) {
       snapshots.push(snapshot(f))
       kinds.push(cmd.type)
+      kindsSeen.add(cmd.type)
       executed++
       continue
     }
@@ -337,6 +445,12 @@ function runGate(seed: number, target: number): void {
     expect(snapshot(f), `seed ${seed} redo step ${k} (${kinds[k - 1]})`).toBe(snapshots[k])
   }
   expect(f.editor.canRedo()).toBe(false)
+
+  // 假覆盖守卫: 控件动作必须真的入过栈 —— 否则新增 case 只是空转,
+  // 闸门看起来覆盖了控件, 实际一条都没执行 (夹具/选择逻辑退化的典型症状)。
+  expect(kindsSeen.has('set-control-value'), `seed ${seed}: 控件值变更从未入栈`).toBe(true)
+  expect(kindsSeen.has('remove-control'), `seed ${seed}: 删除控件从未入栈`).toBe(true)
+  expect(kindsSeen.has('table-structure'), `seed ${seed}: 表格结构操作从未入栈`).toBe(true)
 }
 
 describe('撤销/重做等价闸门 (契约 §8.2)', () => {

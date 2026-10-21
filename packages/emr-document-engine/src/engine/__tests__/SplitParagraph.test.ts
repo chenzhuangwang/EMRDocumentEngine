@@ -202,14 +202,23 @@ describe('SplitParagraphCommand', () => {
 
   // ---- invert 逆操作 ----
 
-  it('invert() 返回 MergeParagraphCommand (拆段后可合并回)', () => {
+  it('invert() 按拆段前快照恢复 (节点 id 与文本原样还原)', () => {
     const { doc, pool, paraId } = makeDoc('HelloWorld')
+    // 复制一份: getChildren 返回的是段落 children 数组本体, 撤销会原地 splice
+    const before = [...getChildren(pool, paraId)]
     const cmd = new SplitParagraphCommand('sp9', Date.now(), 'test', [doc.id, paraId], 5)
     cmd.forward(makeCtx(pool, doc))
+    expect(getParaText(pool, paraId)).toBe('Hello')
 
     const inv = cmd.invert()
     expect(inv).not.toBeNull()
-    expect(inv!.type).toBe('merge-paragraph')
+    // 不再用并段近似: 拆点可能在任意位置, 并段在接缝处会重造/合并 run
+    expect(inv!.type).toBe('restore-split-paragraph')
+
+    // 撤销后原段落逐字节回到拆段前 (children 顺序与节点 id 一并还原)
+    inv!.forward(makeCtx(pool, doc))
+    expect(getParaText(pool, paraId)).toBe('HelloWorld')
+    expect(getChildren(pool, paraId)).toEqual(before)
   })
 
   // ---- cursor 位置验证 ----
