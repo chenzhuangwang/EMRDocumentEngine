@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-21T06:24:57Z",
+  "updated_at": "2026-10-21T06:26:33Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
@@ -95,9 +95,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "6a24de8d9a0e1bb8ee85b15def0fe881540b7bccd6e4b61254f43f0cd4872d8a",
-      "size": 142153,
-      "normalized_sha256": "6a24de8d9a0e1bb8ee85b15def0fe881540b7bccd6e4b61254f43f0cd4872d8a"
+      "sha256": "41898e24dce60449f11262a674705e3010b36d2f4896c2bd62e8e95eda7fd453",
+      "size": 142139,
+      "normalized_sha256": "41898e24dce60449f11262a674705e3010b36d2f4896c2bd62e8e95eda7fd453"
     },
     "aoci.meta.txt": {
       "role": "index",
