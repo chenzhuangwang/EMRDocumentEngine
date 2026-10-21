@@ -564,6 +564,25 @@ mutation entry". The correct statement is:
     No mutable internal representation may be directly exposed.
 
 ============================================================
+6.3 CHARACTER OFFSETS AND INLINE NON-TEXT NODES
+============================================================
+
+Character offsets are measured in paragraph-visible units, where an
+inline non-text node (image / smarttext / footnote_ref / field) counts
+as ONE unit. `NodePool.resolveCharOffset` therefore returns such a node
+with localOffset 0 (before it) or 1 (after it) — it is NOT a text node.
+
+Any command that splits text at a caret (insert text, split paragraph,
+paste) MUST branch on the resolved node's type:
+
+    - text node -> slice node.text at localOffset;
+    - non-text  -> split at the node boundary; NEVER read or slice
+                   node.text (images have none — doing so throws).
+
+This is a crash class, not a style preference: pasting right after an
+inline image used to throw TypeError.
+
+============================================================
 7. STATE OWNERSHIP
 ============================================================
 
@@ -1009,6 +1028,12 @@ Conversely, a paragraph MERGE MUST normalize ONLY the seam pair
 (`mergeSeamRuns`), never the whole merged paragraph: a split's inverse
 IS a merge, so a whole-paragraph normalize rewrites run boundaries that
 existed before the split.
+
+A PASTE (`InsertNodesCommand`) follows the same rule: it MUST NOT
+normalize the destination paragraph wholesale. Only the seam between the
+destination's last original run and the first pasted run may merge; the
+right-hand original nodes belong to the pre-paste state and MUST keep
+their run identity, because undo restores them by id.
 
 A SPLIT's inverse MUST NOT be implemented as a merge at all. Restore the
 paragraph from a pre-split paragraph snapshot instead: a merge has to

@@ -35,7 +35,7 @@ import {
   SerializedCommand, PositionalCommand, generateCommandId,
 } from '../ICommand'
 import type { SerializedPara } from '../ClipboardManager'
-import { normalizeParagraph } from './ParagraphUtils'
+import { mergeSeamRuns } from './ParagraphUtils'
 import { MintedOnce } from './MintedNodes'
 import { resolveParagraphRegion, isPoolRegion } from '../../state/CaretScope'
 
@@ -125,22 +125,33 @@ export class InsertNodesCommand extends PositionalCommand {
 
     const resolved = pool.resolveCharOffset(currentPara.id, this.offset)
     if (resolved) {
-      const textNode = pool.nodes.get(resolved.textNodeId) as unknown as
-        { text: string; font?: string; size?: number; bold?: boolean; italic?: boolean } | undefined
-      if (textNode) {
+      const node = pool.nodes.get(resolved.textNodeId) as
+        { type?: string; text?: string; font?: string; size?: number; bold?: boolean; italic?: boolean } | undefined
+      // resolveCharOffset 对内联非文本节点 (图片/控件/脚注引用) 也返回该节点,
+      // 其 localOffset 语义是 0=节点前 / 1=节点后 —— 绝不能当文本切片
+      // (图片节点没有 text, 旧实现直接 .slice 会抛 TypeError)。
+      if (node && node.type === 'text' && typeof node.text === 'string') {
         this._snapshot.truncatedTextNodeId = resolved.textNodeId
-        this._snapshot.originalText = textNode.text
-        rightText = textNode.text.slice(resolved.localOffset)
+        this._snapshot.originalText = node.text
+        rightText = node.text.slice(resolved.localOffset)
         // 仅当有右侧文本时才截断原节点
         if (rightText.length > 0) {
-          rightStyle = extractStyle(textNode as unknown as TextNode)
+          rightStyle = extractStyle(node as unknown as TextNode)
           pool.updateNode(resolved.textNodeId,
-            { text: textNode.text.slice(0, resolved.localOffset) } as Partial<unknown>)
+            { text: node.text.slice(0, resolved.localOffset) } as Partial<unknown>)
         }
         // 拆分点之后的子节点移走
         const splitIdx = currentPara.children.indexOf(resolved.textNodeId)
         if (splitIdx >= 0) {
           rightChildren.push(...pool.truncateChildren(currentPara.id, splitIdx + 1))
+        }
+      } else if (node) {
+        // 内联非文本节点: 只按边界切 (0=前, 1=后), 不碰节点自身
+        // (与 SplitParagraphCommand 同一规则)
+        const splitIdx = currentPara.children.indexOf(resolved.textNodeId)
+        if (splitIdx >= 0) {
+          const keepCount = splitIdx + (resolved.localOffset >= 1 ? 1 : 0)
+          rightChildren.push(...pool.truncateChildren(currentPara.id, keepCount))
         }
       }
     }
@@ -170,9 +181,13 @@ export class InsertNodesCommand extends PositionalCommand {
     // Step 3: 首段并入左半 (currentPara) — 单段落粘贴 = 就地追加, 不产生新段
     // ================================================================
     const firstPara = pool.nodes.get(pastedParaIds[0]) as Paragraph
+    const seamBefore = currentPara.children.length
     pool.insertChildren(currentPara.id, firstPara.children, currentPara.children.length)
     pool.removeNode(firstPara.id)  // 首段包装节点已并入 currentPara, 丢弃
-    normalizeParagraph(currentPara, pool)
+    // 只合并**接缝**一对 (原段落尾 run + 粘贴首 run)。整段 normalize 会顺手并掉
+    // 与粘贴无关的相邻 run, 而撤销只按 id 恢复 children —— 被并掉的节点身份
+    // 与文字还原不出 (§8.2; 清除格式等命令会留下这种相邻 run)。
+    mergeSeamRuns(currentPara, pool, seamBefore)
 
     // ================================================================
     // Step 4: 其余段落作为新段落插入 (currentPara 之后)
@@ -222,7 +237,9 @@ export class InsertNodesCommand extends PositionalCommand {
       pool.insertChild(cursorPara.id, rightTextNodeId, cursorPara.children.length)
     }
     pool.insertChildren(cursorPara.id, rightChildren, cursorPara.children.length)
-    normalizeParagraph(cursorPara, pool)
+    // 这里**不** normalize: 右侧原有节点必须保持为独立 run —— 撤销会按 id 把它们
+    // 移回原段落, 若与粘贴内容合并, 节点身份与文字都无法还原 (§8.2)。
+    // (右侧 run 在粘贴前就是规范形态, 不需要再合并。)
 
     return {
       cursor: { paragraphPath: [...this.path.slice(0, -1), cursorPara.id], offset: cursorOffset },
