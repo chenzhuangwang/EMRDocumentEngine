@@ -991,12 +991,32 @@ old value — deleting the fields the command added — because one merged
 `changes` object can not represent per-node old styles (and spreading a
 `nodeId → style` map into a node writes a bogus field named after the id).
 
+Two further lossy cases are normalized side effects, and take the same
+cure:
+
+    - an IN-PLACE insert (no split) whose paragraph ALREADY contains
+      adjacent same-style runs — clear-format and style restoration can
+      leave such runs behind, because they never normalize. Typing then
+      runs normalizeParagraph and silently merges those pre-existing
+      runs. The command MUST snapshot the paragraph in that case
+      (`hasMergeableRuns`) so its lightweight "delete the typed text"
+      inverse is not taken;
+    - an IN-PLACE insert into an EMPTY run: the inverse delete empties
+      the run, the node is removed, and the empty-paragraph guard mints
+      a new node id with default style. Snapshot in that case too.
+
+Conversely, a paragraph MERGE MUST normalize ONLY the seam pair
+(`mergeSeamRuns`), never the whole merged paragraph: a split's inverse
+IS a merge, so a whole-paragraph normalize rewrites run boundaries that
+existed before the split.
+
 Gate: `UndoRedoEquivalence.test.ts` runs random mixed command sequences
 through the real Editor and requires, step by step, that undo returns to
 each historical snapshot and redo returns to each forward snapshot.
-Compared data is the canonicalized serialization: values, node ids and
-array order; object key insertion order is serialization noise, not
-identity.
+Cell paragraphs participate in the random selection alongside body
+paragraphs. Compared data is the canonicalized serialization: values,
+node ids and array order; object key insertion order is serialization
+noise, not identity.
 
 8.2.1 Command merging
 
@@ -1014,12 +1034,14 @@ merged command is an exact substitute for the sequence:
   a lost character or a non-identical redo is not.
 
 Implemented: `ParagraphStyleCommand`; `InsertTextCommand` (in-place
-append only, contiguous offset, same style and revision kind);
-`DeleteRangeCommand` (untracked, no snapshot, left-adjacent only —
-rightward deletes reuse the same range and MUST NOT merge). A delete that
-crosses runs or consumes a whole run now carries a paragraph snapshot
-(§8.2 undo exactness) and therefore never merges; only same-run partial
-deletions merge.
+append only, contiguous offset, same style and revision kind — when the
+first command had to snapshot (§8.2: pre-existing mergeable runs or an
+empty target run), the merged unit carries that FIRST snapshot);
+`DeleteRangeCommand` (untracked, left-adjacent only — rightward deletes
+reuse the same range and MUST NOT merge). A delete that crosses runs,
+consumes a whole run or meets pre-existing mergeable runs now carries a
+paragraph snapshot (§8.2 undo exactness); only same-run partial deletions
+without such runs merge.
 
 ------------------------------------------------------------
 8.3 Command replay identity — forward is called more than once

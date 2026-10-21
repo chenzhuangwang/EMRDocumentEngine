@@ -25,7 +25,7 @@ import { generateCommandId } from '../ICommand'
 import type { ICommand } from '../ICommand'
 import { CommandContext, StatePatch, SerializedCommand, PositionalCommand } from '../ICommand'
 import { InsertTextCommand } from './InsertTextCommand'
-import { normalizeParagraph } from './ParagraphUtils'
+import { normalizeParagraph, hasMergeableRuns } from './ParagraphUtils'
 import { MintedOnce } from './MintedNodes'
 import { createTextNode, extractStyle } from '../../document/factory/ElementFormatter'
 import { RevisionStamp, NO_REVISION } from '../../revision/Revision'
@@ -152,7 +152,10 @@ export class DeleteRangeCommand extends PositionalCommand {
       this.rangeRemovesWholeNode(pool, para, this.startOffset, this.endOffset)
     if (tracked || crossesNodes || removesWholeNode
       || this.rangeTouchesNonText(pool, para, this.startOffset, this.endOffset)
-      || emptiesParagraph) {
+      || emptiesParagraph
+      // e) 段落里已有相邻同样式 run —— Step 3 的 normalize 会把它们并掉。
+      //    删除本身的文本反转还原不出被并掉的节点身份 (与 InsertText 同一判定).
+      || hasMergeableRuns(para, pool)) {
       this._paragraphSnapshot = captureParagraphSnapshot(pool, para)
     }
     const mark = this.stamp.value

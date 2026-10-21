@@ -19,7 +19,7 @@ import {
   SerializedCommand, PositionalCommand, generateCommandId,
 } from '../ICommand'
 import { DeleteRangeCommand } from './DeleteRangeCommand'
-import { normalizeParagraph } from './ParagraphUtils'
+import { normalizeParagraph, hasMergeableRuns } from './ParagraphUtils'
 import { MintedOnce } from './MintedNodes'
 import {
   captureParagraphSnapshot, RestoreParagraphsCommand,
@@ -114,6 +114,8 @@ export class InsertTextCommand extends PositionalCommand {
       this.offset, this.text + o.text, this.style,
     )
     merged.appendedInPlace = true
+    // 合并单元必须回到**第一条执行前**的状态: 沿用第一条的快照 (若有)
+    merged._paragraphSnapshot = this._paragraphSnapshot
     // 复用第一条的盖戳台账: 合并后重放仍拿到首次解析出的同一个标记 (§8.3/§12.13)
     merged.stamp = this.stamp
     return merged
@@ -178,7 +180,16 @@ export class InsertTextCommand extends PositionalCommand {
     // Step 3: 目标为 text 节点 → 在文本层面插入/拆分
     const textNode = targetNode as TextNode
     if (sameStyle(textNode, style) && sameRevisionKindForInsert(textNode.revision, newMark)) {
-      // 样式一致 → 在 localOffset 处直接插入字符串
+      // 样式一致 → 在 localOffset 处直接插入字符串.
+      //
+      // 但轻量反转 (删掉刚插入的字) 在两种情况下还原不出原样, 必须先拍整段快照:
+      //   - 目标 run 本是**空节点**: 反转把字删光后节点被摘除、Step 4 会铸一个
+      //     新 id 的空节点, 原节点的 id 与样式都丢了;
+      //   - 段落里**早已存在**相邻同样式 run (清除格式/样式还原会留下): normalize
+      //     会把它们并掉, 节点身份同样改变。
+      if (textNode.text === '' || hasMergeableRuns(para, pool)) {
+        this._paragraphSnapshot = captureParagraphSnapshot(pool, para)
+      }
       const newText = textNode.text.slice(0, localOffset) + this.text + textNode.text.slice(localOffset)
       pool.updateNode(textNode.id, { text: newText } as Partial<TextNode>)
       // 只有这条路径可合并 (见 appendedInPlace 注释)

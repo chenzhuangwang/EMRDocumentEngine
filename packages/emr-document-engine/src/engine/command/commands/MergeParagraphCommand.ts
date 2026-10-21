@@ -14,7 +14,7 @@
 import type { Paragraph, BaseNode } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
 import { ICommand, CommandContext, StatePatch, SerializedCommand, PositionalCommand, generateCommandId } from '../ICommand'
-import { normalizeParagraph } from './ParagraphUtils'
+import { mergeSeamRuns } from './ParagraphUtils'
 import { resolveParagraphRegion, isPoolRegion } from '../../state/CaretScope'
 
 // ---- 子树快照工具 (JSON 深拷贝, 与 takeSnapshot/restoreSnapshot 一致) ----
@@ -90,6 +90,8 @@ export class MergeParagraphCommand extends PositionalCommand {
     this.deletedParaSnapshot = JSON.stringify(currentPara)
 
     // 3. 当前段全部 children 追加到上一段
+    // 接缝下标 = 追加前上一段的 children 数 (追加后第一段的插入位置)
+    const seamIndex = prevPara.children.length
     for (const childId of currentPara.children) {
       pool.insertChild(prevPara.id, childId, prevPara.children.length)
     }
@@ -101,8 +103,10 @@ export class MergeParagraphCommand extends PositionalCommand {
       pool.updateNode(prevPara.id, { list: currentPara.list } as Partial<Paragraph>)
     }
 
-    // 4. 合并上一段
-    normalizeParagraph(prevPara, pool)
+    // 4. 只合并接缝处的一对 run。
+    //    整段 normalize 会顺手并掉与并段无关的相邻 run —— 而 split 的逆操作
+    //    正是本命令, 那会改写拆段前就存在的 run 边界, 撤销不再精确 (§8.2)。
+    mergeSeamRuns(prevPara, pool, seamIndex)
 
     // 5. 从区域兄弟数组中移除当前段 (叶子节点, 仅删除段落包装)
     if (isPoolRegion(region)) {

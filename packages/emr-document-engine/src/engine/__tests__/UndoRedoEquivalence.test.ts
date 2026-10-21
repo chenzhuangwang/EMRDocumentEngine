@@ -21,6 +21,14 @@
 //
 // 合并窗口: 命令时间戳每题 +1000ms, 避开 500ms 自动合并窗口 —— 于是 undo 栈
 //   与成功命令一一对应, 快照可以直接按下标对齐. 合并本身由 UndoMerge.test 守.
+//
+// 覆盖范围 (2026-10-21 扩充): 正文段落与**表格 cell 内的段落**都参与随机选取;
+// 动作含输入/删除/格式/段落样式/拆段/并段/清格式/列表开关/表格追加行.
+// cell 编辑此前从未进入随机组合 —— 扩充后立刻抓到三个真实撤销缺陷:
+//   1. 原地输入会 normalize 并掉**早已存在**的相邻同样式 run, 轻量反转还原不出;
+//   2. 往**空 run** 里输入, 反转删字后节点被摘除并铸新 id, 原 id/样式丢失;
+//   3. 拆段的逆操作 (并段) 整段 normalize, 并掉拆段前就有的 run 边界.
+// 三处均改为"会破坏 run 身份的命令先拍整段快照"或"并段只合并接缝一对"。
 // ================================================================
 
 import { describe, it, expect, afterEach } from 'vitest'
@@ -33,7 +41,7 @@ import { serializeDocument } from '../document/io/DocumentSerializer'
 import { generateCommandId, type ICommand } from '../command/ICommand'
 import { InsertTextCommand } from '../command/commands/InsertTextCommand'
 import { DeleteRangeCommand } from '../command/commands/DeleteRangeCommand'
-import { FormatTextCommand } from '../command/commands/FormatTextCommand'
+import { FormatTextCommand, ClearFormatCommand } from '../command/commands/FormatTextCommand'
 import { ParagraphStyleCommand } from '../command/commands/ParagraphStyleCommand'
 import { SplitParagraphCommand } from '../command/commands/SplitParagraphCommand'
 import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand'
@@ -134,6 +142,36 @@ function bodyParagraphs(f: Fixture): Paragraph[] {
     .filter((n): n is Paragraph => (n as { type?: string } | undefined)?.type === 'paragraph')
 }
 
+/**
+ * 可编辑段落 = 正文段落 + 表格 cell 内的段落。
+ *
+ * cell 段落与正文段落走同一批命令类 (路径都是 [docId, paraId]), 但容器不同:
+ * 删空、拆段、格式还原在 cell 里更容易与 normalize/merge 撞车, 而这里一旦
+ * 出错是静默的。原来的闸门只选正文段落, cell 编辑从未被随机组合覆盖过。
+ */
+function editableParagraphs(f: Fixture): Paragraph[] {
+  const pool = f.editor.getPool()
+  const out: Paragraph[] = []
+  const pushPara = (node: unknown): void => {
+    if ((node as { type?: string } | undefined)?.type === 'paragraph') out.push(node as Paragraph)
+  }
+  for (const id of f.editor.getDocument().body.children) {
+    const node = pool.nodes.get(id) as { type?: string; children?: readonly string[] } | undefined
+    if (node?.type === 'table') {
+      for (const rowId of node.children ?? []) {
+        const row = pool.nodes.get(rowId) as { children?: readonly string[] } | undefined
+        for (const cellId of row?.children ?? []) {
+          const cell = pool.nodes.get(cellId) as { children?: readonly string[] } | undefined
+          for (const paraId of cell?.children ?? []) pushPara(pool.nodes.get(paraId))
+        }
+      }
+      continue
+    }
+    pushPara(node)
+  }
+  return out
+}
+
 function textLengthOf(f: Fixture, para: Paragraph): number {
   const pool = f.editor.getPool()
   let n = 0
@@ -165,10 +203,10 @@ const ALIGNMENTS = ['left', 'center', 'right', 'justify'] as const
 function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): ICommand | null {
   const doc = f.editor.getDocument()
   const pool = f.editor.getPool()
-  const paras = bodyParagraphs(f)
+  const paras = editableParagraphs(f)
   if (paras.length === 0) return null
 
-  switch (rng.int(7)) {
+  switch (rng.int(9)) {
     case 0: {
       const p = paras[rng.int(paras.length)]
       const len = textLengthOf(f, p)
@@ -213,6 +251,7 @@ function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): ICommand
       return new SplitParagraphCommand(generateCommandId(), nextTs(), 'user', [doc.id, p.id], offset)
     }
     case 5: {
+      // 合并只取正文同容器相邻段落 (cell 内的合并语义另有专门用例)
       const body = doc.body.children
       const mergeable: number[] = []
       for (let i = 1; i < body.length; i++) {
@@ -223,6 +262,24 @@ function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): ICommand
       if (mergeable.length === 0) return null
       const i = mergeable[rng.int(mergeable.length)]
       return new MergeParagraphCommand(generateCommandId(), nextTs(), 'user', [doc.id, body[i]])
+    }
+    case 6: {
+      // 清除格式: 与 FormatTextCommand 的 invert 走同一条样式还原路径
+      const textIds = paras.flatMap((p) => p.children.filter(
+        (id) => (pool.nodes.get(id) as { type?: string } | undefined)?.type === 'text',
+      ))
+      if (textIds.length === 0) return null
+      return new ClearFormatCommand(
+        generateCommandId(), nextTs(), 'user', [textIds[rng.int(textIds.length)]],
+      )
+    }
+    case 7: {
+      // 列表开关: 编号是跨段落派生状态, 撤销必须连编号一起还原
+      const p = paras[rng.int(paras.length)]
+      const list = rng.int(2) === 0
+        ? { type: 'bullet' as const, level: 1 }
+        : { type: 'ordered' as const, level: 1 }
+      return new ParagraphStyleCommand(generateCommandId(), nextTs(), 'user', [p.id], { list })
     }
     default:
       return new AppendTableRowCommand(generateCommandId(), nextTs(), 'user', f.tableId)
