@@ -4804,8 +4804,10 @@ may keep a private copy of it.
     (all variants — default,
      first, even)
 
-    paragraph.children            inline nodes (see the deferred note
-                                  at the end of this section)
+    paragraph.children            text · smarttext · image · field ·
+                                  bookmark · cross_reference ·
+                                  footnote_ref · comment_marker
+                                  (PARAGRAPH_INLINE_CHILD_TYPES)
 
 Consequences worth stating explicitly, because each closes a real gap:
 
@@ -4832,7 +4834,7 @@ Consequences worth stating explicitly, because each closes a real gap:
 A paragraph inside a table cell consumes EXACTLY the same inline node set
 as a body paragraph: `text`, `smarttext`, `image`, `field`, `bookmark`,
 `cross_reference`, `footnote_ref`, `comment_marker` (the census lives in
-`DEFERRED_INLINE_CHILD_TYPES`; bookmark and comment_marker occupy no
+`PARAGRAPH_INLINE_CHILD_TYPES`; bookmark and comment_marker occupy no
 layout width and may legitimately produce no item). The cell layout path
 MUST NOT silently skip any of these. An inline type outside the set is a
 §31.13 violation and must throw — never a phantom empty line (§31.5).
@@ -4906,13 +4908,6 @@ DEFERRED, RECORDED (not silently omitted):
     NOT because it is already guarded — do not read the table as "the set
     of things already enforced" until this line is removed.
 
-  - `paragraph.children` inline ENFORCEMENT is NOT yet wired at the three
-    boundaries. The legal inline set is now the one declared in
-    §31.13.1 (`DEFERRED_INLINE_CHILD_TYPES`) and layout consumes it in
-    full, but no boundary rejects an unknown inline type yet. Enforcement
-    needs its own round; keeping the comment honest avoids the failure
-    mode where "declared" is read as "already guarded".
-
   - The nested-table support landed with this section is DELIBERATELY
     PARTIAL, and each partial point is recorded rather than implied:
 
@@ -4926,6 +4921,26 @@ DEFERRED, RECORDED (not silently omitted):
       - `AppendTableRowCommand` still does not clone a nested table
         (§12.9). The limitation is now worded "legal, but not cloned",
         not "unsupported".
+
+PARAGRAPH INLINE ENFORCEMENT (2026-10-21).
+
+  `paragraph.children` is now part of `CHILD_TYPES_OF`, backed by
+  `PARAGRAPH_INLINE_CHILD_TYPES` (the former `DEFERRED_INLINE_CHILD_TYPES`,
+  promoted from "recorded" to "enforced"). Consequences at the three
+  boundaries:
+
+    - NodePool's controlled API rejects inserting or moving any other
+      node type into a paragraph;
+    - DocumentLoader.validateStructure now rejects a persisted paragraph
+      whose child type is outside the set (it already walks paragraph
+      children; the contract row is what changed);
+    - TemplateImporter rejects an unknown INLINE external type instead of
+      silently returning null. Previously such nodes vanished from the
+      imported paragraph — the §31.5 failure this section opens with.
+
+  No node type, field or serialized shape changed, so the document
+  format version does NOT bump. Valid documents denote the same models;
+  only already-invalid inline children are now rejected.
 
 ============================================================
 31.14 SECTION AUTHORING — creating, locating, selecting,
