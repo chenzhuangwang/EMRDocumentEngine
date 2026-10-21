@@ -658,6 +658,11 @@ export class Draw {
     const scale = this.coordSystem.transform.scale
     const pageHeight = this.pages[0]?.height || 1123
     const pageWidth = this.pages[0]?.width || 794
+    // 页面几何以每页 SLIF 为准, 页边距取文档 pageSetup —— 不能再写死
+    // `pageWidth - 180` (marginLeft/Right 各 90), 否则改过页边距后
+    // separator 等按版心宽绘制的元素会画出纸外/短一截 (契约 §16)
+    const marginLeft = this.document?.pageSetup?.marginLeft ?? 90
+    const marginRight = this.document?.pageSetup?.marginRight ?? 90
     // 页面水平居中: 缩放后页面可视宽度 = pageWidth * scale
     const visiblePageW = pageWidth * scale
     const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
@@ -704,19 +709,22 @@ export class Draw {
       ctx.clearRect(0, 0, viewportW / scale, viewportH / scale)
       // offsetX 已是 CSS 像素, 在文档空间需除以 scale
       ctx.translate(offsetX / scale, 0)
-      const contentWidth = pageWidth - 180 // marginLeft(90) + marginRight(90)
       for (let i = visible.start; i <= visible.end; i++) {
         const page = this.pages[i]
         if (!page) continue
         // 每页 canvas Y = 该页累加顶部 (含间隙) - 当前 scrollY
         const pageY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - (visibleStartDocY + scrollOffset)
+        // 页尺寸/版心按**本页**实测 (契约 §16.1: 页可以不等高)
+        const pw = page.width || pageWidth
+        const ph = page.height || pageHeight
+        const cw = Math.max(0, pw - marginLeft - marginRight)
         // 逐页容错: 单页抛错只损失这一页。rect **必须**给 ——
         // 不给的话 safeRenderPage 的占位图会刷满整张 canvas (那是离屏单页渲染的语义)
         safeRenderPage(
-          () => this.renderPageContent(ctx, page, i, pageY, pageWidth, pageHeight, contentWidth),
+          () => this.renderPageContent(ctx, page, i, pageY, pw, ph, cw),
           i,
           ctx,
-          { x: 0, y: pageY, width: pageWidth, height: pageHeight },
+          { x: 0, y: pageY, width: pw, height: ph },
         )
       }
     }
@@ -1972,26 +1980,29 @@ export class Draw {
     const pageIndex = page.pageIndex
     const headerH = page.headerHeight ?? 42
     const footerTop = page.height - (page.footerHeight ?? 42)
+    // 打印与屏幕同一几何口径: 本页实测宽 + 文档右边距 (契约 §16)
+    const pw = page.width || pageWidth
+    const marginRight = this.document?.pageSetup?.marginRight ?? 90
 
     // --- 页眉 + 分隔线 ---
     if (page.headerItems && page.headerItems.length > 0) {
       this.renderParticleItems(ctx, page.headerItems, 0, pageIndex, false)
     }
-    this.drawHfSeparator(ctx, pageWidth, headerH)
+    this.drawHfSeparator(ctx, pw, headerH)
 
     // --- 批注高亮: 必须在正文之前画 (同一 ctx 上文字会盖住它), 契约 §12.2 ---
     this.drawCommentHighlightsForPage(ctx, page, 0, this.theme?.tokenSet ?? null)
 
-    // --- 正文 (含表格/脚注; separator 可用宽与旧打印行为保持一致) ---
+    // --- 正文 (含表格/脚注; separator 可用宽按本页版心) ---
     for (const item of page.items) {
       safeRenderParticle(
-        () => this.renderBodyItem(ctx, item, 0, pageIndex, pageWidth - item.x - 90, this.theme?.tokenSet ?? null, false),
+        () => this.renderBodyItem(ctx, item, 0, pageIndex, pw - item.x - marginRight, this.theme?.tokenSet ?? null, false),
         item.nodeId,
       )
     }
 
     // --- 页脚分隔线 + 页脚 ---
-    this.drawHfSeparator(ctx, pageWidth, footerTop)
+    this.drawHfSeparator(ctx, pw, footerTop)
     if (page.footerItems && page.footerItems.length > 0) {
       this.renderParticleItems(ctx, page.footerItems, footerTop, pageIndex, false)
     }

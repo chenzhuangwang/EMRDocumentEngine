@@ -39,7 +39,7 @@ const NARROW: PageSetup = {
   orientation: 'portrait',
 }
 
-function makeDoc(pageSetup?: PageSetup) {
+function makeDoc(pageSetup?: PageSetup, withSeparator = false) {
   const doc = createDocument('页面几何', undefined, pageSetup)
   const all = new Map<string, BaseNode>()
   all.set(doc.id, doc as unknown as BaseNode)
@@ -51,6 +51,11 @@ function makeDoc(pageSetup?: PageSetup) {
     all.set(p.id, p as unknown as BaseNode)
     doc.body.children.push(p.id)
     textIds.push(t.id)
+  }
+  if (withSeparator) {
+    const sep = { type: 'separator', id: 'sep-geometry', lineStyle: 'solid' } as unknown as BaseNode
+    all.set(sep.id, sep)
+    doc.body.children.push(sep.id)
   }
   // Editor 的加载器按 artifact 形态读取 doc.nodes (与序列化文件同构)
   ;(doc as DocumentTree & { nodes?: Record<string, BaseNode> }).nodes =
@@ -69,6 +74,37 @@ function makeEditor(doc: DocumentTree): Editor {
   return editor
 }
 
+// ---- 线段记录器: 捕获 moveTo/lineTo → stroke 的线段 (分隔线几何) ----
+
+interface LineOp { x1: number; y1: number; x2: number; y2: number }
+const lineOps: LineOp[] = []
+
+;(function installLineRecorder() {
+  const proto = HTMLCanvasElement.prototype
+  const orig = proto.getContext
+  proto.getContext = function (this: HTMLCanvasElement, id: string, opts?: unknown) {
+    const ctx = orig.call(this, id, opts) as CanvasRenderingContext2D | null
+    if (id === '2d' && ctx && !(ctx as unknown as { __lineRec?: boolean }).__lineRec) {
+      ;(ctx as unknown as { __lineRec?: boolean }).__lineRec = true
+      let mx = NaN, my = NaN, lx = NaN, ly = NaN
+      const moveTo = ctx.moveTo.bind(ctx)
+      const lineTo = ctx.lineTo.bind(ctx)
+      const stroke = ctx.stroke.bind(ctx)
+      ;(ctx as unknown as { moveTo: (x: number, y: number) => void }).moveTo = (x, y) => {
+        mx = x; my = y; lx = NaN; ly = NaN; moveTo(x, y)
+      }
+      ;(ctx as unknown as { lineTo: (x: number, y: number) => void }).lineTo = (x, y) => {
+        lx = x; ly = y; lineTo(x, y)
+      }
+      ;(ctx as unknown as { stroke: () => void }).stroke = () => {
+        if (!Number.isNaN(mx) && !Number.isNaN(lx)) lineOps.push({ x1: mx, y1: my, x2: lx, y2: ly })
+        stroke()
+      }
+    }
+    return ctx
+  } as typeof proto.getContext
+})()
+
 describe('页面几何接线 (契约 §16)', () => {
   it('换文档: 文档自带的 pageSetup 进入布局与 SLIF 页尺寸', () => {
     const { doc } = makeDoc(NARROW)
@@ -84,6 +120,18 @@ describe('页面几何接线 (契约 §16)', () => {
     const editor = makeEditor(doc)
     const item = editor.getDraw().getPages()[0].items.find((it) => it.nodeType === 'text')!
     expect(item.x).toBe(NARROW.marginLeft)
+  })
+
+  it('分隔线按文档版心宽绘制 (不再写死 90+90)', () => {
+    const { doc } = makeDoc(NARROW, true)
+    lineOps.length = 0
+    makeEditor(doc)
+    const expectedEnd = NARROW.width - NARROW.marginRight
+    const sep = lineOps.find(
+      (l) => Math.abs(l.y1 - l.y2) < 0.01 && Math.abs(l.x1 - NARROW.marginLeft) < 0.5,
+    )
+    expect(sep, '没有找到正文分隔线').toBeTruthy()
+    expect(sep!.x2).toBeCloseTo(expectedEnd, 0)
   })
 
   it('applyPageSetup 改变版面; 撤销后精确还原', () => {
