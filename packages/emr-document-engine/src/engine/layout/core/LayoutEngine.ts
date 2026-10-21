@@ -310,8 +310,9 @@ export class LayoutEngine {
   // 增量分页 (M2b)
   //
   // 只对**可证明安全**的正文启用: 段落 (文本/图片/脚注引用/控件/域/列表/常量
-  // 交叉引用) 与表格; 页眉页脚按几何签名放行 (M2g)。仍排除: 分节 (页面设置会变)
-  // 与带 {page}/{number} 的交叉引用 (显示文本依赖本趟页映射)。域可以: 量宽只依赖 representativeFieldText 的
+  // 交叉引用) 与表格; 页眉页脚按几何签名放行 (M2g)。仍排除: 分节 (断页/奇偶补
+  // 空白页会改变页序列) 与带 {page}/{number} 的交叉引用 (显示文本依赖本趟页映射)。
+  // 域可以: 量宽只依赖 representativeFieldText 的
   // 样本串 (页数位数/locale/标题已进段落键), 显示值在节点版本上。脚注引用可以:
   // 页底预留只取决于"文档有没有脚注" (增删引用是结构编辑, 会让全部段落键失效),
   // 而 Step 4 只处理新页 + 按复用页播种编号。表格 cell 与正文同一张白名单
@@ -722,10 +723,12 @@ export class LayoutEngine {
       const blockType = (block as unknown as Record<string, unknown>).type as string
 
       if (blockType === 'section_break') {
-        // 分节符: 作为特殊标记行
+        // 分节符: 特殊标记行, 由 PageBreaker 按 breakType 决定是否断页
+        // (契约 §31.10 PHASE 1)。缺省 next_page — 与历史行为一致。
         allLines.push({
           elements: [{ id: block.id, type: 'section_break' }],
           width: contentWidth, height: 0, maxAscent: 0, maxDescent: 0,
+          sectionBreakType: (block as { breakType?: ILine['sectionBreakType'] }).breakType,
         })
         continue
       }
