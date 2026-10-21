@@ -24,7 +24,7 @@
 //
 // 覆盖范围 (2026-10-21 扩充): 正文段落与**表格 cell 内的段落**都参与随机选取;
 // 动作含输入/删除/格式/段落样式/拆段/并段/清格式/列表开关/表格追加行/
-// 控件值变更/控件删除/表格结构(插删行列). 控件动作先确定性地各做一次, 并有
+// 控件值变更/控件删除/表格结构(插删行列·合并/拆分格)/插入图片/插入脚注. 控件动作先确定性地各做一次, 并有
 // 「动作真的入过栈」的假覆盖守卫 —— 否则表格结构操作可能先把夹具里的控件
 // 删光, 控件 case 全部空转, 闸门看起来覆盖了实际没跑.
 // cell/控件编辑此前从未进入随机组合 —— 扩充后抓到四个真实撤销缺陷:
@@ -53,13 +53,15 @@ import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand
 import { AppendTableRowCommand } from '../command/commands/AppendTableRowCommand'
 import { SetControlValueCommand } from '../command/commands/SetControlValueCommand'
 import { RemoveControlCommand } from '../command/commands/RemoveControlCommand'
-import { TableStructureCommand } from '../command/commands/StructuralCommands'
+import { TableStructureCommand, InsertFootnoteCommand } from '../command/commands/StructuralCommands'
+import { InsertImageCommand } from '../command/commands/InsertImageCommand'
 import {
   buildCellGrid, insertRow, deleteRow, insertColumn, deleteColumn,
+  mergeAdjacentCells, splitCell,
 } from '../document/table/TableOps'
 import { createSmartTextNode } from '../document/factory/ElementFormatter'
 import type {
-  BaseNode, ControlValue, DocumentTree, ElementMeta, Paragraph, TextNode,
+  BaseNode, ControlValue, DocumentTree, ElementMeta, FootnoteContent, Paragraph, TextNode,
 } from '../document/core/DocumentModel'
 
 afterEach(() => { document.body.innerHTML = '' })
@@ -237,6 +239,8 @@ function makeRng(seed: number): Rng {
 
 const CHARS = ['甲', '乙', '丙', '丁', '随访']
 const ALIGNMENTS = ['left', 'center', 'right', 'justify'] as const
+/** 脚注铸造用的唯一键 (同一次测试进程内不重复) */
+let footnoteSeq = 0
 
 function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): ICommand | null {
   const doc = f.editor.getDocument()
@@ -244,7 +248,7 @@ function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): ICommand
   const paras = editableParagraphs(f)
   if (paras.length === 0) return null
 
-  switch (rng.int(12)) {
+  switch (rng.int(14)) {
     case 0: {
       const p = paras[rng.int(paras.length)]
       const len = textLengthOf(f, p)
@@ -345,7 +349,7 @@ function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): ICommand
       const pool = f.editor.getPool()
       const grid = buildCellGrid(pool, f.tableId)
       const tableId = f.tableId
-      const kind = rng.int(4)
+      const kind = rng.int(6)
       if (kind === 0 && grid.numRows < 4) {
         const at = rng.int(grid.numRows)
         return new TableStructureCommand(generateCommandId(), nextTs(), 'user', tableId,
@@ -366,7 +370,57 @@ function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): ICommand
         return new TableStructureCommand(generateCommandId(), nextTs(), 'user', tableId,
           (p) => { deleteColumn(p, tableId, at); return true })
       }
+      if (kind === 4 && grid.numCols > 1) {
+        // 合并相邻格: 直接改 colspan / children 并摘除右侧格 (无版本冒泡)
+        const r = rng.int(grid.numRows)
+        const c = rng.int(grid.numCols - 1)
+        return new TableStructureCommand(generateCommandId(), nextTs(), 'user', tableId,
+          (p) => mergeAdjacentCells(p, tableId, r, c))
+      }
+      if (kind === 5) {
+        // 拆分已合并的格: 非合并格返回 false → 命令不入栈 (闸门按未入栈处理)
+        const r = rng.int(grid.numRows)
+        const c = rng.int(grid.numCols)
+        return new TableStructureCommand(generateCommandId(), nextTs(), 'user', tableId,
+          (p) => splitCell(p, tableId, r, c))
+      }
       return null
+    }
+    case 11: {
+      // 插入行内图片: 会在段落中间切开文本并铸造图片/后半段节点
+      const p = paras[rng.int(paras.length)]
+      const len = textLengthOf(f, p)
+      const offset = rng.int(len + 1)
+      const w = 40 + rng.int(80)
+      const h = 30 + rng.int(60)
+      return new InsertImageCommand(
+        generateCommandId(), nextTs(), 'user', [doc.id, p.id], offset,
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        w, h,
+      )
+    }
+    case 12: {
+      // 插入脚注: 内容节点进文档级 doc.footnotes, 引用节点进段落 —— 复合命令,
+      // 撤销要同时摘掉两处并按 id 还原 (契约 §8.3)
+      const p = paras[rng.int(paras.length)]
+      const len = textLengthOf(f, p)
+      const offset = rng.int(len + 1)
+      const key = `fn${footnoteSeq++}`
+      return new InsertFootnoteCommand(generateCommandId(), nextTs(), 'user', [doc.id, p.id], offset,
+        (pool) => {
+          const t = createTextNode(`脚注${key}`)
+          const para = createParagraph([t.id])
+          const content = {
+            type: 'footnote_content', id: `fn-content-${key}`, refId: '', children: [para.id],
+          } as unknown as FootnoteContent
+          pool.addNode(t as unknown as BaseNode)
+          pool.addNode(para as unknown as BaseNode)
+          pool.addNode(content as unknown as BaseNode)
+          return content
+        },
+        (contentId) => ({
+          type: 'footnote_ref', id: `fn-ref-${key}`, refId: contentId, footnoteId: contentId,
+        } as unknown as BaseNode))
     }
     default:
       return new AppendTableRowCommand(generateCommandId(), nextTs(), 'user', f.tableId)
@@ -451,6 +505,8 @@ function runGate(seed: number, target: number): void {
   expect(kindsSeen.has('set-control-value'), `seed ${seed}: 控件值变更从未入栈`).toBe(true)
   expect(kindsSeen.has('remove-control'), `seed ${seed}: 删除控件从未入栈`).toBe(true)
   expect(kindsSeen.has('table-structure'), `seed ${seed}: 表格结构操作从未入栈`).toBe(true)
+  expect(kindsSeen.has('insert-image'), `seed ${seed}: 插入图片从未入栈`).toBe(true)
+  expect(kindsSeen.has('insert-footnote'), `seed ${seed}: 插入脚注从未入栈`).toBe(true)
 }
 
 describe('撤销/重做等价闸门 (契约 §8.2)', () => {
