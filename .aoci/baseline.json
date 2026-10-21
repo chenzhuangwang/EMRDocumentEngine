@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-21T03:36:09Z",
+  "updated_at": "2026-10-21T03:43:11Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
@@ -2254,9 +2254,9 @@
     },
     "knowledge/编辑器功能清单.md": {
       "role": "index",
-      "sha256": "0fd465a5b8226402ebfced5fe11a81bb78295e30f942eef3e2ce83fd47ab02fd",
-      "size": 88086,
-      "normalized_sha256": "9f61e77497e4f3ca83186df511a56ac27286f02898b93ca095fa3ab8d4ab4441"
+      "sha256": "d9eec5278c8646d2a3944920ed78237d7b275009cea4cfb7f2f330ccba5c0384",
+      "size": 88150,
+      "normalized_sha256": "22b788f37c9709ccef5208238d6b2caf604a595ee4bcc99cb32307b1abfc2fff"
     },
     "nginx.conf": {
       "role": "index",
@@ -3184,9 +3184,9 @@
     },
     "packages/emr-document-engine/src/engine/__tests__/UndoRedoEquivalence.test.ts": {
       "role": "observe",
-      "sha256": "bf2fbd513e2db41f88e3856ec1c5baf0dda4a64c85db105e1f5f69531c6ba22b",
-      "size": 25334,
-      "normalized_sha256": "bf2fbd513e2db41f88e3856ec1c5baf0dda4a64c85db105e1f5f69531c6ba22b"
+      "sha256": "57032458e315a44f9e13b5655879177a34ae273573cd33a889f625821d2cf596",
+      "size": 27222,
+      "normalized_sha256": "57032458e315a44f9e13b5655879177a34ae273573cd33a889f625821d2cf596"
     },
     "packages/emr-document-engine/src/engine/__tests__/UniformTextStyle.test.ts": {
       "role": "observe",
