@@ -4683,6 +4683,35 @@ QC's paragraph count can no longer contradict each other.
     SectionBreak   a PAGE-SETUP BOUNDARY marker. It produces a marker
                    line and never carries clinical meaning.
 
+SectionBreak.breakType semantics (PHASE 1, 2026-10-21):
+
+    next_page      the next content line starts a new page.
+    continuous     NO forced page break; content continues on the
+                   current page. The marker still occupies one input
+                   line in the line stream but produces no visible item.
+    even_page      the next content page must be numbered EVEN (1-based
+                   physical page number). A blank page — with the same
+                   header/footer bands — is inserted when the page after
+                   the break would otherwise be odd.
+    odd_page       the mirror case: next content page must be ODD; a
+                   blank page is inserted when it would be even.
+
+    Parity is computed from the ABSOLUTE physical page index (including
+    pages reserved by earlier breaks), never from a per-section page
+    counter.
+
+    PHASE 1 does NOT consume `nextPageSetup`, `nextHeader`, `nextFooter`,
+    `nextPageNumberStart` or `nextFirstPageDifferent`. Those fields stay
+    recorded and serialized but have no layout effect yet; changing page
+    geometry or header/footer content per section, and restarting page
+    numbers, is a separate architectural phase. Implementations MUST NOT
+    pretend they are honored.
+
+    A blank parity page is a real SLIFPage: it is rendered (and printed)
+    with its header/footer bands and no body items, and it participates
+    in page numbering. It is NOT dropped as an optimization — dropping it
+    would silently shift every following page's parity.
+
     outlineLevel   a Word heading LEVEL on a Paragraph. It is an
                    ATTRIBUTE, not an identity.
 
