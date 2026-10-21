@@ -25,7 +25,8 @@
 // 覆盖范围 (2026-10-21 扩充): 正文段落与**表格 cell 内的段落**都参与随机选取;
 // 动作含输入/删除/格式/段落样式/拆段/并段/清格式/列表开关/表格追加行/
 // 控件值变更/控件删除/表格结构(插删行列·合并/拆分格)/插入图片/插入脚注/
-// 复制粘贴(经 Editor 门面, 覆盖 ClipboardManager 序列化 + InsertNodesCommand)。
+// 查找替换/复制粘贴(经 Editor 门面, 覆盖 ClipboardManager 序列化 +
+// InsertNodesCommand)/剪切(copy + 删除选区, 宏单元)。
 // 控件动作先确定性地各做一次, 并有「动作真的入过栈」的假覆盖守卫 —— 否则
 // 表格结构操作可能先把夹具里的控件删光, 控件 case 全部空转, 闸门看起来
 // 覆盖了实际没跑.
@@ -62,6 +63,7 @@ import { SetControlValueCommand } from '../command/commands/SetControlValueComma
 import { RemoveControlCommand } from '../command/commands/RemoveControlCommand'
 import { TableStructureCommand, InsertFootnoteCommand } from '../command/commands/StructuralCommands'
 import { InsertImageCommand } from '../command/commands/InsertImageCommand'
+import { ReplaceTextCommand } from '../command/commands/ReplaceTextCommand'
 import {
   buildCellGrid, insertRow, deleteRow, insertColumn, deleteColumn,
   mergeAdjacentCells, splitCell,
@@ -249,11 +251,11 @@ const ALIGNMENTS = ['left', 'center', 'right', 'justify'] as const
 /** 脚注铸造用的唯一键 (同一次测试进程内不重复) */
 let footnoteSeq = 0
 
-/** 非命令型随机动作: 走 Editor 门面 (copy→paste), 由真实命令链落栈 */
-interface PasteAction { action: 'copy-paste' }
-type RandomAction = ICommand | PasteAction | null
+/** 非命令型随机动作: 走 Editor 门面 (copy→paste / cut), 由真实命令链落栈 */
+interface EditorAction { action: 'copy-paste' | 'cut' }
+type RandomAction = ICommand | EditorAction | null
 
-function isPasteAction(a: ICommand | PasteAction): a is PasteAction { return 'action' in a }
+function isEditorAction(a: ICommand | EditorAction): a is EditorAction { return 'action' in a }
 
 /**
  * 复制一段文本 → 在随机光标处粘贴。
@@ -288,13 +290,34 @@ function runCopyPaste(f: Fixture, rng: Rng): void {
   f.editor.paste()
 }
 
+/**
+ * 剪切: copy + deleteSelection (宏单元)。验证跨段/单元格内删除与
+ * 宏包装的一次撤销 (契约 RULE 11) —— 选区删除若各占一个栈单元,
+ * 这里立刻会红。
+ */
+function runCut(f: Fixture, rng: Rng): void {
+  const cands = editableParagraphs(f).filter((p) => textLengthOf(f, p) > 0)
+  if (cands.length === 0) return
+  const p = cands[rng.int(cands.length)]
+  const len = textLengthOf(f, p)
+  const start = rng.int(len)
+  const end = start + 1 + rng.int(len - start)
+  f.editor.getStore().setSelection({
+    anchor: { paragraphPath: [f.doc.id, p.id], offset: start, visible: false },
+    focus: { paragraphPath: [f.doc.id, p.id], offset: end, visible: false },
+    active: true,
+    granularity: 'character',
+  })
+  f.editor.cut()
+}
+
 function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): RandomAction {
   const doc = f.editor.getDocument()
   const pool = f.editor.getPool()
   const paras = editableParagraphs(f)
   if (paras.length === 0) return null
 
-  switch (rng.int(15)) {
+  switch (rng.int(17)) {
     case 0: {
       const p = paras[rng.int(paras.length)]
       const len = textLengthOf(f, p)
@@ -470,6 +493,21 @@ function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): RandomAc
     }
     case 13:
       return { action: 'copy-paste' }
+    case 14: {
+      // 查找替换: ReplaceTextCommand (单次替换; 内部会断言段落快照后 normalize)
+      const cands = paras.filter((p) => textLengthOf(f, p) > 0)
+      if (cands.length === 0) return null
+      const p = cands[rng.int(cands.length)]
+      const len = textLengthOf(f, p)
+      const start = rng.int(len)
+      const end = start + 1 + rng.int(len - start)
+      return new ReplaceTextCommand(generateCommandId(), nextTs(), 'user', [{
+        paragraphPath: [doc.id, p.id], startOffset: start, endOffset: end,
+        newText: CHARS[rng.int(CHARS.length)],
+      }])
+    }
+    case 15:
+      return { action: 'cut' }
     default:
       return new AppendTableRowCommand(generateCommandId(), nextTs(), 'user', f.tableId)
   }
@@ -514,9 +552,15 @@ function runGate(seed: number, target: number): void {
     const action = prelude.length > 0 ? prelude.shift()! : makeRandomCommand(f, rng, nextTs)
     if (!action) continue
 
-    const kind = isPasteAction(action) ? 'insert-nodes' : action.type
-    if (isPasteAction(action)) runCopyPaste(f, rng)
-    else f.editor.execCommand(action)
+    const kind = isEditorAction(action)
+      ? (action.action === 'copy-paste' ? 'insert-nodes' : 'cut')
+      : action.type
+    if (isEditorAction(action)) {
+      if (action.action === 'copy-paste') runCopyPaste(f, rng)
+      else runCut(f, rng)
+    } else {
+      f.editor.execCommand(action)
+    }
     const depthAfter = undoDepth(f)
 
     if (depthAfter === depthBefore + 1) {
@@ -558,6 +602,8 @@ function runGate(seed: number, target: number): void {
   expect(kindsSeen.has('insert-image'), `seed ${seed}: 插入图片从未入栈`).toBe(true)
   expect(kindsSeen.has('insert-footnote'), `seed ${seed}: 插入脚注从未入栈`).toBe(true)
   expect(kindsSeen.has('insert-nodes'), `seed ${seed}: 复制粘贴从未入栈`).toBe(true)
+  expect(kindsSeen.has('replace-text'), `seed ${seed}: 查找替换从未入栈`).toBe(true)
+  expect(kindsSeen.has('cut'), `seed ${seed}: 剪切从未入栈`).toBe(true)
 }
 
 describe('撤销/重做等价闸门 (契约 §8.2)', () => {
