@@ -32,6 +32,7 @@ import type { LineElement } from '../line/LineLayout'
 import { PageBreaker } from '../page/PageBreaker'
 import type { ILine, IPage } from '../page/PageLayout'
 import { DEFAULT_PAGE_SETUP } from '../../document/core/DocumentModel'
+import type { PageSetup } from '../../document/core/DocumentModel'
 import { controlValueDisplay } from '../../document/factory/ElementFormatter'
 import { CONTROL_BOX_PADDING } from '../../document/control/ControlBox'
 import { smarttextLayoutHint } from '../control/ControlLayoutHint'
@@ -2048,6 +2049,33 @@ export class LayoutEngine {
 
   updateConfig(config: Partial<LayoutConfig>): void {
     Object.assign(this.config, config)
+  }
+
+  /**
+   * 应用文档页面设置 (契约 §16 PAGE GEOMETRY) — Draw 在换文档与每趟布局前同步。
+   *
+   * `DocumentTree.pageSetup` 是纸张/页边距的唯一所有者；792/1123 那组只是
+   * 「文档没有 pageSetup」时的默认值。几何真的变了就清分页状态与段落行缓存:
+   * 页起始行表、复用页和行内容宽度全部失效，本趟必须是全量而不是续排。
+   */
+  setPageSetup(setup: PageSetup | undefined): void {
+    const ps = setup ?? DEFAULT_PAGE_SETUP
+    const changed = this.config.pageWidth !== ps.width
+      || this.config.pageHeight !== ps.height
+      || this.config.marginTop !== ps.marginTop
+      || this.config.marginBottom !== ps.marginBottom
+      || this.config.marginLeft !== ps.marginLeft
+      || this.config.marginRight !== ps.marginRight
+    if (!changed) return
+    this.config.pageWidth = ps.width
+    this.config.pageHeight = ps.height
+    this.config.marginTop = ps.marginTop
+    this.config.marginBottom = ps.marginBottom
+    this.config.marginLeft = ps.marginLeft
+    this.config.marginRight = ps.marginRight
+    // 不引用旧页/旧行: 版心宽高变了, 两者的证明前提都没了 (契约 §16.1)
+    this.clearParagraphLineCache()
+    this.clearPaginationState()
   }
 
   /**

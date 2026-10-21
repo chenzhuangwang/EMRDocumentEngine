@@ -265,6 +265,14 @@ export class Draw {
     // 重新开始, 键会撞上上一份文档的同名段落 (M2a/M2b)
     this.layoutEngine.clearParagraphLineCache()
     this.layoutEngine.clearPaginationState()
+    // 页面几何随文档走 (契约 §16 PAGE GEOMETRY): 纸张或页边距与上一份不同时,
+    // 布局必须按新页面重排, 而不是继续用硬编码的 794×1123
+    this.syncPageSetup()
+  }
+
+  /** 把 DocumentTree.pageSetup 推给布局 (纸张/页边距的唯一来源, 契约 §16) */
+  private syncPageSetup(): void {
+    this.layoutEngine.setPageSetup(this.document?.pageSetup)
   }
 
   setRuntimeState(state: EditorRuntimeState): void { this._state = state }
@@ -275,6 +283,8 @@ export class Draw {
   recomputeLayout(pool: NodePool, invalidation?: string): SLIFPage[] {
     if (!this.document) return []
     this.pool = pool
+    // 页面几何先于一切: 改纸张/页边距会让版心宽高与分页容量失效 (契约 §16)
+    this.syncPageSetup()
     // 修订留痕显示开关同步给布局 (契约 §12.13): 删除线是布局期产物,
     // 关标记必须连它一起关 —— 否则用户关掉标记后删除线还在。
     this.layoutEngine.setShowRevisionMarks(this._showRevisionMarks)
