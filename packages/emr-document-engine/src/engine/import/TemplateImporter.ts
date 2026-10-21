@@ -383,6 +383,15 @@ export class TemplateImporter {
       const cid = this.parseInline(child)
       if (cid) childIds.push(cid)
     }
+    // 导入边界也要按同一张表收口 (契约 §31.13): parseInline 目前只会产出
+    // text/smarttext, 但显式校验能挡住未来新增分支绕过集合。
+    const allowed = CHILD_TYPES_OF.get(NodeType.PARAGRAPH)
+    for (const cid of childIds) {
+      const t = this.nodeMap.get(cid)?.type
+      if (allowed && t && !allowed.has(t)) {
+        throw new Error(locale.t('import.illegalChildType', { parent: 'paragraph', child: t }))
+      }
+    }
     this.applyInlineMarkers(childIds, pending)
     const para: Paragraph = { type: NodeType.PARAGRAPH, id, children: childIds }
     this.nodeMap.set(id, para)
@@ -423,7 +432,10 @@ export class TemplateImporter {
       case 'delete':
         // 独立标记节点本身不产出节点 (无内容); 其范围语义在 parseParagraph 处理
         return null
-      default: return null
+      default:
+        // 未知行内类型必须抛错 (契约 §31.5 / §31.13): 这里此前是 `return null`,
+        // 段落里的未知内容会无声消失, 导入方拿到"少了一段"的模板却看不出异常。
+        throw new Error(locale.t('import.unknownInlineType', { type: String(node.type) }))
     }
   }
 

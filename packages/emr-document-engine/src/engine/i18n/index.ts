@@ -1004,6 +1004,7 @@ export interface LocaleMessages {
   'qc.rule.paragraphCount.name': string
   'qc.rule.paragraphCount.desc': string
   'import.unknownBlockType': string          // '外部模板含未知块类型: {type}'
+  'import.unknownInlineType': string         // '外部模板含未知行内类型: {type}'
   'import.illegalChildType': string          // '外部模板非法嵌套 (契约 §31.13): {parent} 不能包含 {child}'
   'qc.rule.unnamedSection.name': string      // '节缺少节代码'
   'qc.rule.unnamedSection.desc': string
@@ -1924,6 +1925,7 @@ const zhCN: LocaleMessages = {
   'qc.rule.paragraphCount.name': '段落数量合理',
   'qc.rule.paragraphCount.desc': '段落数应在 1-500 之间',
   'import.unknownBlockType': '外部模板含未知块类型: {type}',
+  'import.unknownInlineType': '外部模板含未知行内类型: {type}',
   'import.illegalChildType': '外部模板非法嵌套 (契约 §31.13): {parent} 不能包含 {child}',
   'qc.rule.unnamedSection.name': '节缺少节代码',
   'qc.rule.unnamedSection.desc': '该节有内容但未设置节代码, 结构化导出与节级定位无法引用它',
@@ -2837,6 +2839,7 @@ const enUS: LocaleMessages = {
   'qc.rule.paragraphCount.name': 'Paragraph count is reasonable',
   'qc.rule.paragraphCount.desc': 'The paragraph count should be between 1 and 500',
   'import.unknownBlockType': 'External template contains an unknown block type: {type}',
+  'import.unknownInlineType': 'External template contains an unknown inline type: {type}',
   'import.illegalChildType': 'External template has an illegal nesting (contract §31.13): {parent} cannot contain {child}',
   'qc.rule.unnamedSection.name': 'Section has no section code',
   'qc.rule.unnamedSection.desc': 'This section has content but no section code; structured export and section-level targeting cannot reference it',

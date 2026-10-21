@@ -20,7 +20,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  CHILD_TYPES_OF, HEADER_FOOTER_CHILD_TYPES, DEFERRED_INLINE_CHILD_TYPES,
+  CHILD_TYPES_OF, HEADER_FOOTER_CHILD_TYPES, PARAGRAPH_INLINE_CHILD_TYPES,
   isLegalChild, assertLegalChild, childTypesOf, ContainerChildTypeError,
 } from '../document/core/ContainerChildTypes'
 import { NodeType } from '../document/core/DocumentModel'
@@ -158,15 +158,24 @@ describe('契约表本身 (契约 §31.13)', () => {
     expect(HEADER_FOOTER_CHILD_TYPES.has(NodeType.SECTION)).toBe(false)
   })
 
-  it('未声明契约的父类型不予判定 (paragraph 内联本轮 deferred)', () => {
-    // paragraph 刻意**不在** CHILD_TYPES_OF 里 —— 表里只放已被边界强制的东西
-    expect(CHILD_TYPES_OF.has(NodeType.PARAGRAPH)).toBe(false)
-    expect(isLegalChild(NodeType.PARAGRAPH, 'anything')).toBe(true)
-    expect(DEFERRED_INLINE_CHILD_TYPES.has(NodeType.TEXT)).toBe(true)
+  it('paragraph 内联集合已被强制: 合法项放行, 其它一律非法', () => {
+    expect(CHILD_TYPES_OF.has(NodeType.PARAGRAPH)).toBe(true)
+    for (const t of [NodeType.TEXT, NodeType.SMART_TEXT, NodeType.IMAGE,
+      NodeType.FIELD, NodeType.BOOKMARK, NodeType.CROSS_REFERENCE,
+      NodeType.FOOTNOTE_REF, NodeType.COMMENT_MARKER]) {
+      expect(isLegalChild(NodeType.PARAGRAPH, t)).toBe(true)
+      expect(PARAGRAPH_INLINE_CHILD_TYPES.has(t)).toBe(true)
+    }
+    // 块级/容器类型不得进段落
+    for (const t of [NodeType.PARAGRAPH, NodeType.TABLE, NodeType.SECTION,
+      NodeType.SEPARATOR, NodeType.SECTION_BREAK, NodeType.ROW, NodeType.CELL]) {
+      expect(isLegalChild(NodeType.PARAGRAPH, t)).toBe(false)
+    }
+    expect(isLegalChild(NodeType.PARAGRAPH, 'anything')).toBe(false)
   })
 
   it('childTypesOf 对无契约的容器抛错 (问错了容器是编程错误)', () => {
-    expect(() => childTypesOf(NodeType.PARAGRAPH)).toThrow(/no child-type contract/)
+    expect(() => childTypesOf(NodeType.TEXT)).toThrow(/no child-type contract/)
   })
 
   it('assertLegalChild 非法时抛 ContainerChildTypeError 并带上两方 id', () => {
@@ -206,6 +215,13 @@ describe('边界一: TemplateImporter', () => {
       extDoc([extTable([{ id: 'x', type: 'mystery_block', children: [] }])]) as never,
     )).toThrow(/未知块类型|unknown block type/)
   })
+
+  it('段落含未知行内类型 → 抛"未知行内类型", 不再静默丢内容', () => {
+    expect(() => importer.import(extDoc([{
+      id: 'p-x', type: 'paragraph',
+      children: [{ id: 'ix-1', type: 'mystery_inline' }],
+    }]) as never)).toThrow(/未知行内类型|unknown inline type/)
+  })
 })
 
 describe('边界二: DocumentLoader', () => {
@@ -229,6 +245,19 @@ describe('边界二: DocumentLoader', () => {
     const { table } = mkTableWithCellChildren(all, [])
     doc.body.children = [body.id]
     doc.header = [table.id]
+
+    expect(() => roundTrip(doc, all)).toThrow(/非法容器子类型|illegal container child type/)
+  })
+
+  it('段落含块级子节点 (table) → 拒绝加载', () => {
+    const doc = createDocument('t')
+    const all = new Map<string, BaseNode>()
+    all.set(doc.id, doc as unknown as BaseNode)
+    const para = mkParagraph(all, '正文')
+    const { table } = mkTableWithCellChildren(all, [])
+    // 直接把 table 塞进段落 children (绕过 NodePool 的受控 API)
+    ;(para as unknown as { children: string[] }).children.push(table.id)
+    doc.body.children = [para.id]
 
     expect(() => roundTrip(doc, all)).toThrow(/非法容器子类型|illegal container child type/)
   })
@@ -282,6 +311,18 @@ describe('边界三: NodePool (enforcement)', () => {
     const { pool, cell, sec } = poolWith([])
     expect(() => pool.moveChildTo(sec.id, pool.rootIds.body, cell.id, 0))
       .toThrow(/illegal child type/)
+  })
+
+  it('insertChild: 把 section 插进 paragraph → 抛错', () => {
+    const { pool, para, sec } = poolWith(['para'])
+    expect(() => pool.insertChild(para.id, sec.id, 0)).toThrow(/illegal child type/)
+  })
+
+  it('insertChild: 把 text 插进 paragraph → 放行 (内联集合内)', () => {
+    const { pool, para } = poolWith(['para'])
+    const tx = createTextNode('附加')
+    pool.addNode(tx as unknown as BaseNode)
+    expect(() => pool.insertChild(para.id, tx.id, 0)).not.toThrow()
   })
 })
 
