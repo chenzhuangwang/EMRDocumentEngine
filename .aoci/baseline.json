@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-21T08:10:27Z",
+  "updated_at": "2026-10-21T09:03:20Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
@@ -95,9 +95,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "b5f565148d871bd99ff4668a31016418abe3b113c4985801e3ab484997cf9ac5",
-      "size": 141781,
-      "normalized_sha256": "b5f565148d871bd99ff4668a31016418abe3b113c4985801e3ab484997cf9ac5"
+      "sha256": "dc69dea9baf5d4eae55ca8d381b6a0b85195283564d2765a3d9e284c50074fc8",
+      "size": 141674,
+      "normalized_sha256": "dc69dea9baf5d4eae55ca8d381b6a0b85195283564d2765a3d9e284c50074fc8"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2254,9 +2254,9 @@
     },
     "knowledge/编辑器功能清单.md": {
       "role": "index",
-      "sha256": "3b65b2c18b5760a38be9dfeff1f6060e54fd2029164d4004dbb1e06156095234",
-      "size": 91756,
-      "normalized_sha256": "4839d13999b0280b980e7ce9fa72fcfde88ed191bbb2fa660e57b84f72814d02"
+      "sha256": "5601efc7e5ad1db109b0c0cdf367124a6e96f21f0941d622a387377fa862025a",
+      "size": 91896,
+      "normalized_sha256": "571b95fcc0e803e20f1b5a10bb84bab4380c2bbcacf5cc76a7e25d6aa87299f6"
     },
     "nginx.conf": {
       "role": "index",
@@ -3628,9 +3628,9 @@
     },
     "packages/emr-document-engine/src/engine/index.ts": {
       "role": "index",
-      "sha256": "1aa408a4d090251d901638d9cd566ad6a1c0c014e2cd7f75bb5a69e592593801",
-      "size": 17210,
-      "normalized_sha256": "1aa408a4d090251d901638d9cd566ad6a1c0c014e2cd7f75bb5a69e592593801"
+      "sha256": "0eaa32066889587f1d7a7fda82f97a2104497d0aae95dacbb2aebb32075102d9",
+      "size": 17135,
+      "normalized_sha256": "0eaa32066889587f1d7a7fda82f97a2104497d0aae95dacbb2aebb32075102d9"
     },
     "packages/emr-document-engine/src/engine/interaction/ControlHitTest.ts": {
       "role": "index",
@@ -3874,9 +3874,9 @@
     },
     "packages/emr-document-engine/src/engine/render/particles/CommentParticle.ts": {
       "role": "index",
-      "sha256": "eb9a3387d61fe0132b1f1b6a4e555e2850281e0e3703d10ca4fbfe4b7d4b5d0e",
-      "size": 3482,
-      "normalized_sha256": "f66a325e04e0ec00af1c3b5e5a7a84665c98447fbce6c1a88f009beb735957ae"
+      "sha256": "a78de65b2244acd4af423a988b7d9ab55769d21401070454a41adef39e872db1",
+      "size": 1735,
+      "normalized_sha256": "85a68c67d7522f7b099cf03c46cac1609ac14020ced59bde4b2affeb394d4745"
     },
     "packages/emr-document-engine/src/engine/render/particles/ControlParticle.ts": {
       "role": "index",
