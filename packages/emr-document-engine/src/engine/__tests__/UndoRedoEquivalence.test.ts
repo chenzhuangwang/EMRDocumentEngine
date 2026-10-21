@@ -26,7 +26,9 @@
 // 动作含输入/删除/格式/段落样式/拆段/并段/清格式/列表开关/表格追加行/
 // 控件值变更/控件删除/表格结构(插删行列·合并/拆分格)/插入图片/插入脚注/
 // 查找替换/复制粘贴(经 Editor 门面, 覆盖 ClipboardManager 序列化 +
-// InsertNodesCommand)/剪切(copy + 删除选区, 宏单元)。
+// InsertNodesCommand)/剪切(copy + 删除选区, 宏单元)/接受·拒绝修订.
+// 第三条种子开启修订追踪 (setTrackChanges + 当前用户): 输入/删除都会留下
+// 标记, 接受/拒绝修订也在随机动作里 —— 标记的撤销/重做同样要求逐字节还原.
 // 控件动作先确定性地各做一次, 并有「动作真的入过栈」的假覆盖守卫 —— 否则
 // 表格结构操作可能先把夹具里的控件删光, 控件 case 全部空转, 闸门看起来
 // 覆盖了实际没跑.
@@ -251,8 +253,8 @@ const ALIGNMENTS = ['left', 'center', 'right', 'justify'] as const
 /** 脚注铸造用的唯一键 (同一次测试进程内不重复) */
 let footnoteSeq = 0
 
-/** 非命令型随机动作: 走 Editor 门面 (copy→paste / cut), 由真实命令链落栈 */
-interface EditorAction { action: 'copy-paste' | 'cut' }
+/** 非命令型随机动作: 走 Editor 门面 (copy→paste / cut / 接受·拒绝修订), 由真实命令链落栈 */
+interface EditorAction { action: 'copy-paste' | 'cut' | 'accept-all' | 'reject-all' }
 type RandomAction = ICommand | EditorAction | null
 
 function isEditorAction(a: ICommand | EditorAction): a is EditorAction { return 'action' in a }
@@ -311,13 +313,19 @@ function runCut(f: Fixture, rng: Rng): void {
   f.editor.cut()
 }
 
+/** 接受/拒绝全部修订 (经 Editor 门面; 修订决定是快照恢复类命令) */
+function runRevisionDecision(f: Fixture, action: 'accept-all' | 'reject-all'): void {
+  if (action === 'accept-all') f.editor.acceptAllRevisions()
+  else f.editor.rejectAllRevisions()
+}
+
 function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): RandomAction {
   const doc = f.editor.getDocument()
   const pool = f.editor.getPool()
   const paras = editableParagraphs(f)
   if (paras.length === 0) return null
 
-  switch (rng.int(17)) {
+  switch (rng.int(19)) {
     case 0: {
       const p = paras[rng.int(paras.length)]
       const len = textLengthOf(f, p)
@@ -508,6 +516,11 @@ function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): RandomAc
     }
     case 15:
       return { action: 'cut' }
+    case 16:
+      // 接受/拒绝修订只在追踪开启时有意义 (未追踪时返回 null, 不浪费执行预算)
+      return f.editor.isTrackingChanges() ? { action: 'accept-all' } : null
+    case 17:
+      return f.editor.isTrackingChanges() ? { action: 'reject-all' } : null
     default:
       return new AppendTableRowCommand(generateCommandId(), nextTs(), 'user', f.tableId)
   }
@@ -515,8 +528,13 @@ function makeRandomCommand(f: Fixture, rng: Rng, nextTs: () => number): RandomAc
 
 // ---- 闸门 ----
 
-function runGate(seed: number, target: number): void {
+function runGate(seed: number, target: number, tracking = false): void {
   const f = makeFixture()
+  if (tracking) {
+    // 修订追踪: 输入/删除都会留下标记, 接受/拒绝修订成为随机动作
+    f.editor.setCurrentUser({ name: '审稿人', id: 'reviewer-1' })
+    f.editor.setTrackChanges(true)
+  }
   const rng = makeRng(seed)
   let ts = 1_700_000_000_000
   const nextTs = (): number => (ts += 1000)
@@ -553,11 +571,13 @@ function runGate(seed: number, target: number): void {
     if (!action) continue
 
     const kind = isEditorAction(action)
-      ? (action.action === 'copy-paste' ? 'insert-nodes' : 'cut')
+      ? (action.action === 'copy-paste' ? 'insert-nodes'
+        : action.action === 'cut' ? 'cut' : action.action)
       : action.type
     if (isEditorAction(action)) {
       if (action.action === 'copy-paste') runCopyPaste(f, rng)
-      else runCut(f, rng)
+      else if (action.action === 'cut') runCut(f, rng)
+      else runRevisionDecision(f, action.action)
     } else {
       f.editor.execCommand(action)
     }
@@ -604,6 +624,11 @@ function runGate(seed: number, target: number): void {
   expect(kindsSeen.has('insert-nodes'), `seed ${seed}: 复制粘贴从未入栈`).toBe(true)
   expect(kindsSeen.has('replace-text'), `seed ${seed}: 查找替换从未入栈`).toBe(true)
   expect(kindsSeen.has('cut'), `seed ${seed}: 剪切从未入栈`).toBe(true)
+  if (tracking) {
+    // 追踪模式下必须真的做过至少一次修订决定, 否则案例只是空转
+    const decided = kindsSeen.has('accept-all') || kindsSeen.has('reject-all')
+    expect(decided, `seed ${seed}: 接受/拒绝修订从未入栈`).toBe(true)
+  }
 }
 
 describe('撤销/重做等价闸门 (契约 §8.2)', () => {
@@ -613,5 +638,9 @@ describe('撤销/重做等价闸门 (契约 §8.2)', () => {
 
   it('随机 60 条混合命令: 另一条种子同样逐字节相同 (seed 777)', () => {
     runGate(777, 60)
+  }, 120_000)
+
+  it('修订追踪开启: 随机 60 条命令 (含接受/拒绝修订) 逐步撤销/重做一致 (seed 424242)', () => {
+    runGate(424242, 60, true)
   }, 120_000)
 })
