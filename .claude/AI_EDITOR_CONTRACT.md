@@ -3569,7 +3569,28 @@ the randomized equivalence gate is the acceptance proof. The hit-test index
 rebuild starts at the first patched page (re-indexing the reused tail is
 harmless). `getPaginationStats()` reports the prefix reuse count in
 `reusedPages` and the count reused after the patched range in
-`reusedTailPages`; both being zero means nothing was reused.
+`reusedTailPages`; both being zero means nothing was reused. Header/footer
+content does NOT disqualify the patch on its own: the M3b signature below
+already proves the per-page header/footer items are unchanged.
+
+HEADER/FOOTER (M3b). A document with header/footer content is eligible for
+incremental pagination when a header/footer signature is UNCHANGED. The
+signature MUST cover: structure version; for each of the six variant arrays
+(header, footer, firstPageHeader, firstPageFooter, evenPageHeader,
+evenPageFooter) every block id together with the block's node version AND
+each child's node version; the per-page variant switches
+(`differentFirstPage`, `differentOddEven`); the revision-marks flag (strike-
+through is a layout-time product); and the field-reserve sampling inputs
+(total-page digit count, locale, document title) — a header/footer field's
+reserve width depends on them. When (and ONLY when) a header/footer paragraph
+contains a `smarttext`, the signature also keys the computed-values
+generation and the `TemplateDefinitionStore` version, for the same reason as
+M2a; including them unconditionally would send every header-bearing document
+back to a full pass on each formula change. PAGE/NUMPAGES text inside a
+header/footer is resolved at render time (`Draw.resolveFieldText`), so a page
+COUNT change alone does not invalidate reused pages; a DIGIT-count change
+does, and the existing second layout pass (new hint) handles it. On any
+signature mismatch the pass MUST fall back to a full layout.
 
 Step 4 (footnote collection) is incremental-safe under two rules:
 1. It processes ONLY the newly paginated pages. Reused pages already carry
