@@ -22,7 +22,7 @@
 // ================================================================
 
 import type {
-  BaseNode, DocumentTree, Paragraph, PageSetup, CommentThread, FootnoteContent, TextNode,
+  BaseNode, CommentEntry, CommentThread, DocumentTree, Paragraph, PageSetup, FootnoteContent, TextNode,
 } from '../../document/core/DocumentModel'
 import { NodeType } from '../../document/core/DocumentModel'
 import { createParagraph, createTextNode, createSection, extractStyle } from '../../document/factory/ElementFormatter'
@@ -260,8 +260,6 @@ export class RemoveNodesCommand implements ICommand {
   readonly timestamp: number
   readonly author: string
   private removals: NodeRemoval[]
-  /** 需从 doc.comments 移除的 thread id (createComment undo) */
-  private removeThreadIds: string[]
   private restoreCursor?: Partial<CursorState>
   /** forward 时捕获的子树快照, 供 invert 恢复 (deleteNode 直接入栈需可撤销) */
   private snapshots: RemovalSnapshot[] = []
@@ -283,13 +281,12 @@ export class RemoveNodesCommand implements ICommand {
 
   constructor(
     id: string, timestamp: number, author: string,
-    removals: NodeRemoval[], removeThreadIds: string[] = [],
+    removals: NodeRemoval[],
     restoreCursor?: Partial<CursorState>,
     opts: { ensureBodyParagraph?: boolean } = {},
   ) {
     this.id = id; this.timestamp = timestamp; this.author = author
     this.removals = removals
-    this.removeThreadIds = removeThreadIds
     this.restoreCursor = restoreCursor
     this.ensureBodyParagraph = opts.ensureBodyParagraph ?? false
   }
@@ -331,13 +328,6 @@ export class RemoveNodesCommand implements ICommand {
 
     // 可选文档级数组被删空 → 删回「缺失」态, 使 undo 是精确逆 (契约 §7.9 / §8.3)
     for (const { container } of this.removals) trimDocArrayIfEmpty(doc, container)
-
-    if (doc.comments && this.removeThreadIds.length > 0) {
-      const ids = new Set(this.removeThreadIds)
-      doc.comments = doc.comments.filter(t => !ids.has(t.id))
-      // 删空 → 删键 (同 §7.9 可选数组的理由: 键的存在性是文档形状的一部分)
-      if (doc.comments.length === 0) delete doc.comments
-    }
 
     // body 被删空 → 补一个空段落, 保证编辑器仍有可落的 caret target。
     // 光标随之指向它; 没有可落点时 (restoreCursor undefined) 这是唯一有效的落点。
@@ -518,7 +508,7 @@ export class InsertInlineNodeCommand implements ICommand {
     return new RemoveNodesCommand(
       generateCommandId(), Date.now(), this.author,
       [{ container: { kind: 'paragraph', paraId: this.path[this.path.length - 1] }, nodeIds: [this.insertedNodeId] }],
-      [], { paragraphPath: this.path, offset: this.offset, visible: true },
+      { paragraphPath: this.path, offset: this.offset, visible: true },
     )
   }
 
@@ -623,7 +613,7 @@ export class InsertBlockCommand implements ICommand {
     return new RemoveNodesCommand(
       generateCommandId(), Date.now(), this.author,
       [{ container: this.insertContainer, nodeIds: this.insertedRootIds }],
-      [], { paragraphPath: this.path, offset: 0, visible: true },
+      { paragraphPath: this.path, offset: 0, visible: true },
     )
   }
 
@@ -713,7 +703,7 @@ export class InsertFootnoteCommand implements ICommand {
     }
     return new RemoveNodesCommand(
       generateCommandId(), Date.now(), this.author,
-      removals, [], { paragraphPath: this.path, offset: this.offset, visible: true },
+      removals, { paragraphPath: this.path, offset: this.offset, visible: true },
     )
   }
 
@@ -726,7 +716,12 @@ export class InsertFootnoteCommand implements ICommand {
 }
 
 // ================================================================
-// CreateCommentCommand — 创建批注 (CommentMarker + CommentThread)
+// CreateCommentCommand / DeleteCommentCommand — 批注线程
+//
+// 契约 §12.14: 批注范围是唯一的锚定事实。新建批注**不再插入**
+// comment_marker 节点 —— 那个节点既不渲染也不产出布局项, 却按 1 个
+// 字符偏移单位计, 会把同段其它批注的区间整体挤歪。旧文档里的 marker
+// 仍然合法, 删除线程时一并清理。
 // ================================================================
 
 export class CreateCommentCommand implements ICommand {
@@ -734,69 +729,154 @@ export class CreateCommentCommand implements ICommand {
   readonly id: string
   readonly timestamp: number
   readonly author: string
-  private path: string[]
-  private offset: number
-  private makeMarker: () => BaseNode
   private makeThread: () => CommentThread
-  private insertedMarkerId: string | null = null
   private insertedThreadId: string | null = null
 
   constructor(
     id: string, timestamp: number, author: string,
-    path: string[], offset: number,
-    makeMarker: () => BaseNode, makeThread: () => CommentThread,
+    makeThread: () => CommentThread,
   ) {
     this.id = id; this.timestamp = timestamp; this.author = author
-    this.path = path; this.offset = offset
-    this.makeMarker = makeMarker
     this.makeThread = makeThread
   }
 
   forward(ctx: CommandContext): StatePatch | null {
     if (ctx.mode !== 'local') return null
-    const { pool, doc } = ctx
-    const paraId = this.path[this.path.length - 1]
-    const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
-    if (!para?.children) return null
-
-    const marker = this.makeMarker()
-    pool.addNode(marker)
-    this.insertedMarkerId = marker.id
-
-    const resolved = pool.resolveCharOffset(paraId, this.offset)
-    if (resolved) {
-      const idx = para.children.indexOf(resolved.textNodeId)
-      if (idx >= 0) pool.insertChild(paraId, marker.id, idx + 1)
-      else pool.insertChild(paraId, marker.id, para.children.length)
-    } else {
-      pool.insertChild(paraId, marker.id, para.children.length)
-    }
-
+    const { doc } = ctx
     const thread = this.makeThread()
     this.insertedThreadId = thread.id
     if (!doc.comments) doc.comments = []
     doc.comments.push(thread)
-
-    return { invalidation: 'paragraph' }
+    // 只改 doc.comments, 不动节点/布局 (契约 §12.14)
+    return { invalidation: 'none' }
   }
 
   invert(_ctx: CommandContext): ICommand | null {
-    const removals: NodeRemoval[] = []
-    if (this.insertedMarkerId) {
-      removals.push({ container: { kind: 'paragraph', paraId: this.path[this.path.length - 1] }, nodeIds: [this.insertedMarkerId] })
-    }
-    return new RemoveNodesCommand(
-      generateCommandId(), Date.now(), this.author,
-      removals, this.insertedThreadId ? [this.insertedThreadId] : [],
-      { paragraphPath: this.path, offset: this.offset, visible: true },
+    if (!this.insertedThreadId) return null
+    return new DeleteCommentCommand(
+      generateCommandId(), Date.now(), this.author, this.insertedThreadId,
     )
   }
 
   serialize(): SerializedCommand {
     return {
       type: 'create-comment', id: this.id, timestamp: this.timestamp,
-      author: this.author, path: this.path, offset: this.offset,
+      author: this.author, changes: { threadId: this.insertedThreadId },
     }
+  }
+}
+
+/** 旧文档里的批注标记 (仅删除线程时清理; 新批注不再产生) */
+interface RemovedCommentMarker {
+  paraId: string
+  index: number
+  node: BaseNode
+}
+
+export class DeleteCommentCommand implements ICommand {
+  readonly type = 'delete-comment'
+  readonly id: string
+  readonly timestamp: number
+  readonly author: string
+  private threadId: string
+  private removedThread: CommentThread | null = null
+  private removedIndex = -1
+  private removedMarkers: RemovedCommentMarker[] = []
+
+  constructor(id: string, timestamp: number, author: string, threadId: string) {
+    this.id = id; this.timestamp = timestamp; this.author = author
+    this.threadId = threadId
+  }
+
+  forward(ctx: CommandContext): StatePatch | null {
+    if (ctx.mode !== 'local') return null
+    const { doc, pool } = ctx
+    const comments = doc.comments
+    if (!comments) return null
+    const index = comments.findIndex(t => t.id === this.threadId)
+    if (index < 0) return null
+
+    this.removedThread = comments[index]
+    this.removedIndex = index
+    comments.splice(index, 1)
+    // 删空 → 删键 (同 §7.9/§8.3 可选数组规则: 键的存在性是文档形状)
+    if (comments.length === 0) delete doc.comments
+
+    // 兼容旧文档: 把该线程遗留的 comment_marker 一并摘掉, 否则重载后
+    // 会留下一个指向不存在线程的零宽节点。
+    this.removedMarkers = []
+    for (const [nodeId, node] of pool.nodes) {
+      if (node.type !== NodeType.COMMENT_MARKER) continue
+      if ((node as unknown as { threadId?: string }).threadId !== this.threadId) continue
+      for (const [paraId, para] of pool.nodes) {
+        if (para.type !== NodeType.PARAGRAPH) continue
+        const children = (para as unknown as { children?: readonly string[] }).children
+        if (!children) continue
+        const childIndex = children.indexOf(nodeId)
+        if (childIndex < 0) continue
+        this.removedMarkers.push({ paraId, index: childIndex, node })
+        pool.detachChild(paraId, childIndex)
+        removeSubtree(pool, nodeId)
+        break
+      }
+    }
+
+    return { invalidation: this.removedMarkers.length > 0 ? 'flowbody' : 'none' }
+  }
+
+  invert(_ctx: CommandContext): ICommand | null {
+    if (!this.removedThread) return null
+    return new RestoreCommentCommand(
+      generateCommandId(), Date.now(), this.author,
+      this.removedThread, this.removedIndex, this.removedMarkers,
+    )
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: 'delete-comment', id: this.id, timestamp: this.timestamp,
+      author: this.author, changes: { threadId: this.threadId },
+    }
+  }
+}
+
+class RestoreCommentCommand implements ICommand {
+  readonly type = 'restore-comment'
+  readonly id: string
+  readonly timestamp: number
+  readonly author: string
+  private thread: CommentThread
+  private index: number
+  private markers: RemovedCommentMarker[]
+
+  constructor(
+    id: string, timestamp: number, author: string,
+    thread: CommentThread, index: number, markers: RemovedCommentMarker[],
+  ) {
+    this.id = id; this.timestamp = timestamp; this.author = author
+    this.thread = thread; this.index = index; this.markers = markers
+  }
+
+  forward(ctx: CommandContext): StatePatch | null {
+    if (ctx.mode !== 'local') return null
+    const { doc, pool } = ctx
+    if (!doc.comments) doc.comments = []
+    if (!doc.comments.some(t => t.id === this.thread.id)) {
+      const at = Math.min(Math.max(this.index, 0), doc.comments.length)
+      doc.comments.splice(at, 0, this.thread)
+    }
+    for (const marker of this.markers) {
+      if (!pool.nodes.has(marker.node.id)) pool.addNode(marker.node)
+      const children = pool.getChildren(marker.paraId)
+      if (!children.includes(marker.node.id)) {
+        pool.insertChild(marker.paraId, marker.node.id, marker.index)
+      }
+    }
+    return { invalidation: this.markers.length > 0 ? 'flowbody' : 'none' }
+  }
+
+  serialize(): SerializedCommand {
+    return { type: 'restore-comment', id: this.id, timestamp: this.timestamp, author: this.author }
   }
 }
 
@@ -828,7 +908,7 @@ export class AddCommentReplyCommand implements ICommand {
   }
 
   invert(_ctx: CommandContext): ICommand | null {
-    return new RemoveCommentReplyCommand(generateCommandId(), Date.now(), this.author, this.threadId, this.replyId)
+    return new DeleteCommentReplyCommand(generateCommandId(), Date.now(), this.author, this.threadId, this.replyId)
   }
 
   serialize(): SerializedCommand {
@@ -839,13 +919,19 @@ export class AddCommentReplyCommand implements ICommand {
   }
 }
 
-class RemoveCommentReplyCommand implements ICommand {
-  readonly type = 'remove-comment-reply'
+interface RemovedCommentReply {
+  entry: CommentEntry
+  index: number
+}
+
+export class DeleteCommentReplyCommand implements ICommand {
+  readonly type = 'delete-comment-reply'
   readonly id: string
   readonly timestamp: number
   readonly author: string
   private threadId: string
   private replyId: string
+  private removed: RemovedCommentReply | null = null
 
   constructor(id: string, timestamp: number, author: string, threadId: string, replyId: string) {
     this.id = id; this.timestamp = timestamp; this.author = author
@@ -857,12 +943,60 @@ class RemoveCommentReplyCommand implements ICommand {
     const { doc } = ctx
     const thread = doc.comments?.find(t => t.id === this.threadId)
     if (!thread) return null
-    thread.comments = thread.comments.filter(c => c.id !== this.replyId)
+    const index = thread.comments.findIndex(c => c.id === this.replyId)
+    if (index < 0) return null
+    this.removed = { entry: thread.comments[index], index }
+    thread.comments.splice(index, 1)
+    return { invalidation: 'none' }
+  }
+
+  invert(_ctx: CommandContext): ICommand | null {
+    if (!this.removed) return null
+    return new RestoreCommentReplyCommand(
+      generateCommandId(), Date.now(), this.author,
+      this.threadId, this.removed.entry, this.removed.index,
+    )
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: 'delete-comment-reply', id: this.id, timestamp: this.timestamp,
+      author: this.author, changes: { threadId: this.threadId, replyId: this.replyId },
+    }
+  }
+}
+
+class RestoreCommentReplyCommand implements ICommand {
+  readonly type = 'restore-comment-reply'
+  readonly id: string
+  readonly timestamp: number
+  readonly author: string
+  private threadId: string
+  private entry: CommentEntry
+  private index: number
+
+  constructor(
+    id: string, timestamp: number, author: string,
+    threadId: string, entry: CommentEntry, index: number,
+  ) {
+    this.id = id; this.timestamp = timestamp; this.author = author
+    this.threadId = threadId; this.entry = entry; this.index = index
+  }
+
+  forward(ctx: CommandContext): StatePatch | null {
+    if (ctx.mode !== 'local') return null
+    const thread = ctx.doc.comments?.find(t => t.id === this.threadId)
+    if (!thread) return null
+    if (thread.comments.some(c => c.id === this.entry.id)) {
+      return { invalidation: 'none' }
+    }
+    const at = Math.min(Math.max(this.index, 0), thread.comments.length)
+    thread.comments.splice(at, 0, this.entry)
     return { invalidation: 'none' }
   }
 
   serialize(): SerializedCommand {
-    return { type: 'remove-comment-reply', id: this.id, timestamp: this.timestamp, author: this.author }
+    return { type: 'restore-comment-reply', id: this.id, timestamp: this.timestamp, author: this.author }
   }
 }
 
@@ -1080,12 +1214,76 @@ export class EnsureBodyParagraphCommand implements ICommand {
     return new RemoveNodesCommand(
       generateCommandId(), Date.now(), this.author,
       [{ container: { kind: 'body' }, nodeIds: [this.createdParaId] }],
-      [], { paragraphPath: [], offset: 0, visible: true },
+      { paragraphPath: [], offset: 0, visible: true },
     )
   }
 
   serialize(): SerializedCommand {
     return { type: 'ensure-body-paragraph', id: this.id, timestamp: this.timestamp, author: this.author }
+  }
+}
+
+// ================================================================
+// InsertEmptyParagraphAtCommand — 在指定块容器/下标插入一个空段落
+//
+// 用于「表外光标」的物化: 用户点击表格前后空白时只设置 transient 光标,
+// 真正输入时才插入段落; 也供后续「块间插入段落」复用。容器只允许 body /
+// section (cell/header/footer 的段落由各自的导航/编辑逻辑管理)。
+// ================================================================
+
+export class InsertEmptyParagraphAtCommand implements ICommand {
+  readonly type = 'insert-empty-paragraph-at'
+  readonly id: string
+  readonly timestamp: number
+  readonly author: string
+  private container: Container
+  private index: number
+  private createdParaId: string | null = null
+  /** 铸造一次台账 (契约 §8.3) */
+  private mint = new MintedOnce()
+
+  constructor(id: string, timestamp: number, author: string, container: Container, index: number) {
+    this.id = id; this.timestamp = timestamp; this.author = author
+    this.container = container
+    this.index = index
+  }
+
+  forward(ctx: CommandContext): StatePatch | null {
+    if (ctx.mode !== 'local') return null
+    const { pool, doc } = ctx
+    const len = containerLengthOf(pool, doc, this.container)
+    const at = Math.max(0, Math.min(this.index, len))
+
+    const [paraId] = this.mint.run(pool, () => {
+      const { text, para } = buildTrailingParagraph()
+      pool.addNode(text)
+      pool.addNode(para)
+      return [para.id]
+    })
+    this.createdParaId = paraId
+    // 每次 forward 都放回容器 (重放时节点只是被重新注册, 还不在容器里)
+    insertIntoContainer(pool, doc, this.container, at, paraId)
+
+    return {
+      cursor: { paragraphPath: [doc.id, paraId], offset: 0, visible: true },
+      invalidation: 'flowbody',
+    }
+  }
+
+  invert(_ctx: CommandContext): ICommand | null {
+    if (!this.createdParaId) return null
+    return new RemoveNodesCommand(
+      generateCommandId(), Date.now(), this.author,
+      [{ container: this.container, nodeIds: [this.createdParaId] }],
+      { paragraphPath: [], offset: 0, visible: true },
+    )
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: 'insert-empty-paragraph-at', id: this.id,
+      timestamp: this.timestamp, author: this.author,
+    }
   }
 }
 
@@ -1144,7 +1342,7 @@ export class EnsureCellParagraphCommand implements ICommand {
     return new RemoveNodesCommand(
       generateCommandId(), Date.now(), this.author,
       [{ container: { kind: 'cell', cellId: this.cellId }, nodeIds: [this.createdParaId] }],
-      [], this.restoreCursor,
+      this.restoreCursor,
     )
   }
 

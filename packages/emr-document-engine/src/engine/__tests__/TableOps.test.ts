@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  insertRow, deleteRow, insertColumn, deleteColumn,
+  insertRow, insertRowBefore, deleteRow, insertColumn, insertColumnBefore, deleteColumn,
   resizeColumn, clampColumnPair, effectiveMinColumnWidth,
   buildCellGrid, getCellGridPosition, normalizeRange, cellsInRange,
   mergeAdjacentCells, mergeRange, splitCell,
@@ -135,6 +135,32 @@ describe('TableOps 行列操作', () => {
     expect(grid.filter(g => g.row === 1)[0].col).toBe(1)
   })
 
+  it('insertRowBefore: 第一行上方插入 → 新行到表首', () => {
+    const { pool, table } = makeSimpleTable(2, 2)
+    const oldFirstRowId = table.children[0]
+
+    insertRowBefore(pool, table.id, 0)
+
+    expect(table.children.length).toBe(3)
+    expect(table.children[0]).not.toBe(oldFirstRowId)
+    expect(table.children[1]).toBe(oldFirstRowId)
+    const newRow = pool.nodes.get(table.children[0]) as unknown as TableRow
+    expect(newRow.children.length).toBe(2)
+  })
+
+  it('insertRowBefore: 跨过 rowspan 的插入点 → rowspan+1, 新行跳过占用列', () => {
+    const { pool, table, A } = makeRowspanTable()
+    insertRowBefore(pool, table.id, 1) // 插在 row1 上方 (row0 与 row1 之间)
+
+    expect(cellSpan(pool, A.id).rowspan).toBe(3)
+    const newRow = pool.nodes.get(table.children[1]) as unknown as TableRow
+    expect(newRow.children.length).toBe(1) // 列0 被 A 的 rowspan 占用
+    const grid = gridSummary(pool, table.id)
+    expect(grid).toContainEqual(expect.objectContaining({ cellId: A.id, col: 0, rowspan: 3 }))
+    expect(grid.filter(g => g.row === 1).length).toBe(1)
+    expect(grid.filter(g => g.row === 1)[0].col).toBe(1)
+  })
+
   // ---- 行删除 ----
 
   it('deleteRow: 普通表格删除行, 行数减一', () => {
@@ -180,6 +206,30 @@ describe('TableOps 行列操作', () => {
     // M 跨过插入点 → colspan 2 → 3
     expect(cellSpan(pool, M.id).colspan).toBe(3)
     // 每行新增一个 cell
+    const grid = gridSummary(pool, table.id)
+    expect(grid.filter(g => g.row === 0).length).toBe(1) // M 独占一行
+    expect(grid.filter(g => g.row === 1).length).toBe(3) // L + 新 + R
+  })
+
+  it('insertColumnBefore: 第一列左侧插入 → 新列到表首', () => {
+    const { pool, table } = makeSimpleTable(2, 2)
+    insertColumnBefore(pool, table.id, 0)
+    expect(table.columns.length).toBe(3)
+    const grid = gridSummary(pool, table.id)
+    expect(grid.length).toBe(6) // 2 行 × 3 列
+    expect(grid.filter(g => g.row === 0).length).toBe(3)
+    // 新单元格在网格 col 0; 原 (0,0) 右移到 col 1
+    const row0 = pool.nodes.get(table.children[0]) as unknown as TableRow
+    const newCellId = row0.children[0]
+    expect(grid.find(g => g.cellId === newCellId)?.col).toBe(0)
+    expect(grid.find(g => g.cellId === row0.children[1])?.col).toBe(1)
+  })
+
+  it('insertColumnBefore: 跨过 colspan 的插入点 → colspan+1', () => {
+    const { pool, table, M } = makeColspanTable()
+    insertColumnBefore(pool, table.id, 1) // 插在 col0 与 col1 之间
+
+    expect(cellSpan(pool, M.id).colspan).toBe(3)
     const grid = gridSummary(pool, table.id)
     expect(grid.filter(g => g.row === 0).length).toBe(1) // M 独占一行
     expect(grid.filter(g => g.row === 1).length).toBe(3) // L + 新 + R

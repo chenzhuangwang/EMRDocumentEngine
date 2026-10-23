@@ -750,14 +750,10 @@ function runGate(seed: number, target: number, tracking = false): void {
     {
       const firstPara = editableParagraphs(f)[0]
       const threadId = 'th-prelude'
-      const markerId = 'mk-prelude'
       const range = { path: [f.doc.id, firstPara.id], offset: 0 }
       const createdAt = nextTs()
       prelude.push(new CreateCommentCommand(
-        generateCommandId(), nextTs(), 'user', [f.doc.id, firstPara.id], 0,
-        () => ({
-          type: 'comment_marker', id: markerId, threadId, rangeStart: range, rangeEnd: range,
-        } as unknown as BaseNode),
+        generateCommandId(), nextTs(), 'user',
         () => ({
           id: threadId, rangeStart: range, rangeEnd: range, author: 'user',
           createdAt, status: 'open', baseVersion: 1, anchorStatus: 'valid', comments: [],

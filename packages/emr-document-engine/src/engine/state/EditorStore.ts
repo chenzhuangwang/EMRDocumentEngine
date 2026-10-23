@@ -277,6 +277,12 @@ export class EditorStore {
     this.notify()
   }
 
+  /** 批注强调层开关 (契约 §12.14) — 唯一受控写入入口; 纯视图, 不改文档 */
+  setShowCommentMarks(showCommentMarks: boolean): void {
+    this._state.runtime.view.showCommentMarks = showCommentMarks
+    this.notify()
+  }
+
   /** Section 结构显示开关 — 唯一受控写入入口 (纯 UI 叠加层, 见 ViewState 注释) */
   setShowSectionStructure(show: boolean): void {
     this._state.runtime.view.showSectionStructure = show

@@ -326,14 +326,12 @@ describe('契约 §8.3 — P1/P2/P3 铸造点补齐', () => {
     })
   })
 
-  it('创建批注 (标记 + 线程)', () => {
+  it('创建批注 (仅线程, 不再插入 marker 节点)', () => {
     expectReplayIdentity('create-comment', (f) => {
-      const markerId = 'mk1'
       const threadId = 'th1'
       const range = { path: [f.doc.id, f.p0], offset: 0 }
       f.cm.execute(new CreateCommentCommand(
-        generateCommandId(), 1, 'test', [f.doc.id, f.p0], 3,
-        () => ({ type: 'comment_marker', id: markerId, threadId, rangeStart: range, rangeEnd: range } as unknown as BaseNode),
+        generateCommandId(), 1, 'test',
         () => ({
           id: threadId, rangeStart: range, rangeEnd: range, author: 'test', createdAt: 1,
           status: 'open', baseVersion: 1, anchorStatus: 'valid', comments: [],
@@ -401,7 +399,7 @@ describe('契约 §8.3 — P1/P2/P3 铸造点补齐', () => {
     expectReplayIdentity('remove-nodes-ensure-body', (f) => {
       f.cm.execute(new RemoveNodesCommand(
         generateCommandId(), 1, 'test',
-        [{ container: { kind: 'body' }, nodeIds: [f.p0] }], [], undefined,
+        [{ container: { kind: 'body' }, nodeIds: [f.p0] }], undefined,
         { ensureBodyParagraph: true },
       ))
       return 1

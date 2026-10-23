@@ -40,7 +40,7 @@ export type { FontMetrics } from './layout/text/FontMetrics'
 // Render
 export { LayeredRenderer } from './render/LayeredRenderer'
 export { HitTestIndex } from './render/HitTestIndex'
-export type { SectionPageRect } from './render/Draw'
+export type { SectionPageRect, CommentClientRect, TableClientRect } from './render/Draw'
 
 // EditorRuntimeState
 export {
