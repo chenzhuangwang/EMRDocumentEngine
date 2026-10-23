@@ -18,7 +18,9 @@ import { DesignControlProperties } from '@/components/views/DesignControlPropert
 import { EditorProvider, useEditorRef, useEditorReady, useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { RuntimeControlOverlay } from '@/components/editor/RuntimeControlOverlay'
 import { TableGrowOverlay } from '@/components/editor/TableGrowOverlay'
+import { TableSelectHandleOverlay } from '@/components/editor/TableSelectHandleOverlay'
 import { SectionStructureOverlay } from '@/components/editor/SectionStructureOverlay'
+import { CommentBalloonOverlay } from '@/components/editor/CommentBalloonOverlay'
 import { stripWidgetDefaultLabels, stripWidgetDefaultLabelsFromObject } from '@/platform/data/controlLibrary'
 import { useEditorContextMenu } from '@/components/editor/useEditorContextMenu'
 import { ContextMenu } from '@/components/editor/ContextMenu'
@@ -59,7 +61,7 @@ import {
 import type { OutlineItem, SectionOutlineAction } from '@/components/sidebar/OutlineNav'
 import { buildOutlineItems } from '@/components/sidebar/outlineModel'
 import type { EditorMode, ScoreResult, WatermarkConfig, PerfSummary } from '@emrde/document-engine'
-import type { QCIssue, QCResult, RevisionListEntry } from '@emrde/document-engine'
+import type { QCIssue, QCResult, RevisionListEntry, CommentThread } from '@emrde/document-engine'
 import type { CalcResult } from '@emrde/document-engine'
 import { useDocumentSave } from '@/hooks/useDocumentSave'
 
@@ -299,6 +301,10 @@ function EditorPageInner({
   const [qcResult, setQcResult] = useState<QCResult | null>(null)
   /** 修订列表 (契约 §12.13) — 引擎只读读模型, contentChange 后刷新 */
   const [revisions, setRevisions] = useState<RevisionListEntry[]>([])
+  /** 批注线程 (契约 §12.14) — contentChange 后刷新; 同时供侧栏徽标 */
+  const [comments, setComments] = useState<CommentThread[]>([])
+  /** 当前选中的批注线程 (画布 ↔ 面板双向选中) */
+  const [activeCommentThreadId, setActiveCommentThreadId] = useState<string | null>(null)
   /**
    * 保存前的必填未填确认框 (契约 §12.11) 与保存流程本身都住在
    * `useDocumentSave` 里 —— 那里有用例锁, 这段接线不再只靠人读代码。
@@ -346,6 +352,8 @@ function EditorPageInner({
   const showSectionStructure = useEditorStoreSnapshot((s) => s.runtime.view.showSectionStructure)
   /** 修订留痕视图开关 (契约 §12.13) — 纯视图, 关掉不改文档 */
   const showRevisionMarks = useEditorStoreSnapshot((s) => s.runtime.view.showRevisionMarks)
+  /** 批注强调层开关 (契约 §12.14) — 纯视图 */
+  const showCommentMarks = useEditorStoreSnapshot((s) => s.runtime.view.showCommentMarks)
   /** 修订追踪开关 (契约 §12.13) — 运行时状态, 不在 store 里 (不随文档走) */
   const [tracking, setTracking] = useState(false)
   /** 当前登录用户 → 留痕作者 (契约 §12.13) */
@@ -588,6 +596,47 @@ function EditorPageInner({
     return () => { editor.off('contentChange', refresh) }
   }, [ready, editorRef])
 
+  /**
+   * 批注线程 (契约 §12.14): contentChange 后重取。
+   *
+   * 不依赖 edits 的副作用式重渲染 —— 面板的列表与侧栏徽标都从这里拿同一份。
+   * 线程被删除后 active 必须一起清掉, 否则面板会高亮一个不存在的条目。
+   */
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!ready || !editor) return
+    const refresh = () => {
+      const list = editor.getComments()
+      setComments(list)
+      setActiveCommentThreadId(prev => {
+        if (prev && list.some(thread => thread.id === prev)) return prev
+        if (prev) editor.setActiveCommentThread(null)
+        return null
+      })
+    }
+    editor.on('contentChange', refresh)
+    refresh()
+    return () => { editor.off('contentChange', refresh) }
+  }, [ready, editorRef])
+
+  /**
+   * 文档 → 面板反选 (契约 §12.14): 光标/选区变化时, 若落在某条批注范围内
+   * 就选中它; 落在空白处则清空。selectionChange 由引擎在 state:changed 时发出,
+   * 不跟着 contentChange 跑 (避免每次按键重算字数/大纲)。
+   */
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!ready || !editor) return
+    const sync = () => {
+      const cursor = editor.getStore().state.runtime.cursor
+      const threadId = editor.getCommentThreadAt(cursor.paragraphPath, cursor.offset)
+      setActiveCommentThreadId(threadId)
+      editor.setActiveCommentThread(threadId)
+    }
+    editor.on('selectionChange', sync)
+    return () => { editor.off('selectionChange', sync) }
+  }, [ready, editorRef])
+
   /** 质控: contentChange 后**防抖**重算 (契约 §12.2)。
    *
    * 单独一个 effect 承载自己的防抖与清理 —— 与字数/大纲虽同频但语义独立,
@@ -651,9 +700,44 @@ function EditorPageInner({
 
   /** 批注条目跳转 (此前该回调未接线, 点批注无反应) */
   const handleSelectCommentThread = useCallback((threadId: string) => {
-    const thread = (editorRef.current?.getComments() ?? []).find((t) => t.id === threadId)
+    const editor = editorRef.current
+    const thread = (editor?.getComments() ?? []).find((t) => t.id === threadId)
+    setActiveCommentThreadId(threadId)
+    editor?.setActiveCommentThread(threadId)
     if (thread) revealLocation(thread.rangeStart.path, thread.rangeStart.offset)
   }, [editorRef, revealLocation])
+
+  /** 删除整条批注 (引擎侧可撤销; 确认框在面板里) */
+  const handleDeleteCommentThread = useCallback((threadId: string) => {
+    editorRef.current?.deleteComment(threadId)
+  }, [editorRef])
+
+  /** 删除一条回复 (引擎侧可撤销) */
+  const handleDeleteCommentReply = useCallback((threadId: string, replyId: string) => {
+    editorRef.current?.deleteCommentReply(threadId, replyId)
+  }, [editorRef])
+
+  /** 新建批注: 成功后把新线程设为选中, 面板立刻聚焦到它 */
+  const handleNewComment = useCallback((content: string): boolean => {
+    const editor = editorRef.current
+    if (!editor) return false
+    const ok = editor.createComment(content)
+    if (ok) {
+      const list = editor.getComments()
+      const created = list[list.length - 1]
+      if (created) {
+        setActiveCommentThreadId(created.id)
+        editor.setActiveCommentThread(created.id)
+      }
+    }
+    return ok
+  }, [editorRef])
+
+  /** 批注强调层开关 (契约 §12.14) — 纯视图 */
+  const handleToggleCommentMarks = useCallback(() => {
+    const editor = editorRef.current
+    if (editor) editor.setShowCommentMarks(!editor.getShowCommentMarks())
+  }, [editorRef])
 
   /** 大纲点击: 跳转光标到目标段落 + 滚动到对应页面 */
   const handleOutlineClick = useCallback((item: OutlineItem) => {
@@ -1012,8 +1096,10 @@ function EditorPageInner({
       case 'mergeCells': ed.mergeSelectedCells(); break
       case 'splitCell': ed.splitSelectedCell(); break
       case 'insertRow': ed.insertTableRow(); break
+      case 'insertRowAbove': ed.insertTableRowAbove(); break
       case 'deleteRow': ed.deleteTableRow(); break
       case 'insertColumn': ed.insertTableColumn(); break
+      case 'insertColumnLeft': ed.insertTableColumnLeft(); break
       case 'deleteColumn': ed.deleteTableColumn(); break
       // 标题样式: outlineLevel 0=正文, 1-6=Heading
       case 'heading':
@@ -1309,9 +1395,12 @@ function EditorPageInner({
         setWatermarkInitial(editorRef.current?.getWatermark())
         setWatermarkOpen(true)
       }}
-      commentThreads={(() => { const ed = editorRef.current; return ed ? ed.getComments() : [] })()}
+      commentThreads={comments}
+      activeCommentThreadId={activeCommentThreadId ?? undefined}
       onSelectCommentThread={handleSelectCommentThread}
       onAddCommentReply={(threadId, content) => editorRef.current?.addCommentReply(threadId, content)}
+      onDeleteCommentThread={handleDeleteCommentThread}
+      onDeleteCommentReply={handleDeleteCommentReply}
       qcResult={qcResult}
       onQcIssueClick={handleQcIssueClick}
       onQcRecheck={() => setQcResult(editorRef.current?.runQC() ?? null)}
@@ -1320,7 +1409,7 @@ function EditorPageInner({
       onAcceptRevision={(entry) => { editorRef.current?.acceptRevisions([entry.nodeId]) }}
       onRejectRevision={(entry) => { editorRef.current?.rejectRevisions([entry.nodeId]) }}
       // 批注创建: 锚点取文档当前选区/光标, 返回 false 时面板显示提示
-      onNewComment={(content) => editorRef.current?.createComment(content) ?? false}
+      onNewComment={handleNewComment}
       getCommentExcerpt={(threadId) => editorRef.current?.getCommentExcerpt(threadId) ?? ''}
       onResolveCommentThread={(threadId) => {
         const ed = editorRef.current
@@ -1341,6 +1430,8 @@ function EditorPageInner({
       onToggleInvisible={handleToggleInvisible}
       showRevisionMarks={showRevisionMarks}
       onToggleRevisionMarks={handleToggleRevisionMarks}
+      showCommentMarks={showCommentMarks}
+      onToggleCommentMarks={handleToggleCommentMarks}
       trackChanges={tracking}
       onToggleTrackChanges={handleToggleTrackChanges}
       onAcceptAllRevisions={handleAcceptAllRevisions}
@@ -1361,7 +1452,12 @@ function EditorPageInner({
       <DesignControlTooltip />
       <RuntimeControlOverlay canvasContainerRef={containerRef} />
       <TableGrowOverlay />
+      <TableSelectHandleOverlay />
       <SectionStructureOverlay />
+      <CommentBalloonOverlay
+        activeThreadId={activeCommentThreadId ?? undefined}
+        onSelectThread={handleSelectCommentThread}
+      />
       {/* 性能面板 (接线审计 P2: 此前 PerformanceMetrics 只写不读、PerfPanel 零挂载) */}
       <PerfPanel summary={perfSummary ?? undefined} />
       <ContextMenu

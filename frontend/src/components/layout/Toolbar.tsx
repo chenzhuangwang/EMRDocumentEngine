@@ -19,6 +19,7 @@ import {
   Clock, User, Highlighter, Bookmark,
   Combine, Ungroup,
   Rows3, Rows, Columns3, Columns,
+  ArrowUpToLine, ArrowLeftToLine,
   Droplets, Puzzle, Scissors, ListTree,
 } from 'lucide-react'
 import type { ToolbarAction } from '@emrde/document-engine'
@@ -219,11 +220,17 @@ export function Toolbar({ onFormat, onInsert, onPrint, onExportClick, onPageSetu
         <ToolbarButton title={t('editor.table.insertRow')} onClick={() => onFormat?.('insertRow')}>
           <Rows3 size={16} />
         </ToolbarButton>
+        <ToolbarButton title={t('editor.table.insertRowAbove')} onClick={() => onFormat?.('insertRowAbove')}>
+          <ArrowUpToLine size={16} />
+        </ToolbarButton>
         <ToolbarButton title={t('editor.table.deleteRow')} onClick={() => onFormat?.('deleteRow')}>
           <Rows size={16} />
         </ToolbarButton>
         <ToolbarButton title={t('editor.table.insertColumn')} onClick={() => onFormat?.('insertColumn')}>
           <Columns3 size={16} />
+        </ToolbarButton>
+        <ToolbarButton title={t('editor.table.insertColumnLeft')} onClick={() => onFormat?.('insertColumnLeft')}>
+          <ArrowLeftToLine size={16} />
         </ToolbarButton>
         <ToolbarButton title={t('editor.table.deleteColumn')} onClick={() => onFormat?.('deleteColumn')}>
           <Columns size={16} />

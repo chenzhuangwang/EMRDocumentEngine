@@ -48,10 +48,15 @@ interface SidebarProps {
   onSectionAction?: (action: SectionOutlineAction, item: OutlineItem) => void
   /** 批注线程 (R32) */
   commentThreads?: CommentThread[]
+  /** 当前选中的批注线程 (画布 ↔ 面板双向选中) */
+  activeCommentThreadId?: string
   /** 批注回调 */
   onSelectCommentThread?: (threadId: string) => void
   onResolveCommentThread?: (threadId: string) => void
   onAddCommentReply?: (threadId: string, content: string) => void
+  /** 删除整条批注 / 一条回复 (引擎侧可撤销) */
+  onDeleteCommentThread?: (threadId: string) => void
+  onDeleteCommentReply?: (threadId: string, replyId: string) => void
   /** 新建批注 (返回 false = 锚定失败, 面板据此提示) */
   onNewComment?: (content: string) => boolean
   /** 读取批注锚定的文字摘录 */
@@ -78,7 +83,9 @@ interface TemplateCategory {
 export function Sidebar({
   templates = [], onTemplateSelect, onNewTemplate, onElementClick,
   outlineItems = [], activeOutlineId, onOutlineClick, onSectionAction,
-  commentThreads = [], onSelectCommentThread, onResolveCommentThread, onAddCommentReply,
+  commentThreads = [], activeCommentThreadId,
+  onSelectCommentThread, onResolveCommentThread, onAddCommentReply,
+  onDeleteCommentThread, onDeleteCommentReply,
   onNewComment, getCommentExcerpt,
   qcResult = null, onQcIssueClick, onQcRecheck,
   revisions = [], onSelectRevision, onAcceptRevision, onRejectRevision,
@@ -86,11 +93,14 @@ export function Sidebar({
   const { t } = useTranslation()
   const sidebarTab = useUIStore((s) => s.sidebarTab)
   const setSidebarTab = useUIStore((s) => s.setSidebarTab)
+  /** 未解决批注数 — 侧栏徽标 (0 不显示) */
+  const openCommentCount = commentThreads.filter(c => c.status !== 'resolved').length
 
   return (
     <aside className="w-sidebar bg-chrome border-r border-line flex flex-col flex-shrink-0 select-none">
-      {/* Tab 切换 */}
-      <div className="flex border-b border-line">
+      {/* Tab 切换 — 240px 侧栏放不下 6 个「图标+文字」单行;
+          改为 3×2 网格, 图标在上、文字单行, 中英文都不折行 */}
+      <div className="grid grid-cols-3 border-b border-line">
         <SidebarTab
           active={sidebarTab === 'templates'}
           onClick={() => setSidebarTab('templates')}
@@ -114,6 +124,7 @@ export function Sidebar({
           onClick={() => setSidebarTab('comments')}
           icon={<MessageSquare size={14} />}
           label={t('sidebar.tab.comments')}
+          badge={openCommentCount}
         />
         <SidebarTab
           active={sidebarTab === 'qc'}
@@ -164,9 +175,12 @@ export function Sidebar({
         {sidebarTab === 'comments' && (
           <CommentPanel
             threads={commentThreads}
+            activeThreadId={activeCommentThreadId}
             onSelectThread={onSelectCommentThread}
             onResolveThread={onResolveCommentThread}
             onAddReply={onAddCommentReply}
+            onDeleteThread={onDeleteCommentThread}
+            onDeleteReply={onDeleteCommentReply}
             onNewComment={onNewComment}
             getThreadExcerpt={getCommentExcerpt}
           />
@@ -198,16 +212,21 @@ function SidebarTab({
   onClick,
   icon,
   label,
+  badge,
 }: {
   active: boolean
   onClick: () => void
   icon: React.ReactNode
   label: string
+  /** 未解决批注数 (0 不显示) */
+  badge?: number
 }) {
   return (
     <button
+      title={label}
+      aria-label={label}
       className={cn(
-        'flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors',
+        'relative flex flex-col items-center justify-center gap-0.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors',
         active
           ? 'text-chrome-accent-ink border-b-2 border-primary-500 bg-chrome-accent/50'
           : 'text-chrome-ink-tertiary hover:text-chrome-ink-body hover:bg-chrome-subtle'
@@ -215,7 +234,17 @@ function SidebarTab({
       onClick={onClick}
     >
       {icon}
-      {label}
+      <span>{label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span
+          className={cn(
+            'absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full text-[9px] leading-[14px] text-center',
+            active ? 'bg-primary-500 text-white' : 'bg-chrome-muted text-chrome-ink-secondary',
+          )}
+        >
+          {badge}
+        </span>
+      )}
     </button>
   )
 }

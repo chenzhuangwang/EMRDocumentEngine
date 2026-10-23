@@ -125,6 +125,22 @@ export function useEditorContextMenu(options?: UseEditorContextMenuOptions) {
         if (snap?.kind === 'cell') editor.deleteTableColumnAt(snap.tableId, snap.row, snap.col)
         break
       }
+      // 表格结构插入 (上方/左侧): 仅 cell 命中时执行
+      case 'selectTable': {
+        const snap = state.snapshot
+        if (snap?.kind === 'cell') editor.selectWholeTable(snap.tableId)
+        break
+      }
+      case 'insertRowAbove': {
+        const snap = state.snapshot
+        if (snap?.kind === 'cell') editor.insertTableRowAboveAt(snap.tableId, snap.row)
+        break
+      }
+      case 'insertColumnLeft': {
+        const snap = state.snapshot
+        if (snap?.kind === 'cell') editor.insertTableColumnLeftAt(snap.tableId, snap.row, snap.col)
+        break
+      }
       // 可增长表开关 (契约 §12.9): 切换写入文档 → 经命令
       case 'toggleTableGrowable': {
         const snap = state.snapshot
