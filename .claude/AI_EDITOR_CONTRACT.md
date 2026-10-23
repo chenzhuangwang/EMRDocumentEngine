@@ -3229,6 +3229,165 @@ Format version
     4.8.0 → 4.9.0, explicit NO-OP (§14). A pre-4.9 document has no
     revision field, so every node reads exactly as before.
 
+12.14 COMMENTS (批注)
+------------------------------------------------------------
+
+Comments are SIDE NOTES over a character range. They are document
+state of the same class as revisions (§7.3) but a DIFFERENT model:
+a revision follows the text itself, while a comment is a note about
+a range that the host may edit independently.
+
+Model
+    interface CommentThread {
+      id: string
+      rangeStart: { path: string[]; offset: number }
+      rangeEnd:   { path: string[]; offset: number }
+      author: string
+      createdAt: number
+      status: 'open' | 'resolved' | 'reopened'
+      baseVersion: number
+      anchorStatus: 'valid' | 'reanchored' | 'degraded'
+      comments: CommentEntry[]
+    }
+    DocumentTree.comments?: CommentThread[]
+
+    CommentThread.rangeStart / rangeEnd are the SINGLE source of
+    truth for a comment's span. They are stored in the same
+    paragraph-character offset space as cursors and selections
+    (§6.3): a text node counts its length, any other inline node
+    counts 1.
+
+Ranges
+    - A new comment MUST NOT insert a `comment_marker` node into the
+      paragraph. The old marker carried no rendering and no layout
+      product (§31.13.1: "zero width, may legitimately produce no
+      item"), while it DID consume one character-offset unit — so
+      creating a comment silently shifted every later range in the
+      same paragraph. The marker type remains LEGAL on load for
+      legacy artifacts and is removed together with its thread when
+      that thread is deleted; no new marker is produced.
+    - A comment MAY be a ZERO-LENGTH POINT at the caret: no text
+      selection is required. A point comment has
+      rangeStart === rangeEnd (same path, same offset); it renders as a
+      small insertion-point box, its excerpt is empty, and the panel
+      labels it as the cursor position.
+    - A comment MAY span paragraphs. The span is expanded through
+      `selectionSpine` (§31.3 W3), exactly like a text selection, so
+      the first/middle/last paragraph segments come from the same
+      reading order as copy and delete. Region mixing is refused by
+      the same region identity: body↔header, header↔header:first and
+      cross-cell selections cannot become one comment.
+    - A cross-paragraph comment's excerpt joins the per-paragraph
+      segments with a single space.
+    - `anchorStatus` is NOT updated by this batch: text insertion or
+      deletion still does not re-anchor a range automatically. This
+      is recorded, not implied — the follow-up is a range-transform
+      pass, not a second range model.
+
+Authorship
+    Comment author and reply author come from ONE source: the
+    Editor's current user (`Editor.setCurrentUser`, §12.13's
+    RevisionUser). When no user is set, the literal `'user'` is used.
+    New APIs MUST NOT take an author string from the UI: a caller
+    that could name the author could forge attribution, and the two
+    write paths (create / reply) would drift.
+
+Mutations — commands only (RULE 4)
+    CreateCommentCommand        append the thread (no node mutation,
+                                invalidation 'none')
+    AddCommentReplyCommand      append one entry
+    ResolveCommentCommand       open/reopened ↔ resolved (undo restores
+                                the exact previous status)
+    DeleteCommentCommand        remove the thread AND any legacy
+                                comment_marker carrying its threadId;
+                                undo restores both at their original
+                                positions with the same ids (§8.3)
+    DeleteCommentReplyCommand   remove one entry; undo restores the
+                                entry's id, author, createdAt and
+                                editedAt exactly
+
+    Deleting a thread is a document mutation like any other: it MUST
+    NOT be done by filtering `doc.comments` in the UI. An emptied
+    optional array MUST be deleted, not left as `[]` (§8.3 — the key's
+    presence is part of the document shape).
+
+Rendering
+    The anchor range ALWAYS has a background tint — the user must be
+    able to see that a place is commented even when comment emphasis
+    is off. `showCommentMarks` (a ViewState flag, default true,
+    mirroring `showRevisionMarks`) controls the EMPHASIS layer only:
+
+        active thread            strongest highlight
+        showCommentMarks on      normal highlight + anchor marker
+        off, or resolved         faint background only
+
+    When the emphasis layer applies (on, or the thread is active), the
+    range ALSO carries a DASHED border around its per-page union box, a
+    dashed connector to the page's right edge, and a DOM BALLOON in the
+    right margin. The balloon is an interactive CARD, not a one-line
+    summary: avatar + author + timestamp + open/resolved badge, the
+    first entry's text, the reply list (scrollable when long), and — for
+    an open thread — a reply composer with cancel/reply. Replying from
+    the balloon goes through Editor.addCommentReply (a command, so it is
+    undoable), exactly like the side panel; the balloon never edits the
+    thread array directly. The card's background MUST use chrome-*
+    tokens (no raw bg-white), so it follows the shell theme.
+    The border/connector/balloon are EMPHASIS, not content. The dashed
+    border additionally requires a non-zero range: a point comment has
+    no box to outline.
+
+    A point comment (zero-length range) has no text background to tint,
+    so it MUST NOT paint a short background slab that covers only part
+    of the adjacent glyph. It renders as a full-line-height insertion
+    BAR at the caret, plus a small top flag when the emphasis layer
+    applies; faint/off states keep the bar at reduced opacity rather
+    than hiding it (hiding it would make the anchor completely
+    invisible). Its connector and balloon are still emphasis-gated.
+    An anchor on an EMPTY paragraph is drawn on the layout's empty-line
+    placeholder (whose item nodeId is the paragraph id), and an anchor
+    on an atomic inline (control/image/field) is drawn at the
+    boundary before or after that item — an anchor MUST NOT silently
+    produce no rect merely because the target has no text run.
+
+    Balloon geometry MUST come from the SAME per-item range math as the
+    canvas (Editor.getCommentClientRects → Draw.forEachCommentRect);
+    a second geometry path would let the balloon point somewhere other
+    than the box.
+
+    Every balloon MUST carry its OWN leader line from that thread's
+    connector endpoint: the canvas connector stops at the page's right
+    edge, and the DOM overlay draws a straight dashed line from that
+    endpoint to the balloon's left edge. Do NOT route leaders through
+    a vertical channel along the page edge: with several balloons the
+    channel degenerates into one long vertical line that hides which
+    anchor each balloon belongs to. When several threads share one
+    anchor their balloons stack down the margin; each keeps its own
+    diagonal leader. Stacking uses the balloons' MEASURED heights, so
+    short comments sit a few pixels apart instead of being spread out
+    by a fixed slot. Leaders are emphasis-only, pointer-transparent,
+    and use the same dashed amber style as the canvas connector.
+
+    A resolved comment therefore keeps a faint background and becomes
+    strongly visible when selected from the panel. The anchor marker
+    is drawn once per thread at the first highlighted segment.
+
+    Screen and print share this ONE implementation (§4 projection
+    rule) — print does not force the emphasis off. Highlighting covers
+    body, table-cell and header/footer items; it MUST be painted
+    below the text. A range that intersects an atomic inline covers
+    that item's whole box (the same rule as selection highlighting).
+
+    `activeCommentThreadId` is transient editor runtime state (like
+    `selectedSectionId`, §31.14.5), never serialized. A click in the
+    document resolves the thread containing the caret through the SAME
+    range module as rendering; the engine emits `selectionChange` so
+    the UI can mirror that selection in the panel.
+
+Document format
+    No field, node type or serialized shape is added: `comments`
+    already existed, and a newly created comment now writes LESS
+    (no marker node). The format version therefore does NOT bump.
+
 ============================================================
 13. DOCUMENT SERIALIZATION
 ============================================================
@@ -4549,6 +4708,119 @@ W3-SELECTION:
       same container. MergeParagraphCommand decides this itself and
       returns null otherwise (no undo entry), so a table boundary is
       never crossed and no index bookkeeping is needed.
+    - The Delete KEY at the end of an EMPTY paragraph whose next
+      sibling is a non-paragraph block (table / image / section_break
+      / section) removes that empty paragraph through
+      Editor.deleteNode → RemoveNodesCommand (undoable), so the block
+      moves up. Likewise, Backspace at the start of an EMPTY paragraph
+      that has no preceding paragraph sibling (document start, or the
+      previous block is a table / image / section_break / section)
+      removes it the same way. Backspace at the start of a NON-empty
+      paragraph whose preceding sibling is an EMPTY paragraph removes
+      that empty paragraph instead of merging into it: a merge would
+      make the content inherit the empty paragraph's paragraph format
+      (e.g. lineHeight 1), visually squashing the line. This is BLOCK
+      deletion, not text deletion; it is limited to empty paragraphs —
+      neither key ever removes a non-empty paragraph, and
+      text-deletion rules above are unchanged.
+    - When a merge DOES happen, MergeParagraphCommand positions the
+      caret at the MERGE SEAM — the previous paragraph's character
+      length measured BEFORE appending — never at the end of the
+      merged paragraph. The seam offset must be captured before the
+      children are appended; measuring afterwards silently includes
+      the current paragraph's text and makes Backspace jump to the end
+      of the line.
+
+31.3.1 BLOCK SELECTION AND BLOCK CARET
+
+    Text deletion still NEVER removes block structure (table / image /
+    separator / section). However, the editor exposes two EXPLICIT
+    block-level selection modes whose Delete/Backspace ARE block
+    deletion and MUST go through commands (undoable):
+
+    - WHOLE-TABLE selection. Transient, not serialized. It reuses the
+      existing cell-range selection state with the full grid rectangle
+      (0,0)-(lastRow,lastCol) as its visual, so there is no second
+      selection painter. Its Delete/Backspace removes the table through
+      Editor.deleteNode → RemoveNodesCommand; the body MUST keep at
+      least one paragraph (ensureBodyParagraph).
+    - WHOLE-DOCUMENT selection. Transient flag set by Ctrl+A outside a
+      table (or by a second Ctrl+A inside one). Its Delete/Backspace
+      removes ALL body blocks — paragraphs, tables, images, separators
+      and sections — in ONE RemoveNodesCommand with
+      ensureBodyParagraph, so one undo restores every block at its
+      original index and id.
+    - Ctrl+A inside a table selects that table on the FIRST press; the
+      SECOND press selects the whole document. Ctrl+A outside a table
+      selects the document immediately.
+    - Any click, character input, navigation key or document load
+      clears both block-level selections. Typing while the whole
+      document is selected replaces the content as one macro
+      (delete-all + insert character = one undo unit).
+
+    BLOCK CARET (the caret just outside a table):
+
+    - It is NOT a new form of `CursorState.paragraphPath`. It is a
+      separate transient `{ blockId, side: 'before' | 'after' }`,
+      never serialized, and the normal text caret is not drawn while
+      it is active.
+    - Clicking the whitespace above/below a block NEVER inserts a
+      node. If an adjacent sibling paragraph exists, the caret goes to
+      that paragraph's end (block above) or start (block below). If no
+      adjacent paragraph exists, the block caret is set at the table's
+      edge instead.
+    - Materializing a paragraph happens only when the user actually
+      inputs: a visible character or Enter executes
+      InsertEmptyParagraphAtCommand at the block's real container and
+      index, places the caret in the new paragraph, then the input
+      proceeds (Enter consumes itself — it does not split the new
+      paragraph). This is a command, so the whole step is undoable.
+    - Arrow keys from the block caret enter the table (Down/Right from
+      'before', Up/Left from 'after'); the opposite direction looks
+      for the adjacent sibling paragraph. Any other key clears the
+      block caret.
+    - The table hover handle is presentation only: it calls the same
+      Editor.selectWholeTable API and holds no state of its own.
+
+    WORD-COMPATIBLE TABLE EDGES (both are click/keyboard mapping only;
+    neither may insert a node except the explicit Enter rule):
+
+    - ENTER ABOVE A LEADING TABLE. When a table is the FIRST block of
+      its container and the caret is at offset 0 of the first
+      paragraph of its first cell (row 0, col 0), Enter inserts an
+      empty paragraph BEFORE the table through
+      InsertEmptyParagraphAtCommand and places the caret in it
+      (Word's escape hatch for text above a top-of-document table).
+      In every other cell position Enter still splits the cell
+      paragraph as usual. One undo removes the inserted paragraph.
+    - ROW-SIDE CLICK. Clicking to the RIGHT of a table (outside the
+      table's horizontal bounds) while the pointer is vertically
+      inside a row's band puts the insertion point at the END of that
+      row's rightmost cell paragraph — for every row, including the
+      last; the header band of a continued table maps to row 0. As in
+      Word, the caret is RENDERED just outside the table's right
+      border at that row's band (the row-end mark position), not at
+      the cell's text origin: a transient `RowEndCaret` holds the
+      drawing band, the normal in-cell caret is not drawn while it is
+      active, and typing still appends to that row's last cell. This
+      is presentation + caret placement only and NEVER changes the
+      document. Any click, any key or any document change clears the
+      row-end caret. Clicks below the table (outside every row band)
+      keep following the block-caret rules above.
+    - ROW-END CARET + ENTER. While the row-end caret is active, Enter
+      does NOT enter the cell:
+      · on the table's LAST row it inserts an empty paragraph
+        immediately AFTER the table (InsertEmptyParagraphAtCommand at
+        the block's real container, index+1) and puts the caret in
+        it — the paragraph goes before any sibling that already
+        followed the table;
+      · on any other row it inserts ONE new row immediately BELOW the
+        current row (TableStructureCommand → insertRow) and puts the
+        caret in the new row's first cell.
+      Both are single undo units. A table nested in a cell has no
+      body/section parent to insert a paragraph into, so its
+      last-row Enter falls back to inserting a row. The row-end caret
+      is cleared first; the document change clears it again.
 
 ------------------------------------------------------------
 31.4 `paragraphPath` — 2 elements, and container resolution
