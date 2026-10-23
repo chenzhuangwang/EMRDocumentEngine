@@ -50,6 +50,9 @@ interface EditorLayoutProps {
   /** 修订留痕显示 (契约 §12.13) */
   showRevisionMarks?: boolean
   onToggleRevisionMarks?: () => void
+  /** 批注强调层显示 (契约 §12.14) */
+  showCommentMarks?: boolean
+  onToggleCommentMarks?: () => void
   /** 修订追踪开关 (契约 §12.13) */
   trackChanges?: boolean
   onToggleTrackChanges?: () => void
@@ -68,9 +71,13 @@ interface EditorLayoutProps {
   templates?: { name: string; items: { id: string; name: string; description?: string }[] }[]
   /** 批注 (R32) */
   commentThreads?: CommentThread[]
+  /** 当前选中的批注线程 (画布 ↔ 面板双向选中) */
+  activeCommentThreadId?: string
   onSelectCommentThread?: (threadId: string) => void
   onResolveCommentThread?: (threadId: string) => void
   onAddCommentReply?: (threadId: string, content: string) => void
+  onDeleteCommentThread?: (threadId: string) => void
+  onDeleteCommentReply?: (threadId: string, replyId: string) => void
   /** 新建批注 (返回 false = 锚定失败) */
   onNewComment?: (content: string) => boolean
   /** 读取批注锚定的文字摘录 */
@@ -117,6 +124,8 @@ export function EditorLayout({
   onToggleSectionStructure,
   showRevisionMarks = true,
   onToggleRevisionMarks,
+  showCommentMarks = true,
+  onToggleCommentMarks,
   trackChanges = false,
   onToggleTrackChanges,
   onAcceptAllRevisions,
@@ -128,9 +137,12 @@ export function EditorLayout({
   onTemplateSelect,
   templates,
   commentThreads = [],
+  activeCommentThreadId,
   onSelectCommentThread,
   onResolveCommentThread,
   onAddCommentReply,
+  onDeleteCommentThread,
+  onDeleteCommentReply,
   onNewComment,
   getCommentExcerpt,
   qcResult,
@@ -186,9 +198,12 @@ export function EditorLayout({
             onOutlineClick={onOutlineClick}
             onSectionAction={onSectionAction}
             commentThreads={commentThreads}
+            activeCommentThreadId={activeCommentThreadId}
             onSelectCommentThread={onSelectCommentThread}
             onResolveCommentThread={onResolveCommentThread}
             onAddCommentReply={onAddCommentReply}
+            onDeleteCommentThread={onDeleteCommentThread}
+            onDeleteCommentReply={onDeleteCommentReply}
             onNewComment={onNewComment}
             getCommentExcerpt={getCommentExcerpt}
             qcResult={qcResult}
@@ -202,7 +217,7 @@ export function EditorLayout({
         )}
 
         {/* 编辑器画布 */}
-        <div className="flex-1 flex flex-col min-h-0 min-w-0">
+        <div className="relative flex-1 flex flex-col min-h-0 min-w-0">
           {children}
           {!readingMode && (
           <StatusBar
@@ -218,6 +233,8 @@ export function EditorLayout({
             onToggleSectionStructure={onToggleSectionStructure}
             showRevisionMarks={showRevisionMarks}
             onToggleRevisionMarks={onToggleRevisionMarks}
+            showCommentMarks={showCommentMarks}
+            onToggleCommentMarks={onToggleCommentMarks}
             trackChanges={trackChanges}
             onToggleTrackChanges={onToggleTrackChanges}
             onAcceptAllRevisions={onAcceptAllRevisions}

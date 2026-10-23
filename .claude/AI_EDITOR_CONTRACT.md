@@ -564,6 +564,25 @@ mutation entry". The correct statement is:
     No mutable internal representation may be directly exposed.
 
 ============================================================
+6.3 CHARACTER OFFSETS AND INLINE NON-TEXT NODES
+============================================================
+
+Character offsets are measured in paragraph-visible units, where an
+inline non-text node (image / smarttext / footnote_ref / field) counts
+as ONE unit. `NodePool.resolveCharOffset` therefore returns such a node
+with localOffset 0 (before it) or 1 (after it) — it is NOT a text node.
+
+Any command that splits text at a caret (insert text, split paragraph,
+paste) MUST branch on the resolved node's type:
+
+    - text node -> slice node.text at localOffset;
+    - non-text  -> split at the node boundary; NEVER read or slice
+                   node.text (images have none — doing so throws).
+
+This is a crash class, not a style preference: pasting right after an
+inline image used to throw TypeError.
+
+============================================================
 7. STATE OWNERSHIP
 ============================================================
 
@@ -665,7 +684,7 @@ it through copy, split and merge.
 
 Owner:
 
-    LayoutEngine / LayoutCache
+    LayoutEngine
 
 Examples:
 
@@ -971,6 +990,91 @@ document changed MUST be signalled identically.
 remote / system) is a separate concern and MAY be distinguished via
 change origin when collaboration or auditing needs it. Do NOT solve
 that distinction by introducing a second event transport.
+
+UNDO EXACTNESS. The inverse of a command MUST restore the document as it
+was BEFORE that command — node identity and run boundaries included, not
+merely the same visible text. A plain "insert the deleted text back"
+inverse is lossy whenever the forward changed node structure:
+
+    - an insert that splits a run mints new nodes, and normalizeParagraph
+      may merge same-style neighbours — deleting the inserted characters
+      can then no longer restore the original run ids;
+    - a delete that crosses runs, or covers a run entirely, loses each
+      run's style and the removed node ids (text re-insertion takes the
+      target run's style only).
+
+Such commands MUST capture the paragraph before mutating
+(`captureParagraphSnapshot`) and invert with `RestoreParagraphsCommand`.
+Style commands MUST invert by REPLACING each node's style with its own
+old value — deleting the fields the command added — because one merged
+`changes` object can not represent per-node old styles (and spreading a
+`nodeId → style` map into a node writes a bogus field named after the id).
+
+Two further lossy cases are normalized side effects, and take the same
+cure:
+
+    - an IN-PLACE insert (no split) whose paragraph ALREADY contains
+      adjacent same-style runs — clear-format and style restoration can
+      leave such runs behind, because they never normalize. Typing then
+      runs normalizeParagraph and silently merges those pre-existing
+      runs. The command MUST snapshot the paragraph in that case
+      (`hasMergeableRuns`) so its lightweight "delete the typed text"
+      inverse is not taken;
+    - an IN-PLACE insert into an EMPTY run: the inverse delete empties
+      the run, the node is removed, and the empty-paragraph guard mints
+      a new node id with default style. Snapshot in that case too.
+
+Conversely, a paragraph MERGE MUST normalize ONLY the seam pair
+(`mergeSeamRuns`), never the whole merged paragraph: a split's inverse
+IS a merge, so a whole-paragraph normalize rewrites run boundaries that
+existed before the split.
+
+A PASTE (`InsertNodesCommand`) follows the same rule: it MUST NOT
+normalize the destination paragraph wholesale. Only the seam between the
+destination's last original run and the first pasted run may merge; the
+right-hand original nodes belong to the pre-paste state and MUST keep
+their run identity, because undo restores them by id.
+
+A SPLIT's inverse MUST NOT be implemented as a merge at all. Restore the
+paragraph from a pre-split paragraph snapshot instead: a merge has to
+decide whether to fuse the seam run, and no single choice is right for
+both cases — when the split cut a run, the two halves must fuse; when the
+split point sat on a run boundary, two separate runs must stay separate.
+`RestoreSplitCommand` removes the minted paragraph subtree and restores
+the original children (ids and boundaries) from the snapshot.
+
+Gate: `UndoRedoEquivalence.test.ts` runs random mixed command sequences
+through the real Editor and requires, step by step, that undo returns to
+each historical snapshot and redo returns to each forward snapshot.
+Cell paragraphs participate in the random selection alongside body
+paragraphs. Compared data is the canonicalized serialization: values,
+node ids and array order; object key insertion order is serialization
+noise, not identity.
+
+8.2.1 Command merging
+
+The undo stack MAY merge consecutive commands, but only when the
+merged command is an exact substitute for the sequence:
+
+- merging MUST NOT change the state produced by redo;
+- one undo of the merged unit MUST restore the state before the first
+  command, one redo MUST restore the state after the last one —
+  including the §8.3 byte-identical node identity;
+- a command that mints node ids, captures a paragraph snapshot, or
+  applies revision marks MAY merge only if the merged command carries
+  the same minted ids / snapshot / resolved mark;
+- when in doubt, do NOT merge. Extra undo steps are acceptable;
+  a lost character or a non-identical redo is not.
+
+Implemented: `ParagraphStyleCommand`; `InsertTextCommand` (in-place
+append only, contiguous offset, same style and revision kind — when the
+first command had to snapshot (§8.2: pre-existing mergeable runs or an
+empty target run), the merged unit carries that FIRST snapshot);
+`DeleteRangeCommand` (untracked, left-adjacent only — rightward deletes
+reuse the same range and MUST NOT merge). A delete that crosses runs,
+consumes a whole run or meets pre-existing mergeable runs now carries a
+paragraph snapshot (§8.2 undo exactness); only same-run partial deletions
+without such runs merge.
 
 ------------------------------------------------------------
 8.3 Command replay identity — forward is called more than once
@@ -3125,6 +3229,165 @@ Format version
     4.8.0 → 4.9.0, explicit NO-OP (§14). A pre-4.9 document has no
     revision field, so every node reads exactly as before.
 
+12.14 COMMENTS (批注)
+------------------------------------------------------------
+
+Comments are SIDE NOTES over a character range. They are document
+state of the same class as revisions (§7.3) but a DIFFERENT model:
+a revision follows the text itself, while a comment is a note about
+a range that the host may edit independently.
+
+Model
+    interface CommentThread {
+      id: string
+      rangeStart: { path: string[]; offset: number }
+      rangeEnd:   { path: string[]; offset: number }
+      author: string
+      createdAt: number
+      status: 'open' | 'resolved' | 'reopened'
+      baseVersion: number
+      anchorStatus: 'valid' | 'reanchored' | 'degraded'
+      comments: CommentEntry[]
+    }
+    DocumentTree.comments?: CommentThread[]
+
+    CommentThread.rangeStart / rangeEnd are the SINGLE source of
+    truth for a comment's span. They are stored in the same
+    paragraph-character offset space as cursors and selections
+    (§6.3): a text node counts its length, any other inline node
+    counts 1.
+
+Ranges
+    - A new comment MUST NOT insert a `comment_marker` node into the
+      paragraph. The old marker carried no rendering and no layout
+      product (§31.13.1: "zero width, may legitimately produce no
+      item"), while it DID consume one character-offset unit — so
+      creating a comment silently shifted every later range in the
+      same paragraph. The marker type remains LEGAL on load for
+      legacy artifacts and is removed together with its thread when
+      that thread is deleted; no new marker is produced.
+    - A comment MAY be a ZERO-LENGTH POINT at the caret: no text
+      selection is required. A point comment has
+      rangeStart === rangeEnd (same path, same offset); it renders as a
+      small insertion-point box, its excerpt is empty, and the panel
+      labels it as the cursor position.
+    - A comment MAY span paragraphs. The span is expanded through
+      `selectionSpine` (§31.3 W3), exactly like a text selection, so
+      the first/middle/last paragraph segments come from the same
+      reading order as copy and delete. Region mixing is refused by
+      the same region identity: body↔header, header↔header:first and
+      cross-cell selections cannot become one comment.
+    - A cross-paragraph comment's excerpt joins the per-paragraph
+      segments with a single space.
+    - `anchorStatus` is NOT updated by this batch: text insertion or
+      deletion still does not re-anchor a range automatically. This
+      is recorded, not implied — the follow-up is a range-transform
+      pass, not a second range model.
+
+Authorship
+    Comment author and reply author come from ONE source: the
+    Editor's current user (`Editor.setCurrentUser`, §12.13's
+    RevisionUser). When no user is set, the literal `'user'` is used.
+    New APIs MUST NOT take an author string from the UI: a caller
+    that could name the author could forge attribution, and the two
+    write paths (create / reply) would drift.
+
+Mutations — commands only (RULE 4)
+    CreateCommentCommand        append the thread (no node mutation,
+                                invalidation 'none')
+    AddCommentReplyCommand      append one entry
+    ResolveCommentCommand       open/reopened ↔ resolved (undo restores
+                                the exact previous status)
+    DeleteCommentCommand        remove the thread AND any legacy
+                                comment_marker carrying its threadId;
+                                undo restores both at their original
+                                positions with the same ids (§8.3)
+    DeleteCommentReplyCommand   remove one entry; undo restores the
+                                entry's id, author, createdAt and
+                                editedAt exactly
+
+    Deleting a thread is a document mutation like any other: it MUST
+    NOT be done by filtering `doc.comments` in the UI. An emptied
+    optional array MUST be deleted, not left as `[]` (§8.3 — the key's
+    presence is part of the document shape).
+
+Rendering
+    The anchor range ALWAYS has a background tint — the user must be
+    able to see that a place is commented even when comment emphasis
+    is off. `showCommentMarks` (a ViewState flag, default true,
+    mirroring `showRevisionMarks`) controls the EMPHASIS layer only:
+
+        active thread            strongest highlight
+        showCommentMarks on      normal highlight + anchor marker
+        off, or resolved         faint background only
+
+    When the emphasis layer applies (on, or the thread is active), the
+    range ALSO carries a DASHED border around its per-page union box, a
+    dashed connector to the page's right edge, and a DOM BALLOON in the
+    right margin. The balloon is an interactive CARD, not a one-line
+    summary: avatar + author + timestamp + open/resolved badge, the
+    first entry's text, the reply list (scrollable when long), and — for
+    an open thread — a reply composer with cancel/reply. Replying from
+    the balloon goes through Editor.addCommentReply (a command, so it is
+    undoable), exactly like the side panel; the balloon never edits the
+    thread array directly. The card's background MUST use chrome-*
+    tokens (no raw bg-white), so it follows the shell theme.
+    The border/connector/balloon are EMPHASIS, not content. The dashed
+    border additionally requires a non-zero range: a point comment has
+    no box to outline.
+
+    A point comment (zero-length range) has no text background to tint,
+    so it MUST NOT paint a short background slab that covers only part
+    of the adjacent glyph. It renders as a full-line-height insertion
+    BAR at the caret, plus a small top flag when the emphasis layer
+    applies; faint/off states keep the bar at reduced opacity rather
+    than hiding it (hiding it would make the anchor completely
+    invisible). Its connector and balloon are still emphasis-gated.
+    An anchor on an EMPTY paragraph is drawn on the layout's empty-line
+    placeholder (whose item nodeId is the paragraph id), and an anchor
+    on an atomic inline (control/image/field) is drawn at the
+    boundary before or after that item — an anchor MUST NOT silently
+    produce no rect merely because the target has no text run.
+
+    Balloon geometry MUST come from the SAME per-item range math as the
+    canvas (Editor.getCommentClientRects → Draw.forEachCommentRect);
+    a second geometry path would let the balloon point somewhere other
+    than the box.
+
+    Every balloon MUST carry its OWN leader line from that thread's
+    connector endpoint: the canvas connector stops at the page's right
+    edge, and the DOM overlay draws a straight dashed line from that
+    endpoint to the balloon's left edge. Do NOT route leaders through
+    a vertical channel along the page edge: with several balloons the
+    channel degenerates into one long vertical line that hides which
+    anchor each balloon belongs to. When several threads share one
+    anchor their balloons stack down the margin; each keeps its own
+    diagonal leader. Stacking uses the balloons' MEASURED heights, so
+    short comments sit a few pixels apart instead of being spread out
+    by a fixed slot. Leaders are emphasis-only, pointer-transparent,
+    and use the same dashed amber style as the canvas connector.
+
+    A resolved comment therefore keeps a faint background and becomes
+    strongly visible when selected from the panel. The anchor marker
+    is drawn once per thread at the first highlighted segment.
+
+    Screen and print share this ONE implementation (§4 projection
+    rule) — print does not force the emphasis off. Highlighting covers
+    body, table-cell and header/footer items; it MUST be painted
+    below the text. A range that intersects an atomic inline covers
+    that item's whole box (the same rule as selection highlighting).
+
+    `activeCommentThreadId` is transient editor runtime state (like
+    `selectedSectionId`, §31.14.5), never serialized. A click in the
+    document resolves the thread containing the caret through the SAME
+    range module as rendering; the engine emits `selectionChange` so
+    the UI can mirror that selection in the panel.
+
+Document format
+    No field, node type or serialized shape is added: `comments`
+    already existed, and a newly created comment now writes LESS
+    (no marker node). The format version therefore does NOT bump.
+
 ============================================================
 13. DOCUMENT SERIALIZATION
 ============================================================
@@ -3346,9 +3609,8 @@ Do not introduce unnecessary full-document recomputation.
 When changing layout behavior,
 consider:
 
-- DirtyTracker
+- the paragraph line cache and resume-pagination state
 - IncrementalLayout
-- LayoutCache
 - VirtualViewport
 - PageStartTable
 
@@ -3372,6 +3634,198 @@ MUST be unchanged from the single-variant behaviour. The body area is
 derived from the worst case over the ENABLED variants so pagination
 stays uniform and deterministic (per-page body height is a later
 concern, not a licence to re-run the paginator per page).
+
+PAGE GEOMETRY (2026-10-21). `DocumentTree.pageSetup` is the canonical owner
+of page width, page height and the four margins (§7.3). Layout MUST consume
+it: `Draw` MUST push the current document's page setup into `LayoutEngine`
+before every layout pass, including right after a document load/swap, and a
+page-setup change MUST invalidate pagination state (paragraph line keys
+already include the available width; the page-start table and reused pages
+do not). The 794×1123 / margins 72/90 values exist ONLY as the defaults for
+documents that omit `pageSetup`; they are not the editor's page geometry.
+`SLIFPage.width` / `SLIFPage.height` are the actual page geometry and remain
+the single source for every other consumer (overlays, hit testing, export).
+A change of page setup is a full-layout invalidation, not a resume.
+
+16.1 VISIBLE-PAGE RANGE
+
+The set of pages painted by `Draw.render` is DERIVED data computed from
+the ACTUAL SLIF page heights (pages can differ within one document:
+page setup, orientation, section breaks) and the page vertical gap.
+
+Rules:
+
+- The computation MUST be a pure function of
+  `(pages, scrollTop, viewportHeight, pageVerticalGap, overscanPages)`.
+- It MUST NOT assume a uniform page height. Any implementation that
+  multiplies `pageIndex * pageHeight` is wrong for this engine.
+- `VirtualViewport` owns that function; `LayoutEngine.getVisiblePages`
+  delegates to it. There is exactly one implementation.
+- Inputs are in DOCUMENT coordinates. The caller converts screen pixels
+  by dividing by scale (§17: no reading of viewport globals here).
+- Canvas overscan (`LayeredRenderer.OVERSCAN_PAGES`) and range overscan
+  are different concerns: the former sizes the backing canvas, the
+  latter widens the painted page set. Do not conflate them.
+
+INCREMENTAL LAYOUT STATUS (2026-10-19)
+
+M2a IS wired: `LayoutEngine` caches paragraph LINE layout for a provably
+safe subset — paragraphs whose children are plain `text`, `image`,
+`smarttext`, `field` or `footnote_ref` — keyed by
+`IncrementalLayout.paragraphKey`
+(structure version + paragraph version + per-child versions) plus the
+available width, the revision-marks flag, the resolved list marker and
+image dimensions. A paragraph that contains a `smarttext` ALSO keys the
+computed-values generation and the `TemplateDefinitionStore` version:
+control geometry (display text, visibility, control type, labels,
+options) comes from those two stores without touching node versions.
+A paragraph that contains a `field` ALSO keys the field-reserve sampling
+inputs — total-page DIGIT count, locale and document title — because the
+layout width of a field comes from `representativeFieldText`'s sample
+string, not from the node; the digit rule is shared with that function via
+`fieldReserveDigits` and MUST NOT be re-implemented. Paragraphs with
+neither child kind MUST NOT include those extra segments — otherwise every
+formula change or title edit would churn the entire line cache. The cache
+holds at most one entry per paragraph id and MUST be cleared when the
+document is swapped.
+
+M2b IS wired for a provably safe subset: plain-text/image/smarttext/field
+paragraphs (list markers included) and tables whose cell leaves are
+`text`, `smarttext`, `image`, `field` or `footnote_ref`. Section breaks
+remain excluded; so does a cross-reference whose `displayText` contains
+a `{page}` or `{number}` placeholder. A cross-reference WITHOUT a
+placeholder is a CONSTANT string (the resolver returns it verbatim), so
+it is part of the safe subset both in body paragraphs and inside table
+cells — its node version already covers a changed `displayText` or
+`targetRef`. Header/footer content is governed by the M3b signature
+below.
+Inline footnote references ARE allowed (see the
+Step 4 rule below). Page breaking resumes from the page
+BEFORE the first recomputed paragraph (widow control can pull a line back
+from the next page). If that page begins in the middle of a table, it MUST
+walk back to the table's first page: the paginator receives the original
+input-line slice and a table has exactly ONE input line, so starting from
+the middle would re-emit fragments already carried by reused pages. If no
+paragraph line changed and no table key changed, the whole page array is
+reused.
+
+List numbering is allowed because the marker is part of the paragraph key:
+a renumbering change invalidates the affected paragraphs automatically.
+
+A table is allowed only when `IncrementalLayout.tableKey` proves its
+subtree unchanged: structure version + every node version under the table
+(rows, cells, cell paragraphs, text, images, fields, footnote refs),
+combined with the computed-values generation, the
+`TemplateDefinitionStore` version and the revision-marks flag. The
+generation is required because a formula/definition change alters
+displayed values without touching node versions; the definition version
+is required for the same reason (control type/labels live in that store).
+When the subtree contains a `field`, the table key ALSO carries the same
+field-reserve sampling inputs as a paragraph key (total-page digit count,
+locale, document title) — a page-count digit or locale change alters
+field reserve width inside cells without touching any node version. A
+cell holding a nested table makes the whole document ineligible for M2b;
+nested tables change cell geometry from outside the flat table key. A
+cross-reference whose display text needs the page map (contains
+`{page}`/`{number}`) is likewise ineligible; a CONSTANT cross-reference
+(no placeholder) is allowed in a cell for the same reason it is allowed
+in a body paragraph. Image dimensions live on the node (already in
+the table key), and a footnote reference only affects the page-bottom
+footnote area, which Step 4 handles per new page (see below).
+
+The page-start line table maps each page to an INPUT-line index. A table
+occupies one input line but can span several pages: the page carrying its
+first fragment advances the index by one, and every continuation page maps
+to the line AFTER the table, so `pageOfLine(tableIndex)` resolves to the
+FIRST fragment page. This mapping is what makes resume and the
+`PageStartTable` lookups correct with tables present.
+
+SAME-SHAPE PAGE PATCH (M2e). When EXACTLY ONE block was recomputed and it is
+a paragraph whose new lines have the same COUNT and the same PER-LINE HEIGHTS
+as its cached previous lines, page boundaries cannot move: PageBreaker's
+decision sequence reads only each line's height, its pageable flag and its
+paragraph-end flag, all unchanged. Layout may then rebuild ONLY the pages
+that carry that paragraph's lines and reuse every other page object verbatim,
+INCLUDING pages after the rebuilt range — it must not resume re-breaking from
+the first dirty page. Required preconditions (any failure falls back to the
+M2b resume path, then to a full pass):
+  - the document has no tables and no footnotes (footnote reserve = 0): a
+    table fragment or a footnote area would make a page's line slice
+    ambiguous;
+  - the paragraph's last line still ends the paragraph (same '\n' flag), so
+    widow/orphan control sees identical boundaries;
+  - the previous lines are still in the paragraph line cache (otherwise the
+    shape comparison has no baseline).
+Rebuilt pages and reused pages MUST be byte-identical to a fresh full layout;
+the randomized equivalence gate is the acceptance proof. The hit-test index
+rebuild starts at the first patched page (re-indexing the reused tail is
+harmless). `getPaginationStats()` reports the prefix reuse count in
+`reusedPages` and the count reused after the patched range in
+`reusedTailPages`; both being zero means nothing was reused. Header/footer
+content does NOT disqualify the patch on its own: the M3b signature below
+already proves the per-page header/footer items are unchanged.
+
+HEADER/FOOTER (M3b). A document with header/footer content is eligible for
+incremental pagination when a header/footer signature is UNCHANGED. The
+signature MUST cover: structure version; for each of the six variant arrays
+(header, footer, firstPageHeader, firstPageFooter, evenPageHeader,
+evenPageFooter) every block id together with the block's node version AND
+each child's node version; the per-page variant switches
+(`differentFirstPage`, `differentOddEven`); the revision-marks flag (strike-
+through is a layout-time product); and the field-reserve sampling inputs
+(total-page digit count, locale, document title) — a header/footer field's
+reserve width depends on them. When (and ONLY when) a header/footer paragraph
+contains a `smarttext`, the signature also keys the computed-values
+generation and the `TemplateDefinitionStore` version, for the same reason as
+M2a; including them unconditionally would send every header-bearing document
+back to a full pass on each formula change. PAGE/NUMPAGES text inside a
+header/footer is resolved at render time (`Draw.resolveFieldText`), so a page
+COUNT change alone does not invalidate reused pages; a DIGIT-count change
+does, and the existing second layout pass (new hint) handles it. On any
+signature mismatch the pass MUST fall back to a full layout.
+
+Step 4 (footnote collection) is incremental-safe under two rules:
+1. It processes ONLY the newly paginated pages. Reused pages already carry
+   their footnote items; re-collecting them would append duplicates on every
+   layout.
+2. Footnote numbering is global and page-ordered ("跨页连续"), so the
+   collector's counter MUST be seeded with the references already carried by
+   the reused pages (counted with the same eligibility rule as collection),
+   otherwise new pages restart at 1.
+
+The footnote gutter reserve is derived from whether the document contains
+footnotes at all. Adding or removing a reference is a structural edit
+(structureVersion), which already invalidates every paragraph key and forces
+a resume from page 0 — so the reserve cannot change underneath reused pages.
+
+`HitTestIndex` follows pagination: on a resume it rebuilds only from the
+first non-reused page, and when nothing changed it is not rebuilt at all.
+
+REMOVED (2026-10-20): `LayoutCache` and `LayoutEngine.incrementalLayout()`
+are gone, not merely unwired. Both were exported but had no consumer; the
+old `incrementalLayout()` only reused page objects after a full pass, so
+it could never save work. Do NOT reintroduce either name as a placeholder:
+the live path is `fullLayout` + the paragraph line cache + the resume
+pagination described above.
+
+REMOVED (2026-10-21): `DirtyTracker` / `DirtyScope` are gone as well
+(dead-API removal approved by the owner). Their marks were never consulted
+when deciding what to recompute. `document:changed` keeps the
+`dirtyNodeIds` field but always emits an EMPTY array, for subscriber
+compatibility only; it carries no information. Cache misses and keys
+remain the ONLY source of truth for what is recomputed — never cite dirty
+marks, and never reintroduce a placeholder tracker.
+
+Unknown or unprovable cases MUST fall back to a full pass (cross-references,
+section breaks, tables whose cells hold nested tables / footnote references
+/ fields, and any input not covered by the keys listed above are
+deliberately excluded). The
+cache and resume path are correct only if the key/eligibility test covers
+every input that can change line layout or pagination; when adding a new
+input, extend the key/eligibility test or fall back to full.
+
+The page-level design and remaining milestones are in
+`knowledge/增量排版-设计方案.md`.
 
 
 ============================================================
@@ -4231,6 +4685,143 @@ W3:
       survives §31.13 because on a document with no nested table the
       recursive expansion degenerates to the flat one.
 
+W3-SELECTION:
+
+    - The paragraph order of a selection is W3 for body, or the variant
+      array for header/footer.
+    - The per-paragraph clip ranges MUST come from
+      `collectSelectionSegments` (SelectionCollector). Copy, selection
+      painting and range commands all consume that one function; a
+      consumer that re-derives `lo/hi` offsets locally is a drift bug —
+      the copies had already diverged once (keyboard delete skipped the
+      macro wrapping, so one cross-paragraph delete needed N undo steps).
+    - Region mixing is refused by region identity
+      (`regionIdOf`): body↔header and header↔header:first are invalid
+      selections.
+    - Copy, painting AND deletion walk the same flattened W3 spine. A
+      body↔cell or cross-cell selection is one linear text range: the
+      text it covers — cell text included — is deleted. Block structure
+      (a table, a block-level image) is never removed by text deletion;
+      it stays where it is.
+    - After a cross-paragraph deletion, each paragraph merges into its
+      preceding sibling only when that sibling is a paragraph in the
+      same container. MergeParagraphCommand decides this itself and
+      returns null otherwise (no undo entry), so a table boundary is
+      never crossed and no index bookkeeping is needed.
+    - The Delete KEY at the end of an EMPTY paragraph whose next
+      sibling is a non-paragraph block (table / image / section_break
+      / section) removes that empty paragraph through
+      Editor.deleteNode → RemoveNodesCommand (undoable), so the block
+      moves up. Likewise, Backspace at the start of an EMPTY paragraph
+      that has no preceding paragraph sibling (document start, or the
+      previous block is a table / image / section_break / section)
+      removes it the same way. Backspace at the start of a NON-empty
+      paragraph whose preceding sibling is an EMPTY paragraph removes
+      that empty paragraph instead of merging into it: a merge would
+      make the content inherit the empty paragraph's paragraph format
+      (e.g. lineHeight 1), visually squashing the line. This is BLOCK
+      deletion, not text deletion; it is limited to empty paragraphs —
+      neither key ever removes a non-empty paragraph, and
+      text-deletion rules above are unchanged.
+    - When a merge DOES happen, MergeParagraphCommand positions the
+      caret at the MERGE SEAM — the previous paragraph's character
+      length measured BEFORE appending — never at the end of the
+      merged paragraph. The seam offset must be captured before the
+      children are appended; measuring afterwards silently includes
+      the current paragraph's text and makes Backspace jump to the end
+      of the line.
+
+31.3.1 BLOCK SELECTION AND BLOCK CARET
+
+    Text deletion still NEVER removes block structure (table / image /
+    separator / section). However, the editor exposes two EXPLICIT
+    block-level selection modes whose Delete/Backspace ARE block
+    deletion and MUST go through commands (undoable):
+
+    - WHOLE-TABLE selection. Transient, not serialized. It reuses the
+      existing cell-range selection state with the full grid rectangle
+      (0,0)-(lastRow,lastCol) as its visual, so there is no second
+      selection painter. Its Delete/Backspace removes the table through
+      Editor.deleteNode → RemoveNodesCommand; the body MUST keep at
+      least one paragraph (ensureBodyParagraph).
+    - WHOLE-DOCUMENT selection. Transient flag set by Ctrl+A outside a
+      table (or by a second Ctrl+A inside one). Its Delete/Backspace
+      removes ALL body blocks — paragraphs, tables, images, separators
+      and sections — in ONE RemoveNodesCommand with
+      ensureBodyParagraph, so one undo restores every block at its
+      original index and id.
+    - Ctrl+A inside a table selects that table on the FIRST press; the
+      SECOND press selects the whole document. Ctrl+A outside a table
+      selects the document immediately.
+    - Any click, character input, navigation key or document load
+      clears both block-level selections. Typing while the whole
+      document is selected replaces the content as one macro
+      (delete-all + insert character = one undo unit).
+
+    BLOCK CARET (the caret just outside a table):
+
+    - It is NOT a new form of `CursorState.paragraphPath`. It is a
+      separate transient `{ blockId, side: 'before' | 'after' }`,
+      never serialized, and the normal text caret is not drawn while
+      it is active.
+    - Clicking the whitespace above/below a block NEVER inserts a
+      node. If an adjacent sibling paragraph exists, the caret goes to
+      that paragraph's end (block above) or start (block below). If no
+      adjacent paragraph exists, the block caret is set at the table's
+      edge instead.
+    - Materializing a paragraph happens only when the user actually
+      inputs: a visible character or Enter executes
+      InsertEmptyParagraphAtCommand at the block's real container and
+      index, places the caret in the new paragraph, then the input
+      proceeds (Enter consumes itself — it does not split the new
+      paragraph). This is a command, so the whole step is undoable.
+    - Arrow keys from the block caret enter the table (Down/Right from
+      'before', Up/Left from 'after'); the opposite direction looks
+      for the adjacent sibling paragraph. Any other key clears the
+      block caret.
+    - The table hover handle is presentation only: it calls the same
+      Editor.selectWholeTable API and holds no state of its own.
+
+    WORD-COMPATIBLE TABLE EDGES (both are click/keyboard mapping only;
+    neither may insert a node except the explicit Enter rule):
+
+    - ENTER ABOVE A LEADING TABLE. When a table is the FIRST block of
+      its container and the caret is at offset 0 of the first
+      paragraph of its first cell (row 0, col 0), Enter inserts an
+      empty paragraph BEFORE the table through
+      InsertEmptyParagraphAtCommand and places the caret in it
+      (Word's escape hatch for text above a top-of-document table).
+      In every other cell position Enter still splits the cell
+      paragraph as usual. One undo removes the inserted paragraph.
+    - ROW-SIDE CLICK. Clicking to the RIGHT of a table (outside the
+      table's horizontal bounds) while the pointer is vertically
+      inside a row's band puts the insertion point at the END of that
+      row's rightmost cell paragraph — for every row, including the
+      last; the header band of a continued table maps to row 0. As in
+      Word, the caret is RENDERED just outside the table's right
+      border at that row's band (the row-end mark position), not at
+      the cell's text origin: a transient `RowEndCaret` holds the
+      drawing band, the normal in-cell caret is not drawn while it is
+      active, and typing still appends to that row's last cell. This
+      is presentation + caret placement only and NEVER changes the
+      document. Any click, any key or any document change clears the
+      row-end caret. Clicks below the table (outside every row band)
+      keep following the block-caret rules above.
+    - ROW-END CARET + ENTER. While the row-end caret is active, Enter
+      does NOT enter the cell:
+      · on the table's LAST row it inserts an empty paragraph
+        immediately AFTER the table (InsertEmptyParagraphAtCommand at
+        the block's real container, index+1) and puts the caret in
+        it — the paragraph goes before any sibling that already
+        followed the table;
+      · on any other row it inserts ONE new row immediately BELOW the
+        current row (TableStructureCommand → insertRow) and puts the
+        caret in the new row's first cell.
+      Both are single undo units. A table nested in a cell has no
+      body/section parent to insert a paragraph into, so its
+      last-row Enter falls back to inserting a row. The row-end caret
+      is cleared first; the document change clears it again.
+
 ------------------------------------------------------------
 31.4 `paragraphPath` — 2 elements, and container resolution
      does not go through it
@@ -4364,6 +4955,35 @@ QC's paragraph count can no longer contradict each other.
     SectionBreak   a PAGE-SETUP BOUNDARY marker. It produces a marker
                    line and never carries clinical meaning.
 
+SectionBreak.breakType semantics (PHASE 1, 2026-10-21):
+
+    next_page      the next content line starts a new page.
+    continuous     NO forced page break; content continues on the
+                   current page. The marker still occupies one input
+                   line in the line stream but produces no visible item.
+    even_page      the next content page must be numbered EVEN (1-based
+                   physical page number). A blank page — with the same
+                   header/footer bands — is inserted when the page after
+                   the break would otherwise be odd.
+    odd_page       the mirror case: next content page must be ODD; a
+                   blank page is inserted when it would be even.
+
+    Parity is computed from the ABSOLUTE physical page index (including
+    pages reserved by earlier breaks), never from a per-section page
+    counter.
+
+    PHASE 1 does NOT consume `nextPageSetup`, `nextHeader`, `nextFooter`,
+    `nextPageNumberStart` or `nextFirstPageDifferent`. Those fields stay
+    recorded and serialized but have no layout effect yet; changing page
+    geometry or header/footer content per section, and restarting page
+    numbers, is a separate architectural phase. Implementations MUST NOT
+    pretend they are honored.
+
+    A blank parity page is a real SLIFPage: it is rendered (and printed)
+    with its header/footer bands and no body items, and it participates
+    in page numbering. It is NOT dropped as an optimization — dropping it
+    would silently shift every following page's parity.
+
     outlineLevel   a Word heading LEVEL on a Paragraph. It is an
                    ATTRIBUTE, not an identity.
 
@@ -4490,8 +5110,10 @@ may keep a private copy of it.
     (all variants — default,
      first, even)
 
-    paragraph.children            inline nodes (see the deferred note
-                                  at the end of this section)
+    paragraph.children            text · smarttext · image · field ·
+                                  bookmark · cross_reference ·
+                                  footnote_ref · comment_marker
+                                  (PARAGRAPH_INLINE_CHILD_TYPES)
 
 Consequences worth stating explicitly, because each closes a real gap:
 
@@ -4510,6 +5132,40 @@ Consequences worth stating explicitly, because each closes a real gap:
   - **header/footer content is paragraphs only.** The bands are
     laid out as a paragraph line list (`collectHFParagraphLines`,
     `hfParagraphsForPage`), and that is their whole contract.
+
+------------------------------------------------------------
+31.13.1 Cell paragraph inline parity
+------------------------------------------------------------
+
+A paragraph inside a table cell consumes EXACTLY the same inline node set
+as a body paragraph: `text`, `smarttext`, `image`, `field`, `bookmark`,
+`cross_reference`, `footnote_ref`, `comment_marker` (the census lives in
+`PARAGRAPH_INLINE_CHILD_TYPES`; bookmark and comment_marker occupy no
+layout width and may legitimately produce no item). The cell layout path
+MUST NOT silently skip any of these. An inline type outside the set is a
+§31.13 violation and must throw — never a phantom empty line (§31.5).
+
+Consequences that are part of the contract, not implementation detail:
+
+  - **Fields in cells** measure with `representativeFieldText` and the
+    same reserve inputs as body fields (page-count digit count, locale,
+    document title), and their display text is resolved at draw time
+    through the SAME page-aware resolver. A second field formatter in
+    the cell path is forbidden (§4).
+  - **Footnote references in cells** participate in the page's footnote
+    numbering exactly like body references. The per-page collector walks
+    INTO table cells (row-major rows, cells left-to-right, matching
+    `getFlatPageItems` order), and the Step-4 number back-fill writes
+    back into the cell items. Repeated table header rows are visual-only
+    and are NOT numbered per page — the same choice hit-test flattening
+    already makes.
+  - **Cross-references in cells** resolve against the same page map as
+    body cross-references. One whose display text contains `{page}` or
+    `{number}` therefore keeps the whole document outside the
+    incremental safe subset (§16.1); a constant one (no placeholder)
+    is safe, exactly as in a body paragraph.
+  - **Images in cells** are clamped to the cell's text width, exactly as
+    body images are clamped to the content width.
 
 FAILURE SEMANTICS (§31.5 applies unchanged):
 
@@ -4559,14 +5215,6 @@ DEFERRED, RECORDED (not silently omitted):
     NOT because it is already guarded — do not read the table as "the set
     of things already enforced" until this line is removed.
 
-  - `paragraph.children` inline types are NOT enforced in this round.
-    The legal inline set needs its own census first (the engine has, at
-    minimum, text · smarttext · image · field · bookmark ·
-    cross_reference · footnote_ref · comment_marker), and the
-    blast radius of getting it wrong is larger than the cell rule that
-    motivated this section. It is declared here as the next item, not
-    left unstated.
-
   - The nested-table support landed with this section is DELIBERATELY
     PARTIAL, and each partial point is recorded rather than implied:
 
@@ -4580,6 +5228,26 @@ DEFERRED, RECORDED (not silently omitted):
       - `AppendTableRowCommand` still does not clone a nested table
         (§12.9). The limitation is now worded "legal, but not cloned",
         not "unsupported".
+
+PARAGRAPH INLINE ENFORCEMENT (2026-10-21).
+
+  `paragraph.children` is now part of `CHILD_TYPES_OF`, backed by
+  `PARAGRAPH_INLINE_CHILD_TYPES` (the former `DEFERRED_INLINE_CHILD_TYPES`,
+  promoted from "recorded" to "enforced"). Consequences at the three
+  boundaries:
+
+    - NodePool's controlled API rejects inserting or moving any other
+      node type into a paragraph;
+    - DocumentLoader.validateStructure now rejects a persisted paragraph
+      whose child type is outside the set (it already walks paragraph
+      children; the contract row is what changed);
+    - TemplateImporter rejects an unknown INLINE external type instead of
+      silently returning null. Previously such nodes vanished from the
+      imported paragraph — the §31.5 failure this section opens with.
+
+  No node type, field or serialized shape changed, so the document
+  format version does NOT bump. Valid documents denote the same models;
+  only already-invalid inline children are now rejected.
 
 ============================================================
 31.14 SECTION AUTHORING — creating, locating, selecting,

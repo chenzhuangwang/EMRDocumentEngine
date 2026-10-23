@@ -5,12 +5,11 @@
 // SPDX-License-Identifier: MPL-2.0
 
 // ============================================================
-// TOCGenerator + DirtyTracker 测试 (R95)
+// TOCGenerator 测试 (R95)
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
 import { TOCGenerator } from '../render/TOCGenerator'
-import { DirtyTracker } from '../layout/incremental/DirtyTracker'
 import { NodePool, buildNodePool } from '../document/core/NodePool'
 import type { DocumentTree, BaseNode, Paragraph } from '../document/core/DocumentModel'
 
@@ -67,50 +66,6 @@ describe('TOCGenerator', () => {
     const gen = new TOCGenerator({ maxLevel: 1 })
     const entries = gen.extractEntries(doc, pool)
     expect(entries.length).toBe(1) // only p1
-  })
-})
-
-// ---- DirtyTracker ----
-
-describe('DirtyTracker', () => {
-  it('should start clean', () => {
-    const dt = new DirtyTracker()
-    expect(dt.isParagraphDirty('p1')).toBe(false)
-  })
-
-  it('should mark paragraph dirty', () => {
-    const dt = new DirtyTracker()
-    dt.markParagraphDirty('p1')
-    expect(dt.isParagraphDirty('p1')).toBe(true)
-  })
-
-  it('should clear all dirty marks', () => {
-    const dt = new DirtyTracker()
-    dt.markParagraphDirty('p1')
-    dt.markParagraphDirty('p2')
-    dt.clear()
-    expect(dt.isParagraphDirty('p1')).toBe(false)
-    expect(dt.isParagraphDirty('p2')).toBe(false)
-  })
-
-  it('should mark full layout dirty', () => {
-    const dt = new DirtyTracker()
-    dt.markFullLayout()
-    expect(dt.isFullDocument()).toBe(true)
-  })
-
-  it('should check needsFullLayout', () => {
-    const dt = new DirtyTracker()
-    expect(dt.needsFullLayout).toBe(false)
-    dt.markFullLayout()
-    expect(dt.needsFullLayout).toBe(true)
-  })
-
-  it('should get dirty node IDs', () => {
-    const dt = new DirtyTracker()
-    dt.markParagraphDirty('p1')
-    dt.markParagraphDirty('p2')
-    expect(dt.hasDirtyParagraphs()).toBe(true)
   })
 })
 

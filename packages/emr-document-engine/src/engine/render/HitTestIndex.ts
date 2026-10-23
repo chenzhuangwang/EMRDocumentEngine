@@ -87,10 +87,25 @@ export class HitTestIndex {
   }
 
   /**
+   * 增量重建: 保留 [0, startPage) 的桶, 重建 startPage 及其后的页。
+   *
+   * 前提 (由调用方保证): 前 startPage 页的 SLIF 对象与上次重建时**逐字节相同**
+   * —— 增量分页命中时成立 (契约 §16.1)。startPage >= 页数时等价于清空。
+   */
+  rebuildFrom(pages: SLIFPage[], startPage: number): void {
+    const from = Math.max(0, startPage)
+    for (const key of [...this.buckets.keys()]) {
+      if (key >= from) this.buckets.delete(key)
+    }
+    for (let i = from; i < pages.length; i++) {
+      this.rebuildPage(pages[i].pageIndex, pages[i])
+    }
+  }
+
+  /**
    * 重建单个页面索引
    */
-  rebuildPage(pageIndex: number, page: SLIFPage): void {
-    const entries: HitEntry[] = []
+  rebuildPage(pageIndex: number, page: SLIFPage): void {    const entries: HitEntry[] = []
 
     for (const item of page.items) {
       if (item.type === 'table') {

@@ -290,7 +290,14 @@ export class ComputedValues {
     this.recompute()
     this.dirty = false
     this.snapshotVersions()
+    // 配方版本 (增量排版用): 每次真正重算 +1。控件显示值变了而节点版本没变
+    // (改公式/改模板定义) 时, 依赖它的布局缓存必须整体失效 (契约 §16.1)。
+    this._generation++
   }
+
+  private _generation = 0
+  /** 计算结果的代次 — 只增不减, 用作布局缓存的全局输入 */
+  get generation(): number { return this._generation }
 
   // ---- 读 ----
 

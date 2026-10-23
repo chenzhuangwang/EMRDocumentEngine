@@ -14,8 +14,9 @@
 // 修复:
 //   - 拖拽停留在起始 cell 内 → 文本选区 (清除单击产生的单格高亮)
 //   - 拖拽越过起始 cell 边界 → 单元格框选 (锚定起点 cell, 扩展到当前)
-//   - renderSelectionUnified 检测同 cell 选区 → renderCellTextSelection
-//     (body 顶层 items 不含 cell 段落, 原逻辑 indexOf=-1 直接跳过渲染)
+//   - renderSelectionUnified 走展平读序 (bodyParagraphSpine, 现统一为
+//     collectSelectionSegments): cell 段落作为线性范围的一部分被高亮
+//     (早期的 renderCellTextSelection 专用分支已并入统一实现)
 //
 // 测试: 真实 Editor + DOM 事件驱动 MouseHandler, 从布局坐标反推
 // client 坐标, 断言「同 cell 拖拽=文本选区」「跨 cell 拖拽=框选」。

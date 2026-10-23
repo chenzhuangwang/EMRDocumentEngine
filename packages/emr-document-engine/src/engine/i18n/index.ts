@@ -151,8 +151,11 @@ export interface LocaleMessages {
   'editor.table.mergeCell': string
   'editor.table.splitCell': string
   'editor.table.insertRow': string
+  'editor.table.insertRowAbove': string
   'editor.table.deleteRow': string
   'editor.table.insertColumn': string
+  'editor.table.insertColumnLeft': string
+  'editor.table.selectHandle': string            // 表格悬浮手柄 title
   'editor.table.deleteColumn': string
   'editor.table.growable': string            // 可增长表开关
   // ============================================================
@@ -183,6 +186,9 @@ export interface LocaleMessages {
   'editor.contextMenu.delete': string
   'editor.contextMenu.deleteRow': string
   'editor.contextMenu.deleteColumn': string
+  'editor.contextMenu.insertRowAbove': string
+  'editor.contextMenu.insertColumnLeft': string
+  'editor.contextMenu.selectTable': string
   'editor.contextMenu.acceptInsertRevision': string
   'editor.contextMenu.rejectInsertRevision': string
   'editor.contextMenu.acceptDeleteRevision': string
@@ -389,6 +395,8 @@ export interface LocaleMessages {
   'statusBar.hideInvisible': string
   'statusBar.showRevision': string           // 修订留痕显示切换 title
   'statusBar.hideRevision': string
+  'statusBar.showComments': string           // 批注强调层显示切换 title
+  'statusBar.hideComments': string
   'statusBar.trackChanges': string           // 修订追踪开关 title
   'statusBar.acceptAllRevisions': string
   'statusBar.rejectAllRevisions': string
@@ -529,7 +537,9 @@ export interface LocaleMessages {
   'comment.newThread': string
   'comment.placeholder': string
   'comment.addReply': string
+  'comment.reply': string                     // '回复' (气泡回复按钮)
   'comment.anchor': string                    // '锚定：{text}'
+  'comment.pointAnchor': string               // '光标位置' (零长度点批注)
   'comment.timeJustNow': string
   'comment.timeMinutesAgo': string            // '{n} 分钟前'
   'comment.timeHoursAgo': string              // '{n} 小时前'
@@ -544,6 +554,9 @@ export interface LocaleMessages {
   'comment.resolveTitle': string               // '标记为已解决'
   'comment.resolvedBadge': string              // '已解决'
   'comment.summary': string                    // '{open} 条未解决 · {total} 条总计'
+  'comment.deleteThread': string               // '删除批注'
+  'comment.deleteConfirm': string              // '确定删除这条批注？'
+  'comment.deleteReply': string                // '删除回复'
   // ============================================================
   // QCResultPanel
   // ============================================================
@@ -1004,6 +1017,7 @@ export interface LocaleMessages {
   'qc.rule.paragraphCount.name': string
   'qc.rule.paragraphCount.desc': string
   'import.unknownBlockType': string          // '外部模板含未知块类型: {type}'
+  'import.unknownInlineType': string         // '外部模板含未知行内类型: {type}'
   'import.illegalChildType': string          // '外部模板非法嵌套 (契约 §31.13): {parent} 不能包含 {child}'
   'qc.rule.unnamedSection.name': string      // '节缺少节代码'
   'qc.rule.unnamedSection.desc': string
@@ -1173,8 +1187,11 @@ const zhCN: LocaleMessages = {
   'editor.table.mergeCell': '合并单元格',
   'editor.table.splitCell': '拆分单元格',
   'editor.table.insertRow': '插入行',
+  'editor.table.insertRowAbove': '上方插入行',
   'editor.table.deleteRow': '删除行',
   'editor.table.insertColumn': '插入列',
+  'editor.table.insertColumnLeft': '左侧插入列',
+  'editor.table.selectHandle': '选中表格',
   'editor.table.deleteColumn': '删除列',
   'editor.table.growable': '填写时可增长',
   // ===== 页眉页脚 =====
@@ -1201,6 +1218,9 @@ const zhCN: LocaleMessages = {
   'editor.contextMenu.delete': '删除',
   'editor.contextMenu.deleteRow': '删除行',
   'editor.contextMenu.deleteColumn': '删除列',
+  'editor.contextMenu.insertRowAbove': '上方插入行',
+  'editor.contextMenu.insertColumnLeft': '左侧插入列',
+  'editor.contextMenu.selectTable': '选中表格',
   'editor.contextMenu.acceptInsertRevision': '接受插入',
   'editor.contextMenu.rejectInsertRevision': '拒绝插入',
   'editor.contextMenu.acceptDeleteRevision': '接受删除',
@@ -1383,6 +1403,8 @@ const zhCN: LocaleMessages = {
   'statusBar.hideInvisible': '隐藏格式标记',
   'statusBar.showRevision': '显示修订标记',
   'statusBar.hideRevision': '隐藏修订标记',
+  'statusBar.showComments': '显示批注标记',
+  'statusBar.hideComments': '隐藏批注标记（保留淡底色）',
   'statusBar.trackChanges': '修订 (记录本次改动)',
   'statusBar.acceptAllRevisions': '接受全部修订',
   'statusBar.rejectAllRevisions': '拒绝全部修订',
@@ -1502,7 +1524,9 @@ const zhCN: LocaleMessages = {
   'comment.newThread': '新建',
   'comment.placeholder': '批注内容...',
   'comment.addReply': '添加批注',
+  'comment.reply': '回复',
   'comment.anchor': '锚定：「{text}」',
+  'comment.pointAnchor': '光标位置',
   'comment.timeJustNow': '刚刚',
   'comment.timeMinutesAgo': '{n} 分钟前',
   'comment.timeHoursAgo': '{n} 小时前',
@@ -1510,13 +1534,16 @@ const zhCN: LocaleMessages = {
   'comment.resolve': '解决',
   'comment.unresolve': '撤销解决',
   'comment.noSelection': '请先在文档中选择文字',
-  'comment.anchorFailed': '请先在文档中选中同一段落内的文字（或把光标放到要批注的位置）',
+  'comment.anchorFailed': '请先在文档中选择文字（或把光标放到要批注的位置）',
   'comment.newTitle': '在文档中选中文字后新建批注',
   'comment.replyPlaceholder': '输入回复...',
   'comment.noContent': '(无内容)',
   'comment.resolveTitle': '标记为已解决',
   'comment.resolvedBadge': '已解决',
   'comment.summary': '{open} 条未解决 · {total} 条总计',
+  'comment.deleteThread': '删除批注',
+  'comment.deleteConfirm': '确定删除这条批注及其全部回复？',
+  'comment.deleteReply': '删除回复',
   // ===== QCResultPanel =====
   'qc.empty': '尚未进行质控检查',
   'qc.start': '开始检查',
@@ -1924,6 +1951,7 @@ const zhCN: LocaleMessages = {
   'qc.rule.paragraphCount.name': '段落数量合理',
   'qc.rule.paragraphCount.desc': '段落数应在 1-500 之间',
   'import.unknownBlockType': '外部模板含未知块类型: {type}',
+  'import.unknownInlineType': '外部模板含未知行内类型: {type}',
   'import.illegalChildType': '外部模板非法嵌套 (契约 §31.13): {parent} 不能包含 {child}',
   'qc.rule.unnamedSection.name': '节缺少节代码',
   'qc.rule.unnamedSection.desc': '该节有内容但未设置节代码, 结构化导出与节级定位无法引用它',
@@ -2087,8 +2115,11 @@ const enUS: LocaleMessages = {
   'editor.table.mergeCell': 'Merge Cells',
   'editor.table.splitCell': 'Split Cell',
   'editor.table.insertRow': 'Insert Row',
+  'editor.table.insertRowAbove': 'Insert Row Above',
   'editor.table.deleteRow': 'Delete Row',
   'editor.table.insertColumn': 'Insert Column',
+  'editor.table.insertColumnLeft': 'Insert Column Left',
+  'editor.table.selectHandle': 'Select Table',
   'editor.table.deleteColumn': 'Delete Column',
   'editor.table.growable': 'Growable',
   // ===== 页眉页脚 =====
@@ -2115,6 +2146,9 @@ const enUS: LocaleMessages = {
   'editor.contextMenu.delete': 'Delete',
   'editor.contextMenu.deleteRow': 'Delete Row',
   'editor.contextMenu.deleteColumn': 'Delete Column',
+  'editor.contextMenu.insertRowAbove': 'Insert Row Above',
+  'editor.contextMenu.insertColumnLeft': 'Insert Column Left',
+  'editor.contextMenu.selectTable': 'Select Table',
   'editor.contextMenu.acceptInsertRevision': 'Accept Insertion',
   'editor.contextMenu.rejectInsertRevision': 'Reject Insertion',
   'editor.contextMenu.acceptDeleteRevision': 'Accept Deletion',
@@ -2297,6 +2331,8 @@ const enUS: LocaleMessages = {
   'statusBar.hideInvisible': 'Hide Whitespace',
   'statusBar.showRevision': 'Show revision marks',
   'statusBar.hideRevision': 'Hide revision marks',
+  'statusBar.showComments': 'Show comment marks',
+  'statusBar.hideComments': 'Hide comment marks (background stays)',
   'statusBar.trackChanges': 'Track changes',
   'statusBar.acceptAllRevisions': 'Accept all revisions',
   'statusBar.rejectAllRevisions': 'Reject all revisions',
@@ -2416,7 +2452,9 @@ const enUS: LocaleMessages = {
   'comment.newThread': 'New',
   'comment.placeholder': 'Comment text...',
   'comment.addReply': 'Add Comment',
+  'comment.reply': 'Reply',
   'comment.anchor': 'Anchored to: {text}',
+  'comment.pointAnchor': 'Cursor position',
   'comment.timeJustNow': 'just now',
   'comment.timeMinutesAgo': '{n}m ago',
   'comment.timeHoursAgo': '{n}h ago',
@@ -2424,13 +2462,16 @@ const enUS: LocaleMessages = {
   'comment.resolve': 'Resolve',
   'comment.unresolve': 'Reopen',
   'comment.noSelection': 'Select text in the document first',
-  'comment.anchorFailed': 'Select text within a single paragraph (or place the cursor where you want the comment)',
+  'comment.anchorFailed': 'Select text in the document (or place the cursor where you want the comment)',
   'comment.newTitle': 'Select text in the document, then add a comment',
   'comment.replyPlaceholder': 'Write a reply...',
   'comment.noContent': '(no content)',
   'comment.resolveTitle': 'Mark as resolved',
   'comment.resolvedBadge': 'Resolved',
   'comment.summary': '{open} open · {total} total',
+  'comment.deleteThread': 'Delete comment',
+  'comment.deleteConfirm': 'Delete this comment and all its replies?',
+  'comment.deleteReply': 'Delete reply',
   // ===== QCResultPanel =====
   'qc.empty': 'No QC check yet',
   'qc.start': 'Run Check',
@@ -2837,6 +2878,7 @@ const enUS: LocaleMessages = {
   'qc.rule.paragraphCount.name': 'Paragraph count is reasonable',
   'qc.rule.paragraphCount.desc': 'The paragraph count should be between 1 and 500',
   'import.unknownBlockType': 'External template contains an unknown block type: {type}',
+  'import.unknownInlineType': 'External template contains an unknown inline type: {type}',
   'import.illegalChildType': 'External template has an illegal nesting (contract §31.13): {parent} cannot contain {child}',
   'qc.rule.unnamedSection.name': 'Section has no section code',
   'qc.rule.unnamedSection.desc': 'This section has content but no section code; structured export and section-level targeting cannot reference it',

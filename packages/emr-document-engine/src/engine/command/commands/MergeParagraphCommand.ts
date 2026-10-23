@@ -14,7 +14,7 @@
 import type { Paragraph, BaseNode } from '../../document/core/DocumentModel'
 import type { NodePool } from '../../document/core/NodePool'
 import { ICommand, CommandContext, StatePatch, SerializedCommand, PositionalCommand, generateCommandId } from '../ICommand'
-import { normalizeParagraph } from './ParagraphUtils'
+import { mergeSeamRuns } from './ParagraphUtils'
 import { resolveParagraphRegion, isPoolRegion } from '../../state/CaretScope'
 
 // ---- 子树快照工具 (JSON 深拷贝, 与 takeSnapshot/restoreSnapshot 一致) ----
@@ -49,6 +49,18 @@ function collectSubtreeIds(pool: NodePool, rootId: string): string[] {
   }
   walk(rootId)
   return ids
+}
+
+/** 段落字符偏移总长 (文本按 length, 非文本按 1) — 与光标/选区同一口径 */
+function paragraphCharLength(para: Paragraph, pool: NodePool): number {
+  let total = 0
+  for (const childId of para.children) {
+    const node = pool.nodes.get(childId)
+    total += node?.type === 'text'
+      ? ((node as unknown as { text?: string }).text || '').length
+      : 1
+  }
+  return total
 }
 
 export class MergeParagraphCommand extends PositionalCommand {
@@ -90,6 +102,12 @@ export class MergeParagraphCommand extends PositionalCommand {
     this.deletedParaSnapshot = JSON.stringify(currentPara)
 
     // 3. 当前段全部 children 追加到上一段
+    // 接缝下标 = 追加前上一段的 children 数 (追加后第一段的插入位置)
+    const seamIndex = prevPara.children.length
+    // 接缝字符偏移 = 追加前上一段的字符总长 (文本按 length, 非文本按 1)。
+    // 必须在追加前算: 追加后再数会把当前段的内容也算进去, 光标会跳到合并段
+    // 的末尾, 而不是两段的接缝 (退格并段后光标"跳位"的根因)。
+    const seamOffset = paragraphCharLength(prevPara, pool)
     for (const childId of currentPara.children) {
       pool.insertChild(prevPara.id, childId, prevPara.children.length)
     }
@@ -101,8 +119,10 @@ export class MergeParagraphCommand extends PositionalCommand {
       pool.updateNode(prevPara.id, { list: currentPara.list } as Partial<Paragraph>)
     }
 
-    // 4. 合并上一段
-    normalizeParagraph(prevPara, pool)
+    // 4. 只合并接缝处的一对 run。
+    //    整段 normalize 会顺手并掉与并段无关的相邻 run —— 而 split 的逆操作
+    //    正是本命令, 那会改写拆段前就存在的 run 边界, 撤销不再精确 (§8.2)。
+    mergeSeamRuns(prevPara, pool, seamIndex)
 
     // 5. 从区域兄弟数组中移除当前段 (叶子节点, 仅删除段落包装)
     if (isPoolRegion(region)) {
@@ -112,18 +132,11 @@ export class MergeParagraphCommand extends PositionalCommand {
     }
     pool.removeNode(currentPara.id)
 
-    // 6. 光标定位到合并点
-    let charCount = 0
-    for (const childId of prevPara.children) {
-      const node = pool.nodes.get(childId)
-      if (node && (node as unknown as Record<string, unknown>).type === 'text') {
-        charCount += ((node as unknown as Record<string, unknown>).text as string).length
-      } else { charCount += 1 }
-    }
-    this.mergeOffset = charCount
+    // 6. 光标定位到合并接缝 (不是合并后段落的末尾)
+    this.mergeOffset = seamOffset
 
     return {
-      cursor: { paragraphPath: [...this.path.slice(0, -1), prevPara.id], offset: charCount },
+      cursor: { paragraphPath: [...this.path.slice(0, -1), prevPara.id], offset: seamOffset },
       invalidation: region.type === 'cell' ? 'table' : 'flowbody',
     }
   }

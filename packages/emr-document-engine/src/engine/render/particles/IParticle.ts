@@ -55,6 +55,16 @@ export interface RenderOptions {
    *   3. tokenSet 也空 → 回退到硬编码 hex (回归保险, 不应触发)
    */
   tokenSet?: CanvasTokenSet
+  /**
+   * 表格 cell 内**原子行内项** (图片/域/交叉引用/脚注引用) 的渲染委托。
+   *
+   * cell 内容由 `TableParticle` 绘制, 但图片需要 Draw 的图片缓存, 域需要
+   * 按本页解析的显示值 —— 这些能力都在 Draw 里。TableParticle 把这些类型
+   * 交回宿主; 返回 true 表示已绘制, false 表示不认识 (回落到 fillText)。
+   * 契约 §31.13.1: cell 与正文消费同一行内集合, 因此必须复用同一批渲染器,
+   * 不能在 cell 路径里再写一份。
+   */
+  renderCellItem?: (ctx: CanvasRenderingContext2D, item: SLIFItem, x: number, y: number) => boolean
 }
 
 /** 粒子渲染器接口 */

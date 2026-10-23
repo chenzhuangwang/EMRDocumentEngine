@@ -8,7 +8,7 @@
 // 状态栏
 // ============================================================
 
-import { FileText, Type, Wifi, WifiOff, Minus, Plus, Pilcrow, Activity, AlertTriangle, ListTree, History, CheckCheck, X } from 'lucide-react'
+import { FileText, Type, Wifi, WifiOff, Minus, Plus, Pilcrow, Activity, AlertTriangle, ListTree, History, CheckCheck, X, MessageSquare } from 'lucide-react'
 import { useEditorStoreSnapshot } from '@/components/editor/EditorProvider'
 import { useEditorStore } from '@/store'
 import { cn, formatWordCount } from '@/lib/utils'
@@ -36,6 +36,9 @@ interface StatusBarProps {
   /** 修订留痕显示 (契约 §12.13) — 纯视图开关 */
   showRevisionMarks?: boolean
   onToggleRevisionMarks?: () => void
+  /** 批注强调层显示 (契约 §12.14) — 关闭后仍保留淡底色 */
+  showCommentMarks?: boolean
+  onToggleCommentMarks?: () => void
   /** 修订追踪开关 (契约 §12.13) */
   trackChanges?: boolean
   onToggleTrackChanges?: () => void
@@ -66,6 +69,8 @@ export function StatusBar({
   onToggleSectionStructure,
   showRevisionMarks = true,
   onToggleRevisionMarks,
+  showCommentMarks = true,
+  onToggleCommentMarks,
   trackChanges = false,
   onToggleTrackChanges,
   onAcceptAllRevisions,
@@ -125,6 +130,19 @@ export function StatusBar({
           title={showRevisionMarks ? t('statusBar.hideRevision') : t('statusBar.showRevision')}
         >
           <History size={14} />
+        </button>
+        {/* 批注强调层 (契约 §12.14): 关掉后锚定文字仍有淡底色 */}
+        <button
+          className={cn(
+            'p-0.5 rounded transition-colors',
+            showCommentMarks
+              ? 'text-blue-600 bg-blue-50 hover:bg-blue-100'
+              : 'text-chrome-ink-muted hover:text-chrome-ink-secondary hover:bg-chrome-muted',
+          )}
+          onClick={onToggleCommentMarks}
+          title={showCommentMarks ? t('statusBar.hideComments') : t('statusBar.showComments')}
+        >
+          <MessageSquare size={14} />
         </button>
         <button
           className={cn(

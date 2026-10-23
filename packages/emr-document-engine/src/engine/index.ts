@@ -36,12 +36,11 @@ export {
 } from './layout/core/SLIF'
 export { resolveLineHeight, DEFAULT_FONT_METRICS } from './layout/text/FontMetrics'
 export type { FontMetrics } from './layout/text/FontMetrics'
-export { LayoutCache } from './layout/incremental/LayoutCache'
 
 // Render
 export { LayeredRenderer } from './render/LayeredRenderer'
 export { HitTestIndex } from './render/HitTestIndex'
-export type { SectionPageRect } from './render/Draw'
+export type { SectionPageRect, CommentClientRect, TableClientRect } from './render/Draw'
 
 // EditorRuntimeState
 export {
@@ -92,7 +91,6 @@ export type { InsertSectionOpts } from './command/commands/StructuralCommands'
 export { normalizeParagraph } from './command/commands/ParagraphUtils'
 export { CommandUndoRedoStack } from './command/CommandUndoRedoStack'
 export { CommandManager } from './command/CommandManager'
-export { DirtyTracker } from './layout/incremental/DirtyTracker'
 
 // FindReplace
 export { FindReplaceEngine } from './FindReplaceEngine'
@@ -217,7 +215,6 @@ export { controlVisualRecipe, computeControlBox, CONTROL_BOX_PADDING, AFFORDANCE
 export type { ControlVisualRecipe } from './document/control/ControlBox'
 export { createFootnoteParticle } from './render/particles/FootnoteParticle'
 export { createImageParticle } from './render/particles/ImageParticle'
-export { createCommentParticle } from './render/particles/CommentParticle'
 export { createTableParticle } from './render/particles/TableParticle'
 export { createBarcodeParticle } from './render/particles/BarcodeParticle'
 
@@ -266,8 +263,8 @@ export type { ThemePreset, ThemeColors } from './state/EditorTheme'
 export { locale, t } from './i18n/index'
 export { LocaleManager, formatMessage } from './i18n/index'
 export type { Locale, LocaleMessages, LocaleParams } from './i18n/index'
-export { VirtualViewport } from './layout/viewport/VirtualViewport'
-export type { ViewportState, VisibleRange } from './layout/viewport/VirtualViewport'
+export { VirtualViewport, computeVisibleRange } from './layout/viewport/VirtualViewport'
+export type { ViewportState, VisibleRange, VisibleRangeOptions, PageHeightLike } from './layout/viewport/VirtualViewport'
 export { MemoryManager } from './layout/viewport/MemoryManager'
 export type { MemoryStats } from './layout/viewport/MemoryManager'
 export { PerformanceMetrics } from './PerformanceMetrics'

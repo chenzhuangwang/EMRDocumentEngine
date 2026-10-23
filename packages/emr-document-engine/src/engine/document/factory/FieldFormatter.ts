@@ -85,6 +85,17 @@ export interface FieldReserveContext {
 const SAMPLE_DATE = new Date(2026, 11, 28, 10, 30, 0)
 
 /**
+ * 页码/总页数域的预留位数 (1–4) — 唯一实现。
+ *
+ * `representativeFieldText` 用它决定样本串 ('8' / '88' / …), 布局的段落行
+ * 缓存键与页眉页脚签名也用它 —— 位数变化会改预留宽, 键里必须出现同一口径的
+ * 分段, 否则增量布局会静默复用旧行 (契约 §16.1)。
+ */
+export function fieldReserveDigits(totalPagesHint: number): number {
+  return Math.min(4, Math.max(1, String(Math.max(1, Math.floor(totalPagesHint))).length))
+}
+
+/**
  * 域代码在**布局期**的代表性显示值 — 用于量宽。
  *
  * 为什么需要: 渲染期才逐页解析域值, 而布局只跑一次。若按占位符 ('[总页数]')
@@ -104,7 +115,7 @@ export function representativeFieldText(
     case 'page_number':
     case 'total_pages': {
       // 位数按页数估计 (至少 1 位) — 3 页文档预留 '8', '1'/'3' 正好填满
-      const digits = Math.min(4, Math.max(1, String(Math.max(1, Math.floor(ctx.totalPagesHint))).length))
+      const digits = fieldReserveDigits(ctx.totalPagesHint)
       return '8'.repeat(digits)
     }
     case 'current_date':

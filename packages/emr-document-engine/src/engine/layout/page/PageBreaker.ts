@@ -35,6 +35,13 @@ export class PageBreaker {
     reserveHeight = 0,
     /** 实际正文可用高 (页眉/页脚超高时正文让位后) — 缺省按 margin 推算 */
     pageContentHeightOverride?: number,
+    /**
+     * 起始页号 (M2b) — 增量分页从某一页续排时使用。
+     *
+     * 调用方保证 `lines` 的第一行就是该页的首行 (页首从空白页状态开始),
+     * 因此孤行/寡行与表格游标的行为与全量从 0 排到该页时一致。
+     */
+    startPageIndex = 0,
   ): IPage[] {
     const pages: IPage[] = []
 
@@ -55,7 +62,7 @@ export class PageBreaker {
       return last?.value === '\n'
     })
 
-    let pageIndex = 0
+    let pageIndex = startPageIndex
     let currentPageLines: ILine[] = []
     let currentPageHeight = 0
 
@@ -66,6 +73,17 @@ export class PageBreaker {
       // 检查当前行是否包含分页符或分节符
       const firstEl = line.elements[0]
       if (firstEl?.type === 'page_break' || firstEl?.type === 'section_break') {
+        // 分节符按 breakType 决定行为 (契约 §31.10 PHASE 1); page_break 恒断页。
+        const breakType = firstEl.type === 'section_break'
+          ? (line.sectionBreakType ?? 'next_page')
+          : 'next_page'
+
+        // continuous: 不强制断页 — 标记行被消费, 内容留在当前页
+        if (breakType === 'continuous') {
+          i++
+          continue
+        }
+
         // 保存当前页
         pages.push({
           pageIndex,
@@ -78,6 +96,28 @@ export class PageBreaker {
         pageIndex++
         currentPageLines = []
         currentPageHeight = 0
+
+        // even_page / odd_page: 后续内容必须落在 1-based 奇/偶页; 不符则
+        // 补一张**真实的**空白页 (含页眉页脚带), 否则后序所有页的奇偶都会
+        // 静默错位。判据用绝对物理页号, 不用节内计数 (契约 §31.10)。
+        if (breakType === 'even_page' || breakType === 'odd_page') {
+          const wantEven = breakType === 'even_page'
+          const oneBasedPageNumber = pageIndex + 1
+          const parityOk = wantEven
+            ? oneBasedPageNumber % 2 === 0
+            : oneBasedPageNumber % 2 === 1
+          if (!parityOk) {
+            pages.push({
+              pageIndex,
+              lines: [],
+              headerLines,
+              footerLines,
+              totalHeight: 0,
+            })
+            pageIndex++
+          }
+        }
+
         i++
         continue
       }

@@ -12,7 +12,7 @@
 //           撤销(→CommandUndoRedoStack), 编辑(→CommandManager)
 // ============================================================
 
-import type { DocumentTree, WatermarkConfig, SmartTextNode } from '../document/core/DocumentModel'
+import type { CommentThread, DocumentTree, WatermarkConfig, SmartTextNode } from '../document/core/DocumentModel'
 import type { NodePool } from '../document/core/NodePool'
 import type { SLIFPage, SLIFItem } from '../layout/core/SLIF'
 import { getFlatPageItems, tableHeaderRowsHeight } from '../layout/core/SLIF'
@@ -31,6 +31,34 @@ export interface SectionPageRect {
   contentLeft: number
   /** 该页正文栏右缘 */
   contentRight: number
+}
+
+/**
+ * 批注在视口中的分段矩形 (契约 §12.14) —— 每页一条线程一段并集。
+ * 供 CommentBalloonOverlay 定位右侧气泡; 坐标与 SectionPageRect 同源。
+ */
+export interface CommentClientRect {
+  pageIndex: number
+  left: number
+  top: number
+  width: number
+  height: number
+  /** 该页纸张右缘 (client 坐标) —— 气泡贴在页外时从这里起算 */
+  pageRight: number
+  /** 该页正文栏右缘 (client 坐标) */
+  contentRight: number
+}
+
+/**
+ * 表格在视口中的矩形 (契约 §31.3.1) —— 悬浮手柄的几何来源。
+ * 跨页表格只返回第一页的矩形。
+ */
+export interface TableClientRect {
+  pageIndex: number
+  left: number
+  top: number
+  width: number
+  height: number
 }
 import type { EventBus } from '../interaction/EventBus'
 import { locale } from '../i18n/index'
@@ -59,8 +87,11 @@ import { createBarcodeParticle } from './particles/BarcodeParticle'
 import { particleRegistry } from './particles/ParticleRegistry'
 import { textParticle, separatorParticle, listParticle, fieldParticle } from './particles/ParticleAdapters'
 import { buildCellGrid } from '../document/table/TableOps'
-import { regionIdOf, selectionSpine, paragraphTextLength, bodyParagraphSpine, sectionsOf, sectionOf } from '../document/selection/SelectionCollector'
-import { COMMENT_HIGHLIGHT, commentHighlight } from './particles/CommentParticle'
+import { regionIdOf, selectionSpine, collectSelectionSegments, paragraphTextLength, sectionsOf, sectionOf } from '../document/selection/SelectionCollector'
+import {
+  COMMENT_HIGHLIGHT, commentBorder, commentBorderFaint, commentHighlight, commentHighlightActive, commentHighlightFaint,
+} from './particles/CommentParticle'
+import { buildCommentRenderPlan, type CommentRenderPlan } from './comment/CommentRenderPlan'
 import { safeRenderParticle, safeRenderPage } from '../ErrorRecovery'
 import { resolveHfParagraphLocation } from '../document/core/HeaderFooterRegions'
 import { resolveFieldText as formatFieldText } from '../document/factory/FieldFormatter'
@@ -69,6 +100,19 @@ import type { CanvasTokenSet } from '../state/canvasTokens'
 import { asRgb, withAlpha } from '../state/canvasTokens'
 
 interface CaretPos { x: number; y: number; h: number }
+
+/** 单页上某条批注的并集框 (页面文档坐标) — 虚线框与气泡连接线共用 */
+interface CommentBox { minX: number; minY: number; maxX: number; maxY: number }
+
+/**
+ * 原子内联 item —— 在字符偏移空间占 1 单位, 但不产出可高亮字符 (契约 §6.3)。
+ * comment_marker / bookmark 是零宽标记, 布局不产出 item, 不会走到这里。
+ */
+function isAtomicInlineItem(item: SLIFItem): boolean {
+  return item.nodeType === 'smarttext' || item.nodeType === 'image' ||
+    item.nodeType === 'field' || item.nodeType === 'cross_reference' ||
+    item.nodeType === 'footnote_ref' || item.nodeType === 'bookmark'
+}
 
 /**
  * 默认分页渲染间隙 (CSS 像素)。
@@ -85,6 +129,8 @@ export class Draw {
   private layoutEngine: LayoutEngine
   renderer: LayeredRenderer
   private hitTestIndex: HitTestIndex
+  /** 上一次命中索引重建的起始页 (诊断: 等于总页数表示整份复用, 未重建) */
+  private lastHitRebuildStart = 0
   private eventBus: EventBus
   private document: DocumentTree | null = null
   private pool: NodePool | null = null
@@ -130,6 +176,38 @@ export class Draw {
    * 与 showInvisible 不同, 打印**不**强制关闭: 留痕是内容标注而非编辑辅助标记。
    */
   private _showRevisionMarks = true
+
+  /**
+   * 批注强调层开关 (契约 §12.14) — 纯视图开关, 默认开。
+   * 关闭后锚定文字仍有淡底色, 只去掉正常高亮与锚点标记。
+   */
+  private _showCommentMarks = true
+
+  /** 当前选中的批注线程 (由 Editor 注入; 运行时视图态, 不序列化) */
+  private activeCommentThreadId: string | null = null
+
+  /** 全选整篇文档时给所有表格描选择边 (契约 §31.3.1, transient) */
+  documentSelected = false
+
+  /** 表外光标 (契约 §31.3.1, transient; 由 Editor 注入) */
+  blockCaret: { blockId: string; side: 'before' | 'after' } | null = null
+
+  /** 行尾光标绘制位置 (契约 §31.3.1, transient; 由 Editor 注入) */
+  rowEndCaret: { tableId: string; pageIndex: number; top: number; height: number } | null = null
+
+  /** 批注渲染计划 (按文档/线程数缓存; 无批注时为 null) */
+  private commentPlan: CommentRenderPlan | null = null
+  private commentPlanDoc: DocumentTree | null = null
+  private commentPlanComments: readonly CommentThread[] | null = null
+  private commentPlanCount = -1
+  /** 本趟的线程状态 (解析/解决只改状态, 不必重建区间计划) */
+  private commentStatus = new Map<string, CommentThread['status']>()
+  /** 同一文本节点跨行/跨页的已消费局部偏移 (正文跨页累加) */
+  private commentConsumed = new Map<string, number>()
+  /** 本趟已画过锚点标记的线程 (每线程只画一次) */
+  private commentMarked = new Set<string>()
+  /** 打印逐页调用时用于判断是否要重置消费偏移 */
+  private lastCommentPageIndex: number | null = null
 
   // 图片缓存: URL → CanvasImageSource (容量 50, LRU 淘汰)
   private imageCache = new MemoryManager<string>(50)
@@ -217,8 +295,9 @@ export class Draw {
 
     this.eventBus.on('render:request', () => this.render())
     this.eventBus.on('layout:changed', (pages: SLIFPage[]) => {
+      // 只同步页数组。命中索引的重建在 recomputeLayout 里按分页模式做:
+      // 这里若无条件全量重建, 增量分页省下的工作会被立刻还回去 (M2b)。
       this.pages = pages
-      this.hitTestIndex.rebuild(pages)
     })
 
     // 图片粒子渲染器 — 绑定到本 Draw 实例 (见字段声明注释, 不进单例 registry)
@@ -258,6 +337,20 @@ export class Draw {
     if (pool) this.pool = pool
     this.presentationStyles = presentationStyles ?? null
     this.templateDefinitions = templateDefinitions ?? null
+    // 换文档 → 段落行缓存与分页状态都必须清空: 新文档的节点版本可能从 0
+    // 重新开始, 键会撞上上一份文档的同名段落 (M2a/M2b)
+    this.layoutEngine.clearParagraphLineCache()
+    this.layoutEngine.clearPaginationState()
+    // 页面几何随文档走 (契约 §16 PAGE GEOMETRY): 纸张或页边距与上一份不同时,
+    // 布局必须按新页面重排, 而不是继续用硬编码的 794×1123
+    this.syncPageSetup()
+    // 批注渲染计划随文档重建 (契约 §12.14)
+    this.invalidateCommentPlan()
+  }
+
+  /** 把 DocumentTree.pageSetup 推给布局 (纸张/页边距的唯一来源, 契约 §16) */
+  private syncPageSetup(): void {
+    this.layoutEngine.setPageSetup(this.document?.pageSetup)
   }
 
   setRuntimeState(state: EditorRuntimeState): void { this._state = state }
@@ -265,84 +358,308 @@ export class Draw {
   getPool(): NodePool | null { return this.pool }
   getState(): EditorRuntimeState | null { return this._state }
 
-  recomputeLayout(pool: NodePool, _invalidation?: string): SLIFPage[] {
+  recomputeLayout(pool: NodePool, invalidation?: string): SLIFPage[] {
     if (!this.document) return []
     this.pool = pool
+    // 页面几何先于一切: 改纸张/页边距会让版心宽高与分页容量失效 (契约 §16)
+    this.syncPageSetup()
     // 修订留痕显示开关同步给布局 (契约 §12.13): 删除线是布局期产物,
     // 关标记必须连它一起关 —— 否则用户关掉标记后删除线还在。
     this.layoutEngine.setShowRevisionMarks(this._showRevisionMarks)
     // 计算值: 布局趟开头 ensure() 一次 (契约 §12.12.7)。脏了才真算, 时钟在那时读
     // 一次; 不脏则连钟都不读 —— 于是同一份文档的布局与渲染必然读到同一个值。
     this.computedValues?.ensure()
-    // 当前统一全量布局; invalidation scope 预留用于未来增量优化
-    this.pages = this.layoutEngine.fullLayout(this.document, pool)
-    this.hitTestIndex.rebuild(this.pages)
+    // 计算值代次同步给布局: 表格键里含代次 —— 改公式/改模板定义让显示值变了
+    // 但节点版本不变, 只有代次能证明"表格的行高/分页可能变了" (契约 §16.1)
+    this.layoutEngine.setComputedGeneration(this.computedValues?.generation ?? 0)
+    // 模板定义版本同步给布局: 控件 controlType/label/prefix 改了, 节点版本与
+    // 计算值代次都不动 —— 只有它能让含控件的段落/表格键失效 (契约 §16.1)。
+    this.layoutEngine.setTemplateDefinitionVersion(this.templateDefinitions?.version ?? 0)
+    // invalidation 交给布局: 只有段落级失效才允许增量分页 (M2b, 契约 §16.1)
+    this.pages = this.layoutEngine.fullLayout(this.document, pool, invalidation)
+
+    // 命中索引跟随分页结果: 整份复用时不重建; 续排时只重建受影响页起
+    const pagination = this.layoutEngine.getPaginationStats()
+    if (pagination.mode === 'reuse-all') {
+      this.lastHitRebuildStart = this.pages.length
+    } else if (pagination.mode === 'resume' && pagination.reusedPages > 0) {
+      this.lastHitRebuildStart = pagination.reusedPages
+      this.hitTestIndex.rebuildFrom(this.pages, pagination.reusedPages)
+    } else {
+      this.lastHitRebuildStart = 0
+      this.hitTestIndex.rebuild(this.pages)
+    }
     return this.pages
+  }
+
+  /** 命中索引重建统计 (诊断/测试用; 不参与渲染决策) */
+  getHitIndexStats(): { rebuildStartPage: number; totalPages: number } {
+    return { rebuildStartPage: this.lastHitRebuildStart, totalPages: this.pages.length }
   }
 
   // ================================================================
   /**
-   * 批注高亮 (契约 §12.2) —— 按 doc.comments 的 range 逐 item 解析并填充。
+   * 批注高亮 (契约 §12.14) —— 按渲染计划逐 item 填充。
    *
-   * 主题化 (v6.1): 颜色读 tokenSet.commentHighlight (alpha 0.45);
-   *   tokenSet 缺时回退 COMMENT_HIGHLIGHT 常量。
+   * 计划 (CommentRenderPlan) 由 doc + pool + threads 一次构建:
+   *   - 段内区间来自 commentSegments (与摘录/命中同源, 支持跨段落)
+   *   - 子节点起始偏移来自模型, 不再逐页从 0 累加 —— 段落跨页时后者会把
+   *     第二页的偏移重新算成 0, 高亮与光标错位
    *
-   * 为什么不用 CommentParticle: particleRegistry 未注册 'comment', 且布局不为
-   * comment_marker 产出 SLIF item —— 那个粒子的 render() 实际不会被调用。这里
-   * 直接从 doc.comments 解析, 屏幕 (静态层) 与打印 (renderPageToContext) 共用
-   * 同一实现, 保证两边一致 (契约 §12: 打印是文档投影, 必须包含屏幕上的一切)。
+   * 颜色分三层: active (选中) > normal (强调层开启且未解决) > faint
+   * (强调层关闭或已解决)。锚定文字**始终**有底色; 锚点标记只在强调层开启
+   * 且未解决 (或选中) 时绘制, 每条线程每趟只画一次。
    *
-   * 字符定位口径必须与 computeCaretPos 一致 (文本计 text.length、原子内联计 1
-   * 且不产出字符; 逐字符宽度用 cumulativeWidthUpTo), 否则高亮会与光标错位。
+   * 点批注没有「文字底色」可留: 它画成满行高的插入点竖条, 始终可见 (faint
+   * 时降低不透明度), 但不再铺一块只盖住半个字的底色。
+   *
+   * 屏幕 (静态层) 与打印共用本实现 (契约 §4 投影规则)。
    */
+  private ensureCommentPlan(): void {
+    const threads = this.document?.comments
+    const count = threads?.length ?? 0
+    if (this.commentPlan && this.commentPlanDoc === this.document &&
+        this.commentPlanComments === threads && this.commentPlanCount === count) {
+      return
+    }
+    this.commentPlan = this.document && this.pool && threads && count > 0
+      ? buildCommentRenderPlan(this.document, this.pool, threads)
+      : null
+    this.commentPlanDoc = this.document
+    this.commentPlanComments = threads ?? null
+    this.commentPlanCount = count
+  }
+
+  /**
+   * 计划失效: 文档内容/结构变化后由 Editor 调用 (契约 §12.14)。
+   * 文本节点长度或段落子节点集合变化都会让缓存里的偏移表过期。
+   */
+  invalidateCommentPlan(): void {
+    this.commentPlan = null
+    this.commentPlanDoc = null
+    this.commentPlanComments = null
+    this.commentPlanCount = -1
+  }
+
+  /** 渲染趟开始: 确保计划 + 清空本趟消费/标记状态 */
+  private beginCommentPass(): void {
+    this.ensureCommentPlan()
+    this.commentStatus = new Map(
+      (this.document?.comments ?? []).map(thread => [thread.id, thread.status]),
+    )
+    this.commentConsumed = new Map()
+    this.commentMarked = new Set()
+    this.lastCommentPageIndex = null
+  }
+
   private drawCommentHighlightsForPage(
     ctx: CanvasRenderingContext2D, page: SLIFPage, pageY: number,
     tokens: CanvasTokenSet | null,
   ): void {
-    const threads = this.document?.comments
-    const pool = this.pool
-    if (!threads || threads.length === 0 || !pool) return
+    const plan = this.commentPlan
+    if (!plan || plan.entries.length === 0) return
+
+    /** 本页每条线程的并集框 —— 虚线框与右侧气泡的连接线都从这里来 */
+    const boxes = new Map<string, CommentBox>()
+    /** 本页出现过的点批注 —— 点标记不画虚线框 (框住半个字反而更难认) */
+    const points = new Set<string>()
 
     ctx.save()
-    ctx.fillStyle = tokens ? commentHighlight(tokens) : COMMENT_HIGHLIGHT
-    for (const thread of threads) {
-      const startPara = thread.rangeStart.path[thread.rangeStart.path.length - 1]
-      const endPara = thread.rangeEnd.path[thread.rangeEnd.path.length - 1]
-      const para = pool.nodes.get(startPara) as { type?: string; children?: readonly string[] } | undefined
-      if (!para?.children) continue
 
-      const start = thread.rangeStart.offset
-      // 跨段落范围 (本 API 已不产出, 但历史/导入数据可能有): 画到该段末尾
-      const end = endPara === startPara
-        ? thread.rangeEnd.offset
-        : paragraphTextLength(pool, startPara)
-      if (end <= start) continue
+    this.forEachCommentRect(page, pageY, plan, this.commentConsumed, (threadId, x, y, w, h, isPoint) => {
+      const active = threadId === this.activeCommentThreadId
+      const status = this.commentStatus.get(threadId) ?? 'open'
+      const faint = !active && (!this._showCommentMarks || status === 'resolved')
 
-      let charCount = 0
-      for (const item of getFlatPageItems(page)) {
-        if (!para.children.includes(item.nodeId)) continue
-        const isAtomic = item.nodeType === 'smarttext' || item.nodeType === 'image' ||
-          item.nodeType === 'field' || item.nodeType === 'cross_reference' ||
-          item.nodeType === 'footnote_ref' || item.nodeType === 'bookmark'
-        const unitLen = isAtomic ? 1 : (item.text?.length || 0)
-        const itemStart = charCount
-        charCount += unitLen
-        if (isAtomic || unitLen === 0) continue       // 原子内联无文字可高亮
-        const from = Math.max(start, itemStart)
-        const to = Math.min(end, itemStart + unitLen)
-        if (from >= to) continue
+      if (isPoint) {
+        // 点批注: 画满行高的插入点竖条, 而不是铺一块「半字宽」的底色 ——
+        // 底色只会覆盖左边半个字, 看起来像渲染坏了。标记始终可见 (只调不透明度):
+        // 点批注没有文字底色可留, 藏掉标记锚点就彻底消失了。
+        points.add(threadId)
+        ctx.fillStyle = faint
+          ? commentBorderFaint(tokens ?? undefined)
+          : commentBorder(tokens ?? undefined)
+        ctx.fillRect(x, y, w, h)
+        if (!faint) ctx.fillRect(x - 1, y - 2, w + 2, 4)
+      } else {
+        const color = active
+          ? (tokens ? commentHighlightActive(tokens) : COMMENT_HIGHLIGHT)
+          : faint
+            ? (tokens ? commentHighlightFaint(tokens) : COMMENT_HIGHLIGHT)
+            : (tokens ? commentHighlight(tokens) : COMMENT_HIGHLIGHT)
+
+        ctx.fillStyle = color
+        ctx.fillRect(x, y, w, h)
+
+        // 锚点标记: 强调层开启且未解决 (或选中) —— 每条线程每趟只画一次
+        const showMarker = active || (this._showCommentMarks && status !== 'resolved')
+        if (showMarker && !this.commentMarked.has(threadId)) {
+          this.commentMarked.add(threadId)
+          ctx.fillRect(x - 2, y, 2, h)
+          ctx.fillRect(x - 2, y - 2, 4, 4)
+        }
+      }
+
+      const box = boxes.get(threadId)
+      if (!box) {
+        boxes.set(threadId, { minX: x, minY: y, maxX: x + w, maxY: y + h })
+      } else {
+        box.minX = Math.min(box.minX, x)
+        box.minY = Math.min(box.minY, y)
+        box.maxX = Math.max(box.maxX, x + w)
+        box.maxY = Math.max(box.maxY, y + h)
+      }
+    })
+
+    this.paintCommentBoxes(ctx, page, boxes, tokens, points)
+    ctx.restore()
+  }
+
+  /**
+   * 遍历一页上所有批注矩形 (正文 + 页眉 + 页脚)。渲染与几何读取共用同一
+   * 偏移/裁剪逻辑, 避免「画的地方」与「气泡指的地方」漂移。
+   *
+   * 点批注 (from === to) 产出一个 2px 宽的插入点竖条 (另带一个 isPoint 标记,
+   * 由绘制方决定不套虚线框); 范围批注按 item 逐段产出文字矩形。空段落 /
+   * 原子内联 (控件/图片/域) 同样可以是合法锚点。正文的消费偏移跨页累加,
+   * 页眉/页脚逐页重置。
+   */
+  private forEachCommentRect(
+    page: SLIFPage,
+    pageY: number,
+    plan: CommentRenderPlan,
+    consumedBody: Map<string, number>,
+    visit: (threadId: string, x: number, y: number, w: number, h: number, isPoint: boolean) => void,
+  ): void {
+    const band = (
+      items: readonly SLIFItem[],
+      bandTop: number,
+      consumed: Map<string, number>,
+    ): void => {
+      for (const item of items) {
+        const paraId = plan.nodeToPara.get(item.nodeId)
+        if (!paraId) continue
+        const starts = plan.childStart.get(paraId)
+        const base = starts?.get(item.nodeId)
+        if (base === undefined) continue
+
+        const local = consumed.get(item.nodeId) ?? 0
+        const itemStart = base + local
+        const itemY = pageY + bandTop + item.y
+        const itemH = item.ascent + item.descent || item.height || item.size || 16
+
+        // 原子内联在模型里占 1 个偏移单位, 没有可逐字裁剪的文本
+        if (isAtomicInlineItem(item)) {
+          consumed.set(item.nodeId, local + 1)
+          const w = Math.max(2, item.width)
+          for (const entry of plan.entries) {
+            const seg = entry.segments.find(s => s.paraId === paraId)
+            if (!seg) continue
+            if (seg.from === seg.to) {
+              // 点批注落在原子上: 段首贴着原子左侧, 段末贴着右侧
+              if (seg.from === itemStart) {
+                visit(entry.threadId, item.x, itemY, 2, itemH, true)
+              } else if (seg.from === itemStart + 1) {
+                visit(entry.threadId, item.x + item.width, itemY, 2, itemH, true)
+              }
+              continue
+            }
+            // 范围批注覆盖原子项 → 整块高亮 (与选区同一口径: 部分覆盖即整块)
+            if (seg.from <= itemStart && seg.to >= itemStart + 1) {
+              visit(entry.threadId, item.x, itemY, w, itemH, false)
+            }
+          }
+          continue
+        }
+
+        const text = item.text ?? ''
+        const unitLen = text.length
+        consumed.set(item.nodeId, local + unitLen)
+
+        // 空段落 / 空文本节点: 没有可染色的字符, 但仍是合法锚点。
+        // 布局为空段落产出的占位行 nodeId 就是段 id (text=''), 点批注必须
+        // 画在这条占位行上, 否则「光标处批注」在空段落里完全不可见。
+        if (unitLen === 0) {
+          for (const entry of plan.entries) {
+            const seg = entry.segments.find(s => s.paraId === paraId)
+            if (seg && seg.from === seg.to && seg.from === itemStart) {
+              visit(entry.threadId, item.x, itemY, 2, itemH, true)
+            }
+          }
+          continue
+        }
+
         const fontSpec = {
           font: item.font || 'SimSun', size: item.size || 16,
           bold: item.bold, italic: item.italic,
         }
-        const x0 = item.x + cumulativeWidthUpTo(item.text || '', from - itemStart, fontSpec, this.measurer)
-        const x1 = item.x + cumulativeWidthUpTo(item.text || '', to - itemStart, fontSpec, this.measurer)
-        if (x1 > x0) {
-          ctx.fillRect(x0, pageY + item.y, x1 - x0, item.ascent + item.descent)
+
+        for (const entry of plan.entries) {
+          const seg = entry.segments.find(s => s.paraId === paraId)
+          if (!seg) continue
+
+          if (seg.from === seg.to) {
+            // 点批注: 落在 [itemStart, itemStart + unitLen] 内的插入点
+            if (seg.from < itemStart || seg.from > itemStart + unitLen) continue
+            const x = item.x + cumulativeWidthUpTo(text, seg.from - itemStart, fontSpec, this.measurer)
+            visit(entry.threadId, x, itemY, 2, itemH, true)
+            continue
+          }
+
+          const from = Math.max(seg.from, itemStart)
+          const to = Math.min(seg.to, itemStart + unitLen)
+          if (from >= to) continue
+          const x0 = item.x + cumulativeWidthUpTo(text, from - itemStart, fontSpec, this.measurer)
+          const x1 = item.x + cumulativeWidthUpTo(text, to - itemStart, fontSpec, this.measurer)
+          if (x1 <= x0) continue
+          visit(entry.threadId, x0, itemY, x1 - x0, itemH, false)
         }
       }
     }
-    ctx.restore()
+
+    band(getFlatPageItems(page), 0, consumedBody)
+    if (page.headerItems && page.headerItems.length > 0) {
+      band(page.headerItems, 0, new Map())
+    }
+    if (page.footerItems && page.footerItems.length > 0) {
+      band(page.footerItems, page.height - (page.footerHeight ?? 42), new Map())
+    }
+  }
+
+  /** 虚线批注框 + 到页右缘的连接线 (右侧气泡由 DOM 叠加层绘制) */
+  private paintCommentBoxes(
+    ctx: CanvasRenderingContext2D,
+    page: SLIFPage,
+    boxes: ReadonlyMap<string, CommentBox>,
+    tokens: CanvasTokenSet | null,
+    points: ReadonlySet<string>,
+  ): void {
+    for (const [threadId, box] of boxes) {
+      const active = threadId === this.activeCommentThreadId
+      const status = this.commentStatus.get(threadId) ?? 'open'
+      // 关闭强调层且非选中, 或已解决 → 只留淡底色, 不画框/连接线
+      if (!active && (!this._showCommentMarks || status === 'resolved')) continue
+
+      ctx.save()
+      ctx.setLineDash([4, 3])
+      ctx.lineWidth = 1
+      ctx.strokeStyle = commentBorder(tokens ?? undefined)
+      // 点批注本身就是插入点标记, 不再套一个「框住半个字」的小框;
+      // 只保留到右侧气泡的连接线。
+      if (!points.has(threadId)) {
+        ctx.strokeRect(
+          box.minX - 1, box.minY - 1,
+          Math.max(1, box.maxX - box.minX + 2), Math.max(1, box.maxY - box.minY + 2),
+        )
+      }
+      // 连接线: 框右缘 → 页面右缘; 气泡叠加层贴在页外
+      const connectorY = box.minY + 6
+      ctx.beginPath()
+      ctx.moveTo(box.maxX + 2, connectorY)
+      ctx.lineTo(Math.max(box.maxX + 2, page.width), connectorY)
+      ctx.stroke()
+      ctx.restore()
+    }
   }
 
   // 光标坐标计算 — 共享方法, render() 和 getCaretClientRect() 复用
@@ -619,6 +936,11 @@ export class Draw {
     const scale = this.coordSystem.transform.scale
     const pageHeight = this.pages[0]?.height || 1123
     const pageWidth = this.pages[0]?.width || 794
+    // 页面几何以每页 SLIF 为准, 页边距取文档 pageSetup —— 不能再写死
+    // `pageWidth - 180` (marginLeft/Right 各 90), 否则改过页边距后
+    // separator 等按版心宽绘制的元素会画出纸外/短一截 (契约 §16)
+    const marginLeft = this.document?.pageSetup?.marginLeft ?? 90
+    const marginRight = this.document?.pageSetup?.marginRight ?? 90
     // 页面水平居中: 缩放后页面可视宽度 = pageWidth * scale
     const visiblePageW = pageWidth * scale
     const offsetX = Math.max(0, (viewportW - visiblePageW) / 2)
@@ -638,6 +960,9 @@ export class Draw {
     const scrollOffset = scrollY - visibleStartDocY
     // canvas 物理像素偏移: offsetX 是 CSS 像素居中偏移, 需转换为物理像素
     const physOffsetX = offsetX * dpr
+
+    // 批注渲染趟: 计划按文档/线程数缓存, 消费偏移从这里清零 (契约 §12.14)
+    this.beginCommentPass()
 
     // --- 静态层: 页面背景 ---
     {
@@ -665,19 +990,22 @@ export class Draw {
       ctx.clearRect(0, 0, viewportW / scale, viewportH / scale)
       // offsetX 已是 CSS 像素, 在文档空间需除以 scale
       ctx.translate(offsetX / scale, 0)
-      const contentWidth = pageWidth - 180 // marginLeft(90) + marginRight(90)
       for (let i = visible.start; i <= visible.end; i++) {
         const page = this.pages[i]
         if (!page) continue
         // 每页 canvas Y = 该页累加顶部 (含间隙) - 当前 scrollY
         const pageY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - (visibleStartDocY + scrollOffset)
+        // 页尺寸/版心按**本页**实测 (契约 §16.1: 页可以不等高)
+        const pw = page.width || pageWidth
+        const ph = page.height || pageHeight
+        const cw = Math.max(0, pw - marginLeft - marginRight)
         // 逐页容错: 单页抛错只损失这一页。rect **必须**给 ——
         // 不给的话 safeRenderPage 的占位图会刷满整张 canvas (那是离屏单页渲染的语义)
         safeRenderPage(
-          () => this.renderPageContent(ctx, page, i, pageY, pageWidth, pageHeight, contentWidth),
+          () => this.renderPageContent(ctx, page, i, pageY, pw, ph, cw),
           i,
           ctx,
-          { x: 0, y: pageY, width: pageWidth, height: pageHeight },
+          { x: 0, y: pageY, width: pw, height: ph },
         )
       }
     }
@@ -716,7 +1044,8 @@ export class Draw {
       }
 
       // --- 光标 (文字上方, 仅在 visible 时绘制; 无缝编辑激活时隐藏, 由 DOM 光标承担) ---
-      if (cursor.visible && !this.activeControlNodeId) {
+      // 表外光标/行尾光标存在时不画段落内光标 (契约 §31.3.1)
+      if (cursor.visible && !this.activeControlNodeId && !this.blockCaret && !this.rowEndCaret) {
         const caret = this.computeCaretPos(pool, cursor.paragraphPath, cursor.offset, pageVerticalGap, this.hfPreferredPage)
         if (caret) {
           ictx.fillStyle = asRgb(tokens.cursorColor)
@@ -887,23 +1216,27 @@ export class Draw {
       return
     }
 
-    // 展平 body → 阅读顺序 (契约 §31.3 W3: 表格展开为 cell 段落)。cell 段落不在
-    // body.children, 若不展平, body↔table 跨域选区 indexOf=-1 被整体丢弃
-    // (「全选/拖选选不中表格」)。
-    const spine = this.document ? bodyParagraphSpine(this.document, pool) : []
-    const aIdx = spine.indexOf(anchorParaId)
-    const fIdx = spine.indexOf(focusParaId)
-    if (aIdx < 0 || fIdx < 0) return
+    // 选区范围**不再本地推导**: 段落读序与逐段裁剪区间来自 SelectionCollector
+    // (契约 §31.3 W3-SELECTION), 与复制、范围命令共用同一份实现。
+    // body 展平后 cell 段落参与线性范围 —— body↔table 跨域选区可被高亮。
+    const spineInfo = selectionSpine(this.document, pool, anchorParaId, focusParaId)
+    if (!spineInfo) return
+    const segments = collectSelectionSegments(
+      spineInfo.spine, anchorParaId, selection.anchor.offset,
+      focusParaId, selection.focus.offset,
+    )
+    if (segments.length === 0) return
 
-    const lo = Math.min(aIdx, fIdx)
-    const hi = Math.max(aIdx, fIdx)
-    const samePara = lo === hi
-
-    // 首段/末段的选区 offset — 标准化为 loOff <= hiOff
-    const anchorOff = selection.anchor.offset
-    const focusOff = selection.focus.offset
-    const selMin = Math.min(anchorOff, focusOff)
-    const selMax = Math.max(anchorOff, focusOff)
+    // 段内裁剪区间; 非段落块 (如块级图片) 在展平 spine 里占 1 个偏移单位。
+    const clips = new Map<string, { start: number; end: number }>()
+    for (const seg of segments) {
+      const node = pool.nodes.get(seg.paraId)
+      const isParagraph = node?.type === 'paragraph'
+      const end = seg.end === Number.MAX_SAFE_INTEGER
+        ? (isParagraph ? paragraphTextLength(pool, seg.paraId) : 1)
+        : seg.end
+      clips.set(seg.paraId, { start: seg.start, end })
+    }
 
     // 追踪每个段落的累计字符偏移
     const paraOffsets = new Map<string, number>()
@@ -914,8 +1247,8 @@ export class Draw {
     // 当前文档滚动位置 — 直接读取, 与 computeCaretPos 同源
     const scrollY = this.coordSystem.transform.scrollY
 
-    // 单个文本 run 的裁剪 + 填充: 基于 paraId 在 spine 中的索引与段内累计偏移
-    // 计算是否落入 [lo,hi] 选区范围, 落入则按逐字符像素宽度裁剪后 fillRect。
+    // 单个文本 run 的裁剪 + 填充: 用所属段落的 clip 与段内累计偏移定位,
+    // 落入区间则按逐字符像素宽度裁剪后 fillRect。
     // 原子内联节点 (控件/图片/域等) 按「1 字符」计偏移 (与光标/命中同源), 并按整宽填充。
     const fillItem = (
       paraId: string,
@@ -924,39 +1257,20 @@ export class Draw {
       fontCfg: { font: string; size: number; bold?: boolean; italic?: boolean },
       atomic = false, atomicW?: number,
     ): void => {
-      const pi = spine.indexOf(paraId)
-      if (pi < lo || pi > hi) return
+      const clip = clips.get(paraId)
+      if (!clip) return
 
       const itemStart = paraOffsets.get(paraId) ?? 0
       const tLen = text?.length || 0
       const unitLen = atomic ? 1 : tLen
       const itemEnd = itemStart + unitLen
-
-      // ---- 第一层: item 级筛选 ----
-      let include = true
-      if (samePara) {
-        include = itemEnd > selMin && itemStart < selMax
-      } else if (pi === lo) {
-        include = itemEnd > (aIdx === lo ? anchorOff : focusOff)
-      } else if (pi === hi) {
-        include = itemStart < (aIdx === hi ? anchorOff : focusOff)
-      }
-
-      let localStart = 0
-      let localEnd = unitLen || 1  // 空段落占位至少 1 个单位宽度
-      if (samePara) {
-        localStart = Math.max(0, selMin - itemStart)
-        localEnd = Math.min(unitLen, selMax - itemStart)
-      } else if (pi === lo) {
-        localStart = Math.max(0, (aIdx === lo ? anchorOff : focusOff) - itemStart)
-        localEnd = unitLen || 1
-      } else if (pi === hi) {
-        localStart = 0
-        localEnd = Math.min(unitLen || 1, (aIdx === hi ? anchorOff : focusOff) - itemStart)
-      }
-
       paraOffsets.set(paraId, itemEnd)
-      if (!include) return
+
+      // ---- item 级筛选 ----
+      if (itemEnd <= clip.start || itemStart >= clip.end) return
+
+      const localStart = Math.max(0, clip.start - itemStart)
+      const localEnd = Math.min(unitLen || 1, clip.end - itemStart)  // 空段落占位至少 1 个单位宽度
 
       if (atomic) {
         // 原子节点: 部分覆盖即整块高亮 (与「非文本计 1」一致)
@@ -1014,24 +1328,15 @@ export class Draw {
           const ownerParaId = this.findItemParagraph(item.nodeId, pool)
           if (ownerParaId) {
             // 内联图: 归属段落, 按段内 1 字符偏移定位 (与 paragraphTextLength 一致)
-            const pi = spine.indexOf(ownerParaId)
-            if (pi < lo || pi > hi) continue
+            const clip = clips.get(ownerParaId)
+            if (!clip) continue
             const itemStart = paraOffsets.get(ownerParaId) ?? 0
             const itemEnd = itemStart + 1
-            let include = true
-            if (samePara) {
-              include = itemEnd > selMin && itemStart < selMax
-            } else if (pi === lo) {
-              include = itemEnd > (aIdx === lo ? anchorOff : focusOff)
-            } else if (pi === hi) {
-              include = itemStart < (aIdx === hi ? anchorOff : focusOff)
-            }
             paraOffsets.set(ownerParaId, itemEnd)
-            if (!include) continue
+            if (itemEnd <= clip.start || itemStart >= clip.end) continue
           } else {
-            // 块级图: nodeId 即 body 顶层 child (spine 成员), 按索引直接定位
-            const pi = spine.indexOf(item.nodeId)
-            if (pi < lo || pi > hi) continue
+            // 块级图: nodeId 即 body 顶层 child (展平 spine 成员), 在区间内即整块高亮
+            if (!clips.has(item.nodeId)) continue
           }
           ictx.fillRect(item.x, spY + item.y, item.width, item.height)
         } else {
@@ -1063,19 +1368,20 @@ export class Draw {
     const doc = this.document!
     const anchorParaId = selection.anchor.paragraphPath[selection.anchor.paragraphPath.length - 1] || ''
     const focusParaId = selection.focus.paragraphPath[selection.focus.paragraphPath.length - 1] || ''
-    const sp = selectionSpine(doc, pool, anchorParaId, focusParaId)
-    if (!sp) return
-    const spine = sp.spine
-    const aIdx = spine.indexOf(anchorParaId)
-    const fIdx = spine.indexOf(focusParaId)
-    if (aIdx < 0 || fIdx < 0) return
-    const lo = Math.min(aIdx, fIdx)
-    const hi = Math.max(aIdx, fIdx)
-    const samePara = lo === hi
-    const anchorOff = selection.anchor.offset
-    const focusOff = selection.focus.offset
-    const selMin = Math.min(anchorOff, focusOff)
-    const selMax = Math.max(anchorOff, focusOff)
+    const spineInfo = selectionSpine(doc, pool, anchorParaId, focusParaId)
+    if (!spineInfo) return
+    const segments = collectSelectionSegments(
+      spineInfo.spine, anchorParaId, selection.anchor.offset,
+      focusParaId, selection.focus.offset,
+    )
+    if (segments.length === 0) return
+    const clips = new Map<string, { start: number; end: number }>()
+    for (const seg of segments) {
+      const end = seg.end === Number.MAX_SAFE_INTEGER
+        ? paragraphTextLength(pool, seg.paraId)
+        : seg.end
+      clips.set(seg.paraId, { start: seg.start, end })
+    }
 
     const tokens = this.theme?.tokenSet ?? STANDARD_CANVAS_TOKENS
     ictx.fillStyle = withAlpha(tokens.selectionBg, 0.2)
@@ -1092,38 +1398,20 @@ export class Draw {
       for (const item of items) {
         const paraId = this.findItemParagraph(item.nodeId, pool)
         if (!paraId) continue
-        const pi = spine.indexOf(paraId)
-        if (pi < lo || pi > hi) continue
+        const clip = clips.get(paraId)
+        if (!clip) continue
         const text = item.text || ''
         const isAtomic = item.type === 'smarttext' || item.type === 'image' ||
           item.type === 'field' || item.type === 'cross_reference' || item.type === 'footnote_ref'
         const tLen = isAtomic ? 1 : text.length
         const itemStart = paraOffsets.get(paraId) ?? 0
         const itemEnd = itemStart + tLen
-
-        let include = true
-        if (samePara) {
-          include = itemEnd > selMin && itemStart < selMax
-        } else if (pi === lo) {
-          include = itemEnd > (aIdx === lo ? anchorOff : focusOff)
-        } else if (pi === hi) {
-          include = itemStart < (aIdx === hi ? anchorOff : focusOff)
-        }
-
-        let localStart = 0
-        let localEnd = tLen || 1
-        if (samePara) {
-          localStart = Math.max(0, selMin - itemStart)
-          localEnd = Math.min(tLen, selMax - itemStart)
-        } else if (pi === lo) {
-          localStart = Math.max(0, (aIdx === lo ? anchorOff : focusOff) - itemStart)
-          localEnd = tLen || 1
-        } else if (pi === hi) {
-          localStart = 0
-          localEnd = Math.min(tLen || 1, (aIdx === hi ? anchorOff : focusOff) - itemStart)
-        }
         paraOffsets.set(paraId, itemEnd)
-        if (!include) continue
+
+        if (itemEnd <= clip.start || itemStart >= clip.end) continue
+
+        const localStart = Math.max(0, clip.start - itemStart)
+        const localEnd = Math.min(tLen || 1, clip.end - itemStart)
 
         if (isAtomic) {
           if (localStart < localEnd) ictx.fillRect(item.x, spY + bandTop + item.y, item.width, item.ascent + item.descent)
@@ -1278,7 +1566,9 @@ export class Draw {
         tokenSet: tokens ?? undefined,
       })
     } else if (item.type === 'table') {
-      // 表格渲染 (R37) — cell 内 smarttext 经 TableParticle 委托 registry (§4)
+      // 表格渲染 (R37) — cell 内 smarttext 经 TableParticle 委托 registry (§4),
+      // 图片/域/交叉引用/脚注引用经 renderCellItem 回到这里复用同一批渲染器
+      // (契约 §31.13.1)。
       const tp = createTableParticle()
       tp.render(ctx, item, item.x, pageY + item.y, {
         showInvisible,
@@ -1289,7 +1579,49 @@ export class Draw {
         controlValueOf: this.controlValueOf,
         activeControlId: this.activeControlNodeId,
         tokenSet: tokens ?? undefined,
+        renderCellItem: (c, cellItem, x, y) => this.renderCellItem(
+          c, cellItem, x, y, pageIndex, tokens, showInvisible,
+        ),
       })
+
+      // 整篇全选的表格描边 + 表外光标 (契约 §31.3.1, transient)
+      const tk = tokens ?? STANDARD_CANVAS_TOKENS
+      const tableH = item.height ||
+        (item.rows || []).reduce((sum, row) => sum + Math.max(row.height || 24, 24) + 1, 0)
+      if (this.documentSelected) {
+        ctx.save()
+        ctx.lineWidth = 2
+        ctx.strokeStyle = asRgb(tk.selectionBorder)
+        ctx.strokeRect(item.x, pageY + item.y, item.width, tableH)
+        ctx.restore()
+      }
+      if (this.blockCaret && this.blockCaret.blockId === item.nodeId) {
+        const after = this.blockCaret.side === 'after'
+        // after 只画在表格最后出现的页上 (跨页表格别在每页底部画一根)
+        const lastPage = after
+          ? this.pages.every((p, pi) => pi <= pageIndex ||
+              !(p.items || []).some(it => it.type === 'table' && it.nodeId === item.nodeId))
+          : true
+        if (lastPage) {
+          const h = after ? 20 : Math.min(20, Math.max(2, item.y))
+          const y = after ? pageY + item.y + tableH : pageY + item.y - h
+          ctx.save()
+          ctx.fillStyle = asRgb(tk.cursorColor)
+          ctx.fillRect(item.x - 4, y, 2, h)
+          ctx.restore()
+        }
+      }
+      // 行尾光标: 画在该行右边界之外 (Word 行尾标记位置; 契约 §31.3.1)
+      if (this.rowEndCaret && this.rowEndCaret.tableId === item.nodeId &&
+          this.rowEndCaret.pageIndex === pageIndex) {
+        const rowH = Math.max(2, this.rowEndCaret.height)
+        const h = Math.max(2, Math.min(20, rowH - 2))
+        const y = pageY + this.rowEndCaret.top + Math.max(0, (rowH - h) / 2)
+        ctx.save()
+        ctx.fillStyle = asRgb(tk.cursorColor)
+        ctx.fillRect(item.x + (item.width || 0) + 2, y, 2, h)
+        ctx.restore()
+      }
     } else {
       // 文本/域代码/控件 — 通过 ParticleRegistry 调度 (含列表标记)
         const textRenderer = particleRegistry.get(item.nodeType || item.type) || particleRegistry.get('text')
@@ -1306,6 +1638,52 @@ export class Draw {
         })
       }
     }
+  }
+
+  /**
+   * 表格 cell 内的原子行内项 — 由 TableParticle 回调到这里 (契约 §31.13.1)。
+   *
+   * 复用正文的同一批渲染器: 图片走 imageParticle (缓存/异步加载在 Draw),
+   * 脚注引用走 FootnoteParticle, 域与交叉引用走 Registry + `resolveFieldText`
+   * (页码/总页数必须按**本页**解析)。返回 false 表示不认识, 让 TableParticle
+   * 回落到 fillText。
+   */
+  private renderCellItem(
+    ctx: CanvasRenderingContext2D,
+    item: SLIFItem,
+    x: number,
+    y: number,
+    pageIndex: number,
+    tokens: CanvasTokenSet | null,
+    showInvisible: boolean,
+  ): boolean {
+    if (item.type === 'image') {
+      const imgUrl = this.resolveImageUrl(item)
+      if (imgUrl) this.renderImage(ctx, imgUrl, x, y, item.width, item.height, tokens)
+      return true
+    }
+    if (item.type === 'footnote') {
+      createFootnoteParticle().render(ctx, item, x, y, {
+        pageIndex, totalPages: this.pages.length, tokenSet: tokens ?? undefined,
+      })
+      return true
+    }
+    if (item.type === 'field' || item.type === 'cross_reference') {
+      const renderer = particleRegistry.get(item.nodeType || item.type) || particleRegistry.get('text')
+      if (!renderer) return false
+      renderer.render(ctx, { ...item, text: this.resolveFieldText(item, pageIndex) }, x, y, {
+        showInvisible,
+        pageIndex,
+        presentationStyleOf: this.presentationStyleOf,
+        templateDefinitionOf: this.templateDefinitionOf,
+        elementOf: this.elementOf,
+        controlValueOf: this.controlValueOf,
+        activeControlId: this.activeControlNodeId,
+        tokenSet: tokens ?? undefined,
+      })
+      return true
+    }
+    return false
   }
 
   /** 页眉/页脚带分隔线 (0.5px 浅灰) — 屏幕渲染与打印同源 */
@@ -1668,6 +2046,100 @@ export class Draw {
   }
 
   /**
+   * 全部批注的分段 client 矩形 (契约 §12.14) —— 右侧气泡叠加层的几何来源。
+   *
+   * 与 drawCommentHighlightsForPage 共用 forEachCommentRect, 所以气泡指的
+   * 位置与画布上虚线框/底色完全同源; 正文消费偏移跨页累加, 页眉页脚逐页重置。
+   */
+  getCommentClientRects(): Map<string, CommentClientRect[]> {
+    const result = new Map<string, CommentClientRect[]>()
+    this.ensureCommentPlan()
+    const plan = this.commentPlan
+    if (!plan || plan.entries.length === 0 || this.pages.length === 0) return result
+
+    const doc = this.document
+    const viewportW = this.host.viewport.size().width
+    const scale = this.coordSystem.transform.scale
+    const pageWidth = this.pages[0]?.width || 794
+    const offsetX = Math.max(0, (viewportW - pageWidth * scale) / 2)
+    const pageVerticalGap = this.renderer.getPageVerticalGap()
+    const scrollY = this.coordSystem.transform.scrollY
+    const surface = this.renderer.getInteractSurface()
+    const canvasRect = surface?.getBoundingClientRect() ?? { left: 0, top: 0 }
+    const marginRight = doc?.pageSetup?.marginRight ?? 90
+
+    const consumed = new Map<string, number>()
+    for (let i = 0; i < this.pages.length; i++) {
+      const page = this.pages[i]
+      if (!page) continue
+      const pageY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
+      const boxes = new Map<string, CommentBox>()
+      this.forEachCommentRect(page, pageY, plan, consumed, (threadId, x, y, w, h) => {
+        const box = boxes.get(threadId)
+        if (!box) {
+          boxes.set(threadId, { minX: x, minY: y, maxX: x + w, maxY: y + h })
+        } else {
+          box.minX = Math.min(box.minX, x)
+          box.minY = Math.min(box.minY, y)
+          box.maxX = Math.max(box.maxX, x + w)
+          box.maxY = Math.max(box.maxY, y + h)
+        }
+      })
+      for (const [threadId, box] of boxes) {
+        const list = result.get(threadId) ?? []
+        list.push({
+          pageIndex: i,
+          left: canvasRect.left + box.minX * scale + offsetX,
+          top: canvasRect.top + box.minY * scale,
+          width: (box.maxX - box.minX) * scale,
+          height: (box.maxY - box.minY) * scale,
+          pageRight: canvasRect.left + page.width * scale + offsetX,
+          contentRight: canvasRect.left + (page.width - marginRight) * scale + offsetX,
+        })
+        result.set(threadId, list)
+      }
+    }
+    return result
+  }
+
+  /**
+   * 全部表格的 client 矩形 (契约 §31.3.1) —— 表格悬浮手柄的几何来源。
+   * 跨页表格只返回第一页的矩形 (手柄锚在表格左上角)。
+   */
+  getTableClientRects(): Map<string, TableClientRect> {
+    const result = new Map<string, TableClientRect>()
+    if (this.pages.length === 0) return result
+
+    const viewportW = this.host.viewport.size().width
+    const scale = this.coordSystem.transform.scale
+    const pageWidth = this.pages[0]?.width || 794
+    const offsetX = Math.max(0, (viewportW - pageWidth * scale) / 2)
+    const pageVerticalGap = this.renderer.getPageVerticalGap()
+    const scrollY = this.coordSystem.transform.scrollY
+    const surface = this.renderer.getInteractSurface()
+    const canvasRect = surface?.getBoundingClientRect() ?? { left: 0, top: 0 }
+
+    for (let i = 0; i < this.pages.length; i++) {
+      const page = this.pages[i]
+      if (!page) continue
+      const pageY = accumulatedHeightTo(i, this.pages, pageVerticalGap) - scrollY
+      for (const item of page.items) {
+        if (item.type !== 'table' || result.has(item.nodeId)) continue
+        const tableH = item.height ||
+          (item.rows || []).reduce((sum, row) => sum + Math.max(row.height || 24, 24) + 1, 0)
+        result.set(item.nodeId, {
+          pageIndex: i,
+          left: canvasRect.left + item.x * scale + offsetX,
+          top: canvasRect.top + (pageY + item.y) * scale,
+          width: item.width * scale,
+          height: tableH * scale,
+        })
+      }
+    }
+    return result
+  }
+
+  /**
    * 获取 smarttext 控件的「无缝内联编辑目标」(契约 §12.6 运行时交互)。
    *
    * 与 getControlClientRect 同坐标转换, 但返回的是 **文本编辑内容区**
@@ -1859,6 +2331,11 @@ export class Draw {
   set showInvisible(v: boolean) { this._showInvisible = v }
   get showRevisionMarks(): boolean { return this._showRevisionMarks }
   set showRevisionMarks(v: boolean) { this._showRevisionMarks = v }
+  get showCommentMarks(): boolean { return this._showCommentMarks }
+  set showCommentMarks(v: boolean) { this._showCommentMarks = v }
+
+  /** 设置当前选中的批注线程 (契约 §12.14; 纯运行时视图态) */
+  setActiveCommentThread(threadId: string | null): void { this.activeCommentThreadId = threadId }
 
   /** 从 pool 中解析图片 URL */
   private resolveImageUrl(item: { nodeId: string }): string | null {
@@ -1964,6 +2441,14 @@ export class Draw {
    * 页面局部坐标 (item.y 相对页顶; 页眉项 y 相对页顶=带顶, 页脚项 y 相对带顶)。
    */
   renderPageToContext(ctx: CanvasRenderingContext2D, page: SLIFPage, pageWidth: number): void {
+    // 打印是逐页调用: 首页 (或倒序/单页调用) 开新一趟, 后续页沿用消费偏移,
+    // 使跨页段落的批注高亮与屏幕一致 (契约 §12.14)。
+    if (this.lastCommentPageIndex === null || page.pageIndex <= this.lastCommentPageIndex) {
+      this.beginCommentPass()
+    } else {
+      this.ensureCommentPlan()
+    }
+    this.lastCommentPageIndex = page.pageIndex
     // 离屏整页渲染: 这里刻意**不给** rect —— 整张 canvas 就是这一页, 占满整张是对的。
     // (屏幕多页画布那条路必须给 rect, 见 renderPageContent 的调用点)
     safeRenderPage(() => this.paintPage(ctx, page, pageWidth), page.pageIndex, ctx)
@@ -1974,26 +2459,30 @@ export class Draw {
     const pageIndex = page.pageIndex
     const headerH = page.headerHeight ?? 42
     const footerTop = page.height - (page.footerHeight ?? 42)
+    // 打印与屏幕同一几何口径: 本页实测宽 + 文档右边距 (契约 §16)
+    const pw = page.width || pageWidth
+    const marginRight = this.document?.pageSetup?.marginRight ?? 90
+
+    // --- 批注高亮: 必须在页眉/正文/页脚之前画 (同一 ctx 上文字会盖住它),
+    //     并覆盖页眉页脚带 (契约 §12.14) ---
+    this.drawCommentHighlightsForPage(ctx, page, 0, this.theme?.tokenSet ?? null)
 
     // --- 页眉 + 分隔线 ---
     if (page.headerItems && page.headerItems.length > 0) {
       this.renderParticleItems(ctx, page.headerItems, 0, pageIndex, false)
     }
-    this.drawHfSeparator(ctx, pageWidth, headerH)
+    this.drawHfSeparator(ctx, pw, headerH)
 
-    // --- 批注高亮: 必须在正文之前画 (同一 ctx 上文字会盖住它), 契约 §12.2 ---
-    this.drawCommentHighlightsForPage(ctx, page, 0, this.theme?.tokenSet ?? null)
-
-    // --- 正文 (含表格/脚注; separator 可用宽与旧打印行为保持一致) ---
+    // --- 正文 (含表格/脚注; separator 可用宽按本页版心) ---
     for (const item of page.items) {
       safeRenderParticle(
-        () => this.renderBodyItem(ctx, item, 0, pageIndex, pageWidth - item.x - 90, this.theme?.tokenSet ?? null, false),
+        () => this.renderBodyItem(ctx, item, 0, pageIndex, pw - item.x - marginRight, this.theme?.tokenSet ?? null, false),
         item.nodeId,
       )
     }
 
     // --- 页脚分隔线 + 页脚 ---
-    this.drawHfSeparator(ctx, pageWidth, footerTop)
+    this.drawHfSeparator(ctx, pw, footerTop)
     if (page.footerItems && page.footerItems.length > 0) {
       this.renderParticleItems(ctx, page.footerItems, footerTop, pageIndex, false)
     }

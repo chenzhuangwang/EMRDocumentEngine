@@ -94,10 +94,11 @@ describe('buildContextMenuModel 菜单条目 (P1-a)', () => {
     expect(list.find((i) => i.id === 'copy')?.enabled).toBe(true)
   })
 
-  it('cell 命中: 同样提供剪切/格式/段落/列表条目 + 删除行/删除列 + 可增长开关', () => {
+  it('cell 命中: 同样提供剪切/格式/段落/列表条目 + 选中表格 + 上方插行/左侧插列 + 删除行/删除列 + 可增长开关', () => {
     const list = items(cellSnapshot(false))
     expect(list.map((i) => i.id)).toEqual([
       'cut', 'copy', 'paste', 'delete',
+      'selectTable', 'insertRowAbove', 'insertColumnLeft',
       'deleteRow', 'deleteColumn',
       'toggleTableGrowable',
       'bold', 'italic', 'underline', 'strikeout', 'clearFormat',

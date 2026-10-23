@@ -4,6 +4,8 @@
 
 **A professional, high-performance, embeddable electronic medical record (EMR) document editing engine**
 
+[简体中文](README.md) · **English**
+
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Try%20it%20now-2563eb?style=flat-square&logo=vercel)](http://139.196.151.15/)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-22c55e?style=flat-square)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-84cc16?style=flat-square)](#contributing)
@@ -41,8 +43,8 @@ No local setup required — just open it and try:
 
 - **Rich text formatting**: bold / italic / underline (single, double, wavy) / strikethrough / superscript / subscript / font family (8) / font size (12 steps) / text color / highlight
 - **Paragraph layout**: left / center / right / justify, ordered and unordered lists (multi-level indent, 6 numbering styles), heading levels (1–6), paragraph indent
-- **Tables**: insert tables, merge / split cells, add and remove rows and columns, repeat header rows across pages, append rows
-- **Professional elements**: images, dividers (4 styles), section breaks and **sections** (Section), headers and footers (including first-page / odd-even per-page variants), footnotes, bookmarks and cross-references, field codes
+- **Tables**: insert tables (cells may nest another table), merge / split cells, add and remove rows and columns, repeat header rows across pages, append rows; **whole-table selection** (two-stage Ctrl+A / hover handle at the table's top-left corner / cell context menu) and **block-level deletion of a table or the whole document** (through commands, undoable); **Word-style table-edge caret** — clicking to the right of any row places the caret at that row's end, Enter there inserts a row below (on the last row it creates a paragraph after the table), and Enter at the start of the first cell creates a paragraph above the table
+- **Professional elements**: images, dividers (4 styles), section breaks (next page / continuous / even page / odd page) and **sections** (Section), headers and footers (including first-page / odd-even per-page variants), footnotes, bookmarks and cross-references, field codes
 - **Find & replace**: regex, whole-word and case-sensitive matching; replacements are undoable
 - **Format painter**: copy / apply text styles in one click
 
@@ -56,26 +58,26 @@ No local setup required — just open it and try:
 
 ### Pagination & Rendering
 
-- **True typesetting**: reproduces A4 paper size, margins, orientation and pagination rules; the page-setup dialog adjusts paper / margins / layout, with print preview
+- **True typesetting**: reproduces A4 paper size, margins, orientation and pagination rules; paper / margins / layout chosen in the page-setup dialog **drive the layout directly**, with print preview
 - **Virtual scrolling**: only visible pages are rendered, so long documents scroll smoothly
-- **Incremental layout**: dirty-region tracking and layout caching — only the affected region is re-laid out after an edit
+- **Incremental layout**: dirty-region tracking and layout caching — paragraph lines in the body domain and constant cross-references are both part of the incremental-safe set, so only the affected region is re-laid out after an edit
 - **Three-layer Canvas + particle system**: static / content / interact layers, with particles for text, tables, images, formulas, footnotes, charts, barcodes and more
 - **Formula rendering**: LaTeX support via KaTeX
 - **Watermark**: text / image / tile three types
 
 ### Editing Experience
 
-- **Undo / redo**: driven by the command pattern, 40 undoable command types, 500 ms typing coalescing, stack depth 100
+- **Undo / redo**: driven by the command pattern, 45 undoable command types, 500 ms typing coalescing, stack depth 100
 - **Clipboard**: copy / cut / paste, with three paste modes — keep source formatting / match destination formatting / plain text
 - **Auto save**: IndexedDB local storage, 3-second debounce, keeps the last 3 versions, supports crash recovery
 - **Auto correct**: 25 built-in medical abbreviation rules plus Chinese punctuation pairing
 - **Chinese IME**: full IME composition input support
 - **Six editing modes**: edit / readonly / form / clean / design / print, switchable in one click
-- **Auxiliary views**: outline navigation, reading mode, comments panel, performance panel
+- **Auxiliary views**: outline navigation, reading mode, comments sidebar and **on-canvas comment balloons**, performance panel
 
 ### Internationalization & Theming
 
-- **Bilingual UI**: built-in zh-CN / en-US message tables (~800 keys), one-click switch in the top bar with persistence
+- **Bilingual UI**: built-in zh-CN / en-US message tables (~870 keys), one-click switch in the top bar with persistence
 - **UI themes**: standard / eye-care / print / dark four chrome presets; canvas theming with 4 presets × 28 tokens
 
 ### Document Lifecycle
@@ -83,11 +85,21 @@ No local setup required — just open it and try:
 - **Template system**: public / private template categories, one-click apply
 - **Document comparison**: visualize the differences between two versions (insert / delete / modify stats)
 - **Version records**: each save automatically archives a history version (persisted on the backend; rollback UI on the [Roadmap](#roadmap))
-- **Comments**: inline comment markers, discussion threads, replies and a "resolved" state
+- **Comments**: inline comment markers, thread cards along the right page edge (avatar / author / time / resolved state / reply input, with a leader line to the anchor), discussion threads, replies and a "resolved" state
 - **Import**: JSON / `.emr` (full pipeline), HTML / Markdown (simplified parsing)
 - **Export**: JSON / TXT / HTML / structured-elements JSON / HL7 CDA XML / OFD (GB/T 33190-2016)
 
 > See the [Roadmap](#roadmap) at the end for PDF / DOCX export, HarfBuzz shaping, collaborative editing, audit logging and more.
+
+## Recent Updates (2026-10)
+
+- **Word-aligned table interaction**: whole-table selection (two-stage Ctrl+A / hover handle / context menu), undoable block-level deletion of a table or the whole document, a caret at the end of every row, and Word semantics for Enter at the row end (insert a row, or create a paragraph after the last row) and at the start of the first cell (create a paragraph above the table)
+- **Comment balloons**: thread cards outside the right page edge (avatar / author / time / resolved state / reply input), leader lines straight from anchor to balloon, compact stacking based on measured heights
+- **Section-break pagination**: `breakType` next page / continuous / even page / odd page now paginate
+- **Page setup takes effect**: paper size, margins and orientation feed layout and rendering
+- **Inline content in table cells**: paragraphs inside cells are peers of the body (images, sections, controls, …), and nested tables are legal and editable
+- **Incremental layout expanded**: body-domain paragraph line caching plus constant cross-references in the incremental-safe set
+- **Chrome polish**: 3×2 sidebar tab strip, design-mode control library panel positioned relative to the canvas, full canvas-theme and i18n coverage
 
 ## Architecture Overview
 
@@ -147,7 +159,7 @@ The editor engine injects host capabilities through the `EditorHost` six-tuple (
 | Cache | Redis |
 | API docs | Springdoc OpenAPI (Swagger) |
 | Database | MySQL 8.0+ (built-in H2 mode for development) |
-| Testing | Vitest + Testing Library (~170 test files; Playwright E2E planned) |
+| Testing | Vitest + Testing Library (215 test files, ~2,400 cases; Playwright E2E planned) |
 
 ## Quick Start
 
@@ -275,9 +287,9 @@ EMRDocumentEngine/
 
 ### Front-end Editor Engine
 
-- **DocumentModel / NodePool**: document data model with 17 node types (including sections), flat node pool with ID references
+- **DocumentModel / NodePool**: document data model with 17 node types (including sections), flat node pool with ID references; tables may nest, and inline children allowed in cell paragraphs are the same as in the body
 - **ContainerChildTypes**: container child-type contract, declaring and validating the children each container allows (single source of truth)
-- **LayoutEngine**: layout engine (line breaking / pagination / incremental / virtual viewport / kinsoku / orphan-widow control)
+- **LayoutEngine**: layout engine (line breaking / pagination / section-break pagination semantics / incremental / virtual viewport / kinsoku / orphan-widow control)
 - **LayeredRenderer / Draw**: three-layer Canvas renderer and particle system
 - **TextMeasurer / FontManager**: text measurement and font metrics (Canvas measurement first)
 - **CommandManager / CommandUndoRedoStack**: command execution, undo / redo and macros

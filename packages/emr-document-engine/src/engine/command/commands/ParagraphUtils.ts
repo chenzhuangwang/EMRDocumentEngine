@@ -45,3 +45,47 @@ export function normalizeParagraph(para: Paragraph, pool: NodePool): void {
     pool.removeOrphanLeaf(id)
   }
 }
+
+/**
+ * 只合并**接缝处**的一对相邻文本节点 (index-1 与 index)。
+ *
+ * 并段的正确副作用只有"接缝两侧的 run 合成一个"; 整段 normalize 会顺手并掉
+ * 本命令无关的相邻 run —— 而 split 的逆操作正是本命令, 那会改写拆段前就存在
+ * 的 run 边界, 撤销不再精确 (契约 §8.2)。
+ */
+export function mergeSeamRuns(para: Paragraph, pool: NodePool, index: number): void {
+  if (index <= 0 || index >= para.children.length) return
+  const leftId = para.children[index - 1]
+  const rightId = para.children[index]
+  const left = pool.nodes.get(leftId) as TextNode | undefined
+  const right = pool.nodes.get(rightId) as TextNode | undefined
+  const isText = (n: TextNode | undefined): n is TextNode =>
+    !!n && (n as unknown as Record<string, unknown>).type === 'text'
+  if (!isText(left) || !isText(right)) return
+  if (!sameStyle(left, right) || !sameRevisionKind(left.revision, right.revision)) return
+  pool.updateNode(left.id, { text: left.text + right.text } as Partial<TextNode>)
+  para.children = para.children.filter((_, i) => i !== index)
+  pool.removeOrphanLeaf(right.id)
+}
+
+/**
+ * 段落里是否**已经**存在"相邻且可合并"的文本节点 (同样式 + 同修订标记)。
+ *
+ * normalizeParagraph 会把它们合成一个节点 —— 节点身份与 run 边界就此改变。
+ * 正向路径里会 normalize、逆操作却只做轻量文本反转的命令, 必须据此先拍整段
+ * 快照 (契约 §8.2/§8.3): 正常文档在命令之间是规范化的, 但清除格式 / 样式
+ * 还原能让相邻 run 变得同样式却不触发合并, 于是"下一次输入"就成了第一个
+ * 撞上它们的命令 —— 撤销再删掉刚输入的字, 也无法还原被并掉的 run 边界。
+ */
+export function hasMergeableRuns(para: Paragraph, pool: NodePool): boolean {
+  let prev: TextNode | null = null
+  for (const childId of para.children) {
+    const node = pool.nodes.get(childId) as TextNode | undefined
+    const isText = !!node && (node as unknown as Record<string, unknown>).type === 'text'
+    if (isText && prev && sameStyle(prev, node) && sameRevisionKind(prev.revision, node.revision)) {
+      return true
+    }
+    prev = isText ? node : null
+  }
+  return false
+}

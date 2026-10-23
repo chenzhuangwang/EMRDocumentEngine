@@ -40,7 +40,9 @@ export function DesignControlPalette() {
   }
 
   return (
-    <div className="fixed right-4 top-16 z-40 w-60 flex flex-col rounded-lg border border-line bg-chrome shadow-lg">
+    // 相对编辑器画布定位 (EditorLayout 的画布区已是 relative): 不压住工具栏,
+    // 设计模式多出一行页眉页脚工具时也不会再挡住后面的按钮。
+    <div className="absolute right-4 top-4 z-40 w-60 flex flex-col rounded-lg border border-line bg-chrome shadow-lg">
       {/* 面板头 */}
       <div className="flex items-center justify-between border-b border-line-subtle px-3 py-2">
         <span className="flex items-center gap-1.5 text-xs font-medium text-chrome-ink-body">

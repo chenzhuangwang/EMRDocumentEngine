@@ -147,3 +147,50 @@ describe('TableParticle 表格 cell 内 smarttext (契约 §4)', () => {
     expect(r.texts.some((t) => t.text === '患者姓名')).toBe(true)
   })
 })
+
+// ================================================================
+// cell 内原子行内项 → 交回宿主渲染 (契约 §31.13.1)
+//
+// 图片/域/交叉引用/脚注引用的渲染能力在 Draw (图片缓存、按页解析的域值),
+// TableParticle 不能自己画; 此前这些类型既没委托也没 fillText, 静默不画。
+// ================================================================
+
+describe('TableParticle cell 原子项委托 (契约 §31.13.1)', () => {
+  it('image/field 交给 renderCellItem, 坐标含 cell 内边距', () => {
+    const seen: { type?: string; x: number; y: number }[] = []
+    const rec = makeRecordingCtx()
+    createTableParticle().render(rec.ctx, makeTableItem([
+      {
+        nodeId: 'img-1', nodeType: 'image', type: 'image', text: '',
+        x: 0, y: 0, width: 40, height: 30, ascent: 30, descent: 0,
+        font: 'SimSun', size: 12,
+      },
+      {
+        nodeId: 'fld-1', nodeType: 'field', type: 'field', text: '[页码]',
+        x: 40, y: 0, width: 20, height: 16, ascent: 12, descent: 4,
+        font: 'SimSun', size: 12, fieldType: 'page_number',
+      },
+    ]), 0, 0, {
+      renderCellItem: (_c, item, x, y) => {
+        seen.push({ type: item.type, x, y })
+        return true
+      },
+    })
+
+    expect(seen.map(s => s.type)).toEqual(['image', 'field'])
+    // 第一项从 cell 左缘 + CELL_PADDING(6) 起画
+    expect(seen[0].x).toBe(6)
+    // 委托返回 true → 不再走 fillText 兜底
+    expect(rec.texts).toHaveLength(0)
+  })
+
+  it('smarttext 仍走 ControlParticle, 不经过 renderCellItem', () => {
+    let called = 0
+    const rec = makeRecordingCtx()
+    createTableParticle().render(rec.ctx, makeTableItem([makeSmartTextCellItem()]), 0, 0, {
+      renderCellItem: () => { called++; return true },
+    })
+    expect(called).toBe(0)
+    expect(rec.texts.some((t) => t.text === '患者姓名')).toBe(true)
+  })
+})

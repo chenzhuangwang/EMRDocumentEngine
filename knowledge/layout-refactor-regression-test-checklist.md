@@ -16,7 +16,7 @@
 | `text/` | 6 | 字体/测量子系统 (TextMeasurer / CharWidthHelper / FontManager / FontMetrics / FontFallback / ScriptResolver) |
 | `table/` | 1 | 表格坐标工具 (TableCoordUtil) |
 | `footnote/` | 1 | 脚注布局 (FootnoteLayout) |
-| `incremental/` | 3 | 增量布局 (IncrementalLayout / DirtyTracker / LayoutCache) |
+| `incremental/` | 1 | 增量布局 (IncrementalLayout；DirtyTracker 已于 2026-10-21、LayoutCache 已于 2026-10-20 删除) |
 | `viewport/` | 2 | 视口/内存 (VirtualViewport / MemoryManager) |
 
 涉及的具体改动:
@@ -122,7 +122,7 @@
 验收点:
 - 只重排该段及之后的页, 之前段落坐标不变
 - 第 2 页某段加字后, 第 1 页所有 item 的 y 坐标完全不变
-- 反复编辑同一段 → LayoutCache 命中比例高
+- 反复编辑同一段 → 段落行缓存命中比例高 (`getParagraphCacheStats`)
 
 ### 8. 视口层 (viewport/)
 **虚拟视口**
@@ -173,7 +173,7 @@
 1. **跨页光标/选区** — 改动了 `HitTestIndex` + `LayoutEngine` 内部 `import('./layout/SLIF')` 类型引用
 2. **表格点击命中** — 改动了 `HitTestIndex` 的 inline type import (`SLIFCell`)
 3. **脚注布局** — 改动了 `FootnoteLayout.ts` 的相对路径 (`'../layout/SLIF'` → `'../layout/core/SLIF'`)
-4. **增量布局** — 改动了 `LayoutCache` / `DirtyTracker` / `IncrementalLayout` 的相对路径
+4. **增量布局** — 改动了 `IncrementalLayout` 的相对路径 (`DirtyTracker` 已于 2026-10-21、`LayoutCache` 已于 2026-10-20 删除)
 
 ---
 

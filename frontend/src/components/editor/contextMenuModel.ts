@@ -45,6 +45,9 @@ const LABEL_KEYS: Record<ContextMenuActionId, keyof LocaleMessages> = {
   delete: 'editor.contextMenu.delete',
   deleteRow: 'editor.contextMenu.deleteRow',
   deleteColumn: 'editor.contextMenu.deleteColumn',
+  insertRowAbove: 'editor.contextMenu.insertRowAbove',
+  insertColumnLeft: 'editor.contextMenu.insertColumnLeft',
+  selectTable: 'editor.contextMenu.selectTable',
   toggleTableGrowable: 'editor.contextMenu.toggleTableGrowable',
   bold: 'editor.contextMenu.bold',
   italic: 'editor.contextMenu.italic',
@@ -76,6 +79,8 @@ const LABEL_KEYS: Record<ContextMenuActionId, keyof LocaleMessages> = {
 const FALLBACK: Record<ContextMenuActionId, string> = {
   cut: '剪切', copy: '复制', paste: '粘贴', delete: '删除',
   deleteRow: '删除行', deleteColumn: '删除列', toggleTableGrowable: '填写时可增长',
+  insertRowAbove: '上方插入行', insertColumnLeft: '左侧插入列',
+  selectTable: '选中表格',
   bold: '加粗', italic: '斜体', underline: '下划线', strikeout: '删除线', clearFormat: '清除格式',
   alignLeft: '左对齐', alignCenter: '居中', alignRight: '右对齐', alignJustify: '两端对齐',
   increaseIndent: '增加缩进', decreaseIndent: '减少缩进',
@@ -101,6 +106,7 @@ function labelOf(id: ContextMenuActionId, t?: T): string {
 export type ContextMenuActionId =
   | 'cut' | 'copy' | 'paste' | 'delete'
   | 'deleteRow' | 'deleteColumn' | 'toggleTableGrowable'
+  | 'insertRowAbove' | 'insertColumnLeft' | 'selectTable'
   | 'bold' | 'italic' | 'underline' | 'strikeout' | 'clearFormat'
   | 'alignLeft' | 'alignCenter' | 'alignRight' | 'alignJustify'
   | 'increaseIndent' | 'decreaseIndent'
@@ -313,6 +319,9 @@ export function buildContextMenuModel(
           { kind: 'item', id: 'paste', label: labelOf('paste', t), enabled: true },
           { kind: 'item', id: 'delete', label: labelOf('delete', t), enabled: snapshot.coversSelection },
           SEP,
+          { kind: 'item', id: 'selectTable', label: labelOf('selectTable', t), enabled: true },
+          { kind: 'item', id: 'insertRowAbove', label: labelOf('insertRowAbove', t), enabled: true },
+          { kind: 'item', id: 'insertColumnLeft', label: labelOf('insertColumnLeft', t), enabled: true },
           { kind: 'item', id: 'deleteRow', label: labelOf('deleteRow', t), enabled: true },
           { kind: 'item', id: 'deleteColumn', label: labelOf('deleteColumn', t), enabled: true },
           SEP,

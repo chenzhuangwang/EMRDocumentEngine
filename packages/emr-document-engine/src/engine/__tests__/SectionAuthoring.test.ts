@@ -307,7 +307,7 @@ describe('删除 Section — 子树整体删除, 空 body 自动补段落 (契�
     c.cm.execute(new RemoveNodesCommand(
       generateCommandId(), 1, 'test',
       [{ container: { kind: 'body' }, nodeIds: [c.ids.p0, c.ids.p1, c.ids.p2] }],
-      [], undefined, { ensureBodyParagraph: true },
+      undefined, { ensureBodyParagraph: true },
     ))
     const after = c.pool.getChildren(c.doc.id)
     expect(after).toHaveLength(1)

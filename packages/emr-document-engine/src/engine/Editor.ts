@@ -49,17 +49,18 @@ import type { FindOptions, MatchResult } from './FindReplaceEngine'
 import { computeOffsetInItems } from './layout/text/CharWidthHelper'
 import { FontManager } from './layout/text/FontManager'
 import { TextMeasurer } from './layout/text/TextMeasurer'
-import { resolveCellPosition, getCaretScope, resolveParagraphRegion, resolveSiblingRange, isPoolRegion, resolveBlockParent } from './state/CaretScope'
+import { resolveCellPosition, getCaretScope, resolveParagraphRegion, isPoolRegion, resolveBlockParent } from './state/CaretScope'
 import type { CellPosition } from './state/CaretScope'
 import { screenToDoc, findPageByDocY, pageCenteringOffset, getTotalDocHeight as docHeightOf } from './layout/table/TableCoordUtil'
+import { tableHeaderRowsHeight, TABLE_ROW_GAP } from './layout/core/SLIF'
 import { findControlItemAt } from './interaction/ControlHitTest'
 import { buildContextSnapshot, resolveRevisionFact } from './context/EditorContext'
 import type { EditorContextSnapshot } from './context/EditorContext'
-import { insertRow, deleteRow, insertColumn, deleteColumn, resizeColumn, getCellGridPosition, mergeAdjacentCells, mergeRange, splitCell } from './document/table/TableOps'
+import { insertRow, insertRowBefore, deleteRow, insertColumn, insertColumnBefore, deleteColumn, resizeColumn, getCellGridPosition, buildCellGrid, normalizeRange, mergeAdjacentCells, mergeRange, splitCell } from './document/table/TableOps'
 import type { CellRange } from './document/table/TableOps'
 import {
   collectTextNodeIds, collectSelectionSegments,
-  paragraphTextLength, paragraphTextInRange, findFirstTextNodeInRange,
+  paragraphTextLength, findFirstTextNodeInRange,
   selectionSpine, regionSpine,
   bodyBlockSpine, bodyParagraphSpine, bodyParagraphCount,
   initialCursorParaPath, sectionTreeOf, sectionOf,
@@ -71,11 +72,13 @@ import {
 } from './document/core/HeaderFooterRegions'
 import {
   InsertInlineNodeCommand, InsertBlockCommand, InsertFootnoteCommand,
-  CreateCommentCommand, AddCommentReplyCommand, ResolveCommentCommand,
+  CreateCommentCommand, AddCommentReplyCommand, DeleteCommentCommand,
+  DeleteCommentReplyCommand, ResolveCommentCommand,
   SetPageSetupCommand, TableStructureCommand, EnsureHeaderFooterParagraphCommand,
-  EnsureBodyParagraphCommand, RemoveNodesCommand, MoveBlockCommand,
+  EnsureBodyParagraphCommand, InsertEmptyParagraphAtCommand, RemoveNodesCommand, MoveBlockCommand,
   InsertSectionCommand, UpdateSectionCommand,
 } from './command/commands/StructuralCommands'
+import { commentContains, commentExcerpt, commentSegments } from './document/comment/CommentRanges'
 import type { InsertSectionOpts } from './command/commands/StructuralCommands'
 import { AppendTableRowCommand } from './command/commands/AppendTableRowCommand'
 import { SetTableGrowableCommand } from './command/commands/SetTableGrowableCommand'
@@ -97,7 +100,7 @@ import { RevisionDecisionCommand } from './command/commands/RevisionDecisionComm
 import type { RevisionDecision, RevisionTarget } from './command/commands/RevisionDecisionCommand'
 import { locale } from './i18n/index'
 import { NodeType } from './document/core/DocumentModel'
-import type { ControlValue, ElementEnumOption, SmartTextNode } from './document/core/DocumentModel'
+import type { ControlValue, ElementEnumOption, SmartTextNode, CommentThread } from './document/core/DocumentModel'
 import { SetControlValueCommand } from './command/commands/SetControlValueCommand'
 import { SetBoundValuesCommand } from './command/commands/SetBoundValuesCommand'
 import type { BoundWriteEntry, BoundValuesWriteResult } from './command/commands/SetBoundValuesCommand'
@@ -175,6 +178,34 @@ export interface ControlSnapshot {
 }
 
 /** Editor: 引擎编排器 (架构 §3, v20.34) */
+/** 表外光标 (契约 §31.3.1): 块边缘的 transient 插入点, 不属于 CursorState */
+export interface BlockCaret {
+  blockId: string
+  side: 'before' | 'after'
+}
+
+/**
+ * 行尾光标 (契约 §31.3.1): 点击表格行右侧时的**绘制位置** —— Word 的行尾标记
+ * 画在行右边界之外; 文本插入点仍在末格段尾。不属于 CursorState, 不序列化。
+ * top/height 用页面局部坐标 (与 SLIF item.y 同一坐标系), 页面重排后由清除兜底。
+ */
+export interface RowEndCaret {
+  tableId: string
+  pageIndex: number
+  top: number
+  height: number
+  /** 模型行下标 (跨页片段也取真实行号; Enter 分行/插行按它判定) */
+  rowIndex: number
+}
+
+/** 块在页面内的竖直边界 (块间空白落点用) */
+interface BlockBound {
+  blockId: string
+  type: string
+  top: number
+  bottom: number
+}
+
 export class Editor {
   private detachContainer: () => void
   private detachGlobal: () => void
@@ -207,6 +238,12 @@ export class Editor {
   private _selectedCellCol = -1
   // 单元格框选范围 (网格坐标)
   private _cellRange: CellRange | null = null
+  /** Ctrl+A 全选整篇文档 (块级选择, transient; 契约 §31.3.1) */
+  private documentSelected = false
+  /** 表外光标 (transient, 不是 paragraphPath 的形态; 契约 §31.3.1) */
+  private blockCaret: BlockCaret | null = null
+  /** 行尾光标绘制位置 (transient; 契约 §31.3.1) */
+  private rowEndCaret: RowEndCaret | null = null
   private listeners: EditorListener[] = []
   // 模板设计期属性 (契约 §12.1) + 表现层样式 (契约 §2.2) — per-editor 实例状态 (§7.6)
   private templateDefinitions: TemplateDefinitionStore | null = null
@@ -221,6 +258,9 @@ export class Editor {
   private trackChanges = false
   /** 当前修订者 — 运行时状态; 未设置时留痕仍记录但无作者 */
   private currentUser: RevisionUser | null = null
+
+  /** 当前选中的批注线程 — 运行时视图态, 不序列化 (契约 §12.14) */
+  private activeCommentThreadId: string | null = null
 
   // ---- 计算式引擎 (契约 §12.12) ----
   /**
@@ -300,8 +340,13 @@ export class Editor {
     })
     this.draw = new Draw(host, this.eventBus, this.measurer, this.doc, this.theme, this.computedValues)
     this.store = new EditorStore(this.doc)
-    // 光标/选区移动后实时同步段落/文本样式投影 (工具栏联动), 单一 choke point
-    this.store.onCursorOrSelectionChange(() => this.syncStyleProjections())
+    // 光标/选区移动后实时同步段落/文本样式投影 (工具栏联动), 单一 choke point。
+    // 同时通知 UI 一条独立的 selectionChange (契约 §12.14: 文档→面板反选批注) ——
+    // 鼠标/键盘是直接写 EditorStore 的, 不经过 eventBus 的 state:changed。
+    this.store.onCursorOrSelectionChange(() => {
+      this.syncStyleProjections()
+      this.notifyListeners('selectionChange')
+    })
     this.inputComposer = new InputComposer(host)
     this.keyboardHandler = new KeyboardHandler(this, host)
     this.mouseHandler = new MouseHandler(this, host, this.measurer)
@@ -343,6 +388,10 @@ export class Editor {
       if (patch.cursor) this.store.updateRuntime({ cursor: { ...this.store.state.runtime.cursor, ...patch.cursor, visible: true } })
       if (patch.selection) this.store.updateRuntime({ selection: { ...this.store.state.runtime.selection, ...patch.selection } })
       this.store.setDirty(true)
+      // 光标/选区变化 → 通知 UI (契约 §12.14: 文档→面板反选批注)。
+      // 该事件此前只有类型、从未 emit; contentChange 之外单独一条, 避免
+      // UI 为了跟随光标而重跑字数/大纲等昂贵投影。
+      if (patch.cursor || patch.selection) this.notifyListeners('selectionChange')
       // 同步撤销/重做投影 — 事务 (beginMacro/endMacro) 的 endMacro 会在 macro 入栈后
       // 补发 state:changed, 因子命令在事务内已各自 emit 而当时 macro 尚未入栈, 导致
       // history 深度滞后; 此处统一兜底同步, 保证 store.history 反映真实栈深 (RULE 9)。
@@ -522,6 +571,12 @@ export class Editor {
    *   5. 工具栏/状态栏同步 (notifyListeners 'contentChange')
    */
   private commitDocumentChange(invalidation: import('./command/ICommand').InvalidationScope): void {
+    // 文档变更 → 行尾光标所依赖的行几何可能已变 (契约 §31.3.1)
+    this.rowEndCaret = null
+    this.draw.rowEndCaret = null
+    // 文档内容/结构变了 → 批注渲染计划的段落偏移表必须重算 (契约 §12.14)。
+    // 不是每帧重算: 光标移动不经过这里, 只有真正的文档变更才失效。
+    this.draw.invalidateCommentPlan()
     // 键索引失效 (契约 §12.12.6): 语义层 (element) 变更 = 绑定键改名, 而它既不动
     // 结构 (pool.structureVersion) 也不动公式 (templateDefinitions.version)。
     // 判据借**命令自己声明的失效范围**: 元素影响布局与渲染, 故任何改元素的命令都
@@ -650,35 +705,52 @@ export class Editor {
     if (!hit) return
     const { nodeId, docX, docY, page } = hit
 
-    if (nodeId) {
-      const para = this.findParagraphContaining(nodeId)
-      if (para) {
-        const offset = this.computeOffsetAtX(para, docX, docY, page)
-        this.store.setCursor({ paragraphPath: [this.doc.id, para.id], offset, visible: true })
-      }
-    } else {
-      // 未命中 → 判断点击位置相对于内容的位置
-      const lastItemBottom = this.getPageContentBottom(page)
-      const firstItemTop = this.getPageContentTop(page)
+    // 点击即退出块级选择/表外光标/行尾光标 (契约 §31.3.1); 若下面重新建立, 以新值为准
+    this.documentSelected = false
+    this.draw.documentSelected = false
+    this.blockCaret = null
+    this.draw.blockCaret = null
+    this.rowEndCaret = null
+    this.draw.rowEndCaret = null
 
-      if (lastItemBottom >= 0 && docY > lastItemBottom) {
-        // 点击在所有内容下方 → 光标移到最后一个段落末尾
-        const lastParaId = this.findLastParagraphId()
-        if (lastParaId) {
-          const lastPara = this.pool.nodes.get(lastParaId) as unknown as Paragraph | undefined
-          if (lastPara) {
-            const endOffset = this.getParagraphTextLength(lastPara)
-            this.store.setCursor({ paragraphPath: [this.doc.id, lastParaId], offset: endOffset, visible: true })
+    if (nodeId) {
+      // 表格命中 + 点在该表右侧 → 行尾落光标 (hitTest 的行尾扩展会把右侧空白
+      // 也算到表格上, 故这里先于 findParagraphContaining 处理; 契约 §31.3.1)
+      const node = this.pool.nodes.get(nodeId)
+      if (!(node?.type === NodeType.TABLE && this.applyTableRowSideCaret(page, docX, docY))) {
+        const para = this.findParagraphContaining(nodeId)
+        if (para) {
+          const offset = this.computeOffsetAtX(para, docX, docY, page)
+          this.store.setCursor({ paragraphPath: [this.doc.id, para.id], offset, visible: true })
+        }
+      }
+    } else if (!this.applyTableRowSideCaret(page, docX, docY)) {
+      // 块间空白: 有相邻段落 → 落段尾/段首; 没有 → 表外光标 (不插节点)
+      const gap = this.resolveBlockGap(page, docY)
+      if (!gap || !this.applyGapCaret(gap)) {
+        // 未命中 → 判断点击位置相对于内容的位置
+        const lastItemBottom = this.getPageContentBottom(page)
+        const firstItemTop = this.getPageContentTop(page)
+
+        if (lastItemBottom >= 0 && docY > lastItemBottom) {
+          // 点击在所有内容下方 → 光标移到最后一个段落末尾
+          const lastParaId = this.findLastParagraphId()
+          if (lastParaId) {
+            const lastPara = this.pool.nodes.get(lastParaId) as unknown as Paragraph | undefined
+            if (lastPara) {
+              const endOffset = this.getParagraphTextLength(lastPara)
+              this.store.setCursor({ paragraphPath: [this.doc.id, lastParaId], offset: endOffset, visible: true })
+            }
+          }
+        } else if (firstItemTop >= 0 && docY < firstItemTop) {
+          // 点击在所有内容上方 → 光标移到第一个段落开头
+          const firstParaId = this.findFirstParagraphId()
+          if (firstParaId) {
+            this.store.setCursor({ paragraphPath: [this.doc.id, firstParaId], offset: 0, visible: true })
           }
         }
-      } else if (firstItemTop >= 0 && docY < firstItemTop) {
-        // 点击在所有内容上方 → 光标移到第一个段落开头
-        const firstParaId = this.findFirstParagraphId()
-        if (firstParaId) {
-          this.store.setCursor({ paragraphPath: [this.doc.id, firstParaId], offset: 0, visible: true })
-        }
+        // 行间空白 (在内容范围内但未命中任何 item) → 光标保持原位, 不移动
       }
-      // 行间空白 (在内容范围内但未命中任何 item) → 光标保持原位, 不移动
     }
 
     // 单击清空选区 (双击/三击已处理选区则跳过)
@@ -688,6 +760,194 @@ export class Editor {
 
     // 无论命中与否都重绘
     this.draw.render(this.pool, this.store.state.runtime)
+  }
+
+  /** 块间空白命中: 上下最近的块 (契约 §31.3.1) */
+  private resolveBlockGap(
+    page: import('./layout/core/SLIF').SLIFPage,
+    localY: number,
+  ): { above: BlockBound | null; below: BlockBound | null } | null {
+    const blocks = new Map<string, BlockBound>()
+    const add = (blockId: string, type: string, top: number, bottom: number): void => {
+      const prev = blocks.get(blockId)
+      if (!prev) { blocks.set(blockId, { blockId, type, top, bottom }); return }
+      prev.top = Math.min(prev.top, top)
+      prev.bottom = Math.max(prev.bottom, bottom)
+    }
+
+    for (const item of page.items) {
+      if (item.type === 'table') {
+        const fallbackH = (item.rows || []).reduce((sum, row) => sum + Math.max(row.height || 24, 24) + 1, 0)
+        add(item.nodeId, 'table', item.y, item.y + (item.height || fallbackH))
+        continue
+      }
+      if (item.type === 'image' || item.type === 'separator') {
+        add(item.nodeId, item.type, item.y, item.y + (item.height || item.ascent + item.descent))
+        continue
+      }
+      const para = this.findParagraphContaining(item.nodeId)
+      if (!para) continue
+      const h = item.ascent + item.descent || item.height || 16
+      add(para.id, 'paragraph', item.y, item.y + h)
+    }
+
+    let above: BlockBound | null = null
+    let below: BlockBound | null = null
+    for (const b of blocks.values()) {
+      if (localY >= b.top && localY <= b.bottom) return null // 点在块旁边, 保持原行为
+      if (b.bottom <= localY && (!above || b.bottom > above.bottom)) above = b
+      if (b.top >= localY && (!below || b.top < below.top)) below = b
+    }
+    return above || below ? { above, below } : null
+  }
+
+  /** 块间空白落点: 相邻段落优先, 否则表外光标 (绝不插节点) */
+  private applyGapCaret(gap: { above: BlockBound | null; below: BlockBound | null }): boolean {    if (gap.above?.type === 'paragraph') {
+      const path = [this.doc.id, gap.above.blockId]
+      this.store.setCursor({ paragraphPath: path, offset: this.getParagraphTextLengthById(gap.above.blockId), visible: true })
+      return true
+    }
+    if (gap.below?.type === 'paragraph') {
+      const path = [this.doc.id, gap.below.blockId]
+      this.store.setCursor({ paragraphPath: path, offset: 0, visible: true })
+      return true
+    }
+    if (gap.above?.type === 'table') {
+      this.setBlockCaret({ blockId: gap.above.blockId, side: 'after' })
+      return true
+    }
+    if (gap.below?.type === 'table') {
+      this.setBlockCaret({ blockId: gap.below.blockId, side: 'before' })
+      return true
+    }
+    return false
+  }
+
+  /**
+   * 点击表格行右侧空白 → 光标落到该行末尾 (Word 交互, 契约 §31.3.1)。
+   *
+   * 命中条件: 点在表格右边界之外, 且纵向落在某一行 (或跨页重复表头) 的行带内。
+   * 只移动光标, 不改文档结构; 行带之外的点击仍走块间空白/表外光标逻辑。
+   */
+  private applyTableRowSideCaret(
+    page: import('./layout/core/SLIF').SLIFPage,
+    localX: number,
+    localY: number,
+  ): boolean {
+    for (const item of page.items) {
+      if (item.type !== 'table' || !item.rows || item.rows.length === 0) continue
+      const right = item.x + (item.width || 0)
+      if (localX <= right + 2) continue // 只在表格右侧空白
+      const top = item.y
+      const headerH = tableHeaderRowsHeight(item)
+      if (headerH > 0 && localY >= top && localY < top + headerH) {
+        // 跨页重复表头 → 逻辑首行 (表头行与首行是同一批 cell 节点)
+        const header = item.headerRows?.[0] ?? item.rows[0]
+        const modelRow = this.caretToRowEndCell(header)
+        if (modelRow !== null) {
+          this.setRowEndCaret({
+            tableId: item.nodeId, pageIndex: page.pageIndex,
+            top, height: headerH, rowIndex: modelRow,
+          })
+          return true
+        }
+        continue
+      }
+      let rowY = top + headerH
+      for (let ri = 0; ri < item.rows.length; ri++) {
+        const row = item.rows[ri]
+        const rowH = Math.max(row.height || 24, 24)
+        if (localY >= rowY && localY < rowY + rowH) {
+          const modelRow = this.caretToRowEndCell(row)
+          if (modelRow === null) return false
+          this.setRowEndCaret({
+            tableId: item.nodeId, pageIndex: page.pageIndex,
+            top: rowY, height: rowH, rowIndex: modelRow,
+          })
+          return true
+        }
+        rowY += rowH + TABLE_ROW_GAP
+      }
+    }
+    return false
+  }
+
+  /** 行尾光标的绘制位置 (transient; 不移动文本插入点) */
+  private setRowEndCaret(caret: RowEndCaret): void {
+    this.rowEndCaret = caret
+    this.draw.rowEndCaret = { ...caret }
+  }
+
+  /** 当前行尾光标 (副本; 契约 §31.3.1) */
+  getRowEndCaret(): RowEndCaret | null {
+    return this.rowEndCaret ? { ...this.rowEndCaret } : null
+  }
+
+  /** 清除行尾光标并重绘 (输入/点击/文档变更时调用) */
+  clearRowEndCaret(): void {
+    if (!this.rowEndCaret) return
+    this.rowEndCaret = null
+    this.draw.rowEndCaret = null
+    this.draw.render(this.pool, this.store.state.runtime)
+  }
+
+  /**
+   * 光标落到一个 SLIF 行**最右单元格**最后段落的末尾。
+   * 用 fragment 自带的 cell.id 定位 —— 跨页表格的 row 下标是 fragment 局部的,
+   * 拿它去查模型行会在续页上落错行。返回该行的**模型行下标**。
+   */
+  private caretToRowEndCell(row: import('./layout/core/SLIF').SLIFRow): number | null {
+    let best: import('./layout/core/SLIF').SLIFCell | null = null
+    for (const cell of row.cells) {
+      if (!best || cell.x + cell.width > best.x + best.width) best = cell
+    }
+    if (!best?.id) return null
+    const paraId = this.lastParagraphInCell(best.id)
+    if (!paraId) return null
+    this.store.setCursor({
+      paragraphPath: [this.doc.id, paraId],
+      offset: this.getParagraphTextLengthById(paraId),
+      visible: true,
+    })
+    return this.cellRowPosition(best.id)?.row ?? null
+  }
+
+  /** 单元格 → 所在行/表 (跨页 fragment 用 cell.id 反查模型行, 不猜下标) */
+  private cellRowPosition(cellId: string): { tableId: string; row: number } | null {
+    for (const [, node] of this.pool.nodes) {
+      if (node.type !== NodeType.ROW) continue
+      const row = node as unknown as { id: string; children?: readonly string[] }
+      if (!row.children?.includes(cellId)) continue
+      for (const [, t] of this.pool.nodes) {
+        if (t.type !== NodeType.TABLE) continue
+        const table = t as unknown as { id: string; children?: readonly string[] }
+        const rowIdx = table.children?.indexOf(row.id)
+        if (rowIdx !== undefined && rowIdx >= 0) return { tableId: table.id, row: rowIdx }
+      }
+      return null
+    }
+    return null
+  }
+
+  private lastParagraphInCell(cellId: string): string | null {
+    const kids = this.pool.getChildren(cellId)
+    for (let i = kids.length - 1; i >= 0; i--) {
+      const node = this.pool.nodes.get(kids[i])
+      if (!node) continue
+      if (node.type === NodeType.PARAGRAPH) return node.id
+      if (node.type === NodeType.TABLE) {
+        // 嵌套表: 最后一行 → 最右单元格 → 递归
+        const rows = this.pool.getChildren(node.id)
+        for (let r = rows.length - 1; r >= 0; r--) {
+          const cells = this.pool.getChildren(rows[r])
+          for (let c = cells.length - 1; c >= 0; c--) {
+            const para = this.lastParagraphInCell(cells[c])
+            if (para) return para
+          }
+        }
+      }
+    }
+    return null
   }
 
   /** 在 pool 中查找包含 nodeId 的 Paragraph */
@@ -1602,7 +1862,7 @@ export class Editor {
       this.execCommand(new RemoveNodesCommand(
         generateCommandId(), Date.now(), 'user',
         [{ container, nodeIds: [nodeId] }],
-        [], this.cursorAfterBlockRemoval(parent.containerId, parent.index),
+        this.cursorAfterBlockRemoval(parent.containerId, parent.index),
         { ensureBodyParagraph },
       ))
       return true
@@ -1618,8 +1878,8 @@ export class Editor {
         return removeBlock()
       }
       case 'image': {
-        // 块级图片: 从真实父容器摘除
-        if (resolveBlockParent(nodeId, this.doc, this.pool)) return removeBlock()
+        // 块级图片: 从真实父容器摘除 (删掉最后一个块时同命令内补空段落)
+        if (resolveBlockParent(nodeId, this.doc, this.pool)) return removeBlock(true)
         // 段落内联图片 (insertImage 默认): 从所属段落 children 摘除, 光标回落到图片原位
         const para = this.findParagraphContaining(nodeId)
         if (para) {
@@ -1627,7 +1887,7 @@ export class Editor {
           this.execCommand(new RemoveNodesCommand(
             generateCommandId(), Date.now(), 'user',
             [{ container: { kind: 'paragraph', paraId: para.id }, nodeIds: [nodeId] }],
-            [], { paragraphPath: [this.doc.id, para.id], offset, visible: true },
+            { paragraphPath: [this.doc.id, para.id], offset, visible: true },
           ))
           return true
         }
@@ -1636,7 +1896,8 @@ export class Editor {
       case 'separator':
       case 'section_break':
       case 'table':
-        return removeBlock()
+        // 块删除统一兜底: body 被删空时同一命令内补空段落 (契约 §31.3.1)
+        return removeBlock(true)
       case 'section':
         // 删掉 body 里最后一个块会让 body 变空 → 同一命令内补一个空段落
         // (Editor 层"body 始终可编辑"不变量的延续, 见 removeBlock 注释)
@@ -2033,6 +2294,11 @@ export class Editor {
     // (React 边界调 setDocument(doc) 时不传 stores)。仅在显式传入时替换。
     if (stores?.dictionaries !== undefined) this.dictionaries = stores.dictionaries
     this.draw.setDocument(doc, this.pool, this.presentationStyles, this.templateDefinitions)
+    // 批注视图态随文档切换同步 (契约 §12.14): 选中线程属于上一份文档, 必须清空;
+    // 强调开关是视图态, 跨文档沿用 store 当前值。
+    this.activeCommentThreadId = null
+    this.draw.setActiveCommentThread(null)
+    this.draw.showCommentMarks = this.store.state.runtime.view.showCommentMarks
     this.relayout()
 
     // 自动应用文档水印 (R70) — 用 document 域类型直接读取, 契约 §12.4。
@@ -2233,6 +2499,203 @@ export class Editor {
    */
   get cellRange(): CellRange | null { return this._cellRange }
 
+  /**
+   * 选中整张表 (契约 §31.3.1)。复用 cellRange 全网格做视觉,
+   * 不新增第二套选择画法。返回是否真的选中。
+   */
+  selectWholeTable(tableId: string): boolean {
+    const table = this.pool.nodes.get(tableId)
+    if (!table || table.type !== NodeType.TABLE) return false
+    const grid = buildCellGrid(this.pool, tableId)
+    if (grid.numRows <= 0 || grid.numCols <= 0) return false
+    this._selectedTableId = tableId
+    this._selectedCellRow = 0
+    this._selectedCellCol = 0
+    this._cellRange = {
+      tableId, startRow: 0, startCol: 0,
+      endRow: grid.numRows - 1, endCol: grid.numCols - 1,
+    }
+    this.documentSelected = false
+    this.draw.documentSelected = false
+    this.blockCaret = null
+    this.draw.blockCaret = null
+    this.store.updateSelection({ active: false })
+    this.syncCellSelection()
+    return true
+  }
+
+  /** 整表被选中时返回 tableId; 单格/矩形框选返回 null (契约 §31.3.1) */
+  getWholeTableSelection(): string | null {
+    if (!this._cellRange) return null
+    const grid = buildCellGrid(this.pool, this._cellRange.tableId)
+    if (grid.numRows <= 0 || grid.numCols <= 0) return null
+    const r = normalizeRange(this._cellRange)
+    return r.r0 === 0 && r.c0 === 0 && r.r1 === grid.numRows - 1 && r.c1 === grid.numCols - 1
+      ? this._cellRange.tableId
+      : null
+  }
+
+  /** 正文是否处于「全选整篇」的块级选择态 (契约 §31.3.1) */
+  isDocumentSelected(): boolean { return this.documentSelected }
+
+  /** 删除整表选择 — Delete/Backspace 在整表选中时调用 */
+  deleteSelectedTable(): boolean {
+    const tableId = this.getWholeTableSelection()
+    if (!tableId) return false
+    this.clearTableSelectionState()
+    const ok = this.deleteNode(tableId)
+    this.draw.render(this.pool, this.store.state.runtime)
+    return ok
+  }
+
+  /**
+   * 删除正文全部块 (Ctrl+A 全选后 Delete/Backspace, 契约 §31.3.1)。
+   * 一个 RemoveNodesCommand → 一次撤销; body 被删空时同一命令内补空段落。
+   */
+  deleteDocumentContent(): boolean {
+    const ids = [...this.pool.getChildren(this.doc.id)]
+    if (ids.length === 0) return false
+    this.documentSelected = false
+    this.draw.documentSelected = false
+    this.blockCaret = null
+    this.draw.blockCaret = null
+    this.clearTableSelectionState()
+    this.execCommand(new RemoveNodesCommand(
+      generateCommandId(), Date.now(), 'user',
+      [{ container: { kind: 'body' }, nodeIds: ids }],
+      undefined,
+      { ensureBodyParagraph: true },
+    ))
+    this.draw.render(this.pool, this.store.state.runtime)
+    return true
+  }
+
+  /** 当前表外光标 (副本; 契约 §31.3.1) */
+  getBlockCaret(): BlockCaret | null {
+    return this.blockCaret ? { ...this.blockCaret } : null
+  }
+
+  /** 设置/清除表外光标 — 只画插入点, 不改文档结构 */
+  setBlockCaret(caret: BlockCaret | null): void {
+    if (caret) {
+      const node = this.pool.nodes.get(caret.blockId)
+      if (!node || node.type !== NodeType.TABLE) return
+      // 块级选择让位给表外光标; 先清 (它会一并清 documentSelected/旧 blockCaret)
+      this.clearTableSelectionState()
+      this.store.updateSelection({ active: false })
+    }
+    this.blockCaret = caret ? { ...caret } : null
+    this.draw.blockCaret = this.blockCaret ? { ...this.blockCaret } : null
+    this.draw.render(this.pool, this.store.state.runtime)
+  }
+
+  clearBlockCaret(): void {
+    if (!this.blockCaret) return
+    this.blockCaret = null
+    this.draw.blockCaret = null
+    this.draw.render(this.pool, this.store.state.runtime)
+  }
+
+  /** 清除全部块级选择/表外光标 (键盘/点击切换时调用; 契约 §31.3.1) */
+  clearBlockSelection(): void {
+    const had = this.documentSelected || this.blockCaret !== null || this._cellRange !== null ||
+      this.rowEndCaret !== null
+    this.documentSelected = false
+    this.draw.documentSelected = false
+    this.blockCaret = null
+    this.draw.blockCaret = null
+    this.rowEndCaret = null
+    this.draw.rowEndCaret = null
+    this._selectedTableId = null
+    this._selectedCellRow = -1
+    this._selectedCellCol = -1
+    this._cellRange = null
+    this.draw.cellSelection = null
+    if (had) this.draw.render(this.pool, this.store.state.runtime)
+  }
+
+  /**
+   * 块级选择被文字输入替换 (契约 §31.3.1):
+   * 删全文/整表 + 插入字符合并为一个 macro = 一次撤销。
+   */
+  replaceBlockSelectionWithText(text: string): boolean {
+    const documentSelected = this.documentSelected
+    const wholeTable = this.getWholeTableSelection()
+    if (!documentSelected && !wholeTable) return false
+    this.commandManager.beginMacro()
+    try {
+      if (documentSelected) this.deleteDocumentContent()
+      else if (wholeTable) this.deleteSelectedTable()
+      const cur = this.store.state.runtime.cursor
+      if (cur.paragraphPath.length > 0 && text.length > 0) {
+        this.execCommand(new InsertTextCommand(
+          generateCommandId(), Date.now(), 'user', cur.paragraphPath, cur.offset, text,
+        ))
+      }
+    } finally {
+      this.commandManager.endMacro()
+    }
+    return true
+  }
+
+  /**
+   * 物化表外光标: 在表格真实容器的前/后插入一个空段落并把光标落进去。
+   * 只在用户真正输入 (字符/Enter) 时调用 — 点击本身不建节点 (契约 §31.3.1)。
+   */
+  materializeBlockCaret(): boolean {
+    const caret = this.blockCaret
+    if (!caret) return false
+    const parent = resolveBlockParent(caret.blockId, this.doc, this.pool)
+    if (!parent) return false
+    const container = parent.kind === 'section'
+      ? { kind: 'section' as const, sectionId: parent.containerId }
+      : { kind: 'body' as const }
+    const index = caret.side === 'before' ? parent.index : parent.index + 1
+    this.blockCaret = null
+    this.draw.blockCaret = null
+    this.execCommand(new InsertEmptyParagraphAtCommand(
+      generateCommandId(), Date.now(), 'user', container, index,
+    ))
+    return true
+  }
+
+  /** 表格的分页 client 矩形 (悬浮手柄的几何来源, 契约 §31.3.1) */
+  getTableClientRects(): Map<string, import('./render/Draw').TableClientRect> {
+    return this.draw.getTableClientRects()
+  }
+
+  /**
+   * 在指定块之前插入一个空段落并把光标落进去 (Word 首格回车, 契约 §31.3.1)。
+   * 走 InsertEmptyParagraphAtCommand —— 可撤销, 只改真实容器的下标。
+   */
+  insertEmptyParagraphBeforeBlock(blockId: string): boolean {
+    const parent = resolveBlockParent(blockId, this.doc, this.pool)
+    if (!parent) return false
+    const container = parent.kind === 'section'
+      ? { kind: 'section' as const, sectionId: parent.containerId }
+      : { kind: 'body' as const }
+    this.execCommand(new InsertEmptyParagraphAtCommand(
+      generateCommandId(), Date.now(), 'user', container, parent.index,
+    ))
+    return true
+  }
+
+  /**
+   * 在指定块之后插入一个空段落并把光标落进去 (表格末行行尾回车, 契约 §31.3.1)。
+   * 块不在 body/Section (如嵌套表在 cell 内) → false, 调用方自行降级。
+   */
+  insertEmptyParagraphAfterBlock(blockId: string): boolean {
+    const parent = resolveBlockParent(blockId, this.doc, this.pool)
+    if (!parent) return false
+    const container = parent.kind === 'section'
+      ? { kind: 'section' as const, sectionId: parent.containerId }
+      : { kind: 'body' as const }
+    this.execCommand(new InsertEmptyParagraphAtCommand(
+      generateCommandId(), Date.now(), 'user', container, parent.index + 1,
+    ))
+    return true
+  }
+
   /** 同步框选到 Draw + 重渲染 */
   private syncCellSelection(): void {
     this.draw.cellSelection = this._cellRange ? { ...this._cellRange } : null
@@ -2323,6 +2786,61 @@ export class Editor {
     this.clearTableSelectionState()
   }
 
+  /** 在选中单元格上方插入行 (第一行上方也可用) */
+  insertTableRowAbove(): void {
+    if (!this._selectedTableId || this._selectedCellRow < 0) return
+    this.insertTableRowAboveAt(this._selectedTableId, this._selectedCellRow)
+  }
+
+  /** 在指定行上方插入行 (tableId + 表行下标) — 右键菜单/工具栏复用 */
+  insertTableRowAboveAt(tableId: string, row: number): void {
+    this.commandManager.execute(new TableStructureCommand(
+      generateCommandId(), Date.now(), 'user', tableId,
+      (pool) => { insertRowBefore(pool, tableId, row); return true },
+    ))
+    this.clearTableSelectionState()
+  }
+
+  /**
+   * 在指定行**下方**插入一行并把光标落到新行首格 (行尾回车, 契约 §31.3.1)。
+   * 返回是否执行 (表不存在 → false)。
+   */
+  insertTableRowBelowAt(tableId: string, row: number): boolean {
+    if (!this.pool.nodes.has(tableId)) return false
+    this.commandManager.execute(new TableStructureCommand(
+      generateCommandId(), Date.now(), 'user', tableId,
+      (pool) => { insertRow(pool, tableId, row); return true },
+    ))
+    this.clearTableSelectionState()
+    this.placeCaretInTableRow(tableId, row + 1)
+    return true
+  }
+
+  /** 某行是否是表格最后一行 (行尾回车分行用, 契约 §31.3.1) */
+  isTableLastRow(tableId: string, rowIndex: number): boolean {
+    const rows = this.pool.getChildren(tableId)
+    return rows.length > 0 && rowIndex >= rows.length - 1
+  }
+
+  /** 把光标落到表格第 rowIndex 行首格的首个段落 */
+  private placeCaretInTableRow(tableId: string, rowIndex: number): void {
+    const rowId = this.pool.getChildren(tableId)[rowIndex]
+    const cellId = rowId ? this.pool.getChildren(rowId)[0] : undefined
+    if (!cellId) return
+    const paraId = this.pool.getChildren(cellId)
+      .find(id => this.pool.nodes.get(id)?.type === NodeType.PARAGRAPH)
+    if (!paraId) return
+    const path = [this.doc.id, paraId]
+    this.store.setCursor({ paragraphPath: path, offset: 0, visible: true })
+    this.store.setSelection({
+      anchor: { paragraphPath: [...path], offset: 0, visible: false },
+      focus: { paragraphPath: [...path], offset: 0, visible: false },
+      active: false,
+      granularity: 'character',
+    })
+    this.draw.render(this.pool, this.store.state.runtime)
+  }
+
   /** 删除选中单元格所在行 */
   deleteTableRow(): void {
     if (!this._selectedTableId || this._selectedCellRow < 0) return
@@ -2388,6 +2906,23 @@ export class Editor {
     this.clearTableSelectionState()
   }
 
+  /** 在选中单元格左侧插入列 (第一列左侧也可用) */
+  insertTableColumnLeft(): void {
+    if (!this._selectedTableId || this._selectedCellRow < 0 || this._selectedCellCol < 0) return
+    this.insertTableColumnLeftAt(this._selectedTableId, this._selectedCellRow, this._selectedCellCol)
+  }
+
+  /** 在指定单元格左侧插入列 (tableId + 表行下标 + 行内 cell 下标) — 右键菜单/工具栏复用 */
+  insertTableColumnLeftAt(tableId: string, row: number, col: number): void {
+    const gp = getCellGridPosition(this.pool, tableId, row, col)
+    if (!gp) return
+    this.commandManager.execute(new TableStructureCommand(
+      generateCommandId(), Date.now(), 'user', tableId,
+      (pool) => { insertColumnBefore(pool, tableId, gp.col); return true },
+    ))
+    this.clearTableSelectionState()
+  }
+
   /** 删除选中单元格所在列 */
   deleteTableColumn(): void {
     if (!this._selectedTableId || this._selectedCellRow < 0 || this._selectedCellCol < 0) return
@@ -2410,6 +2945,13 @@ export class Editor {
     this._selectedTableId = null; this._selectedCellRow = -1; this._selectedCellCol = -1
     this._cellRange = null
     this.draw.cellSelection = null
+    /** 表格结构操作/整表删除后, 块级选择、表外光标与行尾光标一并失效 (契约 §31.3.1) */
+    this.documentSelected = false
+    this.draw.documentSelected = false
+    this.blockCaret = null
+    this.draw.blockCaret = null
+    this.rowEndCaret = null
+    this.draw.rowEndCaret = null
   }
 
   /** 选择性粘贴 (Ctrl+Shift+V) — keep-source / match-destination / plain-text */
@@ -2554,112 +3096,201 @@ export class Editor {
     return targets
   }
 
-  /** 创建批注 — 在当前选区/光标位置创建 CommentMarker */
   /**
-   * 新建批注 (契约 §12.2 特征隔离)。
+   * 新建批注 (契约 §12.14)。
    *
    * 锚定范围:
-   *   - 有选区 → 选区内 `[min(offset), max(offset))`, **限定在同一段落**。
-   *     跨段落选区被拒绝 (返回 false): 批注高亮按段落内 item 绘制, 跨段/跨页
-   *     范围既画不出也读不清; 与其静默缩到某个猜测的段落, 不如让 UI 提示
-   *     用户重新选择。
-   *   - 无选区 → 光标前一个字符 (原实现唯一形态 —— 它使批注**永远只标 1 个
-   *     字符**, 这是本 API 从无 UI 调用所以一直没暴露的原因)。
+   *   - 有选区 → 选区内 `[min(offset), max(offset))`, 允许跨段落, 但必须
+   *     同区 (body / 同一页眉页脚变体)。跨区选区仍然拒绝。
+   *   - 无选区 → 光标处的**零长度点批注** (不需要先选中文字)。
    *
-   * @returns 是否真的创建。无光标、无选区、或跨段落选区 → false,
-   *          由 UI 给出反馈而不是静默无反应。
+   * 新建批注**不插入任何节点**: 范围由 CommentThread.rangeStart/rangeEnd
+   * 唯一表达。旧实现插入的 comment_marker 既不渲染又占 1 个偏移单位, 会把
+   * 同段其它批注的区间整体挤歪。
+   *
+   * @returns 是否真的创建。无光标、无选区、或跨区选区 → false。
    */
   createComment(content: string): boolean {
     const anchor = this.resolveCommentAnchor()
     if (!anchor) return false
 
-    const markerId = generateCommandId()
     const threadId = generateCommandId()
+    // 线程与首条内容的 id/时间戳都必须在**铸造之前**取定: 工厂在 redo 时会
+    // 再跑一次, 工厂内再铸 id / 读钟会让重做后的线程与首次逐字节不同
+    // (契约 §8.3 MintedOnce 同一条规则)。
+    const entryId = generateCommandId()
     const ts = Date.now()
-    const rangeStart = { path: [...anchor.path], offset: anchor.start }
-    const rangeEnd = { path: [...anchor.path], offset: anchor.end }
+    const author = this.commentAuthor()
+    const rangeStart = { path: [...anchor.startPath], offset: anchor.start }
+    const rangeEnd = { path: [...anchor.endPath], offset: anchor.end }
 
     this.commandManager.execute(new CreateCommentCommand(
-      generateCommandId(), Date.now(), 'user',
-      anchor.path, anchor.end,
-      () => ({
-        type: 'comment_marker' as const, id: markerId,
-        threadId, rangeStart, rangeEnd,
-      } as unknown as BaseNode),
+      generateCommandId(), Date.now(), author,
       () => ({
         id: threadId,
         rangeStart, rangeEnd,
-        author: 'user',
+        author,
         createdAt: ts,
         status: 'open' as const,
         baseVersion: 1,
         anchorStatus: 'valid' as const,
-        comments: [{ id: generateCommandId(), author: 'user', createdAt: ts, content }],
+        comments: [{ id: entryId, author, createdAt: ts, content }],
       }),
     ))
     return true
   }
 
+  /** 批注/回复作者 — 与修订共用 currentUser; 未设置时回退 'user' (契约 §12.14) */
+  private commentAuthor(): string {
+    return this.currentUser?.name ?? 'user'
+  }
+
   /**
-   * 批注锚定范围。返回 null = 当前状态无法锚定 (无光标 / 跨段落选区)。
-   * 跨段落不做"猜一个段落"的降级 —— 那是静默错锚。
+   * 批注锚定范围。返回 null = 当前状态无法锚定 (无光标 / 跨区选区)。
+   *
+   * 跨段落经 `selectionSpine` (W3 读序) 归一, 与选区/复制/删除同一读序;
+   * 跨 body↔页眉、跨变体、跨 cell 的选区由 spine 返回 null, 一律拒绝 ——
+   * 不做"猜一个段落"的降级。
    */
-  private resolveCommentAnchor(): { path: string[]; start: number; end: number } | null {
+  private resolveCommentAnchor(): {
+    startPath: string[]; start: number; endPath: string[]; end: number
+  } | null {
     const sel = this.store.state.runtime.selection
 
     if (sel.active) {
       const a = sel.anchor
       const f = sel.focus
-      const samePara = a.paragraphPath.length === f.paragraphPath.length &&
-        a.paragraphPath.every((p, i) => p === f.paragraphPath[i])
-      if (!samePara) return null
-      const start = Math.min(a.offset, f.offset)
-      const end = Math.max(a.offset, f.offset)
-      if (start < end) return { path: [...a.paragraphPath], start, end }
+      const aPara = a.paragraphPath[a.paragraphPath.length - 1]
+      const fPara = f.paragraphPath[f.paragraphPath.length - 1]
+
+      if (aPara && fPara && aPara === fPara) {
+        const start = Math.min(a.offset, f.offset)
+        const end = Math.max(a.offset, f.offset)
+        if (start < end) {
+          return { startPath: [...a.paragraphPath], start, endPath: [...a.paragraphPath], end }
+        }
+      } else if (aPara && fPara) {
+        const spine = selectionSpine(this.doc, this.pool, aPara, fPara)
+        if (!spine) return null
+        const ai = spine.spine.indexOf(aPara)
+        const fi = spine.spine.indexOf(fPara)
+        if (ai < 0 || fi < 0) return null
+        if (a.offset !== f.offset || ai !== fi) {
+          const forward = ai < fi
+          return {
+            startPath: [...(forward ? a.paragraphPath : f.paragraphPath)],
+            start: forward ? a.offset : f.offset,
+            endPath: [...(forward ? f.paragraphPath : a.paragraphPath)],
+            end: forward ? f.offset : a.offset,
+          }
+        }
+      }
     }
 
     const cursor = this.store.state.runtime.cursor
     if (cursor.paragraphPath.length === 0) return null
+    // 无选区 → 光标处的**零长度点批注** (契约 §12.14)。DCWriter 式交互:
+    // 不必先选中文字, 光标放在哪里就批在哪里; 段首 offset 0 同样合法。
     return {
-      path: [...cursor.paragraphPath],
-      start: Math.max(0, cursor.offset - 1),
+      startPath: [...cursor.paragraphPath],
+      start: cursor.offset,
+      endPath: [...cursor.paragraphPath],
       end: cursor.offset,
     }
   }
 
   /**
    * 批注锚定的文字摘录 —— 面板用它显示"这条批注标的是哪段字"。
-   * 文档内高亮之外的单源展示: 批注创建后若只看列表, 用户无从知道它锚在哪。
+   * 跨段落用空格连接各段摘录 (契约 §12.14)。
    */
   getCommentExcerpt(threadId: string): string {
     const thread = (this.doc.comments || []).find((t) => t.id === threadId)
     if (!thread) return ''
-    const { path, offset } = thread.rangeStart
-    const paraId = path[path.length - 1]
-    const end = thread.rangeEnd.path[thread.rangeEnd.path.length - 1] === paraId
-      ? thread.rangeEnd.offset
-      : paragraphTextLength(this.pool, paraId)
-    return paragraphTextInRange(this.pool, paraId, offset, end).trim()
+    return commentExcerpt(commentSegments(this.doc, this.pool, thread), this.pool)
   }
 
-  /** 获取批注列表 */
-  getComments(): import('./document/core/DocumentModel').CommentThread[] {
-    return this.doc.comments || []
+  /** 获取批注列表 (浅拷贝: 调用方不得改写内部数组) */
+  getComments(): CommentThread[] {
+    return [...(this.doc.comments || [])]
   }
 
-  /** 添加批注回复 */
+  /** 批注的分段 client 矩形 (右侧气泡叠加层的几何来源, 契约 §12.14) */
+  getCommentClientRects(): Map<string, import('./render/Draw').CommentClientRect[]> {
+    return this.draw.getCommentClientRects()
+  }
+
+  /** 添加批注回复 (作者同 createComment, 契约 §12.14) */
   addCommentReply(threadId: string, content: string): void {
     this.commandManager.execute(new AddCommentReplyCommand(
-      generateCommandId(), Date.now(), 'user', threadId, generateCommandId(), content,
+      generateCommandId(), Date.now(), this.commentAuthor(), threadId, generateCommandId(), content,
     ))
+  }
+
+  /** 删除一条批注回复 (可撤销, 契约 §12.14) */
+  deleteCommentReply(threadId: string, replyId: string): boolean {
+    const thread = (this.doc.comments || []).find(t => t.id === threadId)
+    if (!thread || !thread.comments.some(c => c.id === replyId)) return false
+    this.commandManager.execute(new DeleteCommentReplyCommand(
+      generateCommandId(), Date.now(), this.commentAuthor(), threadId, replyId,
+    ))
+    return true
+  }
+
+  /** 删除整条批注线程 (可撤销; 同时清理旧文档遗留的 marker, 契约 §12.14) */
+  deleteComment(threadId: string): boolean {
+    if (!(this.doc.comments || []).some(t => t.id === threadId)) return false
+    this.commandManager.execute(new DeleteCommentCommand(
+      generateCommandId(), Date.now(), this.commentAuthor(), threadId,
+    ))
+    if (this.activeCommentThreadId === threadId) this.setActiveCommentThread(null)
+    return true
   }
 
   /** 解决/重新打开批注 */
   resolveComment(threadId: string, resolved: boolean): void {
     this.commandManager.execute(new ResolveCommentCommand(
-      generateCommandId(), Date.now(), 'user', threadId, resolved,
+      generateCommandId(), Date.now(), this.commentAuthor(), threadId, resolved,
     ))
   }
+
+  /**
+   * 命中光标所在的批注线程 (文档 → 面板反选, 契约 §12.14)。
+   * 与渲染共用 commentSegments, 不允许第二套区间算法。
+   */
+  getCommentThreadAt(paragraphPath: readonly string[], offset: number): string | null {
+    const paraId = paragraphPath[paragraphPath.length - 1]
+    if (!paraId) return null
+    for (const thread of this.doc.comments || []) {
+      if (commentContains(commentSegments(this.doc, this.pool, thread), paraId, offset)) {
+        return thread.id
+      }
+    }
+    return null
+  }
+
+  /** 当前选中的批注线程 (运行时视图态, 不序列化) */
+  setActiveCommentThread(threadId: string | null): void {
+    const exists = threadId !== null && (this.doc.comments || []).some(t => t.id === threadId)
+    const next = exists ? threadId : null
+    if (this.activeCommentThreadId === next) return
+    this.activeCommentThreadId = next
+    this.draw.setActiveCommentThread(next)
+    this.draw.render(this.pool, this.store.state.runtime)
+  }
+
+  getActiveCommentThread(): string | null { return this.activeCommentThreadId }
+
+  /**
+   * 批注强调层开关 (契约 §12.14) — 纯视图开关, 不改文档/布局/序列化。
+   * 关闭后锚定文字仍保留淡底色, 只是去掉正常高亮与锚点标记。
+   */
+  setShowCommentMarks(on: boolean): void {
+    if (this.draw.showCommentMarks === on) return
+    this.draw.showCommentMarks = on
+    this.store.setShowCommentMarks(on)
+    this.draw.render(this.pool, this.store.state.runtime)
+  }
+  getShowCommentMarks(): boolean { return this.draw.showCommentMarks }
 
   /**
    * 重排的**唯一前置**: 先把键索引与公式图对齐, 再重排 (契约 §12.12.6)。
@@ -2816,77 +3447,41 @@ export class Editor {
       return true
     }
 
-    // v21.0 Phase 4: 检测 scope 并获取 siblings
-    const aCell = resolveCellPosition(aId, this.pool)
-    const fCell = resolveCellPosition(fId, this.pool)
-
-    // 跨域选区禁止 / 不同 cell 暂不支持 (resolveSiblingRange 同语义, 保留早期守卫)
-    if ((aCell && !fCell) || (!aCell && fCell)) return false
-    if (aCell && fCell && (aCell.tableId !== fCell.tableId || aCell.row !== fCell.row || aCell.col !== fCell.col)) return false
-
-    // 区域感知兄弟 (body / header / footer / 同 cell) — resolveSiblingRange
-    const range = resolveSiblingRange(this.doc, this.pool, aId, fId)
-    if (!range) return false
-    const siblings: readonly string[] = range.siblings
-
-    const aIdx = siblings.indexOf(aId)
-    const fIdx = siblings.indexOf(fId)
-    if (aIdx < 0 || fIdx < 0) return false
-
-    const lo = Math.min(aIdx, fIdx)
-    const hi = Math.max(aIdx, fIdx)
-    const loOff = aIdx === lo ? aOff : fOff
-    const hiOff = fIdx === hi ? fOff : aOff
+    // 跨段选区: 段落读序与复制/高亮同源 (契约 §31.3 W3-SELECTION)。
+    // body↔cell / 跨 cell 都是线性文本范围 —— 用户看到复制到的高亮，删除就删它;
+    // 块结构 (表格、块级图) 不在范围里，删除只作用于它能寻址到的段落。
+    const spineInfo = selectionSpine(this.doc, this.pool, aId, fId)
+    if (!spineInfo) return false
+    const segments = collectSelectionSegments(spineInfo.spine, aId, aOff, fId, fOff)
+    if (segments.length === 0) return false
 
     // 从后往前删, 避免索引漂移
-    for (let pi = hi; pi >= lo; pi--) {
-      const paraId = siblings[pi]
-      if (!paraId) continue
-      const node = this.pool.nodes.get(paraId)
-      if (!node || node.type !== 'paragraph') continue
-      const path = [...selection.anchor.paragraphPath.slice(0, -1), paraId]
-
-      if (pi === lo && pi === hi) {
-        const start = Math.min(loOff, hiOff)
-        const end = Math.max(loOff, hiOff)
-        if (end > start) {
-          this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, start, end))
-        }
-      } else if (pi === hi) {
-        if (hiOff > 0) {
-          this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, hiOff))
-        }
-      } else if (pi === lo) {
-        const totalLen = this.getParagraphTextLengthById(paraId)
-        if (loOff < totalLen) {
-          this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, loOff, totalLen))
-        }
-      } else {
-        const totalLen = this.getParagraphTextLengthById(paraId)
-        if (totalLen > 0) {
-          this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, totalLen))
-        }
-      }
+    for (let si = segments.length - 1; si >= 0; si--) {
+      const seg = segments[si]
+      const totalLen = this.getParagraphTextLengthById(seg.paraId)
+      const start = Math.min(seg.start, totalLen)
+      const end = Math.min(seg.end, totalLen)
+      if (end <= start) continue
+      const path = [...selection.anchor.paragraphPath.slice(0, -1), seg.paraId]
+      this.commandManager.execute(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, start, end))
     }
 
-    // 跨段落选区: 合并残段
-    if (lo < hi) {
-      for (let mergeCount = hi - lo; mergeCount > 0; mergeCount--) {
-        const currentSiblings = aCell
-          ? ((() => {
-              const tn = this.pool.nodes.get(aCell.tableId) as { children?: readonly string[] } | undefined
-              const rn = this.pool.nodes.get(tn?.children?.[aCell.row] || '') as { children?: readonly string[] } | undefined
-              return (this.pool.nodes.get(rn?.children?.[aCell.col] || '') as { children?: readonly string[] } | undefined)?.children || siblings
-            })())
-          : siblings
-        const nextParaId = currentSiblings[lo + 1]
-        if (!nextParaId) break
-        const mergePath = [...selection.anchor.paragraphPath.slice(0, -1), nextParaId]
-        this.commandManager.execute(new MergeParagraphCommand(generateCommandId(), Date.now(), 'user', mergePath))
-      }
+    // 跨段落选区: 逐段并入其**同容器且相邻**的前一段落。MergeParagraph 自己判
+    // 前驱 (无前驱 / 前驱不是段落 / 跨容器) 并返回 null，不入撤销栈 —— 所以这里
+    // 不必维护索引，块边界 (表格) 天然不会被跨过。
+    const isParagraphNode = (id: string): boolean =>
+      (this.pool.nodes.get(id) as { type?: string } | undefined)?.type === 'paragraph'
+    for (let si = 1; si < segments.length; si++) {
+      const seg = segments[si]
+      if (!isParagraphNode(seg.paraId)) continue
+      const mergePath = [...selection.anchor.paragraphPath.slice(0, -1), seg.paraId]
+      this.commandManager.execute(new MergeParagraphCommand(generateCommandId(), Date.now(), 'user', mergePath))
     }
 
-    const loParaId = siblings[lo]
+    // 光标落到删除起点 (首个片段的选区起点)
+    const loSeg = segments[0]
+    const loParaId = loSeg.paraId
+    const loOff = Math.min(loSeg.start, this.getParagraphTextLengthById(loParaId))
     this.store.setCursor({ paragraphPath: [...selection.anchor.paragraphPath.slice(0, -1), loParaId], offset: loOff, visible: true })
 
     return true
@@ -3253,21 +3848,53 @@ export class Editor {
     return [cursor.paragraphPath[cursor.paragraphPath.length - 1]]
   }
 
-  /** 全选: 选区覆盖整篇文档所有段落 (含表格 cell 内段落) */
+  /**
+   * 全选 (契约 §31.3.1):
+   *   - 页眉/页脚编辑态 → 只选该区域文本 (保持旧行为);
+   *   - 光标在表格内 → 第一次选整表, 第二次选全文;
+   *   - 其余 → 选全文, 并置 documentSelected (Delete/Backspace 会连同表格等块一起删)。
+   */
   selectAll(): void {
-    // 页眉/页脚编辑态 → 选整个页眉/页脚区 (WPS 对齐, 按编辑目标页的变体);
-    // 否则正文(含表格 cell)
     const hf = this.store.state.headerFooterEdit
-    let spine: string[]
     if (hf.active && (hf.section === 'header' || hf.section === 'footer')) {
-      spine = [...hfParagraphsForPage(this.doc, hf.section, hf.pageIndex + 1)]
-    } else {
-      spine = bodyParagraphSpine(this.doc, this.pool)
+      const spine = [...hfParagraphsForPage(this.doc, hf.section, hf.pageIndex + 1)]
+      if (spine.length === 0) return
+      this.documentSelected = false
+      this.draw.documentSelected = false
+      this.blockCaret = null
+      this.draw.blockCaret = null
+      const firstParaId = spine[0]
+      const lastParaId = spine[spine.length - 1]
+      const totalLen = this.getParagraphTextLengthById(lastParaId)
+      this.store.setSelection({
+        anchor: { paragraphPath: [this.doc.id, firstParaId], offset: 0, visible: false },
+        focus: { paragraphPath: [this.doc.id, lastParaId], offset: totalLen, visible: false },
+        active: true,
+        granularity: 'character',
+      })
+      this.draw.render(this.pool, this.store.state.runtime)
+      return
     }
+
+    // Ctrl+A 在表格内: 第一次选整表 (再按一次才选全文)
+    const cursor = this.store.state.runtime.cursor
+    const scope = cursor.paragraphPath.length > 0
+      ? getCaretScope(cursor.paragraphPath, this.pool)
+      : null
+    if (scope?.type === 'cell') {
+      const tableId = scope.tableId
+      if (this.getWholeTableSelection() !== tableId && this.selectWholeTable(tableId)) return
+    }
+
+    const spine = bodyParagraphSpine(this.doc, this.pool)
     if (spine.length === 0) return
     const firstParaId = spine[0]
     const lastParaId = spine[spine.length - 1]
     const totalLen = this.getParagraphTextLengthById(lastParaId)
+    // 整表选择让位给全文选择; clear 会重置 documentSelected, 故先清后置
+    this.clearTableSelectionState()
+    this.documentSelected = true
+    this.draw.documentSelected = true
     this.store.setSelection({
       anchor: { paragraphPath: [this.doc.id, firstParaId], offset: 0, visible: false },
       focus: { paragraphPath: [this.doc.id, lastParaId], offset: totalLen, visible: false },

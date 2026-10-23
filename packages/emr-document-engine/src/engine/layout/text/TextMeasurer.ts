@@ -45,8 +45,17 @@ export interface CharMetrics {
 export class TextMeasurer {
   private host: EditorHost
   private fontManager: FontManager
+  /**
+   * 测量缓存 (LRU)。Map 的插入序即 LRU 序: 命中时 delete + set 移到末尾
+   * (O(1)); 淘汰取 `keys().next()`。
+   *
+   * 早期实现用并行的 `cacheKeys: string[]` + `filter` 维护 MRU —— 每次命中
+   * 都要扫描并重建整个数组 (缓存接近 1 万条时是 O(1e4)), 大文档首次布局
+   * 因此呈超线性: 2000 段 1265ms vs 1000 段 346ms。
+   */
   private cache: Map<string, TextMeasurement>
-  private cacheKeys: string[] = []
+  /** 缺字检测记忆化: cache key → 实际测量字体 (见 measureWidth) */
+  private glyphResolved: Map<string, string>
   private static readonly MAX_CACHE_SIZE = 10000
   private fallback: FontFallback
 
@@ -54,6 +63,7 @@ export class TextMeasurer {
     this.host = host
     this.fontManager = fontManager
     this.cache = new Map()
+    this.glyphResolved = new Map()
     this.fallback = new FontFallback(host)
   }
 
@@ -76,27 +86,43 @@ export class TextMeasurer {
 
   measure(text: string, config: FontConfig): TextMeasurement {
     const key = this.getCacheKey(text, config)
-    if (this.cache.has(key)) {
-      // Move to end (MRU)
-      this.cacheKeys = this.cacheKeys.filter(k => k !== key)
-      this.cacheKeys.push(key)
-      return this.cache.get(key)!
+    const hit = this.cache.get(key)
+    if (hit) {
+      // Map 插入序 = LRU 序: 删除再插入即移到 MRU (O(1))
+      this.cache.delete(key)
+      this.cache.set(key, hit)
+      return hit
     }
 
     const metrics = this.host.text.measure(text, this.buildFontString(config))
 
     // LRU eviction
-    if (this.cacheKeys.length >= TextMeasurer.MAX_CACHE_SIZE) {
-      const oldest = this.cacheKeys.shift()!
-      this.cache.delete(oldest)
+    if (this.cache.size >= TextMeasurer.MAX_CACHE_SIZE) {
+      const oldest = this.cache.keys().next().value
+      if (oldest !== undefined) this.cache.delete(oldest)
     }
 
     this.cache.set(key, metrics)
-    this.cacheKeys.push(key)
     return metrics
   }
 
   measureWidth(text: string, config: FontConfig): number {
+    // 缺字检测结果缓存: cache key → 实际测量用的字体。
+    //
+    // 检测本身是逐字符的 FontFaceSet 查询 (契约 §27 委托到平台), 而排版会
+    // 对同一段文本反复调用 measureWidth (断行 + 逐字符宽度), 每次重跑检测
+    // 会主导大文档首屏耗时。这里把检测结果按 cache key 记忆化 —— 与测量
+    // 缓存同一个前提: 一次布局周期内字体可用性视为稳定 (测量宽度本身也已
+    // 按同样前提缓存)。
+    const key = this.getCacheKey(text, config)
+    const resolved = this.glyphResolved.get(key)
+    if (resolved !== undefined) {
+      // Map 插入序 = LRU 序
+      this.glyphResolved.delete(key)
+      this.glyphResolved.set(key, resolved)
+      return this.measure(text, { ...config, font: resolved }).width
+    }
+
     // 缺字检测: 如当前字体无法渲染文本, 尝试降级字体
     let font = config.font
     if (text.length > 0 && this.fallback) {
@@ -111,7 +137,17 @@ export class TextMeasurer {
         }
       }
     }
+    this.rememberGlyphFont(key, font)
     return this.measure(text, { ...config, font }).width
+  }
+
+  /** 记忆化缺字检测结论 (LRU, 与测量缓存同上限) */
+  private rememberGlyphFont(key: string, font: string): void {
+    if (this.glyphResolved.size >= TextMeasurer.MAX_CACHE_SIZE) {
+      const oldest = this.glyphResolved.keys().next().value
+      if (oldest !== undefined) this.glyphResolved.delete(oldest)
+    }
+    this.glyphResolved.set(key, font)
   }
 
   /**
@@ -273,9 +309,15 @@ export class TextMeasurer {
 
   // ---- 缓存管理 ----
 
+  /**
+   * 清空测量缓存与缺字检测结论。
+   *
+   * 字体集合发生变化时必须调用 (如异步字体加载完成), 否则缓存里存的是
+   * 旧字体下的宽度与降级结论。
+   */
   clearCache(): void {
     this.cache.clear()
-    this.cacheKeys = []
+    this.glyphResolved.clear()
   }
 
   getCacheSize(): number {

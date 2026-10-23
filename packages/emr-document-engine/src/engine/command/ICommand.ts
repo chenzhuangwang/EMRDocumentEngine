@@ -76,7 +76,7 @@ export interface SerializedCommand {
   anchorOffset?: number
   focusPath?: string[]
   focusOffset?: number
-  // StateCommand
+  // 光标/选区补丁 (命令 forward 的返回值可携带)
   cursor?: Partial<CursorState>
   selection?: Partial<SelectionState>
   // Allow extra fields for extensibility

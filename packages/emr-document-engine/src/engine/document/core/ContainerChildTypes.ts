@@ -65,28 +65,31 @@ const BLOCK_CONTENT: readonly string[] = [
  *     赋值)。留在这里是因为它是真契约, 而不是因为已被守住; 未来说的"这张表 = 已
  *     强制的集合"在它身上尚不成立。
  */
+/**
+ * 段落的合法内联子类型 —— 与契约 §31.13 的 paragraph 行逐条对应。
+ *
+ * 曾经只"记录不强制"(DEFERRED_INLINE_CHILD_TYPES), 因为内联集合需要先清点、
+ * 且爆炸半径比 cell 规则大。2026-10-21 起它进入 CHILD_TYPES_OF:
+ *   - NodePool 受控 API 拒绝把其它类型插入/移入段落;
+ *   - Loader 遍历段落 children 时按本集合拒绝;
+ *   - Importer 拒绝未知的外部行内类型 (此前 default: return null 静默丢内容)。
+ *
+ * bookmark / comment_marker 是零宽定位标记: 合法, 但不产出布局项。
+ */
+export const PARAGRAPH_INLINE_CHILD_TYPES: ReadonlySet<string> = new Set<string>([
+  NodeType.TEXT, NodeType.SMART_TEXT, NodeType.IMAGE, NodeType.FIELD,
+  NodeType.BOOKMARK, NodeType.CROSS_REFERENCE, NodeType.FOOTNOTE_REF,
+  NodeType.COMMENT_MARKER,
+])
+
 export const CHILD_TYPES_OF: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   [NodeType.DOCUMENT, new Set<string>([...BLOCK_CONTENT, NodeType.SECTION_BREAK, NodeType.SECTION])],
   [NodeType.SECTION, new Set<string>([...BLOCK_CONTENT, NodeType.SECTION])],
   [NodeType.TABLE, new Set<string>([NodeType.ROW])],
   [NodeType.ROW, new Set<string>([NodeType.CELL])],
   [NodeType.CELL, new Set<string>([NodeType.PARAGRAPH, NodeType.TABLE])],
+  [NodeType.PARAGRAPH, PARAGRAPH_INLINE_CHILD_TYPES],
   [NodeType.FOOTNOTE_CONTENT, new Set<string>([NodeType.PARAGRAPH])],
-])
-
-/**
- * 段落的合法内联子类型 —— **本轮只记录, 不强制** (契约 §31.13 的 deferred 项)。
- *
- * 刻意不放进 CHILD_TYPES_OF: 那张表是「已被三处边界强制」的集合, 混进一条
- * 不强制的东西会让下一个读者以为它已被守住。内联集合需要先做一次独立清点
- * (光仓库里就能看到 text / smarttext / image / field / bookmark /
- * cross_reference / footnote_ref / comment_marker), 且爆炸半径比 cell 规则大
- * 得多 —— 单独一轮做。
- */
-export const DEFERRED_INLINE_CHILD_TYPES: ReadonlySet<string> = new Set<string>([
-  NodeType.TEXT, NodeType.SMART_TEXT, NodeType.IMAGE, NodeType.FIELD,
-  NodeType.BOOKMARK, NodeType.CROSS_REFERENCE, NodeType.FOOTNOTE_REF,
-  NodeType.COMMENT_MARKER,
 ])
 
 /**
@@ -109,8 +112,8 @@ export function hasChildTypeContract(parentType: string): boolean {
  * 取容器契约, **缺失即抛** —— 与 `isLegalChild` 的"无契约即放行"是刻意的两种
  * 语义, 不要互相替换:
  *
- *   isLegalChild  用于**判定某个子节点**。契约未声明这一层 (如 paragraph 的内联
- *                 类型, 本轮 deferred) 时不越权判定, 故返回 true。
+ *   isLegalChild  用于**判定某个子节点**。父类型未声明契约 (如 footnote_content
+ *                 的边界尚未接线) 时不越权判定, 故返回 true。
  *   childTypesOf  用于**消费整张表**的地方 (遍历器要一份"这个容器的合法子集")。
  *                 此时缺契约是调用方问错了容器 —— 是编程错误, 不是数据问题。
  */

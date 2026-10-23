@@ -21,7 +21,7 @@ import { MergeParagraphCommand } from '../command/commands/MergeParagraphCommand
 import { EnsureBodyParagraphCommand, EnsureCellParagraphCommand } from '../command/commands/StructuralCommands'
 import { generateCommandId } from '../command/ICommand'
 import type { SLIFPage } from '../layout/core/SLIF'
-import { resolveCellPosition, getCaretScope, getAdjacentCell, resolveParagraphRegion, resolveSiblingRange } from '../state/CaretScope'
+import { resolveCellPosition, getCaretScope, getAdjacentCell, resolveParagraphRegion, resolveBlockParent } from '../state/CaretScope'
 import { buildCellGrid } from '../document/table/TableOps'
 import type { TableGrid, GridCell } from '../document/table/TableOps'
 import type { NodePool } from '../document/core/NodePool'
@@ -43,11 +43,27 @@ export class KeyboardHandler {
     this.detachContainer = host.input.attachContainer({ keydown: this.onKeyDown })
   }
 
+  /** 段落字符偏移总长 (文本按 length, 非文本按 1) — 与光标/选区同一口径 */
+  private paragraphLength(pool: NodePool, paraId: string): number {
+    const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
+    if (!para?.children) return 0
+    let total = 0
+    for (const cid of para.children) {
+      const node = pool.nodes.get(cid) as { type?: string; text?: string } | undefined
+      total += node?.type === 'text' ? (node.text || '').length : 1
+    }
+    return total
+  }
+
   private onKeyDown = (e: KeyboardEvent) => {
     const ed = this.editor
     const store = ed.getStore()
     const cursor = store.state.runtime.cursor
     const author = 'user'
+
+    // 行尾光标只在点击后存在; Enter 有专门语义 (见下), 其余按键都恢复常态 (契约 §31.3.1)
+    const rowEndCaret = ed.getRowEndCaret()
+    if (!(rowEndCaret && e.key === 'Enter' && !e.shiftKey)) ed.clearRowEndCaret()
 
     // ---- 模式检查: 限制编辑操作 ----
     const mode = store.state.runtime.view.mode
@@ -60,6 +76,24 @@ export class KeyboardHandler {
     // 设计模式: Delete/Backspace 删除选中控件 (契约 §12.3, deletable 守卫经 RemoveControlCommand)
     if (isDesign && (e.key === 'Delete' || e.key === 'Backspace')) {
       if (ed.getSelectedControlId()) { e.preventDefault(); ed.deleteSelectedControl(); return }
+    }
+
+    // 行尾光标 + Enter (契约 §31.3.1, Word):
+    //   表格最后一行 → 在**表格下方**建一个空段落
+    //   其余行       → 在**当前行下方**插入一行, 光标进新行首格
+    if (rowEndCaret && e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      ed.clearRowEndCaret()
+      if (blockEdit) return
+      if (ed.isTableLastRow(rowEndCaret.tableId, rowEndCaret.rowIndex)) {
+        // 嵌套表在 cell 内时无法在块后建段 → 降级为插行
+        if (!ed.insertEmptyParagraphAfterBlock(rowEndCaret.tableId)) {
+          ed.insertTableRowBelowAt(rowEndCaret.tableId, rowEndCaret.rowIndex)
+        }
+      } else {
+        ed.insertTableRowBelowAt(rowEndCaret.tableId, rowEndCaret.rowIndex)
+      }
+      return
     }
 
     // Ctrl+Z / Ctrl+Y
@@ -87,8 +121,63 @@ export class KeyboardHandler {
     // Ctrl+Alt+F: 插入脚注 (R31)
     if ((e.ctrlKey || e.metaKey) && e.altKey && e.key === 'f') { e.preventDefault(); ed.insertFootnote(); return }
 
-    // ---- 方向键 + 导航键 ----
+    // ---- 块级选择 (契约 §31.3.1): Delete/Backspace 删整表 / 删全文 ----
+    if ((e.key === 'Delete' || e.key === 'Backspace') &&
+        (ed.isDocumentSelected() || ed.getWholeTableSelection())) {
+      e.preventDefault()
+      if (blockEdit) return
+      if (ed.isDocumentSelected()) ed.deleteDocumentContent()
+      else ed.deleteSelectedTable()
+      return
+    }
+
     const navKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']
+
+    // ---- 表外光标 (契约 §31.3.1) ----
+    const blockCaret = ed.getBlockCaret()
+    if (blockCaret) {
+      const isChar = e.key.length === 1 && !e.ctrlKey && !e.metaKey
+      if (isChar) {
+        e.preventDefault()
+        if (blockEdit) return
+        // 物化后才走下面的字符输入 (字符分支会重新读 store 光标)
+        if (!ed.materializeBlockCaret()) { ed.clearBlockCaret(); return }
+      } else if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        if (blockEdit) return
+        ed.materializeBlockCaret()
+        return
+      } else if (navKeys.includes(e.key)) {
+        e.preventDefault()
+        this.handleBlockCaretNav(ed, blockCaret, e.key)
+        return
+      } else if (e.key === 'Delete' && blockCaret.side === 'before') {
+        // 表前空光标按 Delete → 删除这张表 (等价于删掉光标后的块)
+        e.preventDefault()
+        if (blockEdit) return
+        ed.selectWholeTable(blockCaret.blockId)
+        ed.deleteSelectedTable()
+        return
+      } else if (e.key === 'Backspace' && blockCaret.side === 'after') {
+        e.preventDefault()
+        if (blockEdit) return
+        ed.selectWholeTable(blockCaret.blockId)
+        ed.deleteSelectedTable()
+        return
+      } else {
+        ed.clearBlockCaret()
+        if (e.key === 'Escape') { e.preventDefault(); return }
+      }
+    }
+
+    // 其它按键退出整表/全文选择 (字符输入走替换 macro, 在上述块级选择分支之后处理)
+    if (ed.isDocumentSelected() || ed.getWholeTableSelection()) {
+      if (e.key === 'Escape') { e.preventDefault(); ed.clearBlockSelection(); return }
+      const isChar = e.key.length === 1 && !e.ctrlKey && !e.metaKey
+      if (!isChar) ed.clearBlockSelection()
+    }
+
+    // ---- 方向键 + 导航键 ----
     if (navKeys.includes(e.key)) {
       e.preventDefault()
       if (cursor.paragraphPath.length === 0) return
@@ -114,6 +203,11 @@ export class KeyboardHandler {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       if (blockEdit || cursor.paragraphPath.length === 0) return
+      // Word 逃生口 (契约 §31.3.1): 表格是容器首块 + 首格首段段首 → 在表格上方建段
+      if (cursor.offset === 0) {
+        const tableId = this.leadingTableFirstCellAt(ed, cursor.paragraphPath)
+        if (tableId && ed.insertEmptyParagraphBeforeBlock(tableId)) return
+      }
       ed.execCommand(new SplitParagraphCommand(id, ts, author, cursor.paragraphPath, cursor.offset))
       return
     }
@@ -137,7 +231,26 @@ export class KeyboardHandler {
         if (cursor.offset > 0) {
           ed.execCommand(new DeleteRangeCommand(id, ts, author, cursor.paragraphPath, cursor.offset - 1, cursor.offset))
         } else {
-          ed.execCommand(new MergeParagraphCommand(id, ts, author, cursor.paragraphPath))
+          // 段首: 有前一个段落 → 合并; 没有可合并的段落 (文档首段 / 上一块是
+          // 表格等非段落块) 且本段为空 → 删除这条空行。非空段不在此列。
+          const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
+          const pool = ed.getPool()
+          const doc = ed.getDocument()
+          const region = resolveParagraphRegion(paraId, doc, pool)
+          const prevId = region && region.index > 0 ? region.siblings[region.index - 1] : null
+          const prevNode = prevId ? pool.nodes.get(prevId) : null
+          if (prevNode?.type === 'paragraph') {
+            // 上一段是空段 → 删掉它, 而不是把当前段并进去。并段会让当前段
+            // 继承空段的段落格式 (如 lineHeight=1), 把整行挤扁; 用户按退格
+            // 想要的只是"删掉上面那条空行"。删不掉 (cell 段落等) 时回退并段。
+            if (this.paragraphLength(pool, prevId!) === 0 && ed.deleteNode(prevId!)) {
+              // 已删除; 光标由 deleteNode 落到当前段段首
+            } else {
+              ed.execCommand(new MergeParagraphCommand(id, ts, author, cursor.paragraphPath))
+            }
+          } else if (this.paragraphLength(pool, paraId) === 0) {
+            ed.deleteNode(paraId)
+          }
         }
       }
       return
@@ -152,17 +265,10 @@ export class KeyboardHandler {
         this.deleteSelection(ed, sel)
       } else if (cursor.paragraphPath.length > 0) {
         const paraId = cursor.paragraphPath[cursor.paragraphPath.length - 1]
-        const para = ed.getPool().nodes.get(paraId) as { children?: readonly string[] } | undefined
-        let totalLen = 0
-        if (para?.children) {
-          for (const cid of para.children) {
-            const n = ed.getPool().nodes.get(cid) as { type?: string; text?: string } | undefined
-            totalLen += n?.type === 'text' ? (n.text || '').length : 1
-          }
-        }
+        const pool = ed.getPool()
+        const totalLen = this.paragraphLength(pool, paraId)
         if (cursor.offset >= totalLen) {
           // 段落末尾按 Delete → 合并该区域 (body/cell/header/footer) 内的下一段落
-          const pool = ed.getPool()
           const doc = ed.getDocument()
           const region = resolveParagraphRegion(paraId, doc, pool)
           if (region && region.index >= 0 && region.index < region.siblings.length - 1) {
@@ -170,6 +276,11 @@ export class KeyboardHandler {
             const nextNode = pool.nodes.get(nextParaId)
             if (nextNode?.type === 'paragraph') {
               ed.execCommand(new MergeParagraphCommand(id, ts, author, [...cursor.paragraphPath.slice(0, -1), nextParaId]))
+            } else if (totalLen === 0) {
+              // 空段落后面直接是表格/图表/分节符等非段落块: 无法并段, 但用户
+              // 期望 Delete 删掉这条空行 (Word 同行为: 后面的块上移)。
+              // 只对**空段落**生效 —— 非空段落按 Delete 不该整段消失。
+              ed.deleteNode(paraId)
             }
           }
         } else {
@@ -183,6 +294,11 @@ export class KeyboardHandler {
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
       e.preventDefault()
       if (blockEdit) return
+      // 块级选择 (整表/全文) + 字符 → 删除块并插入字符, 合为一个 macro (§31.3.1)
+      if (ed.isDocumentSelected() || ed.getWholeTableSelection()) {
+        ed.replaceBlockSelectionWithText(e.key)
+        return
+      }
       const sel = store.state.runtime.selection
       if (sel.active && !this.isSelectionCollapsed(sel)) {
         this.deleteSelection(ed, sel)
@@ -234,95 +350,16 @@ export class KeyboardHandler {
   }
 
   /** 删除选区内容: 跨段落逐段删除 — v21.0 Phase 4 区分 body/cell 作用域 */
-  private deleteSelection(ed: Editor, sel: { anchor: { paragraphPath: string[]; offset: number }; focus: { paragraphPath: string[]; offset: number } }): void {
-    const pool = ed.getPool()
-    const doc = ed.getDocument()
-    const aId = sel.anchor.paragraphPath[sel.anchor.paragraphPath.length - 1]
-    const fId = sel.focus.paragraphPath[sel.focus.paragraphPath.length - 1]
-
-    // 同段落选区 — 直接删除偏移范围
-    if (aId === fId) {
-      const start = Math.min(sel.anchor.offset, sel.focus.offset)
-      const end = Math.max(sel.anchor.offset, sel.focus.offset)
-      if (end > start) {
-        ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', sel.anchor.paragraphPath, start, end))
-      }
-      return
-    }
-
-    // v21.0 Phase 4: 检测 scope
-    const aCell = resolveCellPosition(aId, pool)
-    const fCell = resolveCellPosition(fId, pool)
-
-    // 跨域选区禁止 — 不删除任何内容
-    if ((aCell && !fCell) || (!aCell && fCell)) return
-    if (aCell && fCell && (aCell.tableId !== fCell.tableId || aCell.row !== fCell.row || aCell.col !== fCell.col)) return
-
-    // 区域感知兄弟 (body / header / footer / 同 cell)
-    const range = resolveSiblingRange(doc, pool, aId, fId)
-    if (!range) return
-    const siblings: readonly string[] = range.siblings
-
-    const aIdx = siblings.indexOf(aId)
-    const fIdx = siblings.indexOf(fId)
-    if (aIdx < 0 || fIdx < 0) return
-    const lo = Math.min(aIdx, fIdx)
-    const hi = Math.max(aIdx, fIdx)
-    const loOff = aIdx === lo ? sel.anchor.offset : sel.focus.offset
-    const hiOff = fIdx === hi ? sel.focus.offset : sel.anchor.offset
-
-    // 从后往前删, 避免索引漂移
-    for (let pi = hi; pi >= lo; pi--) {
-      const paraId = siblings[pi]
-      if (!paraId) continue
-      const node = pool.nodes.get(paraId)
-      if (!node || (node.type !== 'paragraph')) continue
-      const path = [...sel.anchor.paragraphPath.slice(0, -1), paraId]
-      if (pi === lo && pi === hi) {
-        const start = Math.min(loOff, hiOff)
-        const end = Math.max(loOff, hiOff)
-        if (end > start) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, start, end))
-      } else if (pi === hi) {
-        if (hiOff > 0) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, hiOff))
-      } else if (pi === lo) {
-        const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
-        let totalLen = 0
-        if (para?.children) {
-          for (const cid of para.children) {
-            const n = pool.nodes.get(cid) as { type?: string; text?: string } | undefined
-            totalLen += n?.type === 'text' ? (n.text || '').length : 1
-          }
-        }
-        if (loOff < totalLen) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, loOff, totalLen))
-      } else {
-        const para = pool.nodes.get(paraId) as { children?: readonly string[] } | undefined
-        let totalLen = 0
-        if (para?.children) {
-          for (const cid of para.children) {
-            const n = pool.nodes.get(cid) as { type?: string; text?: string } | undefined
-            totalLen += n?.type === 'text' ? (n.text || '').length : 1
-          }
-        }
-        if (totalLen > 0) ed.execCommand(new DeleteRangeCommand(generateCommandId(), Date.now(), 'user', path, 0, totalLen))
-      }
-    }
-
-    // 跨段落选区: 合并残段
-    if (lo < hi) {
-      for (let mergeCount = (hi - lo); mergeCount > 0; mergeCount--) {
-        const currentSiblings = aCell
-          ? ((() => {
-              const tn = pool.nodes.get(aCell.tableId) as { children?: readonly string[] } | undefined
-              const rn = pool.nodes.get(tn?.children?.[aCell.row] || '') as { children?: readonly string[] } | undefined
-              return (pool.nodes.get(rn?.children?.[aCell.col] || '') as { children?: readonly string[] } | undefined)?.children || siblings
-            })())
-          : siblings
-        const nextParaId = currentSiblings[lo + 1]
-        if (!nextParaId) break
-        const mergePath = [...sel.anchor.paragraphPath.slice(0, -1), nextParaId]
-        ed.execCommand(new MergeParagraphCommand(generateCommandId(), Date.now(), 'user', mergePath))
-      }
-    }
+  /**
+   * 删除当前选区 — 委托 `Editor.deleteSelection()` (契约 RULE 11)。
+   *
+   * 这里曾经是一份与 `Editor.deleteSelectedRange` 近乎逐行相同的副本: 同样的
+   * 区域守卫、同样的逐段裁剪、同样的合并残段。副本的代价是行为分叉 —— 键盘
+   * 路径没有事务包装, 跨段落删除会产生 N 条 undo 单元 (右键「删除」早已修成
+   * 单步)。范围计算也只保留一份 (Editor → collectSelectionSegments)。
+   */
+  private deleteSelection(ed: Editor, _sel: { anchor: { paragraphPath: string[]; offset: number }; focus: { paragraphPath: string[]; offset: number } }): void {
+    ed.deleteSelection()
   }
 
   /** Tab / Shift+Tab: 在表格 cell 间移动光标 (Phase 4) */
@@ -721,6 +758,77 @@ export class KeyboardHandler {
   }
 
   /** 方向键块导航统一入口 */
+  /**
+   * 表外光标的导航 (契约 §31.3.1):
+   *   - before + Down/Right → 表格首格; after + Up/Left → 表格末格;
+   *   - 反方向 → 相邻兄弟段落 (段尾/段首), 没有就只清掉表外光标。
+   */
+  private handleBlockCaretNav(
+    ed: Editor,
+    caret: { blockId: string; side: 'before' | 'after' },
+    key: string,
+  ): void {
+    const pool = ed.getPool()
+    const doc = ed.getDocument()
+    const store = ed.getStore()
+    const intoTable = caret.side === 'before'
+      ? (key === 'ArrowDown' || key === 'ArrowRight')
+      : (key === 'ArrowUp' || key === 'ArrowLeft')
+
+    if (intoTable) {
+      const paraId = this.enterTable(
+        pool, caret.blockId, caret.side === 'before' ? 'top-left' : 'bottom-right',
+      )
+      ed.clearBlockCaret()
+      if (!paraId) return
+      const path = [doc.id, paraId]
+      store.setCursor({ paragraphPath: path, offset: 0, visible: true })
+      store.setSelection({
+        anchor: { paragraphPath: path, offset: 0, visible: false },
+        focus: { paragraphPath: path, offset: 0, visible: false },
+        active: false,
+        granularity: 'character',
+      })
+      ed.getDraw().render(pool, store.state.runtime)
+      return
+    }
+
+    const parent = resolveBlockParent(caret.blockId, doc, pool)
+    ed.clearBlockCaret()
+    if (!parent) return
+    const siblings = pool.getChildren(parent.containerId)
+    const idx = siblings.indexOf(caret.blockId)
+    const neighborId = caret.side === 'before' ? siblings[idx - 1] : siblings[idx + 1]
+    const neighbor = neighborId ? pool.nodes.get(neighborId) : null
+    if (!neighbor || neighbor.type !== 'paragraph') return
+    const offset = caret.side === 'before' ? this.paragraphLength(pool, neighborId) : 0
+    const path = [doc.id, neighborId]
+    store.setCursor({ paragraphPath: path, offset, visible: true })
+    store.setSelection({
+      anchor: { paragraphPath: path, offset, visible: false },
+      focus: { paragraphPath: path, offset, visible: false },
+      active: false,
+      granularity: 'character',
+    })
+    ed.getDraw().render(pool, store.state.runtime)
+  }
+
+  /**
+   * Word 逃生口 (契约 §31.3.1): 表格是**容器首块**且光标在**首格首段**的段首。
+   * 命中时回车应在表格上方建段 (返回 tableId), 否则返回 null 走普通拆段。
+   */
+  private leadingTableFirstCellAt(ed: Editor, path: string[]): string | null {
+    const pool = ed.getPool()
+    const doc = ed.getDocument()
+    const scope = getCaretScope(path, pool)
+    if (scope.type !== 'cell' || scope.row !== 0 || scope.col !== 0) return null
+    const parent = resolveBlockParent(scope.tableId, doc, pool)
+    if (!parent || parent.index !== 0) return null
+    const region = resolveParagraphRegion(path[path.length - 1], doc, pool)
+    if (!region || region.index !== 0) return null
+    return scope.tableId
+  }
+
   private navigateBlock(
     paraId: string,
     doc: DocumentTree,

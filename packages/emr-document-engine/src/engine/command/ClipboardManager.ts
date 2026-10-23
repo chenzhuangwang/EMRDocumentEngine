@@ -21,7 +21,7 @@ import type { NodePool } from '../document/core/NodePool'
 import { generateCommandId } from './ICommand'
 import { generateId } from '../document/core/DocumentModel'
 import { smartTextDisplayValue } from '../document/factory/ElementFormatter'
-import { selectionSpine } from '../document/selection/SelectionCollector'
+import { selectionSpine, collectSelectionSegments, paragraphTextLength } from '../document/selection/SelectionCollector'
 import type { ClipboardHost } from '../host/EditorHost'
 
 // ---- 类型 ----
@@ -71,10 +71,9 @@ export class ClipboardManager {
   /**
    * 复制: 遍历选区范围内的段落 → 按 offset 裁剪 → 深度克隆
    *
-   * 范围计算: 与 renderSelectionUnified 完全一致
-   *   展平 body → spine (表格展开为 cell 段落, §SelectionCollector.flattenTextContainers)
-   *   同段落: clipStart=min(anchor,focus), clipEnd=max(anchor,focus)
-   *   跨段落: 首段 clipStart=loOff/clipEnd=∞, 末段 clipStart=0/clipEnd=hiOff
+   * 范围计算**不再本地实现**: 段落读序与逐段裁剪区间来自
+   * `SelectionCollector`（`selectionSpine` + `collectSelectionSegments`），
+   * 与选区渲染、范围命令共用同一份实现（契约 §31.3 W3-SELECTION）。
    *
    * body↔table 跨域选区不再被整体丢弃: cell 段落经展平后参与线性范围,
    * 逐段克隆 (表格结构不保留, 仅复制 cell 内段落文本 — 与同 cell 复制语义一致)。
@@ -92,36 +91,22 @@ export class ClipboardManager {
     // 选区段落列表: 区域感知读序 (body 展平 / header / footer), 同区才复制。
     const sp = selectionSpine(doc, pool, aId, fId)
     if (!sp) return
-    const siblings = sp.spine
-
-    const aIdx = siblings.indexOf(aId)
-    const fIdx = siblings.indexOf(fId)
-    if (aIdx < 0 || fIdx < 0) return
-
-    const lo = Math.min(aIdx, fIdx)
-    const hi = Math.max(aIdx, fIdx)
-    const samePara = lo === hi
-    const loOff = aIdx === lo ? anchorOffset : focusOffset
-    const hiOff = aIdx === hi ? anchorOffset : focusOffset
+    const segments = collectSelectionSegments(sp.spine, aId, anchorOffset, fId, focusOffset)
+    // 空选区 (起止重合): 不覆盖内存剪贴板, 也不清空系统剪贴板 ——
+    // Ctrl+C 在无选区时是常见误按, 不该毁掉用户已有的剪贴板内容.
+    if (segments.length === 0) return
 
     const nodes: SerializedPara[] = []
     const plainParts: string[] = []
 
-    for (let pi = lo; pi <= hi; pi++) {
-      const paraId = siblings[pi]
-      if (!paraId) continue
-      const para = pool.nodes.get(paraId) as unknown as Record<string, unknown> | undefined
+    for (const seg of segments) {
+      const para = pool.nodes.get(seg.paraId) as unknown as Record<string, unknown> | undefined
       if (!para || para.type !== 'paragraph') continue
 
-      let clipStart = 0
-      let clipEnd = Infinity
-      if (samePara) {
-        clipStart = Math.min(anchorOffset, focusOffset)
-        clipEnd = Math.max(anchorOffset, focusOffset)
-      } else if (pi === lo) { clipStart = loOff }
-      else if (pi === hi) { clipEnd = hiOff }
-
-      const result = this.cloneParagraph(para, pool, clipStart, clipEnd)
+      const clipEnd = seg.end === Number.MAX_SAFE_INTEGER
+        ? paragraphTextLength(pool, seg.paraId)
+        : seg.end
+      const result = this.cloneParagraph(para, pool, seg.start, clipEnd)
       if (result) {
         nodes.push(result.serialized)
         plainParts.push(result.plainText)

@@ -14,6 +14,7 @@
 // ================================================================
 
 import type { SLIFPage, SLIFItem } from '../core/SLIF'
+import { forEachPageItem } from '../core/SLIF'
 import type { NodePool } from '../../document/core/NodePool'
 
 // ---- 脚注条目 ----
@@ -61,31 +62,52 @@ export class FootnoteLayout {
   }
 
   /**
+   * 续排播种 (契约 §16.1): 把编号接在**复用页**之后。
+   *
+   * 复用页的脚注区已经生成好, Step 4 不会再处理它们; 但编号是跨页连续的,
+   * 所以必须先把复用页里"会真正产出入条"的引用数一遍 —— 判据与
+   * `collectFootnotes` 完全一致 (节点存在、有 footnoteId、内容节点存在),
+   * 否则新页的编号会从 1 重新开始。
+   */
+  seedFrom(pages: readonly SLIFPage[], pool: NodePool): void {
+    for (const page of pages) {
+      // cell 内引用同样参与编号 (契约 §31.13.1) — 故必须展平, 不能只看顶层
+      forEachPageItem(page, item => {
+        if (item.nodeType !== 'footnote_ref') return
+        const ref = pool.nodes.get(item.nodeId) as { footnoteId?: string } | undefined
+        if (!ref?.footnoteId) return
+        if (!pool.nodes.get(ref.footnoteId)) return
+        this.globalCounter++
+      })
+    }
+  }
+
+  /**
    * 为给定页面收集脚注引用并分配编号
    */
   collectFootnotes(page: SLIFPage, pool: NodePool): FootnoteEntry[] {
     const entries: FootnoteEntry[] = []
 
-    for (const item of page.items) {
-      if (item.nodeType === 'footnote_ref') {
-        const ref = pool.nodes.get(item.nodeId) as { footnoteId?: string } | undefined
-        if (!ref?.footnoteId) continue
+    // cell 内引用与正文引用同权 (契约 §31.13.1); 顺序 = getFlatPageItems 顺序
+    forEachPageItem(page, item => {
+      if (item.nodeType !== 'footnote_ref') return
+      const ref = pool.nodes.get(item.nodeId) as { footnoteId?: string } | undefined
+      if (!ref?.footnoteId) return
 
-        // 查找 FootnoteContent
-        const content = pool.nodes.get(ref.footnoteId)
-        if (!content) continue
+      // 查找 FootnoteContent
+      const content = pool.nodes.get(ref.footnoteId)
+      if (!content) return
 
-        this.globalCounter++
-        const text = this.getFootnoteText(content, pool)
+      this.globalCounter++
+      const text = this.getFootnoteText(content, pool)
 
-        entries.push({
-          refId: item.nodeId,
-          number: this.globalCounter,
-          contentId: ref.footnoteId,
-          text,
-        })
-      }
-    }
+      entries.push({
+        refId: item.nodeId,
+        number: this.globalCounter,
+        contentId: ref.footnoteId,
+        text,
+      })
+    })
 
     return entries
   }

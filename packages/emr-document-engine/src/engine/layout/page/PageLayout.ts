@@ -38,6 +38,11 @@ export interface ILine {
   tableFragment?: import('../table/TablePaginator').TableFragment
   /** 表格列宽数组 (由 LayoutEngine 注入, SLIF 映射时消费) */
   columnWidths?: number[]
+  /**
+   * 分节符类型 (契约 §31.10 PHASE 1) — 仅 `section_break` 标记行携带。
+   * 缺省视为 'next_page' (历史文档与既有测试的语义)。
+   */
+  sectionBreakType?: 'next_page' | 'continuous' | 'even_page' | 'odd_page'
 }
 
 /** 布局内部类型 — 分页后的页面 */

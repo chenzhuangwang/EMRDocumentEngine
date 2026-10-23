@@ -139,6 +139,30 @@ export function getFlatPageItems(page: SLIFPage): SLIFItem[] {
 /** 单元格内容相对 cell 左内边距 (与 TableParticle / hitTestTable 同一口径) */
 export const CELL_PAD = 6
 
+/**
+ * 以**原始 item 引用**遍历页面上的全部内容项 (含表格 cell 内项, 嵌套表递归)。
+ *
+ * 与 `getFlatPageItems` 的分工: 展平版产出带绝对坐标的副本, 供命中/页映射等
+ * 只读消费者使用; 本函数交出原对象, 供需要**写回**的调用方 (脚注编号回填)
+ * 与只读收集 (FootnoteLayout) 使用。两者遍历范围必须一致: 表格容器项本身不
+ * 访问; 重复表头行 (`headerRows`) 是视觉行, 不参与脚注编号 (契约 §31.13.1);
+ * 嵌套表的 cell 项递归展平 (契约 §31.13)。
+ */
+export function forEachPageItem(page: SLIFPage, visit: (item: SLIFItem) => void): void {
+  const walk = (items: readonly SLIFItem[]): void => {
+    for (const item of items) {
+      if (isTableItem(item)) {
+        for (const row of item.rows ?? []) {
+          for (const cell of row.cells) walk(cell.items)
+        }
+        continue
+      }
+      visit(item)
+    }
+  }
+  walk(page.items)
+}
+
 function isTableItem(item: SLIFItem): boolean {
   return item.type === 'table' && !!item.rows && item.rows.length > 0
 }

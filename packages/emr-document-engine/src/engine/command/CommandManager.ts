@@ -10,13 +10,16 @@
 // 四条流水线汇合点:
 //   CommandManager.execute(cmd)
 //     → cmd.forward(ctx) → StatePatch
-//     → dispatchInvalidation(invalidation) → DirtyTracker
 //     → undoStack.execute(cmd, ctx)
-//     → eventBus.emit('document:changed', {invalidation, dirtyNodeIds})
+//     → eventBus.emit('document:changed', {invalidation, dirtyNodeIds: []})
 //     → eventBus.emit('state:changed', patch)
+//
+// dirtyNodeIds 恒为空数组: 唯一的脏区来源曾是 DirtyTracker, 它已于
+// 2026-10-21 作为死 API 删除 (增量布局以键/缓存未命中为唯一事实源)。
+// 字段保留只为事件载荷形状兼容。
 // ================================================================
 
-import type { ICommand, InvalidationScope, CommandContext, StatePatch } from './ICommand'
+import type { ICommand, CommandContext, StatePatch } from './ICommand'
 import { generateCommandId } from './ICommand'
 import { CommandUndoRedoStack } from './CommandUndoRedoStack'
 import { MacroCommand } from './commands/MacroCommand'
@@ -27,7 +30,6 @@ import type { TemplateDefinitionStore } from '../template/TemplateDefinition'
 import type { DictionaryProvider } from '../document/control/Dictionary'
 import type { RevisionContext } from '../revision/Revision'
 import { NO_REVISION } from '../revision/Revision'
-import { DirtyTracker } from '../layout/incremental/DirtyTracker'
 
 /**
  * 插件命令钩子 —— 只声明本模块需要的那两项, 不 import plugins/ 的类型
@@ -40,7 +42,6 @@ export interface CommandHooks {
 
 export class CommandManager {
   readonly undoStack: CommandUndoRedoStack
-  readonly dirtyTracker: DirtyTracker
   private eventBus: EventBus
   private getDocument: () => DocumentTree
   private getPool: () => NodePool
@@ -72,7 +73,6 @@ export class CommandManager {
     this.getPluginHooks = getPluginHooks
     this.getRevisionContext = getRevisionContext
     this.undoStack = new CommandUndoRedoStack(100)
-    this.dirtyTracker = new DirtyTracker()
   }
 
   private buildContext(): CommandContext {
@@ -157,13 +157,12 @@ export class CommandManager {
    * 确保 commitDocumentChange 里的 render() 使用最新光标位置。
    */
   private emitDocumentChange(patch: StatePatch): void {
-    this.dispatchInvalidation(patch.invalidation ?? 'paragraph')
-
     this.eventBus.emit('state:changed', patch)
 
     this.eventBus.emit('document:changed', {
       invalidation: patch.invalidation ?? 'paragraph',
-      dirtyNodeIds: [...this.dirtyTracker.getDirtyNodeIds()],
+      // 恒为空: DirtyTracker 已删除, 脏区不再是事实源 (见文件头注释)
+      dirtyNodeIds: [],
     })
 
     if (patch.cursor) this.eventBus.emit('cursor:moved', {
@@ -172,22 +171,5 @@ export class CommandManager {
       visible: true,
       ...patch.cursor,
     })
-  }
-
-  private dispatchInvalidation(scope: InvalidationScope): void {
-    switch (scope) {
-      case 'none': break
-      case 'node': break  // node-level handled by markNodeDirty externally
-      case 'paragraph':
-      case 'paragraph_and_downstream':
-        break  // paragraph dirty marked by command
-      case 'block':
-      case 'flowbody':
-      case 'table':
-      case 'page_setup':
-      case 'full':
-        this.dirtyTracker.markFullLayout()
-        break
-    }
   }
 }

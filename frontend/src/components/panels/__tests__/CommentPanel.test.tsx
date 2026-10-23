@@ -26,7 +26,10 @@ const THREAD: CommentThread = {
   status: 'open',
   baseVersion: 1,
   anchorStatus: 'valid',
-  comments: [{ id: 'c1', author: '李医生', createdAt: Date.UTC(2026, 8, 16, 10, 0, 0), content: '这里措辞要改' }],
+  comments: [
+    { id: 'c1', author: '李医生', createdAt: Date.UTC(2026, 8, 16, 10, 0, 0), content: '这里措辞要改' },
+    { id: 'c2', author: '王医生', createdAt: Date.UTC(2026, 8, 16, 10, 5, 0), content: '同意' },
+  ],
 }
 
 function renderPanel(props: Omit<Parameters<typeof CommentPanel>[0], 'threads'>) {
@@ -64,7 +67,7 @@ describe('CommentPanel — 新建批注入口', () => {
     fireEvent.click(screen.getByRole('button', { name: '添加批注' }))
 
     expect(onNewComment).toHaveBeenCalled()
-    expect(screen.getByText(/请先在文档中选中同一段落内的文字/)).toBeTruthy()
+    expect(screen.getByText(/请先在文档中选择文字/)).toBeTruthy()
     expect(screen.getByPlaceholderText(/批注内容/)).toBeTruthy()   // 未收起, 内容还在
   })
 
@@ -84,5 +87,86 @@ describe('CommentPanel — 新建批注入口', () => {
   it('无摘录时不渲染该行', () => {
     renderPanel({ getThreadExcerpt: () => '' })
     expect(screen.queryByText(/锚定：/)).toBeNull()
+  })
+
+  it('点批注 (零长度) 显示「光标位置」而不是空摘录', () => {
+    const point: CommentThread = {
+      ...THREAD,
+      rangeStart: { path: ['doc', 'p1'], offset: 2 },
+      rangeEnd: { path: ['doc', 'p1'], offset: 2 },
+    }
+    render(<CommentPanel threads={[point]} getThreadExcerpt={() => ''} />)
+    expect(screen.getByText('光标位置')).toBeTruthy()
+  })
+})
+
+describe('CommentPanel — 重开 / 删除 / 选中 (契约 §12.14)', () => {
+  it('未解决 → 显示「标记为已解决」; 已解决 → 显示「撤销解决」并可点击', () => {
+    const onResolveThread = vi.fn()
+    const { unmount } = render(
+      <CommentPanel threads={[THREAD]} onResolveThread={onResolveThread} />,
+    )
+    fireEvent.click(screen.getByTitle('标记为已解决'))
+    expect(onResolveThread).toHaveBeenCalledWith('t1')
+    unmount()
+
+    render(
+      <CommentPanel
+        threads={[{ ...THREAD, status: 'resolved' }]}
+        activeThreadId="t1"
+        onResolveThread={onResolveThread}
+      />,
+    )
+    fireEvent.click(screen.getByTitle('撤销解决'))
+    expect(onResolveThread).toHaveBeenCalledTimes(2)
+  })
+
+  it('删除线程需确认; 确认后回传 threadId', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const onDeleteThread = vi.fn()
+    renderPanel({ onDeleteThread })
+
+    fireEvent.click(screen.getByTitle('删除批注'))
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(onDeleteThread).toHaveBeenCalledWith('t1')
+
+    confirmSpy.mockRestore()
+  })
+
+  it('取消确认 → 不删除', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const onDeleteThread = vi.fn()
+    renderPanel({ onDeleteThread })
+
+    fireEvent.click(screen.getByTitle('删除批注'))
+    expect(onDeleteThread).not.toHaveBeenCalled()
+
+    confirmSpy.mockRestore()
+  })
+
+  it('展开线程后只对回复显示删除入口, 首条本体不给删', () => {
+    const onDeleteReply = vi.fn()
+    renderPanel({ onDeleteReply })
+
+    // 点击作者行展开
+    fireEvent.click(screen.getByText('李医生'))
+    const buttons = screen.getAllByTitle('删除回复')
+    expect(buttons).toHaveLength(1)          // 只有 c2 (回复)
+
+    fireEvent.click(buttons[0])
+    expect(onDeleteReply).toHaveBeenCalledWith('t1', 'c2')
+  })
+
+  it('activeId 指向已解决线程时自动切到「全部」并展开', () => {
+    render(
+      <CommentPanel
+        threads={[{ ...THREAD, status: 'resolved' }]}
+        activeThreadId="t1"
+      />,
+    )
+    // 默认筛选 open 本会隐藏它; active 生效后应能看到「已解决」徽标与回复
+    expect(screen.getByText('已解决', { selector: 'span' })).toBeTruthy()
+    // 回复条目的作者只在展开态出现 (线程头显示的是 thread.author)
+    expect(screen.getByText('王医生')).toBeTruthy()
   })
 })

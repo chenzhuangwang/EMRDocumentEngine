@@ -11,8 +11,8 @@
 // 对齐架构 TASK-513, UIUX §5.5
 // ============================================================
 
-import { useState } from 'react'
-import { MessageSquare, Check, Reply, ChevronDown, X, Plus } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { MessageSquare, Check, Reply, ChevronDown, X, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CommentThread } from '@emrde/document-engine'
 import { useTranslation } from '@/i18n/useTranslation'
@@ -26,6 +26,10 @@ interface CommentPanelProps {
   onSelectThread?: (threadId: string) => void
   onResolveThread?: (threadId: string) => void
   onAddReply?: (threadId: string, content: string) => void
+  /** 删除整条批注线程 (确认后调用; 引擎侧可撤销) */
+  onDeleteThread?: (threadId: string) => void
+  /** 删除一条回复 (引擎侧可撤销) */
+  onDeleteReply?: (threadId: string, replyId: string) => void
   onClose?: () => void
   /**
    * 新建批注。**返回 false 表示锚定失败** (无选区且无光标, 或选区跨段落) ——
@@ -46,6 +50,8 @@ export function CommentPanel({
   onSelectThread,
   onResolveThread,
   onAddReply,
+  onDeleteThread,
+  onDeleteReply,
   onClose,
   onNewComment,
   getThreadExcerpt,
@@ -58,6 +64,24 @@ export function CommentPanel({
   const [newOpen, setNewOpen] = useState(false)
   const [newText, setNewText] = useState('')
   const [newError, setNewError] = useState<string | null>(null)
+
+  // 选中的线程必须可见: 自动展开; 若当前筛选把它隐藏了 (例如选中一条
+  // 已解决批注而面板停在「未解决」), 自动切到「全部」。否则画布高亮了、
+  // 列表里却找不到对应条目。
+  useEffect(() => {
+    if (!activeThreadId) return
+    const thread = threads.find(item => item.id === activeThreadId)
+    if (!thread) return
+    setExpandedThreads(prev => {
+      if (prev.has(activeThreadId)) return prev
+      const next = new Set(prev)
+      next.add(activeThreadId)
+      return next
+    })
+    const hidden = (filter === 'open' && thread.status === 'resolved') ||
+      (filter === 'resolved' && thread.status !== 'resolved')
+    if (hidden) setFilter('all')
+  }, [activeThreadId, threads, filter])
 
   const submitNew = () => {
     const content = newText.trim()
@@ -198,6 +222,9 @@ export function CommentPanel({
               const isActive = thread.id === activeThreadId
               const lastEntry = thread.comments[thread.comments.length - 1]
               const excerpt = getThreadExcerpt?.(thread.id) ?? ''
+              /** 零长度 = 光标处的点批注 (契约 §12.14), 没有文字可摘录 */
+              const isPoint = thread.rangeStart.path.join('\u0000') === thread.rangeEnd.path.join('\u0000') &&
+                thread.rangeStart.offset === thread.rangeEnd.offset
 
               return (
                 <div
@@ -230,23 +257,43 @@ export function CommentPanel({
                       <p className="text-xs text-chrome-ink-secondary mt-1 line-clamp-2 ml-[18px]">
                         {lastEntry?.content || t('comment.noContent')}
                       </p>
-                      {/* 锚定摘录: 没有它, 列表里看不出这条批注标的是哪段字 */}
-                      {excerpt && (
+                      {/* 锚定摘录: 没有它, 列表里看不出这条批注标的是哪段字。
+                          点批注没有文字, 显示「光标位置」。 */}
+                      {(excerpt || isPoint) && (
                         <p className="text-[10px] text-chrome-ink-muted mt-0.5 ml-[18px] truncate">
-                          {t('comment.anchor', { text: excerpt })}
+                          {isPoint ? t('comment.pointAnchor') : t('comment.anchor', { text: excerpt })}
                         </p>
                       )}
                     </div>
 
-                    {thread.status !== 'resolved' && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onResolveThread?.(thread.id) }}
-                        className="p-1 rounded hover:bg-green-50 text-chrome-ink-disabled hover:text-green-600 shrink-0"
-                        title={t('comment.resolveTitle')}
-                      >
-                        <Check size={14} />
-                      </button>
-                    )}
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      {onResolveThread && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onResolveThread(thread.id) }}
+                          className={cn(
+                            'p-1 rounded text-chrome-ink-disabled',
+                            thread.status === 'resolved'
+                              ? 'hover:bg-amber-50 hover:text-amber-600'
+                              : 'hover:bg-green-50 hover:text-green-600',
+                          )}
+                          title={thread.status === 'resolved' ? t('comment.unresolve') : t('comment.resolveTitle')}
+                        >
+                          {thread.status === 'resolved' ? <RotateCcw size={14} /> : <Check size={14} />}
+                        </button>
+                      )}
+                      {onDeleteThread && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (window.confirm(t('comment.deleteConfirm'))) onDeleteThread(thread.id)
+                          }}
+                          className="p-1 rounded text-chrome-ink-disabled hover:bg-red-50 hover:text-red-600"
+                          title={t('comment.deleteThread')}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {thread.status === 'resolved' && (
@@ -266,11 +313,23 @@ export function CommentPanel({
                             idx === 0 ? 'bg-amber-50' : 'bg-chrome-subtle',
                           )}
                         >
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <span className="font-medium text-chrome-ink-body">{entry.author}</span>
-                            <span className="text-[10px] text-chrome-ink-muted">
-                              {formatTime(entry.createdAt, t)}
-                            </span>
+                          <div className="flex items-center justify-between gap-1.5 mb-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-chrome-ink-body">{entry.author}</span>
+                              <span className="text-[10px] text-chrome-ink-muted">
+                                {formatTime(entry.createdAt, t)}
+                              </span>
+                            </div>
+                            {/* 只删回复: 首条是线程本体, 删它请用线程级删除 */}
+                            {onDeleteReply && idx > 0 && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onDeleteReply(thread.id, entry.id) }}
+                                className="p-0.5 rounded text-chrome-ink-disabled hover:bg-red-50 hover:text-red-600"
+                                title={t('comment.deleteReply')}
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            )}
                           </div>
                           <p className="text-chrome-ink-secondary leading-relaxed">{entry.content}</p>
                         </div>

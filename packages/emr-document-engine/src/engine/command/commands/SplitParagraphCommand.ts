@@ -12,15 +12,21 @@
 
 import type { Paragraph, TextNode, DocumentTree } from '../../document/core/DocumentModel'
 import { createParagraph, createTextNode, extractStyle } from '../../document/factory/ElementFormatter'
-import { ICommand, CommandContext, StatePatch, SerializedCommand, PositionalCommand } from '../ICommand'
-import { MergeParagraphCommand } from './MergeParagraphCommand'
+import {
+  ICommand, CommandContext, StatePatch, SerializedCommand, PositionalCommand, generateCommandId,
+} from '../ICommand'
 import { MintedOnce } from './MintedNodes'
+import {
+  captureParagraphSnapshot, RestoreParagraphsCommand, type ParagraphSnapshot,
+} from './ParagraphSnapshot'
 import { resolveParagraphRegion, isPoolRegion } from '../../state/CaretScope'
 
 export class SplitParagraphCommand extends PositionalCommand {
   readonly type = 'split-paragraph'
   readonly offset: number
   private newParaId?: string
+  /** 拆段前原段落的整段快照 (撤销时按它原样恢复 run 边界与节点 id) */
+  private _beforeSnapshot: ParagraphSnapshot | null = null
   /** 铸造一次台账 (契约 §8.3): redo 复用首次的段落/文本节点 id */
   private mint = new MintedOnce()
 
@@ -34,6 +40,11 @@ export class SplitParagraphCommand extends PositionalCommand {
     const { pool, doc } = ctx
     const para = pool.nodes.get(this.path[this.path.length - 1]) as Paragraph | undefined
     if (!para) return null
+
+    // 拆段前的整段快照 (每次 forward 都重拍: redo 时原段落已被还原, 拍的正是
+    // 拆段前那一刻)。撤销不能用"并段"近似 —— 并段会把接缝两侧本来就相邻的
+    // run 合成一个, 并在切点处重造节点, run 边界与节点 id 都不再是原样 (§8.2)。
+    this._beforeSnapshot = captureParagraphSnapshot(pool, para)
 
     // 1. 定位分裂点并对**原段落**截断 —— 每次 forward 都要做:
     //    undo 已把原段落还原, 重放必须重新切这一刀。
@@ -148,10 +159,10 @@ export class SplitParagraphCommand extends PositionalCommand {
   }
 
   invert(): ICommand | null {
-    if (!this.newParaId) return null
-    return new MergeParagraphCommand(
-      this.id + '_inv', Date.now(), this.author,
-      [...this.path.slice(0, -1), this.newParaId],
+    if (!this.newParaId || !this._beforeSnapshot) return null
+    return new RestoreSplitCommand(
+      generateCommandId(), Date.now(), this.author,
+      this.newParaId, this._beforeSnapshot,
     )
   }
 
@@ -161,5 +172,56 @@ export class SplitParagraphCommand extends PositionalCommand {
       author: this.author, path: this.path, offset: this.offset,
       mergeTargetPath: this.newParaId ? [...this.path.slice(0, -1), this.newParaId] : undefined,
     }
+  }
+}
+
+/**
+ * 撤销拆段 — 摘除新段落子树, 再按拆段前的整段快照恢复原段落。
+ *
+ * 为什么不用「并段」近似: 拆段可能在 run 的任意位置切开, 也可能恰好切在
+ * run 边界; 并段只在接缝处合并一对 run, 前者需要合并、后者不能合并, 同一条
+ * 规则覆盖不了两种情况 —— 只有快照能逐字节还原节点 id 与 run 边界 (§8.2)。
+ */
+class RestoreSplitCommand implements ICommand {
+  readonly type = 'restore-split-paragraph'
+  constructor(
+    readonly id: string,
+    readonly timestamp: number,
+    readonly author: string,
+    private readonly newParaId: string,
+    private readonly snapshot: ParagraphSnapshot,
+  ) {}
+
+  forward(ctx: CommandContext): StatePatch | null {
+    if (ctx.mode !== 'local') return null
+    const { pool, doc } = ctx
+
+    // 1. 新段落从所属容器摘除 (子树先留着, 下面按 id 注销)
+    const region = resolveParagraphRegion(this.newParaId, doc, pool)
+    if (!region) return null
+    if (isPoolRegion(region)) pool.detachChild(region.containerId, region.index)
+    else region.siblings.splice(region.index, 1)
+
+    // 2. 注销新段落及其子树。右侧原有子节点也在其中 —— 它们属于快照,
+    //    第 3 步会按快照重新注册 (id 与内容逐字节不变)。
+    const stack = [this.newParaId]
+    while (stack.length > 0) {
+      const id = stack.pop()!
+      const node = pool.nodes.get(id) as { children?: readonly string[] } | undefined
+      if (!node) continue
+      for (const child of node.children ?? []) stack.push(child)
+      pool.removeNode(id)
+    }
+
+    // 3. 原段落按快照恢复 (摘除现状 → 重新注册 → 恢复 children 顺序)
+    return new RestoreParagraphsCommand(
+      generateCommandId(), Date.now(), this.author, [this.snapshot],
+    ).forward(ctx)
+  }
+
+  invert(): ICommand | null { return null }
+
+  serialize(): SerializedCommand {
+    return { type: this.type, id: this.id, timestamp: this.timestamp, author: this.author }
   }
 }

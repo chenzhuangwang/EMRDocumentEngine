@@ -132,17 +132,20 @@ function setSpan(cell: TableCell, key: 'colspan' | 'rowspan', value: number): vo
 // 行操作
 // ============================================================
 
-/** 在 rowIndex 行下方插入一个空行 (跨界的 rowspan 单元格 rowspan+1) */
-export function insertRow(pool: NodePool, tableId: string, rowIndex: number): void {
+/**
+ * 在 insertAt 处插入一个空行 (insertAt 之前/之后由调用方换算)。
+ * 跨越插入线的 rowspan 单元格 rowspan+1。
+ */
+function insertRowAt(pool: NodePool, tableId: string, insertAt: number): void {
   const grid = buildCellGrid(pool, tableId)
   const matrix = buildMatrix(pool, tableId, grid)
 
-  // 跨界 rowspan: 跨越 rowIndex 与 rowIndex+1 之间 (同列上下相同 cellId)
+  // 跨界 rowspan: 跨越 insertAt-1 与 insertAt 之间 (同列上下相同 cellId)
   const crossing = new Set<string>()
   for (let c = 0; c < grid.numCols; c++) {
-    const above = matrix.getCell(rowIndex, c)
-    const below = matrix.getCell(rowIndex + 1, c)
-    if (above && above === below) crossing.add(above)
+    const above = insertAt > 0 ? matrix.getCell(insertAt - 1, c) : null
+    const below = matrix.getCell(insertAt, c)
+    if (above && below && above === below) crossing.add(above)
   }
   for (const cellId of crossing) {
     const cell = pool.nodes.get(cellId) as unknown as TableCell
@@ -152,14 +155,24 @@ export function insertRow(pool: NodePool, tableId: string, rowIndex: number): vo
   // 新行: 为未被跨界 rowspan 占据的列创建空单元格 (按列序, 占位算法自动归位)
   const newCells: TableCell[] = []
   for (let c = 0; c < grid.numCols; c++) {
-    const below = matrix.getCell(rowIndex + 1, c)
+    const below = matrix.getCell(insertAt, c)
     if (below && crossing.has(below)) continue
     newCells.push(makeEmptyCell(pool))
   }
 
   const newRow = createTableRow(newCells)
   pool.addNode(newRow as unknown as BaseNode)
-  pool.insertChild(tableId, newRow.id, rowIndex + 1)
+  pool.insertChild(tableId, newRow.id, insertAt)
+}
+
+/** 在 rowIndex 行下方插入一个空行 (跨界的 rowspan 单元格 rowspan+1) */
+export function insertRow(pool: NodePool, tableId: string, rowIndex: number): void {
+  insertRowAt(pool, tableId, rowIndex + 1)
+}
+
+/** 在 rowIndex 行上方插入一个空行 (第一行也能用: rowIndex=0 → 插到表首) */
+export function insertRowBefore(pool: NodePool, tableId: string, rowIndex: number): void {
+  insertRowAt(pool, tableId, rowIndex)
 }
 
 /** 删除 rowIndex 行 (跨界的 rowspan 单元格 rowspan-1) */
@@ -182,44 +195,54 @@ export function deleteRow(pool: NodePool, tableId: string, rowIndex: number): vo
 // 列操作
 // ============================================================
 
-/** 在 colIndex 列右侧插入一个空列 (跨界的 colspan 单元格 colspan+1) */
-export function insertColumn(pool: NodePool, tableId: string, colIndex: number): void {
+/** 在 insertAt 列位置插入一个空列 (insertAt 之前/之后由调用方换算) */
+function insertColumnAt(pool: NodePool, tableId: string, insertAt: number): void {
   const table = tableNode(pool, tableId)
   const grid = buildCellGrid(pool, tableId)
   const matrix = buildMatrix(pool, tableId, grid)
 
-  // 跨界 colspan: 跨越 colIndex 与 colIndex+1 之间 (同行左右相同 cellId)
+  // 跨界 colspan: 跨越 insertAt-1 与 insertAt 之间 (同行左右相同 cellId)
   const crossing = new Set<string>()
   for (let r = 0; r < grid.numRows; r++) {
-    const left = matrix.getCell(r, colIndex)
-    const right = matrix.getCell(r, colIndex + 1)
-    if (left && left === right) crossing.add(left)
+    const left = insertAt > 0 ? matrix.getCell(r, insertAt - 1) : null
+    const right = matrix.getCell(r, insertAt)
+    if (left && right && left === right) crossing.add(left)
   }
   for (const cellId of crossing) {
     const cell = pool.nodes.get(cellId) as unknown as TableCell
     cell.colspan = (cell.colspan || 1) + 1
   }
 
-  // 每行: 未被跨界 colspan 占据时, 在网格列 colIndex+1 位置插入空单元格
+  // 每行: 未被跨界 colspan 占据时, 在网格列 insertAt 位置插入空单元格
   for (let r = 0; r < grid.numRows; r++) {
-    const left = matrix.getCell(r, colIndex)
-    const right = matrix.getCell(r, colIndex + 1)
-    if (left && left === right) continue
+    const left = insertAt > 0 ? matrix.getCell(r, insertAt - 1) : null
+    const right = matrix.getCell(r, insertAt)
+    if (left && right && left === right) continue
 
     const row = pool.nodes.get(grid.rowIds[r]) as unknown as TableRow
     const newCell = makeEmptyCell(pool)
-    // 插入点: 第一个 grid col > colIndex 的 cell 之前
+    // 插入点: 第一个 grid col >= insertAt 的 cell 之前
     let insertIdx = row.children.length
     for (let i = 0; i < row.children.length; i++) {
       const gc = grid.byId.get(row.children[i])
-      if (gc && gc.col > colIndex) { insertIdx = i; break }
+      if (gc && gc.col >= insertAt) { insertIdx = i; break }
     }
     pool.insertChild(row.id, newCell.id, insertIdx)
   }
 
   // 插入列定义 (percentage 均匀分摊)
   const newCount = grid.numCols + 1
-  table.columns.splice(colIndex + 1, 0, { width: 100 / newCount, mode: 'percentage' as const })
+  table.columns.splice(insertAt, 0, { width: 100 / newCount, mode: 'percentage' as const })
+}
+
+/** 在 colIndex 列右侧插入一个空列 (跨界的 colspan 单元格 colspan+1) */
+export function insertColumn(pool: NodePool, tableId: string, colIndex: number): void {
+  insertColumnAt(pool, tableId, colIndex + 1)
+}
+
+/** 在 colIndex 列左侧插入一个空列 (第一列也能用: colIndex=0 → 插到表首) */
+export function insertColumnBefore(pool: NodePool, tableId: string, colIndex: number): void {
+  insertColumnAt(pool, tableId, colIndex)
 }
 
 /** 删除 colIndex 列 (跨界的 colspan 单元格 colspan-1) */
