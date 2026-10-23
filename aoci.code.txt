@@ -7,8 +7,8 @@ AGENTS.md[SZ5T]: F:AOCI 仓库认知的 Agent 指令区块(aoci:begin/end)，说
 IP-POLICY.md[SS6S]: F:声明知产防护四层(文件头/隐形溯源/归档+历史/许可)的真实能力边界与明确不做的事 | R:code:LICENSE,code:NOTICE | A:- | S:不做代码混淆/加密/遥测/渲染水印；零宽标识可被一次性剥离属已知取舍；不改变用户所见是硬约束
 LICENSE[SZ5M]: F:MPL-2.0 许可证全文，声明文件级 copyleft 及本项目不适用 Exhibit B | R:code:NOTICE,code:IP-POLICY.md | A:- | S:明确不适用 Exhibit B，故可与 GPL 等 Secondary License 组合；不得移除该声明
 NOTICE[SZ4T]: F:版权、双远程地址、许可证历史(MIT→MPL-2.0 更正记录)与第三方组件声明 | R:code:LICENSE,code:IP-POLICY.md | A:- | S:README 曾自 2026-07-17 误标 MIT；该表述非许可授予，以 MPL-2.0 为准
-README.en.md[SL4M]: F:README.md 的英文版, 内容与中文版对齐(含 packages/emr-document-engine 分包的架构图与目录树) | R:code:README.md | A:- | S:须与 README.md 保持同步
-README.md[SG6M]: F:项目主文档: 定位、功能、架构(引擎物理分包的 packages/emr-document-engine 与 @emrde/document-engine 引用方式)、技术栈、API、数据库表、构建与贡献指南 | R:code:README.en.md,code:LICENSE,code:.claude/AI_EDITOR_CONTRACT.md | A:- | S:许可证段已由 MIT 更正为 MPL-2.0; 导出矩阵中 OFD/CDA 已实现, PDF/DOCX 仍为规划; 契约已是 32 个编号章节
+README.en.md[SL4M]: F:README.md 的英文版, 内容与中文版对齐(含 packages/emr-document-engine 分包的架构图与目录树) | R:code:README.md | A:- | S:须与 README.md 逐条同步; 能力或数字改动两版一起改, 不留旧值
+README.md[SG6M]: F:项目主文档: 定位、功能、架构(引擎物理分包的 packages/emr-document-engine 与 @emrde/document-engine 引用方式)、技术栈、API、数据库表、构建与贡献指南 | R:code:README.en.md,code:LICENSE,code:.claude/AI_EDITOR_CONTRACT.md | A:- | S:许可证段已由 MIT 更正为 MPL-2.0; 导出矩阵中 OFD/CDA 已实现, PDF/DOCX 仍为规划; 契约 32 章; 中英双版须同步, 数字以代码实测
 docker-compose.yml[OV5T]: F:四服务编排(mysql/redis/backend/nginx), 挂 schema.sql+seed.sql 初始化库, nginx 托管前端 dist | R:code:backend/Dockerfile,code:frontend/nginx.conf | A:- | S:mysql 仅空数据卷时执行初始化脚本
 nginx.conf[OV4T]: F:前端静态站点 + 反向代理: 静态回退 index.html, /api 与 /ws 代理到 backend:8080 | R:code:frontend/vite.config.ts | A:- | S:/api/ 与 /ws/ 代理到 backend:8080; 前端 try_files 回退 index.html
 package.json[FV4T]: F:仓库根工作区包: 版权/溯源/归档工具链脚本 + 引擎分包打包与验证入口(engine:pack / engine:verify), 无依赖 | R:code:scripts/pack-engine.mjs,code:scripts/verify-engine-package.mjs | A:- | S:根 package.json 只管工具链, 应用代码在 frontend/ 与 backend/

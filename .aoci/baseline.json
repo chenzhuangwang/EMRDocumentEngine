@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-09T10:43:43Z",
-  "updated_at": "2026-10-23T06:10:31Z",
+  "updated_at": "2026-10-23T06:43:08Z",
   "files": {
     ".claude/AI_EDITOR_CONTRACT.md": {
       "role": "index",
@@ -83,21 +83,21 @@
     },
     "README.en.md": {
       "role": "index",
-      "sha256": "2db998a858f62ccaaf609e686dc85a15059547af369e98fe5781f7fdb0670141",
-      "size": 27148,
-      "normalized_sha256": "2db998a858f62ccaaf609e686dc85a15059547af369e98fe5781f7fdb0670141"
+      "sha256": "3d212edcf90c7a2c1df7eac1b1b63aeda99476200955574edaea7139ebac0df2",
+      "size": 29453,
+      "normalized_sha256": "3d212edcf90c7a2c1df7eac1b1b63aeda99476200955574edaea7139ebac0df2"
     },
     "README.md": {
       "role": "index",
-      "sha256": "26c1ebdab2621f970d1d6be70b857b4d543b075719f400c0006ca2bae3b67001",
-      "size": 23905,
-      "normalized_sha256": "26c1ebdab2621f970d1d6be70b857b4d543b075719f400c0006ca2bae3b67001"
+      "sha256": "6a62ea0df9ae676a2be04aa3901dab3826bba65c0e9aa6418db396546879fa71",
+      "size": 25615,
+      "normalized_sha256": "6a62ea0df9ae676a2be04aa3901dab3826bba65c0e9aa6418db396546879fa71"
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "6dc9a658bc0d3b1dc0402b074f57fdd1966f73d6b8d52fafda495379dc27d4ee",
-      "size": 146267,
-      "normalized_sha256": "6dc9a658bc0d3b1dc0402b074f57fdd1966f73d6b8d52fafda495379dc27d4ee"
+      "sha256": "6e172098380e853a8b27f782c36044f186d93cebe78831a6fb58e4014a340639",
+      "size": 146347,
+      "normalized_sha256": "6e172098380e853a8b27f782c36044f186d93cebe78831a6fb58e4014a340639"
     },
     "aoci.meta.txt": {
       "role": "index",
